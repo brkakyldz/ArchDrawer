@@ -1,0 +1,2 @@
+# The acceptance scenarios are written independently of the code; see CONTRIBUTING.md.
+/tests/acceptance/holdout/ @brkakyldz

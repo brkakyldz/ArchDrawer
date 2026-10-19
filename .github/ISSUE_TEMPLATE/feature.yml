@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest something Archdrawer should do.
+labels: [feature]
+body:
+  - type: textarea
+    id: why
+    attributes:
+      label: The problem
+      description: What you are trying to do, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: How it should work from the user's side.
+    validations:
+      required: true
+  - type: input
+    id: spec
+    attributes:
+      label: Related requirement
+      description: An ID from `docs/spec.md` (for example NAV-3), if you know one.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered

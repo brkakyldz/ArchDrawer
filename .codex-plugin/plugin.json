@@ -1,0 +1,30 @@
+{
+  "name": "archdrawer",
+  "version": "0.1.0",
+  "description": "Your session reads the code and writes an architecture drawing; a local editor refines and shares it.",
+  "author": {
+    "name": "Berke Akyıldız"
+  },
+  "license": "MIT",
+  "keywords": [
+    "architecture",
+    "diagram",
+    "codebase",
+    "svg"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "archdrawer",
+    "shortDescription": "Draw this repository's architecture",
+    "longDescription": "Reads the code, writes an editable architecture drawing (docs/architecture.archdraw.json) and opens it in a local editor for refining and sharing.",
+    "developerName": "Berke Akyıldız",
+    "category": "Coding",
+    "capabilities": [
+      "Instructions"
+    ],
+    "defaultPrompt": [
+      "Draw the architecture of this repository.",
+      "Update the architecture drawing."
+    ]
+  }
+}

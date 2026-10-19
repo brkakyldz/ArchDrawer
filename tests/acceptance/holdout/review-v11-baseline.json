@@ -1,0 +1,297 @@
+{
+    "phase":  "Captured before the current REVIEW.md fix-and-land pass on 2026-10-15; does not establish the earlier H76-only pass",
+    "files":  {
+                  "author-check.mjs":  {
+                                           "sha256":  "565d5fa0618d601af4d1cdeb16a111f53983ab6e22db44251037a7b0277688ac"
+                                       },
+                  "border-cases.ts":  {
+                                          "sha256":  "34da49ce464560395fc007ab1387ce142a7cfbaa52981e8270f416db7fde8c7b"
+                                      },
+                  "COVERAGE.md":  {
+                                      "sha256":  "caec02ec57ba09f6695d5f6192d68fe5e64e2b76855d253967e7760387b31cb8"
+                                  },
+                  "H15_cli_to_editor.spec.ts":  {
+                                                    "sha256":  "ecd837388df439d5e7190df39c8830723d0acab09c0fb79eafb88355b28e5972",
+                                                    "title":  "H15 [CLI-1, CLI-2, CLI-3, CLI-4, DM-1, SHR-6] validate a session file, reopen the same editor and export it"
+                                                },
+                  "H16_depth_and_validation.spec.ts":  {
+                                                           "sha256":  "b6464a24f6508c928667cdfd831637513e4b0e3de6545197ad566dc996122f5e",
+                                                           "title":  "H16 [CLI-1, DEP-3, DM-2, DM-3, DM-5] depth warnings permit a drawing but every broken field is reported without repair"
+                                                       },
+                  "H17_layout_and_geometry.spec.ts":  {
+                                                          "sha256":  "e94389fb288fd4cb419ab134dc4ca14e8972c5d0728f62ac74351d50fc881479",
+                                                          "title":  "H17 [DM-1, DM-2, DM-3, LAY-1, LAY-2, LAY-3, LAY-4, SHR-6] a hinted system and nested loop render with matching export geometry and kept positions"
+                                                      },
+                  "H18_component_callout.spec.ts":  {
+                                                        "sha256":  "abfe408c058a9fc129a718eb5ae76403380822ddc0c944aed27d390afa1090a5",
+                                                        "title":  "H18 [EDT-2, VIEW-1, DM-2, PER-1] explain a component and edit every field and held item without losing its neighbours"
+                                                    },
+                  "H19_move_group_delete.spec.ts":  {
+                                                        "sha256":  "c03aa53756d8d01137c9df60fff163a63a3224f0a767d7d761ebfd5b9f72ce30",
+                                                        "title":  "H19 [EDT-1, EDT-6, LAY-4, PER-1] select and move connected parts, regroup them and undo a destructive edit"
+                                                    },
+                  "H20_detail_and_history.spec.ts":  {
+                                                         "sha256":  "5fb87751b9764e483e7ae092c998b8d8d3763e7956c8cffeb09d05c9ec720203",
+                                                         "title":  "H20 [VIEW-2, VIEW-3, EDT-2, EDT-6, EDT-7, PER-1] enter and create detail views and retain a hundred undo steps across views"
+                                                     },
+                  "H21_component_picker.spec.ts":  {
+                                                       "sha256":  "b476fddc7b44a70c2a8e0f6ef8749036140ffaf5aa2c57dbe51b07b2febb0433",
+                                                       "title":  "H21 [EDT-3, DM-2, EDT-6, PER-1] choose kinds and forms at their destination, including a child in a group, and cancel safely"
+                                                   },
+                  "H22_connection_workbench.spec.ts":  {
+                                                           "sha256":  "404b18ec4c3d5330c6237444359c0389bdb7a098dabfcef66e040de21f617350",
+                                                           "title":  "H22 [EDT-2, EDT-4, EDT-6, DM-3, VIEW-1, PER-1] connect two parts, merge the return direction and edit the whole connection"
+                                                       },
+                  "H23_attached_notes.spec.ts":  {
+                                                     "sha256":  "11b07ea1cff3b5b352bea804fb3bddf475f47aedb5fbdd1349c9da9ffd481b17",
+                                                     "title":  "H23 [EDT-5, EDT-6, SHR-1, PER-1] type and resize free text, move a neighbouring part, share the text and undo its deletion"
+                                                 },
+                  "H24_fixture_instruction.spec.ts":  {
+                                                          "sha256":  "7b16452f3eeb24fb71e77e5404f663f3b272a390f8dd0cc7e1ff21b284bde080",
+                                                          "title":  "H24 [ASK-1, ASK-4, DM-5, LAY-3, EDT-6, PER-1] apply and repair an instruction, undo it, cancel and protect a concurrent session edit"
+                                                      },
+                  "H25_no_engine_requests.spec.ts":  {
+                                                         "sha256":  "1941284e5ddc00a0f1d74ee3c13145ff3b2b2c0a73ddeda3d894f0ba127e781d",
+                                                         "title":  "H25 [ASK-2, CLI-2, CLI-4, PER-1, PLT-3] a machine without engines saves a literal request for the next session and stops only its own server"
+                                                     },
+                  "H26_file_conflict.spec.ts":  {
+                                                    "sha256":  "5b5f7af292a51f221678bb325bbe5ff12eb64341250930efa82d96f9ae13759b",
+                                                    "title":  "H26 [PER-1, PER-2, EDT-2] save to the repository file, follow an outside edit and refuse a stale editor write with a reload offer"
+                                                },
+                  "H27_library_and_migration.spec.ts":  {
+                                                            "sha256":  "43a2243daf7dfd64a67ba4d853925bdd2cf807594d32b014501cb85db61a8598",
+                                                            "title":  "H27 [PER-3, DM-4, CLI-4, CLI-2] migrate an old drawing, import both versions and forget them without deleting repository files"
+                                                        },
+                  "H28_share_for_destination.spec.ts":  {
+                                                            "sha256":  "aebf64247f3a9394c74afec2a244779fac78f24c24b34619404e219dc1c4c376",
+                                                            "title":  "H28 [SHR-1, SHR-2, SHR-3, SHR-4, SHR-5, SHR-6, SHR-10] preview and download an image for every destination, then design the post and keep its source view"
+                                                        },
+                  "H29_security_and_plugin.spec.ts":  {
+                                                          "sha256":  "5f270894056bc9f7e37915b83faedfacd0fad374d2e39429005d218e4629c4a3",
+                                                          "title":  "H29 [PLT-2, PLT-3, PLG-1, PLG-3] inspect the packaged skill and use a local drawing while forged writes are refused"
+                                                      },
+                  "H30_ai_panel_model_summary.spec.ts":  {
+                                                             "sha256":  "8c9868e067e00c56e350b5ef9f28c3fbda4284c291a140022aa6a2f2f869bde5",
+                                                             "title":  "H30 [ASK-5, ASK-6, ASK-9, EDT-6, PER-1] expand a quick ask, pick a test model, follow progress and undo the reported change"
+                                                         },
+                  "H31_retry_keeps_instruction.spec.ts":  {
+                                                              "sha256":  "1093c7a538af319e8e149363948c56b79089837672ca594f41e214df6d285299",
+                                                              "title":  "H31 [ASK-5, ASK-8, ASK-9, EDT-6] retry failed and cancelled changes with the same text, model and selection"
+                                                          },
+                  "H32_scoped_move_and_align.spec.ts":  {
+                                                            "sha256":  "96ddd4d09cfddb635ecc1d79ee5ed2ac8edd485773179763064e9c9ca62e0739",
+                                                            "title":  "H32 [ASK-5, ASK-7, ASK-9, LAY-3, DM-5, EDT-6] move and align just one part and warn once for a move outside selected parts"
+                                                        },
+                  "H33_run_change_records.spec.ts":  {
+                                                         "sha256":  "dab535c80ea34496fb5dd224b81c1575290643f73e989e930357921c02e23433",
+                                                         "title":  "H33 [ASK-5, ASK-6, ASK-7, ASK-9, PLT-2] record exact changes for add, rename, hold, move and remove and reject invalid scopes without edits"
+                                                     },
+                  "H34_semantic_zoom.spec.ts":  {
+                                                    "sha256":  "52510846f4722a1370dfecdf3d81ed3fb0d9a0f2780fd4c93aa1bb5b5b8a61d1",
+                                                    "title":  "H34 [VIEW-5, VIEW-1, VIEW-3, SHR-6] fade detail at distance while keeping the open part lit and every shape and export unchanged"
+                                                },
+                  "H35_search_and_views.spec.ts":  {
+                                                       "sha256":  "7693e12ca66eaee3e0fdbb8658c2d822fcb9901ebac8d3a3192b61a381e393e2",
+                                                       "title":  "H35 [VIEW-6, VIEW-7, VIEW-2, VIEW-3] find a part across overview, detail and LinkedIn views and navigate from one views menu"
+                                                   },
+                  "H36_pinned_callout_narrow_header.spec.ts":  {
+                                                                   "sha256":  "70c307f37314dc9bdaf9cde7ea355f305270bd1ca7fb88695ad7810992ed0ccd",
+                                                                   "title":  "H36 [VIEW-8, VIEW-1, EDT-6, EDT-7, PER-1] pin explanations beside the canvas and keep editing controls reachable in a narrow header"
+                                                               },
+                  "H37_linkedin_flow_open_parts.spec.ts":  {
+                                                               "sha256":  "1a900363bcec56da5eaca34f8fee8f6e526e3093962b8024e4fde5da6605d81b",
+                                                               "title":  "H37 [SHR-1, SHR-3, SHR-7, SHR-9, SHR-10, ASK-5, ASK-9, VIEW-7, EDT-6, PER-1] design a post for LinkedIn, edit its full caption and re-arrange only that version"
+                                                           },
+                  "H38_share_parts_and_clipping.spec.ts":  {
+                                                               "sha256":  "48a894f951018396df841946807bcbab893bf1ee8dd2795b696fc2d9f58de007",
+                                                               "title":  "H38 [SHR-7, SHR-8, SHR-1, SHR-5, SHR-6] warn about shortened text and export a group or selected parts with only their own connections"
+                                                           },
+                  "H39_readability_and_focus.spec.ts":  {
+                                                            "sha256":  "b34d8b8e494f44aeb062ab130754730c7f8001e4871361147aed698a382dfdf2",
+                                                            "title":  "H39 [SHR-1, SHR-3, SHR-4, SHR-8, SHR-10] apply only useful readability fixes beside the download and keep keyboard focus inside sharing"
+                                                        },
+                  "H40_visible_editing.spec.ts":  {
+                                                      "sha256":  "20e4ef1073c8453d014773a27c3e74825b163be1b0cc856f6fbda1764ef256f5",
+                                                      "title":  "H40 [EDT-8, EDT-2, EDT-3, EDT-6, PER-1] rename from the callout, choose pictured forms and follow tool hints without accidental edits"
+                                                  },
+                  "H41_library_example_and_load_recovery.spec.ts":  {
+                                                                        "sha256":  "ad6d4aba165d276dd58c060ce54ea5089cec8bf7b7a83c61d244f2e10f5854b9",
+                                                                        "title":  "H41 [PER-3, PER-4, CLI-2, PLT-2] open an example from an empty library and recover a registered file that became invalid"
+                                                                    },
+                  "H42_design_the_post.spec.ts":  {
+                                                      "sha256":  "01a6e48bababe2babbb602b346fa2fd0540b19e458b18a9b414944f48741e15a",
+                                                      "title":  "H42 [SHR-9, SHR-10, DEP-5, ASK-9] design the post from the drawing and read the layout report it was judged by"
+                                                  },
+                  "H43_post_without_an_engine.spec.ts":  {
+                                                             "sha256":  "8be425f2d6a1ea750e3a4a6d652b1e499dd9c61ac590b30cd13f2b9d3ab23ac2",
+                                                             "title":  "H43 [SHR-3, SHR-10, ASK-2, ASK-10, PER-1] prepare the post and queue a rewrite and a simplification on a machine with no engine"
+                                                         },
+                  "H44_lane_layout_and_kept_positions.spec.ts":  {
+                                                                     "sha256":  "1b5347cc4e4ecc27463ef0c79de4aab86f40c67c8573cbc45bd2a996d88ec8be",
+                                                                     "title":  "H44 [LAY-5, DEP-5, SHR-9, LAY-3] place a post by its lanes, turn the portrait spine back and leave positioned parts where they are"
+                                                                 },
+                  "H45_label_gaps_and_badges.spec.ts":  {
+                                                            "sha256":  "d4a2412a6d97b6a8a4aae209a4cba64b3ec79e7fd38d8a3259895a287cef351c",
+                                                            "title":  "H45 [LAY-6, LAY-7, SHR-10] keep a step badge clear of every drawn label and reserve no room for a label nobody sees"
+                                                        },
+                  "H46_simplify_the_overview.spec.ts":  {
+                                                            "sha256":  "21d22f6a54cb1e436cf60c85350f98f102d369c04a2753ae050a9987a80228ae",
+                                                            "title":  "H46 [ASK-10, DEP-6, DEP-4, ASK-9, EDT-6] simplify the overview into a map that still holds every component, twice, and undo it"
+                                                        },
+                  "H47_simplify_keeps_every_component.spec.ts":  {
+                                                                     "sha256":  "bef5ec656beef91d5d8f9d1fe6d88b7e3f826e0d7f9e544a166494d8be7f40f0",
+                                                                     "title":  "H47 [DEP-6, ASK-10, ASK-8, PER-1] refuse a simplification that would lose a component and try again after a cancel"
+                                                                 },
+                  "H48_overview_targets_suggest_only.spec.ts":  {
+                                                                    "sha256":  "bda3c8734a29b32a588c71669bc3e0f4f653dbbdf900cb15b7a63db5e63d2580",
+                                                                    "title":  "H48 [DEP-4, ASK-10, CLI-1] suggest simplifying an overview that misses its targets without changing or refusing the drawing"
+                                                                },
+                  "H49_run_kinds_over_http.spec.ts":  {
+                                                          "sha256":  "d77d061a2de6564b34c339a4aa714ea5d0d03bc091c9a27f81ed565ffd47c355",
+                                                          "title":  "H49 [SHR-9, ASK-10, DEP-6, PLT-2] run a post and a simplification over HTTP, own the post through postOf and refuse bad input before any engine starts"
+                                                      },
+                  "H50_story_text_is_never_cut_by_code.spec.ts":  {
+                                                                      "sha256":  "f1b599564d30e2fb547349f38eb1ec8956ade1223dba92719b34bd447d50f1e7",
+                                                                      "title":  "H50 [SHR-9, SHR-7, SHR-10, ASK-8] keep over-long story text in full and report it, and keep the drawing when a story cannot be converted"
+                                                                  },
+                  "H51_side_parts_spread_in_an_ordinary_view.spec.ts":  {
+                                                                            "sha256":  "78a1d49383a55227f99185f8241169267632b10b77ad87e5f3306a8ae9b21e38",
+                                                                            "title":  "H51 [LAY-5, DEP-5, LAY-2, CLI-2] lay out an ordinary view by its lanes: three side parts of one anchor spread across neighbouring columns"
+                                                                        },
+                  "H52_design_post_record.spec.ts":  {
+                                                         "sha256":  "a6454725c47ead7e10d0c4bb1153c21620eda697edad2ef67412d90405556f8f",
+                                                         "title":  "H52 [SHR-1, SHR-3, SHR-9, SHR-10, DEP-5, ASK-9] design a portrait post and download the reported result without changing its source"
+                                                     },
+                  "H53_post_lanes_and_rearrange.spec.ts":  {
+                                                               "sha256":  "2e489d33e7b9ce6e4663e7fba761beb5face6e15d490bb9032c7aebcdb7d1018",
+                                                               "title":  "H53 [DEP-5, LAY-5, SHR-1, SHR-3, SHR-10, EDT-6] switch post orientation and re-arrange lanes without another engine call or changed forms"
+                                                           },
+                  "H54_ordinary_lane_layout.spec.ts":  {
+                                                           "sha256":  "2ae6397b700b1865d5df3b199ce14dbe08823a5434cab709a5831a9ba1de901a",
+                                                           "title":  "H54 [DEP-5, LAY-5, LAY-3, CLI-2] open an ordinary map with anchored satellites, internal lanes and a fixed positioned component"
+                                                       },
+                  "H55_labels_badges_and_gaps.spec.ts":  {
+                                                             "sha256":  "cb45e0b41384bfd4b84a515ff683f94e34bdeb7f79ba233671695327df8fa78a",
+                                                             "title":  "H55 [DEP-5, LAY-5, LAY-6, LAY-7, SHR-10] hide labels without reserving their gaps and keep numbered badges clear in editor and SVG"
+                                                         },
+                  "H56_no_engine_preparation.spec.ts":  {
+                                                            "sha256":  "a870e6a149fa7221f6ee3fbef1eb98e35e97d62fffa2f4109fddea9088ac3f8a",
+                                                            "title":  "H56 [SHR-1, SHR-3, SHR-7, SHR-10, ASK-10, DEP-6] prepare and edit a post without an engine, then queue overview simplification"
+                                                        },
+                  "H57_simplify_reachable_and_undo.spec.ts":  {
+                                                                  "sha256":  "b28947bcb7f67e5fdf67754423910f880c42905d75aa215a38368dd3039983cb",
+                                                                  "title":  "H57 [DEP-4, DEP-5, DEP-6, ASK-10, SHR-10, EDT-6] simplify into reachable detail, preserve provenance and undo all views in one step"
+                                                              },
+                  "H58_simplify_loss_cancel_retry.spec.ts":  {
+                                                                 "sha256":  "67d361f96aec193eb2b977f620501788b85baba1089cdb5f59eef5d18e245c31",
+                                                                 "title":  "H58 [DEP-6, ASK-10, ASK-8, SHR-10] refuse lost provenance and retry a cancelled simplification with the whole drawing intact"
+                                                             },
+                  "H59_overview_targets_are_advice.spec.ts":  {
+                                                                  "sha256":  "bd4f298891e16fb4d1570701477e569c9732c966aa000feb8208e9dc3a09de69",
+                                                                  "title":  "H59 [DEP-4, ASK-10, SHR-10] offer simplification outside the overview targets without changing or rejecting a valid map"
+                                                              },
+                  "H60_run_input_boundaries.spec.ts":  {
+                                                           "sha256":  "bf06158395d727c97b98bc24adb84444c1c5b12074dfd3ea5d924200a018459d",
+                                                           "title":  "H60 [SHR-9, SHR-10, DEP-6, ASK-10, PLT-2] reject bad post and simplify inputs before a run, then expose a valid simplify through GET and SSE"
+                                                       },
+                  "H61_story_text_and_cancel.spec.ts":  {
+                                                            "sha256":  "3daa00dfc009e3effe99a160ad028c4e8d805c7ef466f0f61595487b0ec96199",
+                                                            "title":  "H61 [SHR-7, SHR-9, SHR-10, SHR-3, ASK-8] keep over-target story text whole, refuse invalid intent and retry a cancelled wide redesign"
+                                                        },
+                  "H62_post_ownership_collisions.spec.ts":  {
+                                                                "sha256":  "2f337bb9897d93e42b17f7b9b9ac3e66915463a81181eac277ec60d343474131",
+                                                                "title":  "H62 [SHR-3, SHR-9, DEP-5, SHR-10] allocate a bounded post around a legacy collision and resolve its full source after reload"
+                                                            },
+                  "H63_share_destinations_and_caption.spec.ts":  {
+                                                                     "sha256":  "8bdd60083059a115a4549e6a59c0fa0aa6c6d97733219233e75a54799aae156a",
+                                                                     "title":  "H63 [SHR-1, SHR-2, SHR-7, SHR-10] share a full ordinary view for three destinations with a wrapped caption and explicit clipping warning"
+                                                                 },
+                  "H64_readability_levels.spec.ts":  {
+                                                         "sha256":  "23a9655c532b35f81638df4e157663169a09575b09a809fb5ac39463221111e4",
+                                                         "title":  "H64 [SHR-4, SHR-10] distinguish readable names from readable detail and print the three measured sizes"
+                                                     },
+                  "H65_zone_outer_cells.spec.ts":  {
+                                                       "sha256":  "5f1c95721b6fa89e535f5e4009d84c262505e3a3f8d08f4814913336f61ee940",
+                                                       "title":  "H65 [LAY-1, LAY-5, DEP-5, SHR-3, SHR-10] span outer cells with two zones and keep outside satellites out of both boxes"
+                                                   },
+                  "H66_lane_row_gaps.spec.ts":  {
+                                                    "sha256":  "51ea158247239d872c06a61fcd4c739b459fa17c6dcfc5ac179ae89511cfc91a",
+                                                    "title":  "H66 [LAY-1, LAY-5, SHR-3, SHR-10] leave the contracted row gaps around an anchor in ordinary and post styles"
+                                                },
+                  "H67_group_name_routes.spec.ts":  {
+                                                        "sha256":  "d92ea0d63d39390508971919936cf7fe5329f733911ede1c141f49a88cee03cd",
+                                                        "title":  "H67 [LAY-1, LAY-4, SHR-6, SHR-10] bring a connection into a first-row member without crossing its group name"
+                                                    },
+                  "H68_post_name_sizes.spec.ts":  {
+                                                      "sha256":  "a26fc51656f75b8b72baa02bbf54c43808c84eaafc5c92090b52ab0c04e1498e",
+                                                      "title":  "H68 [LAY-1, SHR-3, SHR-6, SHR-10] draw larger post names across all forms and make room for a second card line"
+                                                  },
+                  "H69_lane_neighbour_room.spec.ts":  {
+                                                          "sha256":  "3abf6394db2eb8af7e09afa02a23854f4872ddd30f2d355600a96af1828ea310",
+                                                          "title":  "H69 [LAY-1, LAY-5, LAY-6, LAY-7, SHR-10] reserve column, badge and drawn-label room between lane neighbours"
+                                                      },
+                  "H70_detour_label_and_turn.spec.ts":  {
+                                                            "sha256":  "6183c8baffe839ff9c08943d8a83033869706014ffdebb23238f3e3d1eb27edb",
+                                                            "title":  "H70 [LAY-4, LAY-5, SHR-6, SHR-10] centre a detour label on its longest free straight run and keep the portrait turn clear"
+                                                        },
+                  "H71_wide_zone_name_gap.spec.ts":  {
+                                                         "sha256":  "08af7c19256d7821d3a145e4673f0d6622459e64c4747611837157bf9eff0836",
+                                                         "title":  "H71 [LAY-1, LAY-5, DEP-5, SHR-6, SHR-10] widen the gap after a zone whose name is wider than its members"
+                                                     },
+                  "H72_connection_borders_and_vertical_detours.spec.ts":  {
+                                                                              "sha256":  "eb6f6c82214608f6364b8563888dba0b870e952eff1e8e90efe96ef1ae9087fe",
+                                                                              "title":  "H72 [LAY-4, LAY-5, SHR-6, SHR-10] end connections on borders and take the nearest available side around vertical obstacles"
+                                                                          },
+                  "H73_ordinary_upward_and_inward_detours.spec.ts":  {
+                                                                         "sha256":  "bd1f1aa15d40b4fc92716a7c68f27f6e9576278a5d84ec2efb275f085bbc855c",
+                                                                         "title":  "H73 [LAY-4, LAY-5, SHR-6, SHR-10] finish ordinary upward and asymmetric border detours within their own budget"
+                                                                     },
+                  "H74_post_direct_and_tie_borders.spec.ts":  {
+                                                                  "sha256":  "1569f4f235326f95f1ef21a6c9c99a2dbc7669bcc85ee9a4178ccceed67b0e92",
+                                                                  "title":  "H74 [LAY-4, LAY-5, SHR-6, SHR-10] end post direct and right-on-tie connections on their borders"
+                                                              },
+                  "H75_post_upward_and_inward_detours.spec.ts":  {
+                                                                     "sha256":  "0cedd7d10d8784673edfcdc1a141c8b8ba6459547a4030c523eb7409eef5700d",
+                                                                     "title":  "H75 [LAY-4, LAY-5, SHR-6, SHR-10] finish post upward and asymmetric border detours within their own budget"
+                                                                 },
+                  "H76_post_card_subline_width.spec.ts":  {
+                                                              "sha256":  "363f44d40a0351f3de482850aa64b0152ec701fabf92f5234472140ba5f7b8cb",
+                                                              "title":  "H76 [LAY-1, SHR-3, SHR-6, SHR-7, SHR-10] widen a post card for its sub-line and draw the same size in the editor"
+                                                          },
+                  "H77_post_reduces_previous_line_crossings.spec.ts":  {
+                                                                           "sha256":  "be39d67a02cecbcdd5c48e0a9be0fbb227833b2ccffcacbb01f9028012d58e6d",
+                                                                           "title":  "H77 [LAY-4, LAY-5, SHR-6, SHR-10] take a shorter crossing-free post detour when the initial curve crosses a previously drawn line"
+                                                                       },
+                  "H78_zone_side_lane_units.spec.ts":  {
+                                                           "sha256":  "a46f368d8677db7bc5fc3f095f042c0a64701e0c7e39de3c3cd0fd9a3ac75643",
+                                                           "title":  "H78 [DEP-5, LAY-1, LAY-5, SHR-6, SHR-10] place a side-lane zone as one unit and anchor an outside satellite on a zone first member"
+                                                       },
+                  "helpers.ts":  {
+                                     "sha256":  "e0f4bca7b547c9e8d30a3e11dee40935681cc760c56197fab766ca56ada9f162"
+                                 },
+                  "helpers-v5.ts":  {
+                                        "sha256":  "49e6e7eaa2e6dc08076919f9a253ced63fd337dc0063c5967bca5026fa69a1b4"
+                                    },
+                  "helpers-v7.ts":  {
+                                        "sha256":  "e3929756fafea42dfcc380fbb10931015c9ed4abfe716d01c2a2d28d3b04843e"
+                                    },
+                  "helpers-v8.ts":  {
+                                        "sha256":  "f673157f05403c45470ba53922ddc82a2f3e0b6b40402b4982a56e0806732784"
+                                    },
+                  "helpers-v9.ts":  {
+                                        "sha256":  "72a694474d7c465d49ff45f058594a38ac8602ab81e11b0c8e1bb6f71eeaab4a"
+                                    },
+                  "playwright.config.ts":  {
+                                               "sha256":  "152b9bebd5284aec7b26c12b0bd59cb3ad8d9d71df097ae6a61ec95e3f48b510"
+                                           },
+                  "README.md":  {
+                                    "sha256":  "2ddc4c3658c0748b3742280215e8fa42ad65923a97d4e1df29aa333a0107c211"
+                                },
+                  "review-baseline.json":  {
+                                               "sha256":  "675b65e67e8740925a25ea8a273514fadd3081f1fcb7eb93136d04a11c8186b4"
+                                           },
+                  "verify.json":  {
+                                      "sha256":  "e212dad1eb961ee9dd0fa2eee7be7f6418ef444c2a102e4cdf2b40bad1ff1dd3"
+                                  }
+              }
+}

@@ -1,0 +1,404 @@
+import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
+import { layoutRects, measureText, routeEdges, textStyle, type EdgeRoute, type Rect } from "../../core/geometry";
+import { badgeMarkup, drawOrder, edgeMarkup, labelMarkup, nodeMarkup, sharedDefs, textMarkup } from "../../core/export/svg";
+import { descendants, isPostView, type DiagramEdge, type DiagramNode, type DiagramText, type Kind } from "../../core/model";
+import type { Palette } from "../../core/theme";
+import { clampTextSize, connect, moveNodes, moveTexts, setText, settleNodes } from "./ops";
+import type { Ctl, Selection } from "./types";
+import { NOTHING } from "./types";
+import { detailAt, toWorld, zoomAt } from "./viewport";
+
+/* ---------- pieces of the drawing: the same markup as every export (invariant 5) ---------- */
+
+const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, changed, open = false, post }: { node: DiagramNode; rect: Rect; P: Palette; selected: boolean; dim: boolean; changed: boolean; open?: boolean; post: boolean }) {
+  return (
+    <g className={`nd${dim ? " dim" : ""}${changed ? " changed" : ""}${open ? " open" : ""}`} data-changed={changed ? "true" : undefined} data-testid={`node-${node.id}`} data-node-id={node.id} data-kind={node.kind} data-form={node.form}
+      data-parent={node.parent ?? ""} data-selected={String(selected)} style={{ ["--hover-k" as string]: P.kinds[node.kind] }}
+      dangerouslySetInnerHTML={{ __html: nodeMarkup(node, rect, P, { testIds: true, post }) }} />
+  );
+});
+
+const EdgeShape = memo(function EdgeShape({ edge, route, P, from, to, selected, dim, flow, open = false }: { edge: DiagramEdge; route: EdgeRoute; P: Palette; from: Kind; to: Kind; selected: boolean; dim: boolean; flow: boolean; open?: boolean }) {
+  return (
+    <g className={`ed${dim ? " dim" : ""}${open ? " open" : ""}`} data-testid={`edge-${edge.id}`} data-edge-id={edge.id} data-style={edge.style} data-both={String(edge.both)}
+      data-step={edge.step ?? ""} data-selected={String(selected)}>
+      <g dangerouslySetInnerHTML={{ __html: edgeMarkup(edge, route, P, { fromKind: from, toKind: to }) }} />
+      {flow && <path className="flow" d={route.d} />}
+      <path className="hit" d={route.d} />
+      <EdgeBounds route={route} />
+    </g>
+  );
+});
+
+/** An invisible box around the curve: a straight edge's own box has no height, which would make it unmeasurable. */
+function EdgeBounds({ route }: { route: EdgeRoute }) {
+  const xs = [route.p0.x, route.p1.x, route.c1.x, route.c2.x], ys = [route.p0.y, route.p1.y, route.c1.y, route.c2.y];
+  const x = Math.min(...xs) - 4, y = Math.min(...ys) - 4;
+  return <rect className="bounds" x={x} y={y} width={Math.max(...xs) + 4 - x} height={Math.max(...ys) + 4 - y} fill="none" pointerEvents="none" />;
+}
+
+const TextShape = memo(function TextShape({ text, P, selected, typing }: { text: DiagramText; P: Palette; selected: boolean; typing: boolean }) {
+  const m = measureText(text);
+  return (
+    <g className="tx" data-testid={`text-${text.id}`} data-text-id={text.id} data-size={text.size} data-selected={String(selected)} style={typing ? { visibility: "hidden" } : undefined}>
+      {/* A transparent box makes the whole text easy to grab, not only its glyphs. Its margin covers
+          the glyph box at the largest size (Geist rises 4.5% of the size above the line top), so the
+          text's outline stays put on the corner that is held while it is scaled. */}
+      <rect x={text.x - 4} y={text.y - 10} width={m.w + 8} height={m.h + 14} fill="transparent" />
+      <g dangerouslySetInnerHTML={{ __html: textMarkup(text, P) }} />
+    </g>
+  );
+});
+
+/* ---------- interactions ---------- */
+
+type Drag =
+  | { kind: "pan"; sx: number; sy: number; vx: number; vy: number }
+  | { kind: "move"; ids: string[]; texts: string[]; last: { x: number; y: number }; start: { x: number; y: number }; moved: boolean; hit: { node?: string; text?: string; inside?: boolean }; shift: boolean }
+  | { kind: "marquee"; start: { x: number; y: number }; cur: { x: number; y: number }; shift: boolean }
+  | { kind: "connect"; from: string; cur: { x: number; y: number } }
+  | { kind: "scale"; id: string; corner: Corner; size0: number; box: Rect; moved: boolean };
+
+/** A selected text's corner handles scale it, the opposite corner staying put (ui contract, Texts). */
+const CORNERS = ["nw", "ne", "sw", "se"] as const;
+type Corner = (typeof CORNERS)[number];
+
+const SIDES = ["t", "r", "b", "l"] as const;
+const portAt = (r: Rect, s: (typeof SIDES)[number]) =>
+  s === "t" ? { x: r.x + r.w / 2, y: r.y } : s === "b" ? { x: r.x + r.w / 2, y: r.y + r.h } : s === "l" ? { x: r.x, y: r.y + r.h / 2 } : { x: r.x + r.w, y: r.y + r.h / 2 };
+
+export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onDouble: (e: React.MouseEvent) => void }) {
+  const { view, P, vp, sel } = ctl;
+  const el = useRef<HTMLDivElement>(null);
+  const drag = useRef<Drag | null>(null);
+  const [live, setLive] = useState<Drag | null>(null);
+  const [hover, setHover] = useState<string | null>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ctlRef = useRef(ctl);
+  ctlRef.current = ctl;
+
+  const post = isPostView(view);
+  const rects = useMemo(() => layoutRects(view), [view]);
+  const routes = useMemo(() => routeEdges(view, rects, { avoid: view.texts.map((t) => ({ x: t.x, y: t.y, ...measureText(t) })) }), [view, rects]);
+  const order = useMemo(() => drawOrder(view), [view]);
+  const kindOf = useMemo(() => new Map(view.nodes.map((n) => [n.id, n.kind])), [view]);
+  const defs = useMemo(() => sharedDefs(P, "ad"), [P]);
+
+  // What stays lit while a component's callout is open: it, its neighbours, its group and its members.
+  const lit = useMemo(() => {
+    if (!ctl.callout || !rects.has(ctl.callout)) return null;
+    const id = ctl.callout;
+    const s = new Set<string>([id, ...descendants(view, id)]);
+    for (let p = view.nodes.find((n) => n.id === id)?.parent; p; p = view.nodes.find((n) => n.id === p)?.parent) s.add(p);
+    for (const e of view.edges) { if (e.from === id) s.add(e.to); if (e.to === id) s.add(e.from); }
+    return s;
+  }, [ctl.callout, view, rects]);
+
+  const selNodes = new Set(sel.nodes), selEdges = new Set(sel.edges), selTexts = new Set(sel.texts);
+
+  /* wheel zoom around the pointer; Ctrl+wheel and pinch are faster */
+  useEffect(() => {
+    const node = el.current!;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const b = node.getBoundingClientRect();
+      const f = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
+      ctlRef.current.setVp(zoomAt(ctlRef.current.vp, f, { x: e.clientX - b.left, y: e.clientY - b.top }));
+    };
+    node.addEventListener("wheel", onWheel, { passive: false });
+    return () => node.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const local = (e: { clientX: number; clientY: number }) => {
+    const b = el.current!.getBoundingClientRect();
+    return { x: e.clientX - b.left, y: e.clientY - b.top };
+  };
+  const world = (e: { clientX: number; clientY: number }) => toWorld(ctlRef.current.vp, local(e));
+  const nodeUnder = (x: number, y: number): string | null => {
+    for (const elem of document.elementsFromPoint(x, y)) {
+      const id = (elem as Element).closest?.("[data-node-id]")?.getAttribute("data-node-id");
+      if (id) return id;
+    }
+    return null;
+  };
+
+  /* Space held: the next drag pans, whatever the tool (ui contract canvas). */
+  const spaceRef = useRef(false);
+  const [space, setSpace] = useState(false);
+  useEffect(() => {
+    const typing = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.("input, textarea, select, [contenteditable]");
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || typing(e.target)) return;
+      e.preventDefault();
+      if (!spaceRef.current) { spaceRef.current = true; setSpace(true); }
+    };
+    const up = (e: KeyboardEvent) => { if (e.code === "Space") { spaceRef.current = false; setSpace(false); } };
+    const blur = () => { spaceRef.current = false; setSpace(false); };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", blur);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.removeEventListener("blur", blur); };
+  }, []);
+
+  const onPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
+    const c = ctlRef.current;
+    const t = e.target as Element;
+    // A drag on the canvas never selects page text (it made panning feel stuck).
+    if (!t.closest("input, textarea, [contenteditable]")) e.preventDefault();
+    el.current!.focus({ preventScroll: true });
+    const port = t.closest("[data-port]")?.getAttribute("data-port");
+    const nodeId = t.closest("[data-node-id]")?.getAttribute("data-node-id") ?? null;
+    const edgeId = t.closest("[data-edge-id]")?.getAttribute("data-edge-id") ?? t.closest("[data-edge-label-of]")?.getAttribute("data-edge-label-of") ?? null;
+    const textId = t.closest("[data-text-id]")?.getAttribute("data-text-id") ?? null;
+    const p = world(e);
+    if (c.picker) c.setPicker(null);
+    if (c.editing) return;
+    const start = (d: Drag) => { drag.current = d; setLive(d); el.current!.setPointerCapture(e.pointerId); };
+
+    // Pan with the pan tool, or from any tool with Space held, the middle or the right button.
+    if (e.button === 1 || e.button === 2 || spaceRef.current || c.tool === "pan") return start({ kind: "pan", sx: e.clientX, sy: e.clientY, vx: c.vp.x, vy: c.vp.y });
+    if (port) return start({ kind: "connect", from: port, cur: p });
+    const handle = t.closest("[data-text-handle]");
+    if (handle) {
+      const id = handle.getAttribute("data-text-of")!;
+      const tx = c.view.texts.find((x) => x.id === id);
+      if (tx) return start({ kind: "scale", id, corner: handle.getAttribute("data-text-handle") as Corner, size0: tx.size, box: { x: tx.x, y: tx.y, ...measureText(tx) }, moved: false });
+    }
+    if (c.tool === "component") {
+      const b = local(e);
+      c.setPicker({ screen: b, world: p });
+      return;
+    }
+    if (c.tool === "text") {
+      // Clicking on a text edits it; elsewhere the caret's first line is centred on the click.
+      const tx = textId ? c.view.texts.find((x) => x.id === textId) : null;
+      const size = c.textSize.current;
+      c.setTool("select");
+      c.setSel(tx ? { ...NOTHING, texts: [tx.id] } : NOTHING);
+      c.setEditing(tx ? { kind: "text", id: tx.id, at: { x: tx.x, y: tx.y }, size: tx.size }
+        : { kind: "text", id: null, at: { x: Math.round(p.x), y: Math.round(p.y - textStyle(size).line / 2) }, size });
+      return;
+    }
+    if (c.tool === "connect") {
+      if (nodeId) start({ kind: "connect", from: nodeId, cur: p });
+      return;
+    }
+    // select tool
+    if (nodeId || textId) {
+      let next: Selection = c.sel;
+      const already = nodeId ? c.sel.nodes.includes(nodeId) : c.sel.texts.includes(textId!);
+      if (e.shiftKey) {
+        next = nodeId
+          ? { ...c.sel, nodes: already ? c.sel.nodes.filter((x) => x !== nodeId) : [...c.sel.nodes, nodeId] }
+          : { ...c.sel, texts: already ? c.sel.texts.filter((x) => x !== textId) : [...c.sel.texts, textId!] };
+      } else if (!already) {
+        next = nodeId ? { ...NOTHING, nodes: [nodeId] } : { ...NOTHING, texts: [textId!] };
+      }
+      c.setSel(next);
+      return start({ kind: "move", ids: next.nodes, texts: next.texts, last: p, start: p, moved: false, hit: { node: nodeId ?? undefined, text: textId ?? undefined, inside: !!t.closest("[data-testid=node-inside]") }, shift: e.shiftKey });
+    }
+    if (edgeId) {
+      c.setSel(e.shiftKey ? { ...c.sel, edges: c.sel.edges.includes(edgeId) ? c.sel.edges.filter((x) => x !== edgeId) : [...c.sel.edges, edgeId] } : { ...NOTHING, edges: [edgeId] });
+      c.setCallout(null);
+      return;
+    }
+    start({ kind: "marquee", start: p, cur: p, shift: e.shiftKey });
+  };
+
+  const onPointerMove = (e: RPointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    const c = ctlRef.current;
+    if (d.kind === "pan") {
+      c.setVp({ ...c.vp, x: d.vx + e.clientX - d.sx, y: d.vy + e.clientY - d.sy });
+      return;
+    }
+    const p = world(e);
+    if (d.kind === "move") {
+      if (!d.moved && Math.hypot(p.x - d.start.x, p.y - d.start.y) * c.vp.k < 3) return;
+      if (!d.moved) { d.moved = true; c.checkpoint(); }
+      const dx = p.x - d.last.x, dy = p.y - d.last.y;
+      d.last = p;
+      c.apply((doc) => moveTexts(moveNodes(doc, c.vid, d.ids, dx, dy), c.vid, d.texts, dx, dy), { record: false });
+      setLive({ ...d });
+    } else if (d.kind === "scale") {
+      const b = d.box, west = d.corner.endsWith("w"), north = d.corner.startsWith("n");
+      // The pointer's distance from the fixed corner, as a share of the box, on whichever axis moved more.
+      const w = west ? b.x + b.w - p.x : p.x - b.x, h = north ? b.y + b.h - p.y : p.y - b.y;
+      const size = clampTextSize(d.size0 * Math.max(0.05, Math.max(w / b.w, h / b.h)));
+      if (!d.moved) { if (size === d.size0) return; d.moved = true; c.checkpoint(); }
+      const m = measureText({ text: c.view.texts.find((x) => x.id === d.id)?.text ?? "", size });
+      c.apply((doc) => setText(doc, c.vid, d.id, { size, x: west ? b.x + b.w - m.w : b.x, y: north ? b.y + b.h - m.h : b.y }), { record: false });
+      c.textSize.current = size;
+    } else {
+      d.cur = p;
+      setLive({ ...d });
+    }
+  };
+
+  const onPointerUp = (e: RPointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    drag.current = null;
+    setLive(null);
+    if (!d) return;
+    const c = ctlRef.current;
+    if (d.kind === "move") {
+      if (d.moved) {
+        c.apply((doc) => moveTexts(settleNodes(doc, c.vid, d.ids), c.vid, d.texts, 0, 0, true), { record: false });
+      } else if (!d.shift && d.hit.node && d.hit.inside) {
+        // The stack mark: go to the component's own view.
+        const detail = view.nodes.find((n) => n.id === d.hit.node)?.detail;
+        if (detail) c.goView(detail);
+      } else if (!d.shift && d.hit.node) {
+        // A click: open or close the component's callout.
+        c.setSel({ ...NOTHING, nodes: [d.hit.node] });
+        c.setCallout(c.callout === d.hit.node ? null : d.hit.node);
+      } else if (!d.shift && d.hit.text) {
+        c.setSel({ ...NOTHING, texts: [d.hit.text] });
+        c.setCallout(null);
+      }
+    } else if (d.kind === "marquee") {
+      const x0 = Math.min(d.start.x, d.cur.x), y0 = Math.min(d.start.y, d.cur.y), x1 = Math.max(d.start.x, d.cur.x), y1 = Math.max(d.start.y, d.cur.y);
+      if ((x1 - x0) * c.vp.k < 4 && (y1 - y0) * c.vp.k < 4) {
+        if (!d.shift) { c.setSel(NOTHING); c.setCallout(null); }
+        return;
+      }
+      const touch = (r: Rect) => r.x < x1 && r.x + r.w > x0 && r.y < y1 && r.y + r.h > y0;
+      const nodes = view.nodes.filter((n) => touch(rects.get(n.id)!)).map((n) => n.id);
+      const texts = view.texts.filter((t) => touch({ x: t.x, y: t.y, ...measureText(t) })).map((t) => t.id);
+      const merge = (a: string[], b: string[]) => (d.shift ? [...new Set([...a, ...b])] : b);
+      c.setSel({ nodes: merge(c.sel.nodes, nodes), texts: merge(c.sel.texts, texts), edges: d.shift ? c.sel.edges : [] });
+      c.setCallout(null);
+    } else if (d.kind === "connect") {
+      const to = nodeUnder(e.clientX, e.clientY);
+      if (to && to !== d.from) {
+        let msg: string | null = null;
+        c.apply((doc) => { const r = connect(doc, c.vid, d.from, to); msg = r.message; return r.doc; });
+        if (msg) c.toast(msg);
+      }
+    }
+  };
+
+  /* ---------- render ---------- */
+  const groups = order.filter((n) => n.form === "group");
+  const plain = order.filter((n) => n.form !== "group");
+  const dimNode = (id: string) => !!lit && !lit.has(id);
+  const dimEdge = (e: DiagramEdge) => (steps && e.step === null) || (!!lit && !(lit.has(e.from) && lit.has(e.to) && (e.from === ctl.callout || e.to === ctl.callout || descendants(view, ctl.callout!).has(e.from))));
+  const hovered = hover && rects.get(hover) && ctl.tool !== "pan" && !live ? hover : null;
+  const k = vp.k;
+  // Semantic zoom: the level comes from the zoom only; sizes never change.
+  const detail = detailAt(k);
+  const touchesOpen = (e: DiagramEdge) => !!ctl.callout && (e.from === ctl.callout || e.to === ctl.callout);
+
+  const enterNode = (id: string | null) => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    if (id) setHover(id);
+    else hoverTimer.current = setTimeout(() => setHover(null), 140);
+  };
+
+  return (
+    <div ref={el} className={`canvas${live?.kind === "pan" ? " panning" : ""}${space ? " space-pan" : ""}${steps ? " steps-on" : ""}`} data-testid="canvas" data-tool={ctl.tool} data-detail={detail} tabIndex={0}
+      onContextMenu={(e) => e.preventDefault()}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+      onDoubleClick={onDouble}
+      onPointerOver={(e) => {
+        const t = e.target as Element;
+        const id = t.closest("[data-node-id]")?.getAttribute("data-node-id");
+        if (id) enterNode(id);
+        else if (!t.closest("[data-port]")) enterNode(null);
+      }}>
+      <svg className="world" aria-label={view.title}>
+        <defs dangerouslySetInnerHTML={{ __html: defs }} />
+        <g transform={`translate(${vp.x} ${vp.y}) scale(${k})`}>
+          {groups.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} />)}
+          {view.edges.map((e) => {
+            const r = routes.get(e.id);
+            return r ? <EdgeShape key={e.id} edge={e} route={r} P={P} from={kindOf.get(e.from)!} to={kindOf.get(e.to)!} selected={selEdges.has(e.id)} dim={dimEdge(e)} flow={steps && e.step !== null} open={touchesOpen(e)} /> : null;
+          })}
+          {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} />)}
+          {view.edges.map((e) => {
+            const r = routes.get(e.id);
+            if (!r) return null;
+            return (
+              <g key={`l-${e.id}`}>
+                {r.labelAt && e.label && (
+                  <g className={`lb${dimEdge(e) ? " dim" : ""}${touchesOpen(e) ? " open" : ""}`} data-testid={`edge-label-${e.id}`} data-edge-label-of={e.id} style={{ cursor: "pointer" }}
+                    dangerouslySetInnerHTML={{ __html: labelMarkup(e.label, r.labelAt, P, post) }} />
+                )}
+                {steps && e.step !== null && (
+                  <g data-testid={`step-badge-${e.id}`} data-edge-label-of={e.id} dangerouslySetInnerHTML={{ __html: badgeMarkup(e.step, r.badgeAt, P, "ad", post) }} />
+                )}
+              </g>
+            );
+          })}
+          {view.texts.map((t) => <TextShape key={t.id} text={t} P={P} selected={selTexts.has(t.id)} typing={ctl.editing?.kind === "text" && ctl.editing.id === t.id} />)}
+
+          {/* editor-only marks: selection, ports, drag feedback (never in an export) */}
+          {sel.nodes.map((id) => {
+            const r = rects.get(id);
+            if (!r) return null;
+            const rx = view.nodes.find((n) => n.id === id)?.form === "group" ? 18 : 12;
+            return (
+              <g key={`s-${id}`}>
+                <rect className="sel-halo" x={r.x - 2} y={r.y - 2} width={r.w + 4} height={r.h + 4} rx={rx + 2} strokeWidth={6 / k} />
+                <rect className="sel-ring" x={r.x} y={r.y} width={r.w} height={r.h} rx={rx} strokeWidth={1.5 / k} />
+              </g>
+            );
+          })}
+          {sel.texts.map((id) => {
+            const t = view.texts.find((x) => x.id === id);
+            if (!t) return null;
+            const m = measureText(t);
+            const pad = 6 / k, box = { x: t.x - pad, y: t.y - pad, w: m.w + pad * 2, h: m.h + pad * 2 };
+            const one = sel.texts.length === 1 && !sel.nodes.length && !ctl.editing;
+            const hs = 9 / k;
+            return (
+              <g key={`st-${id}`}>
+                <rect className="sel-ring" x={box.x} y={box.y} width={box.w} height={box.h} rx={2 / k} strokeWidth={1.5 / k} />
+                {one && CORNERS.map((cn) => (
+                  <rect key={cn} className="text-handle" data-testid={`text-handle-${cn}`} data-text-handle={cn} data-text-of={id}
+                    x={(cn.endsWith("w") ? box.x : box.x + box.w) - hs / 2} y={(cn.startsWith("n") ? box.y : box.y + box.h) - hs / 2}
+                    width={hs} height={hs} rx={2 / k} strokeWidth={1.5 / k} />
+                ))}
+              </g>
+            );
+          })}
+          {hovered && SIDES.map((s) => {
+            const q = portAt(rects.get(hovered)!, s);
+            return (
+              <circle key={s} className="port" data-testid={`port-${hovered}-${s}`} data-port={hovered} cx={q.x} cy={q.y} r={5.5 / k} strokeWidth={2 / k}
+                onPointerEnter={() => enterNode(hovered)} onPointerLeave={() => enterNode(null)} />
+            );
+          })}
+          {live?.kind === "connect" && (() => {
+            const r = rects.get(live.from);
+            if (!r) return null;
+            const target = nodeUnderWorld(view.nodes, rects, live.cur, live.from);
+            return (
+              <g>
+                <path className="ghost" d={`M${r.x + r.w / 2},${r.y + r.h / 2} L${live.cur.x},${live.cur.y}`} strokeWidth={1.75 / k} />
+                {target && (() => { const tr = rects.get(target)!; return <rect className="target-ring" x={tr.x - 4} y={tr.y - 4} width={tr.w + 8} height={tr.h + 8} rx={14} strokeWidth={2 / k} />; })()}
+              </g>
+            );
+          })()}
+          {live?.kind === "marquee" && (
+            <rect className="marquee" x={Math.min(live.start.x, live.cur.x)} y={Math.min(live.start.y, live.cur.y)} width={Math.abs(live.cur.x - live.start.x)} height={Math.abs(live.cur.y - live.start.y)} strokeWidth={1 / k} />
+          )}
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+/** The innermost non-group component under a world point, else the innermost group. */
+function nodeUnderWorld(nodes: DiagramNode[], rects: Map<string, Rect>, p: { x: number; y: number }, except: string): string | null {
+  let best: string | null = null;
+  for (const n of nodes) {
+    if (n.id === except) continue;
+    const r = rects.get(n.id)!;
+    if (p.x < r.x || p.x > r.x + r.w || p.y < r.y || p.y > r.y + r.h) continue;
+    if (!best || n.form !== "group") best = n.id;
+  }
+  return best;
+}
+

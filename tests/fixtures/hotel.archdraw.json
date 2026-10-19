@@ -1,0 +1,447 @@
+{
+  "schema": "archdraw/diagram@2",
+  "title": "Hotel Operations Agent",
+  "views": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "caption": {
+        "title": "Runtime architecture of the fictional hotel's agent",
+        "lede": "A guest's message reaches the hotel only through typed tools and rules in code, while the manager's side of the hotel can start a turn of its own."
+      },
+      "nodes": [
+        {
+          "id": "guest",
+          "label": "Guest",
+          "kind": "actor",
+          "form": "card",
+          "icon": "user",
+          "sub": "one selected fictional guest",
+          "items": [],
+          "description": "A person chatting with the hotel in any language. Picking a guest on the board is a demo choice, not identity verification, and it binds the browser to that guest's own reservation.",
+          "files": [],
+          "parent": null,
+          "detail": null,
+          "place": { "row": 0, "col": 0 }
+        },
+        {
+          "id": "web",
+          "label": "React hotel desk",
+          "kind": "client",
+          "form": "panel",
+          "icon": "window",
+          "sub": "one screen: board, chat, manager",
+          "items": [
+            "Guest chat with live reply text",
+            "Hotel board as the rules see it",
+            "Manager review queue and task board",
+            "Hotel policy tab and guided tour",
+            "A capability per guest in local storage"
+          ],
+          "description": "The single-page UI the one local user drives. It keeps one session token per guest, follows a run over Server-Sent Events and falls back to polling, and never treats model text as proof: the reply, its tool steps and its receipts come from the persisted run.",
+          "files": [
+            "web/src/App.tsx",
+            "web/src/api.ts",
+            "web/src/useDemoSession.ts",
+            "web/src/HotelBoard.tsx",
+            "web/src/ManagerPanel.tsx"
+          ],
+          "parent": null,
+          "detail": null,
+          "place": { "row": 0, "col": 1 }
+        },
+        {
+          "id": "guest_api",
+          "label": "Guest API",
+          "kind": "api",
+          "form": "panel",
+          "icon": "server",
+          "sub": "FastAPI, loopback hosts only",
+          "items": [
+            "Create a guest session",
+            "Accept a chat message",
+            "Run poll and event stream",
+            "Scoped reservation and request reads",
+            "Unknown JSON fields refused"
+          ],
+          "description": "The HTTP surface the guest's browser uses. It validates bodies, resolves the session capability from the Authorization header, hands an accepted message to the run service and returns reservation-scoped projections. No hotel rule lives in a route.",
+          "files": [
+            "src/hotel_operations/api/routes.py",
+            "src/hotel_operations/app.py"
+          ],
+          "parent": null,
+          "detail": null,
+          "place": { "row": 0, "col": 2 }
+        },
+        {
+          "id": "run_service",
+          "label": "Run service",
+          "kind": "service",
+          "form": "panel",
+          "icon": "loop",
+          "sub": "durable run lifecycle",
+          "items": [
+            "Queued, running, then terminal",
+            "One run per session, few in flight",
+            "Model input trimmed at turn starts",
+            "A failed run's history rolled back",
+            "Unfinished runs marked interrupted"
+          ],
+          "description": "Owns every agent run. It persists the run before scheduling an in-process task, bounds it, records usage and the final message, and forgets exactly the conversation items a failed run appended. An interrupted run is never replayed, and records it already committed stay.",
+          "files": [
+            "src/hotel_operations/agent/run_service.py",
+            "src/hotel_operations/agent/admission.py",
+            "src/hotel_operations/agent/run_events.py"
+          ],
+          "parent": null,
+          "detail": null,
+          "place": { "row": 0, "col": 3 }
+        },
+        {
+          "id": "runtime",
+          "label": "Agent runtime",
+          "kind": "llm",
+          "form": "group",
+          "icon": "cpu",
+          "sub": "OpenAI Agents SDK Runner",
+          "items": [],
+          "description": "One agent, one loop. The Runner asks the model what to do, hands each tool proposal to the gateway, returns the result and repeats until the model answers or a bound stops it. There is no router agent and no second orchestration layer; separation comes from the tools.",
+          "files": [
+            "src/hotel_operations/agent/agent.py",
+            "src/hotel_operations/agent/runtime.py"
+          ],
+          "parent": null,
+          "detail": null,
+          "place": { "row": 0, "col": 4 }
+        },
+        {
+          "id": "llm",
+          "label": "LLM",
+          "kind": "llm",
+          "form": "compact",
+          "icon": "spark",
+          "sub": "OpenAI Responses API",
+          "items": [],
+          "description": "The model call: it understands the guest, picks a tool, fills its arguments and writes the words. Parallel tool calls are off, provider-side storage is off by default, and reasoning is carried encrypted between calls.",
+          "files": ["src/hotel_operations/agent/runtime.py"],
+          "parent": "runtime",
+          "detail": null,
+          "place": null
+        },
+        {
+          "id": "history",
+          "label": "Conversation history",
+          "kind": "data",
+          "form": "compact",
+          "icon": "chat",
+          "sub": "conversations.sqlite",
+          "items": [],
+          "description": "The SDK session holding one conversation's turns. It is context for the model and never a source of facts: a claim made in the chat changes nothing, because every tool re-reads the hotel's own records.",
+          "files": ["src/hotel_operations/agent/run_service.py"],
+          "parent": "runtime",
+          "detail": null,
+          "place": null
+        },
+        {
+          "id": "gateway",
+          "label": "Tool gateway",
+          "kind": "gate",
+          "form": "panel",
+          "icon": "shield",
+          "sub": "every tool call passes here",
+          "items": [
+            "Sanitized proposal recorded first",
+            "Strict schema, no extra fields",
+            "Session scope re-read, never an argument",
+            "Proposal budget and per-call deadline",
+            "Writes refused in a hotel's own turn",
+            "Typed ok, outcome and error envelope"
+          ],
+          "description": "The single door between the model and the hotel. It audits the proposal, validates the arguments, re-resolves the trusted scope, runs reads and controlled writes one at a time, and turns any failure into a typed error the model must report rather than talk past.",
+          "files": [
+            "src/hotel_operations/tools/gateway.py",
+            "src/hotel_operations/tools/registry.py"
+          ],
+          "parent": null,
+          "detail": null,
+          "place": { "row": 0, "col": 5 }
+        },
+        {
+          "id": "domain_svc",
+          "label": "Domain services",
+          "kind": "service",
+          "form": "panel",
+          "icon": "layers",
+          "sub": "scoped reads, controlled writes",
+          "items": [
+            "Reservation, requests and policy reads",
+            "Write lock taken before the decision",
+            "Change, receipt and audit commit together",
+            "Operation key replays a repeated write",
+            "A task is recorded pending for staff"
+          ],
+          "description": "The bodies of the nine tools. A read returns a bounded projection of the guest's own records; a write opens an immediate transaction, re-reads the current state, applies the rule and commits the business change with its receipt and audit event, or commits nothing at all.",
+          "files": [
+            "src/hotel_operations/services/writes.py",
+            "src/hotel_operations/services/checkout.py",
+            "src/hotel_operations/services/housekeeping.py",
+            "src/hotel_operations/services/requests.py",
+            "src/hotel_operations/services/reservations.py",
+            "src/hotel_operations/services/policy.py"
+          ],
+          "parent": null,
+          "detail": null,
+          "place": { "row": 0, "col": 6 }
+        },
+        {
+          "id": "rules",
+          "label": "Hotel rules",
+          "kind": "gate",
+          "form": "panel",
+          "icon": "scale",
+          "sub": "pure functions, no I/O",
+          "items": [
+            "Late checkout windows and review",
+            "Early check-in eligibility",
+            "Housekeeping limits per request and stay",
+            "Room turnaround and next arrival",
+            "Cleaning hours on the hotel clock"
+          ],
+          "description": "The fictional policy as plain functions of the facts handed to them. The same function serves the advisory evaluation, the write and a manager's approval, so an answer is always re-decided from current records rather than from an earlier evaluation or the model's words.",
+          "files": [
+            "src/hotel_operations/domain/checkout.py",
+            "src/hotel_operations/domain/early_check_in.py",
+            "src/hotel_operations/domain/housekeeping.py"
+          ],
+          "parent": null,
+          "detail": null,
+          "place": { "row": 0, "col": 7 }
+        },
+        {
+          "id": "scope",
+          "label": "Session scope",
+          "kind": "gate",
+          "form": "panel",
+          "icon": "key",
+          "sub": "server-owned binding",
+          "items": [
+            "Random token stored only as a hash",
+            "Bound to one guest and reservation",
+            "The binding is immutable",
+            "Re-read on every tool call",
+            "No guest or booking in any argument"
+          ],
+          "description": "Picking a guest creates a capability the server binds to one hotel, guest, reservation and room. Because scope comes from that binding and no tool takes it as an argument, asking for another guest's booking has nothing to act on, whatever the message claims.",
+          "files": ["src/hotel_operations/services/sessions.py"],
+          "parent": null,
+          "detail": null,
+          "place": { "row": 1, "col": 2 }
+        },
+        {
+          "id": "telemetry",
+          "label": "Telemetry",
+          "kind": "ops",
+          "form": "panel",
+          "icon": "chart",
+          "sub": "local JSON lines",
+          "items": [
+            "A line per run, tool and command",
+            "Scalars only, prompts never written",
+            "Unknown usage stays null, never zero",
+            "Remote tracing off by default"
+          ],
+          "description": "Explains latency, usage and failures while keeping no content: no prompt, message, tool argument or hidden reasoning is serializable here. The append-only audit trail in the database is what proves business effects; this sits beside it.",
+          "files": [
+            "src/hotel_operations/telemetry.py",
+            "src/hotel_operations/agent/runtime.py"
+          ],
+          "parent": null,
+          "detail": null,
+          "place": { "row": 1, "col": 3 }
+        },
+        {
+          "id": "hotel_db",
+          "label": "Hotel database",
+          "kind": "data",
+          "form": "panel",
+          "icon": "db",
+          "sub": "hotel.sqlite in WAL mode",
+          "items": [
+            "Reservations, rooms and day plans",
+            "Housekeeping and maintenance tasks",
+            "Reviews and operator commands",
+            "Sessions, runs and operation receipts",
+            "Append-only audit events",
+            "Hotel update outbox"
+          ],
+          "description": "The only source of truth about the hotel. Every connection enables foreign keys, and a check-then-write transaction takes the writer lock before its decision reads, so a rule cannot be raced past. Alembic migrations own the schema.",
+          "files": [
+            "src/hotel_operations/storage/models.py",
+            "src/hotel_operations/storage/db.py",
+            "migrations/"
+          ],
+          "parent": null,
+          "detail": null,
+          "place": { "row": 1, "col": 6 }
+        },
+        {
+          "id": "manager",
+          "label": "Manager (you)",
+          "kind": "actor",
+          "form": "card",
+          "icon": "users",
+          "sub": "same screen, no credential",
+          "items": [],
+          "description": "The human who decides reviews, moves simulated staff tasks and changes the hotel. Every running copy has one local user, so the separation from the guest is structural: no model tool reaches these commands.",
+          "files": [],
+          "parent": null,
+          "detail": null,
+          "place": { "row": -1, "col": 0 }
+        },
+        {
+          "id": "operator_api",
+          "label": "Manager & world API",
+          "kind": "api",
+          "form": "panel",
+          "icon": "clipboard",
+          "sub": "separate routes, no model tool",
+          "items": [
+            "Review queue and its decision",
+            "Staff task start, complete, cancel",
+            "Simulated changes to the hotel",
+            "The hotel clock, forward only",
+            "Sanitized audit trail feed",
+            "Start over rebuilds the demo"
+          ],
+          "description": "The hotel's own side of the HTTP surface. A command commits first, and only then do the guest-facing turns it caused begin, so a decision never waits on a model. No guest capability is read here, and every command is attributed to the one demo operator.",
+          "files": [
+            "src/hotel_operations/api/operator_routes.py",
+            "src/hotel_operations/api/world_routes.py",
+            "src/hotel_operations/api/state.py"
+          ],
+          "parent": null,
+          "detail": null,
+          "place": { "row": -1, "col": 2 }
+        },
+        {
+          "id": "decide",
+          "label": "Review decision",
+          "kind": "gate",
+          "form": "panel",
+          "icon": "pen",
+          "sub": "a record, not a sentence",
+          "items": [
+            "Re-reads the records in one transaction",
+            "Freshness compared per room",
+            "A review the clock passed never executes",
+            "Approve applies, or applies nothing",
+            "No model call anywhere"
+          ],
+          "description": "What a manager's approve or reject really does. The review stored the version of every record it was decided on; approving re-reads them and re-runs the rule, so a review the hotel has overtaken is recorded as decided and changes nothing. There is no approved-but-unapplied state.",
+          "files": [
+            "src/hotel_operations/services/approvals.py",
+            "src/hotel_operations/services/operator.py"
+          ],
+          "parent": null,
+          "detail": null,
+          "place": { "row": -1, "col": 3 }
+        },
+        {
+          "id": "world",
+          "label": "Simulated hotel & clock",
+          "kind": "service",
+          "form": "panel",
+          "icon": "timer",
+          "sub": "operator actions, never a tool",
+          "items": [
+            "A closed set of labelled events",
+            "The hotel clock moves forward only",
+            "Bumps the room's operational version",
+            "Persists reviews the clock passed",
+            "Each change audited"
+          ],
+          "description": "The fictional hotel is still until the manager presses something: an earlier arrival, a cancelled arrival, a room taken out of service, or a clock move. Each change commits with its audit event and bumps exactly the versions the freshness check compares.",
+          "files": ["src/hotel_operations/services/world.py"],
+          "parent": null,
+          "detail": null,
+          "place": { "row": -1, "col": 4 }
+        },
+        {
+          "id": "update_gate",
+          "label": "Hotel update gate",
+          "kind": "gate",
+          "form": "panel",
+          "icon": "bell",
+          "sub": "decides whether to speak",
+          "items": [
+            "Runs inside the command's transaction",
+            "One outbox row per fact",
+            "Enums, ids and times only",
+            "A rolled-back change leaves no update",
+            "The same fact twice is dropped"
+          ],
+          "description": "Deterministic code that decides a guest must be told something: a review decided or expired, staff closing a request, their room out of service, a waiting review gone impossible, or a refused checkout that became possible. It records the fact, never the words.",
+          "files": ["src/hotel_operations/services/hotel_updates.py"],
+          "parent": null,
+          "detail": null,
+          "place": { "row": -1, "col": 5 }
+        },
+        {
+          "id": "hotel_turns",
+          "label": "Hotel-initiated turn",
+          "kind": "worker",
+          "form": "panel",
+          "icon": "inbox",
+          "sub": "no dispatcher, nothing polls",
+          "items": [
+            "Admitted right after the commit",
+            "A guest's updates go in one turn",
+            "Developer message built from the rows",
+            "Read tools only",
+            "One attempt, never replayed"
+          ],
+          "description": "Turns outbox rows into one agent run in the guest's own conversation, admitted inside the write that caused them or by the next finished run that frees the session. The model re-reads the facts and writes one message; it may offer the next step but cannot take it.",
+          "files": ["src/hotel_operations/agent/hotel_turns.py"],
+          "parent": null,
+          "detail": null,
+          "place": { "row": -1, "col": 6 }
+        }
+      ],
+      "edges": [
+        { "from": "guest", "to": "web", "label": "", "style": "call", "both": true, "step": 1 },
+        { "from": "web", "to": "guest_api", "label": "message with capability", "style": "call", "both": true, "step": 2 },
+        { "from": "guest_api", "to": "run_service", "label": "admit run", "style": "call", "both": true, "step": 3 },
+        { "from": "run_service", "to": "runtime", "label": "", "style": "call", "both": true, "step": 4 },
+        { "from": "runtime", "to": "gateway", "label": "tool proposal", "style": "call", "both": true, "step": 5 },
+        { "from": "gateway", "to": "domain_svc", "label": "", "style": "call", "both": true, "step": 6 },
+        { "from": "domain_svc", "to": "rules", "label": "decision", "style": "call", "both": true, "step": 7 },
+        { "from": "domain_svc", "to": "hotel_db", "label": "one transaction", "style": "call", "both": true, "step": 8 },
+        { "from": "llm", "to": "history", "label": "turn items", "style": "call", "both": true, "step": null },
+        { "from": "run_service", "to": "history", "label": "roll back or rotate", "style": "call", "both": false, "step": null },
+        { "from": "guest_api", "to": "scope", "label": "resolve capability", "style": "call", "both": true, "step": null },
+        { "from": "gateway", "to": "scope", "label": "re-read binding", "style": "dep", "both": false, "step": null },
+        { "from": "scope", "to": "hotel_db", "label": "", "style": "call", "both": true, "step": null },
+        { "from": "guest_api", "to": "domain_svc", "label": "panel reads", "style": "call", "both": true, "step": null },
+        { "from": "run_service", "to": "hotel_db", "label": "run records", "style": "call", "both": true, "step": null },
+        { "from": "run_service", "to": "telemetry", "label": "", "style": "dep", "both": false, "step": null },
+        { "from": "gateway", "to": "telemetry", "label": "", "style": "dep", "both": false, "step": null },
+        { "from": "gateway", "to": "hotel_db", "label": "proposal audit", "style": "call", "both": false, "step": null },
+        { "from": "manager", "to": "web", "label": "", "style": "call", "both": true, "step": null },
+        { "from": "web", "to": "operator_api", "label": "command", "style": "call", "both": true, "step": null },
+        { "from": "operator_api", "to": "decide", "label": "approve or reject", "style": "call", "both": true, "step": null },
+        { "from": "operator_api", "to": "world", "label": "event or clock move", "style": "call", "both": true, "step": null },
+        { "from": "decide", "to": "rules", "label": "re-run the rule", "style": "call", "both": true, "step": null },
+        { "from": "decide", "to": "hotel_db", "label": "apply or record only", "style": "call", "both": true, "step": null },
+        { "from": "world", "to": "hotel_db", "label": "", "style": "call", "both": true, "step": null },
+        { "from": "decide", "to": "update_gate", "label": "inside the command's write", "style": "call", "both": false, "step": null },
+        { "from": "world", "to": "update_gate", "label": "", "style": "call", "both": false, "step": null },
+        { "from": "update_gate", "to": "hotel_db", "label": "outbox row", "style": "call", "both": false, "step": null },
+        { "from": "update_gate", "to": "hotel_turns", "label": "pending update", "style": "async", "both": false, "step": null },
+        { "from": "hotel_turns", "to": "hotel_db", "label": "", "style": "call", "both": true, "step": null },
+        { "from": "hotel_turns", "to": "run_service", "label": "read-only turn", "style": "async", "both": false, "step": null },
+        { "from": "operator_api", "to": "telemetry", "label": "", "style": "dep", "both": false, "step": null }
+      ],
+      "notes": []
+    }
+  ]
+}

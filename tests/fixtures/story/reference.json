@@ -1,0 +1,267 @@
+{
+  "title": "Runtime architecture of a hotel operations agent",
+  "lede": "A guest chats with an agent that can only act through checked tools, hotel rules and a manager's approval.",
+  "zones": [
+    {
+      "id": "runtime",
+      "label": "Agent runtime"
+    }
+  ],
+  "parts": [
+    {
+      "id": "browser",
+      "label": "Browser",
+      "sub": "guest chat",
+      "kind": "client",
+      "chips": [
+        "Select guest",
+        "Chat",
+        "Stream progress"
+      ],
+      "zone": null,
+      "spine": 0,
+      "anchor": null,
+      "side": null,
+      "from": []
+    },
+    {
+      "id": "intake",
+      "label": "Request intake",
+      "sub": "run persisted, 202",
+      "kind": "api",
+      "chips": [],
+      "zone": null,
+      "spine": 1,
+      "anchor": null,
+      "side": null,
+      "from": []
+    },
+    {
+      "id": "scope",
+      "label": "Scope",
+      "sub": "guest + reservation",
+      "kind": "gate",
+      "chips": [],
+      "zone": null,
+      "spine": 2,
+      "anchor": null,
+      "side": null,
+      "from": []
+    },
+    {
+      "id": "loop",
+      "label": "LLM loop",
+      "sub": "decide next step",
+      "kind": "llm",
+      "chips": [
+        "LLM",
+        "Tool proposal",
+        "Execute",
+        "Tool result"
+      ],
+      "zone": "runtime",
+      "spine": 3,
+      "anchor": null,
+      "side": null,
+      "from": []
+    },
+    {
+      "id": "limits",
+      "label": "Limits",
+      "sub": "turns, calls, deadline",
+      "kind": "gate",
+      "chips": [],
+      "zone": "runtime",
+      "spine": null,
+      "anchor": "loop",
+      "side": "below",
+      "from": []
+    },
+    {
+      "id": "gateway",
+      "label": "Tool execution gateway",
+      "sub": "every tool call",
+      "kind": "gate",
+      "chips": [
+        "Schema validation",
+        "Scope re-check",
+        "Idempotency key",
+        "Audit event"
+      ],
+      "zone": null,
+      "spine": 4,
+      "anchor": null,
+      "side": null,
+      "from": []
+    },
+    {
+      "id": "domain",
+      "label": "Domain services",
+      "sub": "the hotel's own logic",
+      "kind": "service",
+      "chips": [
+        "Reservations",
+        "Hotel policy",
+        "Late checkout rules"
+      ],
+      "zone": null,
+      "spine": 5,
+      "anchor": null,
+      "side": null,
+      "from": []
+    },
+    {
+      "id": "db",
+      "label": "Simulated hotel DB",
+      "sub": "source of truth",
+      "kind": "data",
+      "chips": [],
+      "zone": null,
+      "spine": null,
+      "anchor": "domain",
+      "side": "below",
+      "from": []
+    },
+    {
+      "id": "approval",
+      "label": "Human approval",
+      "sub": "manager view",
+      "kind": "actor",
+      "chips": [
+        "Approve / reject",
+        "Re-validate",
+        "No LLM needed"
+      ],
+      "zone": null,
+      "spine": null,
+      "anchor": "domain",
+      "side": "above",
+      "from": []
+    },
+    {
+      "id": "notify",
+      "label": "Notify gate",
+      "sub": "should the guest hear?",
+      "kind": "gate",
+      "chips": [
+        "Outbox row"
+      ],
+      "zone": null,
+      "spine": null,
+      "anchor": "loop",
+      "side": "above",
+      "from": []
+    },
+    {
+      "id": "audit",
+      "label": "Audit / event log",
+      "sub": "every decision",
+      "kind": "data",
+      "chips": [
+        "Tool calls",
+        "Approvals",
+        "Errors"
+      ],
+      "zone": null,
+      "spine": null,
+      "anchor": "gateway",
+      "side": "below",
+      "from": []
+    },
+    {
+      "id": "obs",
+      "label": "Observability",
+      "sub": "local by default",
+      "kind": "ops",
+      "chips": [
+        "Latency",
+        "Tokens",
+        "Failures"
+      ],
+      "zone": null,
+      "spine": null,
+      "anchor": "loop",
+      "side": "below",
+      "from": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "browser",
+      "to": "intake",
+      "label": "",
+      "style": "call",
+      "step": 1
+    },
+    {
+      "from": "intake",
+      "to": "scope",
+      "label": "",
+      "style": "call",
+      "step": 2
+    },
+    {
+      "from": "scope",
+      "to": "loop",
+      "label": "",
+      "style": "call",
+      "step": 3
+    },
+    {
+      "from": "loop",
+      "to": "gateway",
+      "label": "",
+      "style": "call",
+      "step": 4
+    },
+    {
+      "from": "gateway",
+      "to": "domain",
+      "label": "",
+      "style": "call",
+      "step": 5
+    },
+    {
+      "from": "domain",
+      "to": "db",
+      "label": "",
+      "style": "call",
+      "step": null
+    },
+    {
+      "from": "domain",
+      "to": "approval",
+      "label": "pending request",
+      "style": "async",
+      "step": null
+    },
+    {
+      "from": "approval",
+      "to": "domain",
+      "label": "decision",
+      "style": "call",
+      "step": null
+    },
+    {
+      "from": "notify",
+      "to": "loop",
+      "label": "hotel change",
+      "style": "async",
+      "step": null
+    },
+    {
+      "from": "gateway",
+      "to": "audit",
+      "label": "",
+      "style": "dep",
+      "step": null
+    },
+    {
+      "from": "loop",
+      "to": "obs",
+      "label": "emit",
+      "style": "dep",
+      "step": null
+    }
+  ]
+}

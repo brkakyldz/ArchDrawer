@@ -1,0 +1,15 @@
+{
+  "name": "archdrawer",
+  "version": "0.1.0",
+  "description": "Your session reads the code and writes an architecture drawing; a local editor refines and shares it.",
+  "author": {
+    "name": "Berke Akyıldız"
+  },
+  "license": "MIT",
+  "keywords": [
+    "architecture",
+    "diagram",
+    "codebase",
+    "svg"
+  ]
+}

@@ -1,0 +1,19 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+test-results/
+test-results-e2e/
+playwright-report/
+.archdraw-data/
+
+# Maintainer-local tooling and notes; never published
+CLAUDE.local.md
+.claude/
+.codex/
+.impeccable/
+debug/

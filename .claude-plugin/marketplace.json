@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "archdrawer",
+  "description": "Draw, edit and share the architecture of any repository.",
+  "owner": { "name": "Berke Akyıldız" },
+  "plugins": [
+    {
+      "name": "archdrawer",
+      "description": "Your session reads the code and writes an architecture drawing; a local editor refines and shares it.",
+      "source": "./",
+      "category": "development"
+    }
+  ]
+}

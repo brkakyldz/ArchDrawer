@@ -1,0 +1,8 @@
+#!/bin/sh
+# The archdrawer launcher for POSIX shells and Git Bash: runs bin/archdrawer.mjs with node.
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if ! command -v node >/dev/null 2>&1; then
+  echo "archdrawer needs Node.js 20.19 or newer: https://nodejs.org" >&2
+  exit 1
+fi
+exec node "$here/archdrawer.mjs" "$@"

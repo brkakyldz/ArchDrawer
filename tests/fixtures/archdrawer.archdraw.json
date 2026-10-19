@@ -1,0 +1,1483 @@
+{
+ "schema": "archdraw/diagram@2",
+ "title": "archdrawer",
+ "views": [
+  {
+   "id": "overview",
+   "title": "Overview",
+   "caption": {
+    "title": "How archdrawer turns a repository into an editable drawing",
+    "lede": "Your own agent session reads the code and writes one JSON file; a local server and a browser canvas let you edit, re-ask and export it, and nothing leaves your machine."
+   },
+   "nodes": [
+    {
+     "id": "plugin",
+     "label": "Plugin manifests",
+     "kind": "data",
+     "form": "panel",
+     "icon": "box",
+     "sub": ".claude-plugin and .codex-plugin",
+     "items": [
+      "Claude Code plugin manifest",
+      "Claude Code marketplace entry",
+      "Codex plugin manifest",
+      "Skills folder declared"
+     ],
+     "description": "The manifests that make archdrawer installable as a plugin in Claude Code and in Codex. They name the plugin and point the agent at the skills folder, so an installed session picks up the archdrawer skill and its rules.",
+     "files": [
+      ".claude-plugin/plugin.json",
+      ".claude-plugin/marketplace.json",
+      ".codex-plugin/plugin.json"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": -1,
+      "col": 0
+     },
+     "x": 64,
+     "y": 40
+    },
+    {
+     "id": "session",
+     "label": "Agent session",
+     "kind": "llm",
+     "form": "panel",
+     "icon": "spark",
+     "sub": "your Claude Code or Codex, with the skill",
+     "items": [
+      "SKILL.md and rules.md",
+      "Reads the code read-only",
+      "Writes the drawing file",
+      "Runs archdrawer open"
+     ],
+     "description": "The user's own Claude Code or Codex session, running the archdrawer skill. It reads the repository with read-only tools, writes the drawing file by the rules in rules.md, and hands the file to the CLI. No model API key is ever used: the session the user already pays for is the engine.",
+     "files": [
+      "skills/archdrawer/SKILL.md",
+      "skills/archdrawer/rules.md"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 0
+     },
+     "x": 40,
+     "y": 606
+    },
+    {
+     "id": "cli",
+     "label": "archdrawer CLI",
+     "kind": "client",
+     "form": "panel",
+     "icon": "terminal",
+     "sub": "validate · open · svg · migrate · status · stop",
+     "items": [
+      "Lists every problem in a file",
+      "Tidies the file in place",
+      "Starts the server detached",
+      "Share image without the editor"
+     ],
+     "description": "The archdrawer command. It checks a drawing file and prints every problem, normalises it, starts the editor server in its own process so it outlives the session, registers the file and opens the browser. It can also render a share image or migrate an older file on its own.",
+     "files": [
+      "bin/archdrawer.mjs",
+      "src/cli/main.ts",
+      "scripts/start.mjs",
+      "docs/contracts/cli-v1.md"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 1
+     },
+     "x": 576,
+     "y": 606
+    },
+    {
+     "id": "server",
+     "label": "Local editor server",
+     "kind": "api",
+     "form": "group",
+     "icon": "server",
+     "sub": "127.0.0.1 only, one process, one token",
+     "items": [],
+     "description": "A Node process bound to the loopback address that serves the API and the built web client. It is local-first by construction: no account, no hosted service, and the port and token of the running server are written to a file in the data directory for the CLI to find.",
+     "files": [
+      "src/server/main.ts",
+      "src/server/config.ts",
+      "src/server/serverfile.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 2
+     },
+     "x": 1084,
+     "y": 394
+    },
+    {
+     "id": "envelope",
+     "label": "Security envelope",
+     "kind": "gate",
+     "form": "panel",
+     "icon": "shield",
+     "sub": "before any route runs",
+     "items": [
+      "Host must be this localhost port",
+      "Foreign Origin refused",
+      "Token on every mutation",
+      "Body size limit"
+     ],
+     "description": "Every request passes this check first. The Host header must name this port on localhost, which stops a web page from reaching the server by a rebound name; a foreign Origin is refused; and every mutating /api/ call must carry the token this process generated at start-up.",
+     "files": [
+      "src/server/app.ts",
+      "src/server/main.ts"
+     ],
+     "parent": "server",
+     "detail": null,
+     "place": null,
+     "x": 1103,
+     "y": 801
+    },
+    {
+     "id": "api",
+     "label": "HTTP API",
+     "kind": "api",
+     "form": "panel",
+     "icon": "plug",
+     "sub": "contract api-v2",
+     "items": [
+      "Read, save and import a drawing",
+      "Start and cancel a run",
+      "SVG and Mermaid export",
+      "File changes over SSE"
+     ],
+     "description": "The HTTP surface the editor and the CLI talk to: read and save a drawing, register a file, start or cancel an instruction run, export an image, and two event streams — one that announces file changes, one that follows a run.",
+     "files": [
+      "src/server/app.ts",
+      "docs/contracts/api-v2.md"
+     ],
+     "parent": "server",
+     "detail": null,
+     "place": null,
+     "x": 1102,
+     "y": 580
+    },
+    {
+     "id": "store",
+     "label": "Drawing store",
+     "kind": "service",
+     "form": "panel",
+     "icon": "folder",
+     "sub": "every read goes back to the disk",
+     "items": [
+      "Registry of opened files",
+      "Outside changes noticed",
+      "Version checked before writing",
+      "Atomic replace"
+     ],
+     "description": "The drawings this server knows: files registered wherever they live, plus imported copies in its data directory. Because every read goes back to the disk, a file a session or the CLI rewrote is noticed, normalised and announced. Every write is atomic and refuses a document whose version moved on.",
+     "files": [
+      "src/server/store.ts",
+      "src/server/files.ts"
+     ],
+     "parent": "server",
+     "detail": null,
+     "place": null,
+     "x": 1377,
+     "y": 580
+    },
+    {
+     "id": "runs",
+     "label": "Run manager",
+     "kind": "worker",
+     "form": "card",
+     "icon": "loop",
+     "sub": "one instruction per drawing",
+     "items": [],
+     "description": "Carries one instruction from the editor's box to a saved drawing, keeping an event log so a reconnecting browser sees what already happened. Cancelling or timing out kills the engine and everything it started.",
+     "files": [
+      "src/server/runs.ts"
+     ],
+     "parent": "server",
+     "detail": "run",
+     "place": null,
+     "x": 1404,
+     "y": 440
+    },
+    {
+     "id": "editor",
+     "label": "Editor in the browser",
+     "kind": "client",
+     "form": "group",
+     "icon": "window",
+     "sub": "React, its own canvas",
+     "items": [],
+     "description": "The app served at /d/<id>: the drawing's canvas, callouts for editing a component or a connection, the instruction box, the share dialog, and a library page listing every drawing this server has opened.",
+     "files": [
+      "src/web/App.tsx",
+      "src/web/editor/Editor.tsx",
+      "src/web/library/Library.tsx",
+      "docs/contracts/ui-v2.md"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 3
+     },
+     "x": 1919,
+     "y": 313
+    },
+    {
+     "id": "canvas",
+     "label": "Canvas",
+     "kind": "client",
+     "form": "panel",
+     "icon": "pen",
+     "sub": "the same markup as every export",
+     "items": [
+      "Size comes from the content",
+      "Drag, connect, edit in place",
+      "Zoom, pan and fit"
+     ],
+     "description": "Draws the view with exactly the markup the exports use, so the picture on screen and the downloaded image agree. A component's box is measured from its text, never left to CSS.",
+     "files": [
+      "src/web/editor/Canvas.tsx",
+      "src/web/editor/viewport.ts"
+     ],
+     "parent": "editor",
+     "detail": null,
+     "place": null,
+     "x": 2169,
+     "y": 911
+    },
+    {
+     "id": "ops",
+     "label": "Document edits",
+     "kind": "service",
+     "form": "panel",
+     "icon": "code",
+     "sub": "pure verbs, undo as a stack",
+     "items": [
+      "A new document per edit",
+      "Typing coalesced into one step",
+      "Group boxes kept in step"
+     ],
+     "description": "Every edit is a pure function that returns a new document and leaves its input alone, so undo and redo are a stack of documents. A drag is one step; typing in one field becomes one step.",
+     "files": [
+      "src/web/editor/ops.ts",
+      "src/web/editor/useDocHistory.ts"
+     ],
+     "parent": "editor",
+     "detail": null,
+     "place": null,
+     "x": 2181,
+     "y": 720
+    },
+    {
+     "id": "autosave",
+     "label": "Autosave",
+     "kind": "service",
+     "form": "panel",
+     "icon": "zap",
+     "sub": "never silently loses an edit",
+     "items": [
+      "One request in flight",
+      "Always the newest document",
+      "Each save names its version",
+      "A failure is shown, not hidden"
+     ],
+     "description": "Saves every change to the file with one request in flight and always the latest document, so an older save cannot land after a newer one. A file that changed outside the editor answers with a conflict and the editor says so rather than overwriting it.",
+     "files": [
+      "src/web/editor/useAutosave.ts",
+      "src/web/api.ts"
+     ],
+     "parent": "editor",
+     "detail": null,
+     "place": null,
+     "x": 2185,
+     "y": 499
+    },
+    {
+     "id": "ask",
+     "label": "Instruction box",
+     "kind": "llm",
+     "form": "card",
+     "icon": "chat",
+     "sub": "ask the engine to change the drawing",
+     "items": [],
+     "description": "Type what to change and the server runs your Claude Code or Codex on the repository, streaming what it reads. With no engine installed the instruction is stored in the file instead, waiting for the next session to apply it.",
+     "files": [
+      "src/web/editor/AskBox.tsx"
+     ],
+     "parent": "editor",
+     "detail": null,
+     "place": null,
+     "x": 1937,
+     "y": 359
+    },
+    {
+     "id": "share",
+     "label": "Share export",
+     "kind": "service",
+     "form": "panel",
+     "icon": "file",
+     "sub": "LinkedIn, README, slide, square, feed",
+     "items": [
+      "Five frame sizes",
+      "Scaled to fit the frame",
+      "Readability verdict first",
+      "PNG drawn in the browser"
+     ],
+     "description": "Turns a view into an image: a frame per place it will be shown, scaled to fit, with a verdict on the smallest text before anything is downloaded. Fonts are embedded so the file renders the same anywhere; Mermaid text is offered where only text is accepted.",
+     "files": [
+      "src/core/export/share.ts",
+      "src/core/export/feed.ts",
+      "src/core/export/mermaid.ts",
+      "src/web/share/ShareDialog.tsx"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 4
+     },
+     "x": 2529,
+     "y": 606
+    },
+    {
+     "id": "repo",
+     "label": "The repository being drawn",
+     "kind": "data",
+     "form": "card",
+     "icon": "git",
+     "sub": "read-only, and untrusted",
+     "items": [],
+     "description": "The codebase the drawing is about. Nothing in it is ever written, and nothing in it is trusted: a file that contains instructions is treated as data, not as a command to follow.",
+     "files": [],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 1,
+      "col": 0
+     },
+     "x": 92,
+     "y": 1204
+    },
+    {
+     "id": "file",
+     "label": "Drawing file",
+     "kind": "data",
+     "form": "panel",
+     "icon": "file",
+     "sub": "docs/architecture.archdraw.json",
+     "items": [
+      "Views, components, connections",
+      "Positions the user chose",
+      "Warnings from every repair",
+      "Instructions still waiting"
+     ],
+     "description": "One JSON file, living in the repository it describes and committed with it. It holds the whole drawing plus any instruction waiting for an engine. There is no database: this file is the state, which is why a session, the CLI and the editor can all write it.",
+     "files": [
+      "docs/contracts/diagram-v2.md",
+      "examples/shop.archdraw.json"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 1,
+      "col": 1
+     },
+     "x": 606,
+     "y": 1172
+    },
+    {
+     "id": "core",
+     "label": "Shared core",
+     "kind": "service",
+     "form": "panel",
+     "icon": "layers",
+     "sub": "pure: no Node, no DOM",
+     "items": [
+      "Validation, repair, migration",
+      "Grid layout from place hints",
+      "Measurement and edge routing",
+      "One set of SVG markup"
+     ],
+     "description": "Model, layout, geometry and drawing code with no Node and no browser calls in it, so the editor, the server and the CLI validate, lay out and draw a document from identical numbers. This is what keeps the canvas and the exported image from drifting apart.",
+     "files": [
+      "src/core/model.ts",
+      "src/core/layout.ts",
+      "src/core/geometry.ts",
+      "src/core/export/svg.ts"
+     ],
+     "parent": null,
+     "detail": "core",
+     "place": {
+      "row": 1,
+      "col": 3
+     },
+     "x": 2064,
+     "y": 1172
+    },
+    {
+     "id": "engines",
+     "label": "Headless engines",
+     "kind": "external",
+     "form": "panel",
+     "icon": "cpu",
+     "sub": "the user's own claude / codex CLI",
+     "items": [
+      "Read and search tools only",
+      "The user's subscription, no key",
+      "Argument arrays, never a shell",
+      "Answer against a JSON schema"
+     ],
+     "description": "The CLI the user already has, spawned without a window on their own login: Claude Code with read and search tools only, Codex in a read-only sandbox. Arguments go as arrays and the prompt over stdin or a temp file, so nothing typed into the editor can reach a shell.",
+     "files": [
+      "src/server/engines/claude.ts",
+      "src/server/engines/codex.ts",
+      "src/server/engines/process.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": -1,
+      "col": 2
+     },
+     "x": 1236,
+     "y": 40
+    },
+    {
+     "id": "holdout",
+     "label": "Held-out acceptance suite",
+     "kind": "ops",
+     "form": "panel",
+     "icon": "clipboard",
+     "sub": "Playwright product checks",
+     "items": [
+      "HTTP security checks",
+      "Editor interaction scenarios",
+      "Persistence conflict checks",
+      "Isolated fixture server"
+     ],
+     "description": "Playwright scenarios exercise the running HTTP API and browser editor against isolated drawing files. They check editing, persistence conflicts and rejected requests, using the fixture engine for instruction runs.",
+     "files": [
+      "tests/acceptance/holdout/"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 1,
+      "col": 2
+     },
+     "x": 1240,
+     "y": 1176
+    }
+   ],
+   "edges": [
+    {
+     "id": "e1",
+     "from": "session",
+     "to": "cli",
+     "label": "archdrawer open <file>",
+     "style": "call",
+     "both": false,
+     "step": 1
+    },
+    {
+     "id": "e2",
+     "from": "cli",
+     "to": "envelope",
+     "label": "registers the file",
+     "style": "call",
+     "both": false,
+     "step": 2
+    },
+    {
+     "id": "e3",
+     "from": "envelope",
+     "to": "api",
+     "label": "",
+     "style": "call",
+     "both": false,
+     "step": 3
+    },
+    {
+     "id": "e4",
+     "from": "api",
+     "to": "editor",
+     "label": "document and change events",
+     "style": "call",
+     "both": true,
+     "step": 4
+    },
+    {
+     "id": "e5",
+     "from": "editor",
+     "to": "share",
+     "label": "",
+     "style": "call",
+     "both": false,
+     "step": 5
+    },
+    {
+     "id": "e6",
+     "from": "session",
+     "to": "plugin",
+     "label": "installed from",
+     "style": "dep",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e7",
+     "from": "session",
+     "to": "repo",
+     "label": "reads the code",
+     "style": "dep",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e8",
+     "from": "session",
+     "to": "file",
+     "label": "the drawing, and waiting instructions",
+     "style": "call",
+     "both": true,
+     "step": null
+    },
+    {
+     "id": "e9",
+     "from": "cli",
+     "to": "file",
+     "label": "checks and tidies",
+     "style": "call",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e10",
+     "from": "store",
+     "to": "file",
+     "label": "read back, written atomically",
+     "style": "call",
+     "both": true,
+     "step": null
+    },
+    {
+     "id": "e11",
+     "from": "api",
+     "to": "store",
+     "label": "",
+     "style": "call",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e12",
+     "from": "api",
+     "to": "runs",
+     "label": "start, cancel, follow",
+     "style": "call",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e13",
+     "from": "ask",
+     "to": "runs",
+     "label": "instruction",
+     "style": "call",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e14",
+     "from": "runs",
+     "to": "engines",
+     "label": "prompt, progress, answer",
+     "style": "call",
+     "both": true,
+     "step": null
+    },
+    {
+     "id": "e15",
+     "from": "runs",
+     "to": "store",
+     "label": "saves the repaired drawing",
+     "style": "call",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e16",
+     "from": "engines",
+     "to": "repo",
+     "label": "reads with read-only tools",
+     "style": "dep",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e17",
+     "from": "canvas",
+     "to": "ops",
+     "label": "",
+     "style": "call",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e18",
+     "from": "ops",
+     "to": "autosave",
+     "label": "every change",
+     "style": "call",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e19",
+     "from": "canvas",
+     "to": "core",
+     "label": "same geometry as the export",
+     "style": "dep",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e20",
+     "from": "store",
+     "to": "core",
+     "label": "validate and normalise",
+     "style": "dep",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e21",
+     "from": "runs",
+     "to": "core",
+     "label": "repair, one warning each",
+     "style": "dep",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e22",
+     "from": "share",
+     "to": "core",
+     "label": "",
+     "style": "dep",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e23",
+     "from": "holdout",
+     "to": "api",
+     "label": "HTTP assertions",
+     "style": "call",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e24",
+     "from": "holdout",
+     "to": "editor",
+     "label": "browser scenarios",
+     "style": "call",
+     "both": false,
+     "step": null
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "run",
+   "title": "Instruction run",
+   "caption": {
+    "title": "What happens when you ask the drawing to change",
+    "lede": "The server builds a prompt from the drawing you are looking at, spawns your own CLI read-only in the repository, and only saves a document it could repair and read back."
+   },
+   "nodes": [
+    {
+     "id": "rm",
+     "label": "Run manager",
+     "kind": "worker",
+     "form": "panel",
+     "icon": "loop",
+     "sub": "one run per drawing",
+     "items": [
+      "Event log replayed on connect",
+      "Cancel and deadline",
+      "Finished runs forgotten"
+     ],
+     "description": "Owns the life of one run: it refuses a second run on the same drawing, records every progress line so a browser that reconnects sees them, and ends the run as succeeded, failed or cancelled.",
+     "files": [
+      "src/server/runs.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 0
+     },
+     "x": 52,
+     "y": 445
+    },
+    {
+     "id": "prompt",
+     "label": "Prompt builder",
+     "kind": "service",
+     "form": "panel",
+     "icon": "pen",
+     "sub": "the drawing, the change, the rules",
+     "items": [
+      "Drawing without positions",
+      "The view in focus",
+      "The same rules.md as the skill",
+      "Repository declared as data"
+     ],
+     "description": "Builds the one prompt an engine gets: the current drawing with positions stripped, the instruction, the view the user was looking at, and the drawing rules. It also tells the engine that files in the repository are data, so instructions found inside them are not followed.",
+     "files": [
+      "src/server/engines/prompt.ts",
+      "src/core/repair.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 1
+     },
+     "x": 463,
+     "y": 430
+    },
+    {
+     "id": "adapter",
+     "label": "Engine adapters",
+     "kind": "external",
+     "form": "group",
+     "icon": "plug",
+     "sub": "one interface, three implementations",
+     "items": [],
+     "description": "Each adapter detects its CLI, refuses a version too old to answer against a schema, builds the read-only flags and returns the raw answer. The caller repairs and validates it, so an adapter never decides what a document is.",
+     "files": [
+      "src/server/engines/types.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 2
+     },
+     "x": 894,
+     "y": 232
+    },
+    {
+     "id": "claude",
+     "label": "Claude Code",
+     "kind": "external",
+     "form": "panel",
+     "icon": "spark",
+     "sub": "claude -p, stream-json",
+     "items": [
+      "Read, Grep and Glob only",
+      "Answer against a JSON schema",
+      "Permission prompts off",
+      "Repo hooks and MCP skipped"
+     ],
+     "description": "Runs the claude CLI headless. It fails closed: a version that cannot skip the drawn repository's own settings and MCP servers is reported unavailable, because those would run that repository's code.",
+     "files": [
+      "src/server/engines/claude.ts"
+     ],
+     "parent": "adapter",
+     "detail": null,
+     "place": null,
+     "x": 1365,
+     "y": 609
+    },
+    {
+     "id": "codex",
+     "label": "Codex",
+     "kind": "external",
+     "form": "panel",
+     "icon": "terminal",
+     "sub": "codex exec --json",
+     "items": [
+      "Read-only sandbox",
+      "Schema in a temp file",
+      "Answer written to a file"
+     ],
+     "description": "Runs the codex CLI headless in a read-only sandbox, with the schema and the answer passed through files in a temporary directory that is removed afterwards.",
+     "files": [
+      "src/server/engines/codex.ts"
+     ],
+     "parent": "adapter",
+     "detail": null,
+     "place": null,
+     "x": 1144,
+     "y": 418
+    },
+    {
+     "id": "fixture",
+     "label": "Fixture engine",
+     "kind": "service",
+     "form": "card",
+     "icon": "box",
+     "sub": "tests only, same pipeline",
+     "items": [],
+     "description": "A scripted answer used by the tests. It travels the same repair, validation and save path as a real engine — only the agent call is replaced — and it is offered only when the environment names it.",
+     "files": [
+      "src/server/engines/fixture.ts"
+     ],
+     "parent": "adapter",
+     "detail": null,
+     "place": null,
+     "x": 912,
+     "y": 278
+    },
+    {
+     "id": "spawn",
+     "label": "Process spawn",
+     "kind": "gate",
+     "form": "panel",
+     "icon": "cog",
+     "sub": "no shell, anywhere",
+     "items": [
+      "Argument arrays only",
+      "Windows shim resolved to node",
+      "Host session variables stripped",
+      "Kills the whole process tree"
+     ],
+     "description": "Starts the CLI without a shell, which is why user text cannot become a command. On Windows it reads the npm .cmd shim and runs its JavaScript entry with node instead. It also removes the variables a launching Claude Code session set, so the CLI uses the user's own login.",
+     "files": [
+      "src/server/engines/process.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 3
+     },
+     "x": 1837,
+     "y": 430
+    },
+    {
+     "id": "proc",
+     "label": "The user's CLI process",
+     "kind": "external",
+     "form": "card",
+     "icon": "cpu",
+     "sub": "their subscription, their login",
+     "items": [],
+     "description": "The spawned claude or codex, working in the repository folder with read-only tools. The prompt reaches it on stdin; its progress and its answer come back as lines of JSON.",
+     "files": [],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 4
+     },
+     "x": 2268,
+     "y": 470
+    },
+    {
+     "id": "repo2",
+     "label": "The repository",
+     "kind": "data",
+     "form": "card",
+     "icon": "git",
+     "sub": "read-only, and untrusted",
+     "items": [],
+     "description": "The codebase the engine reads to answer. It is never written, and what it contains is data: the prompt forbids following instructions found in it.",
+     "files": [],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 1,
+      "col": 4
+     },
+     "x": 2268,
+     "y": 900
+    },
+    {
+     "id": "parser",
+     "label": "Event parser",
+     "kind": "service",
+     "form": "panel",
+     "icon": "search",
+     "sub": "lines in, progress and answer out",
+     "items": [
+      "Tool use becomes a readable line",
+      "Paths shown relative to the repo",
+      "Structured answer picked out",
+      "Failure text surfaced"
+     ],
+     "description": "Reads the engine's event lines as they arrive: each file read or search becomes a progress line the editor shows, and the final structured answer is kept. An engine that ended without one fails the run with what it printed.",
+     "files": [
+      "src/server/engines/claude.ts",
+      "src/server/engines/codex.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 2,
+      "col": 0
+     },
+     "x": 40,
+     "y": 1092
+    },
+    {
+     "id": "repair",
+     "label": "Repair",
+     "kind": "gate",
+     "form": "panel",
+     "icon": "scale",
+     "sub": "one warning per repair, never silent",
+     "items": [
+      "Unknown values replaced",
+      "Duplicate ids renamed",
+      "Missing file paths dropped",
+      "Kept components keep their place"
+     ],
+     "description": "Turns an engine's answer into a document. Anything wrong is fixed rather than refused — but every fix adds exactly one warning the editor shows, so a repaired drawing never looks like a clean one. A component that still exists keeps the position the user gave it.",
+     "files": [
+      "src/core/repair.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 2,
+      "col": 1
+     },
+     "x": 459,
+     "y": 1092
+    },
+    {
+     "id": "check",
+     "label": "Validation",
+     "kind": "gate",
+     "form": "card",
+     "icon": "shield",
+     "sub": "would the store read this back?",
+     "items": [],
+     "description": "The repaired document is validated as if it were being loaded from disk. A drawing that could not be read back is never allowed to replace a readable one; the run fails instead.",
+     "files": [
+      "src/core/model.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 2,
+      "col": 2
+     },
+     "x": 1159,
+     "y": 1133
+    },
+    {
+     "id": "save",
+     "label": "Save to the file",
+     "kind": "data",
+     "form": "panel",
+     "icon": "folder",
+     "sub": "or fail, loudly",
+     "items": [
+      "Version from the run's start",
+      "Atomic replace",
+      "Editors told to reload"
+     ],
+     "description": "Writes the new drawing into the same file, refusing it if the file moved on while the engine was working — an edit made during the run is not thrown away. A success always means a document was written, never just that the engine finished.",
+     "files": [
+      "src/server/store.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 2,
+      "col": 3
+     },
+     "x": 1850,
+     "y": 1107
+    },
+    {
+     "id": "sse",
+     "label": "Progress to the browser",
+     "kind": "api",
+     "form": "card",
+     "icon": "bell",
+     "sub": "server-sent events per run",
+     "items": [],
+     "description": "The run's events as a stream the instruction box subscribes to: each progress line, then one final event with the outcome. A browser that connects late is given the lines it missed first.",
+     "files": [
+      "src/server/app.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": -1,
+      "col": 0
+     },
+     "x": 67,
+     "y": 40
+    }
+   ],
+   "edges": [
+    {
+     "id": "e25",
+     "from": "rm",
+     "to": "prompt",
+     "label": "",
+     "style": "call",
+     "both": false,
+     "step": 1
+    },
+    {
+     "id": "e26",
+     "from": "prompt",
+     "to": "adapter",
+     "label": "one prompt",
+     "style": "call",
+     "both": false,
+     "step": 2
+    },
+    {
+     "id": "e27",
+     "from": "adapter",
+     "to": "spawn",
+     "label": "command and flags",
+     "style": "call",
+     "both": false,
+     "step": 3
+    },
+    {
+     "id": "e28",
+     "from": "spawn",
+     "to": "proc",
+     "label": "prompt on stdin",
+     "style": "call",
+     "both": false,
+     "step": 4
+    },
+    {
+     "id": "e29",
+     "from": "proc",
+     "to": "repo2",
+     "label": "reads the code",
+     "style": "dep",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e30",
+     "from": "proc",
+     "to": "parser",
+     "label": "event lines",
+     "style": "call",
+     "both": false,
+     "step": 5
+    },
+    {
+     "id": "e31",
+     "from": "parser",
+     "to": "repair",
+     "label": "the answer",
+     "style": "call",
+     "both": false,
+     "step": 6
+    },
+    {
+     "id": "e32",
+     "from": "repair",
+     "to": "check",
+     "label": "",
+     "style": "call",
+     "both": false,
+     "step": 7
+    },
+    {
+     "id": "e33",
+     "from": "check",
+     "to": "save",
+     "label": "",
+     "style": "call",
+     "both": false,
+     "step": 8
+    },
+    {
+     "id": "e34",
+     "from": "parser",
+     "to": "rm",
+     "label": "what the engine is doing",
+     "style": "async",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e35",
+     "from": "rm",
+     "to": "sse",
+     "label": "progress, then the outcome",
+     "style": "async",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e36",
+     "from": "save",
+     "to": "rm",
+     "label": "saved, with any warnings",
+     "style": "call",
+     "both": false,
+     "step": null
+    }
+   ],
+   "notes": []
+  },
+  {
+   "id": "core",
+   "title": "Shared core",
+   "caption": {
+    "title": "The pure layer the editor, the server and the CLI all draw from",
+    "lede": "A document is validated, placed on a grid, measured, drawn as SVG and framed for sharing by the same code everywhere — which is what keeps the canvas and the exported image identical."
+   },
+   "nodes": [
+    {
+     "id": "model",
+     "label": "Model and validation",
+     "kind": "gate",
+     "form": "panel",
+     "icon": "clipboard",
+     "sub": "archdraw/diagram@2",
+     "items": [
+      "Shape, ids, limits, enums",
+      "File paths must be in the repo",
+      "Defaults filled in",
+      "Depth warnings"
+     ],
+     "description": "The one definition of what a drawing is, and the check a file passes before anything else touches it. Beyond errors it also warns about a shallow drawing — a flat view, no main path, no components inside components — which is what the CLI prints.",
+     "files": [
+      "src/core/model.ts",
+      "src/core/normalize.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 0
+     },
+     "x": 40,
+     "y": 232
+    },
+    {
+     "id": "layout",
+     "label": "Grid layout",
+     "kind": "service",
+     "form": "panel",
+     "icon": "layers",
+     "sub": "pure and synchronous",
+     "items": [
+      "Place hints honoured",
+      "Main path along one row",
+      "Stores below, people above",
+      "Positions already chosen kept"
+     ],
+     "description": "Decides where a component with no position goes: the numbered main path runs along a row, side parts sit beside what they connect to, and stores or monitoring drop below. A component the user already moved stays where they put it, and a new one lands in free space nearby.",
+     "files": [
+      "src/core/layout.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 1
+     },
+     "x": 465,
+     "y": 232
+    },
+    {
+     "id": "geometry",
+     "label": "Geometry",
+     "kind": "service",
+     "form": "panel",
+     "icon": "scale",
+     "sub": "size from content, not from CSS",
+     "items": [
+      "Each form measured its own way",
+      "Groups grow around their parts",
+      "Which sides an edge leaves from",
+      "Curves, labels and bounds"
+     ],
+     "description": "Measures every component from its own text and lays out the boxes, then routes each connection as a curve between the sides that read best. The editor asks these same functions, so a label that grows resizes the box on screen exactly as it does in the export.",
+     "files": [
+      "src/core/geometry.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 2
+     },
+     "x": 783,
+     "y": 232
+    },
+    {
+     "id": "markup",
+     "label": "SVG markup",
+     "kind": "service",
+     "form": "panel",
+     "icon": "pen",
+     "sub": "canvas and export, one source",
+     "items": [
+      "Components, connections, notes",
+      "Step badges and labels",
+      "Icons and shared definitions"
+     ],
+     "description": "Writes the actual SVG for a view. The browser canvas injects this markup rather than drawing its own, which is how editor and export parity is kept structural instead of a thing to remember.",
+     "files": [
+      "src/core/export/svg.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 3
+     },
+     "x": 1239,
+     "y": 247
+    },
+    {
+     "id": "frames",
+     "label": "Share frames",
+     "kind": "service",
+     "form": "panel",
+     "icon": "monitor",
+     "sub": "five places a drawing is shown",
+     "items": [
+      "Frame per destination",
+      "Scaled to fit, with a caption",
+      "Colour key",
+      "Readability verdict"
+     ],
+     "description": "Puts a drawn view inside a frame for where it will be shown, scaling it to fit and adding the caption and colour key. It also reports the smallest text in the result, so a drawing too dense to read is caught before it is posted.",
+     "files": [
+      "src/core/export/share.ts",
+      "src/core/export/feed.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 0,
+      "col": 4
+     },
+     "x": 1567,
+     "y": 232
+    },
+    {
+     "id": "text",
+     "label": "Text measurement",
+     "kind": "data",
+     "form": "panel",
+     "icon": "book",
+     "sub": "generated from the bundled fonts",
+     "items": [
+      "Per-character widths",
+      "Wrapping and truncation",
+      "Regenerated by a script"
+     ],
+     "description": "Character width tables taken from Geist and Geist Mono, so text can be measured identically in Node and in the browser without a canvas. They are generated by a script and never edited by hand.",
+     "files": [
+      "src/core/text.ts",
+      "src/core/metrics.generated.ts",
+      "scripts/font-metrics.py"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 1,
+      "col": 2
+     },
+     "x": 778,
+     "y": 505
+    },
+    {
+     "id": "theme",
+     "label": "Palettes and icons",
+     "kind": "data",
+     "form": "panel",
+     "icon": "eye",
+     "sub": "light and dark",
+     "items": [
+      "A colour per kind of component",
+      "Both themes side by side",
+      "Icon paths"
+     ],
+     "description": "The two palettes, the colour each kind of component is drawn in, and the icon shapes. Everything that draws reads them from here, so a theme change cannot reach only half the picture.",
+     "files": [
+      "src/core/theme.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 1,
+      "col": 3
+     },
+     "x": 1243,
+     "y": 505
+    },
+    {
+     "id": "migrate",
+     "label": "Older files",
+     "kind": "service",
+     "form": "card",
+     "icon": "git",
+     "sub": "archdraw/diagram@1 → @2",
+     "items": [],
+     "description": "Rewrites a first-version drawing in today's shape, reporting what it had to change. A file is migrated once, by the CLI or on import, and then is an ordinary drawing.",
+     "files": [
+      "src/core/migrate.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": 1,
+      "col": 0
+     },
+     "x": 53,
+     "y": 531
+    },
+    {
+     "id": "mermaid",
+     "label": "Mermaid text",
+     "kind": "service",
+     "form": "card",
+     "icon": "code",
+     "sub": "for places that take only text",
+     "items": [],
+     "description": "Writes a view as a Mermaid flowchart. It is a plain-text fallback for a README or an issue that cannot carry an image, and it has nothing to do with the drawn geometry.",
+     "files": [
+      "src/core/export/mermaid.ts"
+     ],
+     "parent": null,
+     "detail": null,
+     "place": {
+      "row": -1,
+      "col": 0
+     },
+     "x": 53,
+     "y": 40
+    }
+   ],
+   "edges": [
+    {
+     "id": "e37",
+     "from": "model",
+     "to": "layout",
+     "label": "a valid document",
+     "style": "call",
+     "both": false,
+     "step": 1
+    },
+    {
+     "id": "e38",
+     "from": "layout",
+     "to": "geometry",
+     "label": "",
+     "style": "call",
+     "both": false,
+     "step": 2
+    },
+    {
+     "id": "e39",
+     "from": "geometry",
+     "to": "markup",
+     "label": "boxes and routes",
+     "style": "call",
+     "both": false,
+     "step": 3
+    },
+    {
+     "id": "e40",
+     "from": "markup",
+     "to": "frames",
+     "label": "",
+     "style": "call",
+     "both": false,
+     "step": 4
+    },
+    {
+     "id": "e41",
+     "from": "migrate",
+     "to": "model",
+     "label": "an older file",
+     "style": "call",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e42",
+     "from": "model",
+     "to": "mermaid",
+     "label": "text export",
+     "style": "call",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e43",
+     "from": "geometry",
+     "to": "text",
+     "label": "how wide is this line",
+     "style": "dep",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e44",
+     "from": "markup",
+     "to": "theme",
+     "label": "colours and icons",
+     "style": "dep",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e45",
+     "from": "frames",
+     "to": "theme",
+     "label": "",
+     "style": "dep",
+     "both": false,
+     "step": null
+    },
+    {
+     "id": "e46",
+     "from": "frames",
+     "to": "text",
+     "label": "",
+     "style": "dep",
+     "both": false,
+     "step": null
+    }
+   ],
+   "notes": []
+  }
+ ],
+ "id": "d_7t49ihec4d",
+ "theme": "light",
+ "showSteps": false,
+ "source": null,
+ "engine": {
+  "id": "codex",
+  "model": null
+ },
+ "createdAt": "2026-10-13T14:47:08.595Z",
+ "updatedAt": "2026-10-13T14:59:02.602Z",
+ "requests": [],
+ "warnings": []
+}

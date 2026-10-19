@@ -1,0 +1,274 @@
+{
+  "title": "Hotel AI Agent: From Chat to Action",
+  "lede": "A simulated hotel agent handles guest questions, service requests and stay changes, with code checks and manager review.",
+  "zones": [
+    {
+      "id": "controlled_actions",
+      "label": "Code-enforced hotel actions"
+    }
+  ],
+  "parts": [
+    {
+      "id": "guest_chat",
+      "label": "Guest chat",
+      "sub": "Ask for hotel help",
+      "kind": "client",
+      "chips": [
+        "Per-guest sessions",
+        "Streaming + polling",
+        "Receipt-backed status"
+      ],
+      "zone": null,
+      "spine": 0,
+      "anchor": null,
+      "side": null,
+      "from": [
+        "guest",
+        "ui"
+      ]
+    },
+    {
+      "id": "request_run",
+      "label": "Request controller",
+      "sub": "Checks and tracks requests",
+      "kind": "service",
+      "chips": [
+        "Guest-scoped token",
+        "Saved run state",
+        "Request replay",
+        "Run deadlines"
+      ],
+      "zone": null,
+      "spine": 1,
+      "anchor": null,
+      "side": null,
+      "from": [
+        "guest_api",
+        "run_service",
+        "channel"
+      ]
+    },
+    {
+      "id": "hotel_agent",
+      "label": "Hotel AI agent",
+      "sub": "Chooses tools, then replies",
+      "kind": "llm",
+      "chips": [
+        "One OpenAI agent",
+        "Tool-result loop",
+        "Turn limit"
+      ],
+      "zone": null,
+      "spine": 2,
+      "anchor": null,
+      "side": null,
+      "from": [
+        "runtime",
+        "agent_def",
+        "model"
+      ]
+    },
+    {
+      "id": "tool_gate",
+      "label": "Tool safety gate",
+      "sub": "Checks every proposed call",
+      "kind": "gate",
+      "chips": [
+        "Strict schemas",
+        "Server-owned scope",
+        "Audit before execution"
+      ],
+      "zone": "controlled_actions",
+      "spine": 3,
+      "anchor": null,
+      "side": null,
+      "from": [
+        "gateway",
+        "t_record",
+        "t_checks",
+        "t_reads",
+        "t_writes",
+        "t_envelope"
+      ]
+    },
+    {
+      "id": "hotel_actions",
+      "label": "Hotel services + rules",
+      "sub": "Re-check facts, then act",
+      "kind": "service",
+      "chips": [
+        "Fresh policy checks",
+        "Atomic writes",
+        "Receipts + replay"
+      ],
+      "zone": "controlled_actions",
+      "spine": 4,
+      "anchor": null,
+      "side": null,
+      "from": [
+        "services",
+        "rules",
+        "s_scope",
+        "s_write",
+        "s_rules",
+        "s_reads",
+        "s_receipt",
+        "t_exec",
+        "t_scope",
+        "t_txn",
+        "t_receipt",
+        "t_rules"
+      ]
+    },
+    {
+      "id": "hotel_changes",
+      "label": "Hotel updates",
+      "sub": "Starts a turn after changes",
+      "kind": "gate",
+      "chips": [
+        "Committed hotel facts",
+        "Update outbox",
+        "Read-only agent turns"
+      ],
+      "zone": null,
+      "spine": null,
+      "anchor": "request_run",
+      "side": "above",
+      "from": [
+        "operator_api",
+        "operator_services",
+        "update_gate",
+        "s_updates"
+      ]
+    },
+    {
+      "id": "manager_review",
+      "label": "Manager review",
+      "sub": "Reviews late checkout",
+      "kind": "actor",
+      "chips": [
+        "Pending ends the turn",
+        "Freshness re-check",
+        "Approve and execute"
+      ],
+      "zone": null,
+      "spine": null,
+      "anchor": "hotel_actions",
+      "side": "above",
+      "from": [
+        "operator",
+        "s_operator",
+        "s_review",
+        "s_pending",
+        "s_decide",
+        "s_expiry"
+      ]
+    },
+    {
+      "id": "hotel_records",
+      "label": "Hotel records",
+      "sub": "Keeps hotel facts and proof",
+      "kind": "data",
+      "chips": [
+        "Stays + tasks",
+        "Approvals + receipts",
+        "Append-only audit"
+      ],
+      "zone": null,
+      "spine": null,
+      "anchor": "hotel_actions",
+      "side": "below",
+      "from": [
+        "hotel_db",
+        "s_db",
+        "t_store"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "guest_chat",
+      "to": "request_run",
+      "label": "",
+      "style": "call",
+      "step": 1
+    },
+    {
+      "from": "request_run",
+      "to": "hotel_agent",
+      "label": "",
+      "style": "call",
+      "step": 2
+    },
+    {
+      "from": "hotel_agent",
+      "to": "tool_gate",
+      "label": "",
+      "style": "call",
+      "step": 3
+    },
+    {
+      "from": "tool_gate",
+      "to": "hotel_actions",
+      "label": "",
+      "style": "call",
+      "step": 4
+    },
+    {
+      "from": "hotel_actions",
+      "to": "tool_gate",
+      "label": "Service result",
+      "style": "call",
+      "step": null
+    },
+    {
+      "from": "tool_gate",
+      "to": "hotel_agent",
+      "label": "Typed result",
+      "style": "call",
+      "step": null
+    },
+    {
+      "from": "hotel_agent",
+      "to": "request_run",
+      "label": "Final reply",
+      "style": "call",
+      "step": null
+    },
+    {
+      "from": "request_run",
+      "to": "guest_chat",
+      "label": "Reply, receipts",
+      "style": "call",
+      "step": null
+    },
+    {
+      "from": "hotel_changes",
+      "to": "request_run",
+      "label": "Hotel update",
+      "style": "async",
+      "step": null
+    },
+    {
+      "from": "hotel_actions",
+      "to": "manager_review",
+      "label": "Needs review",
+      "style": "call",
+      "step": null
+    },
+    {
+      "from": "manager_review",
+      "to": "hotel_actions",
+      "label": "Human decision",
+      "style": "call",
+      "step": null
+    },
+    {
+      "from": "hotel_actions",
+      "to": "hotel_records",
+      "label": "",
+      "style": "call",
+      "step": null
+    }
+  ]
+}

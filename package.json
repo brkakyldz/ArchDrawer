@@ -1,0 +1,41 @@
+{
+  "name": "archdrawer",
+  "version": "0.1.0",
+  "description": "Draw, edit and share the architecture of any repository — written by your own Claude Code or Codex session, edited in a local canvas.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "archdrawer": "bin/archdrawer.mjs"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "start": "node scripts/start.mjs",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test",
+    "smoke:core": "tsx scripts/smoke-core.ts",
+    "e2e": "playwright test -c tests/e2e",
+    "holdout": "playwright test -c tests/acceptance/holdout"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "hono": "^4.9.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tsx": "^4.20.0",
+    "vite": "^7.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "command": "npx playwright test -c tests/acceptance/holdout",
+  "format": "playwright-json",
+  "report": "test-results/holdout.json",
+  "expected": ["H01", "H02", "H03", "H04", "H05", "H06", "H07", "H08", "H09", "H10", "H11", "H12", "H13", "H14"],
+  "runs": 3,
+  "perScenario": 2,
+  "overall": 0.9,
+  "timeoutMs": 1200000
+}

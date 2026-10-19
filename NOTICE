@@ -1,0 +1,17 @@
+archdrawer
+Copyright (c) 2026 Berke Akyıldız — MIT License (see LICENSE)
+
+This product depends on, and its built client bundles, third-party software
+under its own licence. None of it is modified.
+
+- React, React DOM — MIT. https://github.com/facebook/react
+- Hono, @hono/node-server — MIT. https://github.com/honojs
+- Vite, @vitejs/plugin-react, tsx — MIT. Used to build and run the app.
+
+Fonts (SIL Open Font License 1.1; the licence text ships next to the files):
+- Geist and Geist Mono — variable woff2 in src/web/fonts/, licence
+  src/web/fonts/Geist-OFL.txt. https://github.com/vercel/geist-font
+
+Geist and Geist Mono are embedded into images downloaded from the share dialog
+and into `archdrawer svg` files so they render the same everywhere; the OFL
+allows embedding.

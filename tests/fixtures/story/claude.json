@@ -1,0 +1,344 @@
+{
+  "title": "A hotel agent that cannot talk past the rules",
+  "lede": "A tool-using concierge runs a simulated hotel on your own machine: guests chat in any language, and you play the manager.",
+  "zones": [
+    {
+      "id": "z_runtime",
+      "label": "Bounded agent runtime"
+    },
+    {
+      "id": "z_hotel",
+      "label": "The hotel's own side"
+    }
+  ],
+  "parts": [
+    {
+      "id": "guest",
+      "label": "Guest",
+      "sub": "writes in any language",
+      "kind": "actor",
+      "chips": [
+        "Picked, not verified",
+        "No one else's data"
+      ],
+      "zone": null,
+      "spine": null,
+      "anchor": "app",
+      "side": "above",
+      "from": [
+        "guest"
+      ]
+    },
+    {
+      "id": "app",
+      "label": "Guest chat screen",
+      "sub": "one guest, one conversation",
+      "kind": "client",
+      "chips": [
+        "Streams, then polls",
+        "Receipts, not promises",
+        "One session per guest",
+        "Manager tab and board"
+      ],
+      "zone": null,
+      "spine": 0,
+      "anchor": null,
+      "side": null,
+      "from": [
+        "ui"
+      ]
+    },
+    {
+      "id": "api",
+      "label": "Local backend API",
+      "sub": "checks and admits each ask",
+      "kind": "api",
+      "chips": [
+        "Loopback only",
+        "Scope from the session",
+        "Accepted, not a reply",
+        "Typed error envelopes"
+      ],
+      "zone": null,
+      "spine": 1,
+      "anchor": null,
+      "side": null,
+      "from": [
+        "guest_api"
+      ]
+    },
+    {
+      "id": "run",
+      "label": "Durable run",
+      "sub": "owns the turn end to end",
+      "kind": "service",
+      "chips": [
+        "One live run per guest",
+        "Deadline on every run",
+        "No faked success",
+        "Never replayed blindly"
+      ],
+      "zone": null,
+      "spine": 2,
+      "anchor": null,
+      "side": null,
+      "from": [
+        "run_service",
+        "channel",
+        "conv_db"
+      ]
+    },
+    {
+      "id": "agent",
+      "label": "Agent loop",
+      "sub": "asks what to do next",
+      "kind": "llm",
+      "chips": [
+        "One agent, no handoffs",
+        "Nine typed tools",
+        "Bounded model turns",
+        "Tool results are data"
+      ],
+      "zone": "z_runtime",
+      "spine": 3,
+      "anchor": null,
+      "side": null,
+      "from": [
+        "runtime",
+        "agent_def"
+      ]
+    },
+    {
+      "id": "gateway",
+      "label": "Tool gateway",
+      "sub": "every tool call passes here",
+      "kind": "gate",
+      "chips": [
+        "Strict schema check",
+        "Server-set scope only",
+        "Audit before execution",
+        "Proposal budget"
+      ],
+      "zone": "z_runtime",
+      "spine": 4,
+      "anchor": null,
+      "side": null,
+      "from": [
+        "gateway"
+      ]
+    },
+    {
+      "id": "domain",
+      "label": "Rules and writes",
+      "sub": "decides and records it",
+      "kind": "service",
+      "chips": [
+        "Rules are pure code",
+        "Re-reads current facts",
+        "One short transaction",
+        "Receipt per write"
+      ],
+      "zone": null,
+      "spine": 5,
+      "anchor": null,
+      "side": null,
+      "from": [
+        "services",
+        "rules"
+      ]
+    },
+    {
+      "id": "model",
+      "label": "OpenAI model",
+      "sub": "proposes words and calls",
+      "kind": "external",
+      "chips": [
+        "The only outside call",
+        "History stays local",
+        "Provider storage off"
+      ],
+      "zone": null,
+      "spine": null,
+      "anchor": "agent",
+      "side": "above",
+      "from": [
+        "model"
+      ]
+    },
+    {
+      "id": "manager",
+      "label": "You, the manager",
+      "sub": "approves, moves, simulates",
+      "kind": "actor",
+      "chips": [
+        "Model never decides",
+        "No tool reaches it",
+        "Re-checks before apply"
+      ],
+      "zone": "z_hotel",
+      "spine": null,
+      "anchor": "run",
+      "side": "above",
+      "from": [
+        "operator",
+        "operator_api",
+        "operator_services"
+      ]
+    },
+    {
+      "id": "updates",
+      "label": "Hotel update gate",
+      "sub": "decides a guest must hear",
+      "kind": "gate",
+      "chips": [
+        "Code decides to speak",
+        "No free text",
+        "Same transaction",
+        "A repeat is dropped"
+      ],
+      "zone": "z_hotel",
+      "spine": null,
+      "anchor": "run",
+      "side": "above",
+      "from": [
+        "update_gate"
+      ]
+    },
+    {
+      "id": "store",
+      "label": "The hotel's records",
+      "sub": "rooms, tasks, approvals",
+      "kind": "data",
+      "chips": [
+        "Change, receipt, audit",
+        "Append-only audit",
+        "One simulated hotel"
+      ],
+      "zone": null,
+      "spine": null,
+      "anchor": "domain",
+      "side": "below",
+      "from": [
+        "hotel_db"
+      ]
+    },
+    {
+      "id": "telemetry",
+      "label": "Local telemetry",
+      "sub": "explains time and failures",
+      "kind": "ops",
+      "chips": [
+        "Scalars only",
+        "No prompts or messages",
+        "Stays on the machine"
+      ],
+      "zone": null,
+      "spine": null,
+      "anchor": "run",
+      "side": "below",
+      "from": [
+        "telemetry"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "guest",
+      "to": "app",
+      "label": "asks",
+      "style": "call",
+      "step": null
+    },
+    {
+      "from": "app",
+      "to": "api",
+      "label": "",
+      "style": "call",
+      "step": 1
+    },
+    {
+      "from": "api",
+      "to": "run",
+      "label": "",
+      "style": "call",
+      "step": 2
+    },
+    {
+      "from": "run",
+      "to": "agent",
+      "label": "",
+      "style": "call",
+      "step": 3
+    },
+    {
+      "from": "agent",
+      "to": "gateway",
+      "label": "",
+      "style": "call",
+      "step": 4
+    },
+    {
+      "from": "gateway",
+      "to": "domain",
+      "label": "",
+      "style": "call",
+      "step": 5
+    },
+    {
+      "from": "gateway",
+      "to": "agent",
+      "label": "typed result",
+      "style": "call",
+      "step": null
+    },
+    {
+      "from": "agent",
+      "to": "model",
+      "label": "proposals",
+      "style": "call",
+      "step": null
+    },
+    {
+      "from": "api",
+      "to": "app",
+      "label": "progress, reply",
+      "style": "async",
+      "step": null
+    },
+    {
+      "from": "manager",
+      "to": "updates",
+      "label": "commits",
+      "style": "call",
+      "step": null
+    },
+    {
+      "from": "updates",
+      "to": "run",
+      "label": "pending update",
+      "style": "async",
+      "step": null
+    },
+    {
+      "from": "domain",
+      "to": "store",
+      "label": "",
+      "style": "call",
+      "step": null
+    },
+    {
+      "from": "gateway",
+      "to": "store",
+      "label": "audit",
+      "style": "call",
+      "step": null
+    },
+    {
+      "from": "run",
+      "to": "telemetry",
+      "label": "",
+      "style": "dep",
+      "step": null
+    }
+  ]
+}

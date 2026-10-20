@@ -2,9 +2,9 @@ import { expect, test } from "@playwright/test";
 import { onDisk, open, savedWhen } from "./helpers";
 
 // The ask box and the AI panel. Their journeys (model, scope, progress, summary, retry, cancel,
-// no engine, expand) are held-out H24, H25 and H30–H33, H43; simplifying the overview (suggestion,
-// coverage failure, no engine, undo) is H43, H46–H48 and H59. What stays here is what those do not
-// observe, or need a faked engine list for, and that a new run never shows the previous report.
+// no engine, expand) are held-out H24, H25 and H30–H33; simplifying the overview has no held-out
+// scenario, since Simplify left the scope. What stays here is what those do not observe, or need a
+// faked engine list for, and that a new run never shows the previous report.
 
 test("a real engine is chosen over the test engine, and the choice is remembered", async ({ page }) => {
   await page.route("**/api/engines", (r) => r.fulfill({ json: { engines: [

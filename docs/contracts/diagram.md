@@ -287,8 +287,9 @@ the part's own `items`), a connection's step, texts, captions, view titles,
   become the part's own text (a shorter name for that channel), while kind,
   description and items edit the fact. An own text that ends up equal to the
   single fact's is cleared to null. A connection's label, style and two-way
-  flag follow the same rule with its single relation (label as a label,
-  style and two-way as facts).
+  flag follow the same rule with its single relation: outside the overview
+  its label and two-way flag become its own, while its style edits the
+  relation.
 - **Items.** A panel with null `items` shows its fact's items, and editing,
   adding, moving or removing one edits the fact. When a fact is left with no
   items, every panel that showed them through null `items`, in every channel,

@@ -76,8 +76,9 @@ test("a match off screen is brought into view; the arrow keys and Enter open a m
   await expect(page.getByTestId("search-count")).toHaveText("1 match");
   await input.press("Enter");
   await expect(page.getByTestId("node-web")).toHaveAttribute("data-match", "current");
+  // The view settles a frame or more after the match is marked current (slower runners).
+  await expect.poll(async () => off(await box(page, "web"))).toBe(false);
   const shown = await box(page, "web");
-  expect(off(shown)).toBe(false);
   await input.press("Enter"); // the only match, already on screen: nothing moves
   expect(await box(page, "web")).toEqual(shown);
 

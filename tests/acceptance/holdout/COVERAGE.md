@@ -28,7 +28,7 @@ Ids are the requirement ids of the product spec.
 | H32 | move and align just one part and warn once for a move outside selected parts |
 | H33 | record exact changes for add, rename, hold, move and remove and reject invalid scopes without edits |
 | H34 | fade detail at distance while keeping the open part lit and every shape and export unchanged |
-| H35 | reach a detail view from the views menu, the part that holds it, the breadcrumb and a link, without editing the drawing |
+| H35 | reach a detail view from the views menu, the part that holds it, the breadcrumb and a link; search lights matches and dims the rest while typing, steps with Enter and Shift+Enter (wrap, current = the one selected part, view moves only for an off-screen match), lists and opens a match in another view, ends with Escape, and never edits the drawing file |
 | H36 | pin explanations beside the canvas and keep editing controls reachable in a narrow header |
 | H38 | warn about text the image shortens and count it in the layout report beside the readability check |
 | H39 | keep keyboard focus inside sharing and call a drawing too wide to read too small, in the report and the meter alike |
@@ -71,9 +71,9 @@ Ids are the requirement ids of the product spec.
 | AI-1 | H24, H25, H30, H31, H32, H33, H44, H86 | The instruction acts on the view, the selected parts or the whole drawing through a chosen engine and model; failure, cancel, retry, undo and a concurrent session edit. Only the fixture engine runs. |
 | AI-2 | — | See *Not covered*. |
 | AI-3 – AI-5 | — | To build. |
-| NAV-1 | H20, H35 | A part opens its inside, detail views nest, a view is reachable from the menu, the breadcrumb and a link. |
+| NAV-1 | H20, H35 | A part opens its inside, detail views nest, a view is reachable from the menu, the breadcrumb and a link, and a search result opens its view. |
 | NAV-2 | — | To build. |
-| NAV-3 | — | See *Not covered*. |
+| NAV-3 | H35 | Slash and the search button open search; `data-match` and `data-dim` while typing (parts and connections), the count texts, Enter / Shift+Enter / `search-next` / `search-prev` with wrap, `data-match="current"` as the only selected part, no part resized and no view move while typing, the view moving only when the stepped-to part was not wholly on screen below the bar (measured on boxes), a match in another view listed with `data-view` and `data-node-id`, opened by click and by arrow keys plus Enter, `No component is called that`, Escape ending highlight and dimming and keeping the selection, and the file, its modification time and the undo stack untouched. Limit: the order of matches is not pinned (the sequence is only required to be consistent and cyclic); Ctrl/Cmd+K, the 50-result cap and the in-list arrow selection among several results are not exercised. |
 | NAV-4 | — | To build. |
 | PRES-1 – PRES-3 | — | To build. |
 | SHARE-1 | H15, H23, H28, H38, H63, H85, H87 | PNG and SVG at twice the size, copy, light and dark, all four sizes, no product mark, real text, the same image from preview, download, HTTP and the command. |
@@ -115,8 +115,6 @@ the new behaviour has no contract yet):
 
 - AI-2: the ask box and the AI panel are used as they are today; "one place to
   type instructions" is not asserted.
-- NAV-3: search is not exercised; the result list and the centring rule it had
-  are the parts the requirement changes.
 - LOOK-3: held items are used wherever a panel is, but "optional, one-line
   description by default" is not asserted.
 
@@ -138,6 +136,7 @@ The suite went from 63 to 33 scenarios.
   behaviour that stays were rewritten without them.
 - **Search rewritten away (H35).** The old search list and centring are what the
   new search changes; the views menu, breadcrumb and link navigation stay.
+  Since the same day H35 is rewritten for NAV-3 and proves NAV-1, NAV-3 and FILE-1.
 - **Old baselines and unused helpers removed.** The title baselines, the earlier
   suite folder, the border-case driver and the versioned helper files went with
   the scenarios they served; the functions still needed live in `helpers.ts` and

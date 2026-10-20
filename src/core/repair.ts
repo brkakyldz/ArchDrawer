@@ -54,6 +54,16 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
     warnings.push(`Shortened ${what} to ${max} characters`);
     return t.slice(0, max - 1).trimEnd() + "…";
   };
+  /** A required text the engine left empty takes `value`, with one warning. */
+  const filled = (value: string, warning: string) => { warnings.push(warning); return value; };
+  const placeOf = (raw: unknown, id: string): Place | null => {
+    if (raw === null || raw === undefined) return null;
+    const pl = obj(raw);
+    if (!Number.isInteger(pl.row) || !Number.isInteger(pl.col)) { warnings.push(`Component "${id}": its place is not a whole row and column, dropped`); return null; }
+    const row = clampPlace(pl.row as number), col = clampPlace(pl.col as number);
+    if (row !== pl.row || col !== pl.col) warnings.push(`Component "${id}": place row ${pl.row}, col ${pl.col} is beyond ±${LIMITS.place}, moved to row ${row}, col ${col}`);
+    return { row, col };
+  };
   // `from` is provenance (diagram contract, Simplification coverage): ids of the input, or provenance it
   // already carries, never invented; what a component already carried is carried forward.
   const known = new Set<string>(), carriedBy = new Map<string, string[]>();
@@ -78,13 +88,17 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
   };
   const used = new Set<string>(ctx.base.requests.map((r) => r.id));
   for (const v of ctx.base.views) for (const t of v.texts) used.add(t.id);
+  // One warning per id, whatever happened to it; surrounding whitespace alone is no change.
   const claim = (wanted: string, fallback: string, what: string): string => {
-    let id = toId(wanted);
-    if (!id || !ID_RE.test(id)) { if (wanted) warnings.push(`Replaced the invalid ${what} id "${wanted}"`); id = fallback; }
+    const clean = toId(wanted);
+    const id = clean && ID_RE.test(clean) ? clean : fallback;
     let c = id;
     for (let i = 2; used.has(c); i++) c = `${id.slice(0, 64 - String(i).length - 1)}-${i}`;
-    if (c !== id) warnings.push(`Renamed the duplicate id "${id}" to "${c}"`);
     used.add(c);
+    if (!wanted.trim()) warnings.push(`Gave the ${what} without an id the id "${c}"`);
+    else if (id !== clean) warnings.push(`Replaced the invalid ${what} id "${wanted}" with "${c}"`);
+    else if (clean !== wanted.trim()) warnings.push(`Renamed the ${what} id "${wanted}" to "${c}": ids use letters, digits, - and _`);
+    else if (c !== id) warnings.push(`Renamed the duplicate id "${id}" to "${c}"`);
     return c;
   };
 
@@ -100,9 +114,13 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
     for (const v of rawViews) {
       const id = toId(str(v.id));
       const was = ctx.base.views.find((b) => b.id === id);
-      if (id === scoped) { if (!kept.some((k) => toId(str(k.id)) === id)) kept.push(v); continue; }
+      if (id === scoped) {
+        if (!kept.some((k) => toId(str(k.id)) === id)) kept.push(v);
+        else warnings.push(`Ignored a second view "${id}"`);
+        continue;
+      }
       if (!was) { warnings.push(`Ignored the new view "${str(v.id)}": outside the view the change was asked for`); continue; }
-      if (frozen.has(id)) continue;
+      if (frozen.has(id)) { warnings.push(`Ignored a second view "${id}"`); continue; }
       if (!sameView(was, v)) warnings.push(`Ignored the changes to the view "${id}": outside the view the change was asked for`);
       frozen.set(id, was);
       kept.push(v);
@@ -123,10 +141,14 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
   const viewIds = new Map<string, string>();
   const seenViews = new Set<string>();
   rawViews.forEach((v, i) => {
-    let id = toId(str(v.id)) || `view-${i + 1}`;
-    for (let k = 2; seenViews.has(id); k++) id = `${toId(str(v.id)) || "view"}-${k}`;
+    const wanted = str(v.id), clean = toId(wanted);
+    let id = clean || `view-${i + 1}`;
+    for (let k = 2; seenViews.has(id); k++) id = `${clean || "view"}-${k}`;
     seenViews.add(id);
-    if (!viewIds.has(str(v.id))) viewIds.set(str(v.id), id);
+    if (!viewIds.has(wanted.trim())) viewIds.set(wanted.trim(), id);
+    if (!clean) warnings.push(`Gave the view without an id the id "${id}"`);
+    else if (clean !== wanted.trim()) warnings.push(`Renamed the view id "${wanted}" to "${id}": ids use letters, digits, - and _`);
+    else if (id !== clean) warnings.push(`Renamed the duplicate view id "${clean}" to "${id}"`);
   });
 
   interface Pending { view: DiagramView; placed: Set<string>; fresh: Set<string> }
@@ -145,9 +167,11 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
       for (const n of baseView.nodes) if (!open.has(n.id)) guarded.add(n.id);
     }
     let rawNodes = arr(v.nodes).map(obj);
+    const restored = new Set<Record<string, unknown>>();
     for (const id of guarded) {
       const b = basePos.get(id)!;
       const back = { ...draftNode(b), at: null } as Record<string, unknown>;
+      restored.add(back);
       const i = rawNodes.findIndex((n) => toId(str(n.id)) === id);
       if (i < 0) { warnings.push(`Kept "${b.label}": it is outside the selected parts`); rawNodes.push(back); continue; }
       const n = rawNodes[i], at = obj(n.at);
@@ -155,7 +179,17 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
       if (nodeKey(n) !== nodeKey(back) || moved) warnings.push(`Kept "${b.label}" as it was: it is outside the selected parts`);
       rawNodes[i] = back;
     }
-    rawNodes = rawNodes.slice(0, LIMITS.nodesPerView);
+    // Over the limit, components the run may not change stay; the latest of the others go.
+    if (rawNodes.length > LIMITS.nodesPerView) {
+      let room = LIMITS.nodesPerView - restored.size;
+      const dropped: string[] = [];
+      rawNodes = rawNodes.filter((n) => {
+        if (restored.has(n) || room-- > 0) return true;
+        dropped.push(str(n.id));
+        return false;
+      });
+      warnings.push(`Dropped ${dropped.length} components of view "${vid}" over the limit of ${LIMITS.nodesPerView}: ${dropped.map((d) => `"${d}"`).join(", ")}`);
+    }
 
     const idMap = new Map<string, string>();
     const moves = new Map<string, { x: number; y: number }>();
@@ -163,29 +197,35 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
     const nodes: NodeInput[] = rawNodes.map((n, i) => {
       const original = str(n.id);
       const id = claim(original, `component-${i + 1}`, "component");
-      if (!idMap.has(original)) idMap.set(original, id);
+      if (!idMap.has(original.trim())) idMap.set(original.trim(), id);
       let kind = str(n.kind) as Kind;
       if (!KINDS.includes(kind)) { warnings.push(`Component "${id}": unknown kind "${str(n.kind)}", drawn as service`); kind = "service"; }
-      let items = arr(n.items).map(str).filter((t) => t.trim()).slice(0, LIMITS.items).map((t, j) => clip(t, LIMITS.item, `item ${j + 1} of "${id}"`));
+      const said = arr(n.items).map(str);
+      let items = said.filter((t) => t.trim());
       let form = str(n.form) as Form;
       if (!FORMS.includes(form)) { warnings.push(`Component "${id}": unknown form "${str(n.form)}", drawn as a card`); form = "card"; }
-      if (form === "panel" && !items.length) { warnings.push(`Component "${id}": a panel without items, drawn as a card`); form = "card"; }
-      if (form !== "panel" && items.length) { warnings.push(`Component "${id}": items dropped, only a panel shows them`); items = []; }
+      if (form === "panel") {
+        // Only a panel's items are drawn, so only a panel's items are repaired.
+        if (items.length && items.length < said.length) warnings.push(`Component "${id}": dropped ${said.length - items.length} empty items`);
+        if (items.length > LIMITS.items) { warnings.push(`Kept the first ${LIMITS.items} items of "${id}"`); items.length = LIMITS.items; }
+        items = items.map((t, j) => clip(t, LIMITS.item, `item ${j + 1} of "${id}"`));
+        if (!items.length) { warnings.push(`Component "${id}": a panel without items, drawn as a card`); form = "card"; }
+      } else if (said.length) { warnings.push(`Component "${id}": items dropped, only a panel shows them`); items = []; }
       let icon: IconName | null = n.icon === null || n.icon === undefined || n.icon === "" ? null : (str(n.icon) as IconName);
       if (icon !== null && !ICONS.includes(icon)) { warnings.push(`Component "${id}": unknown icon "${str(n.icon)}", using the kind's`); icon = null; }
       const files: string[] = [];
       for (const f of arr(n.files).map(str)) {
+        // Spelling a path differently (`\`, a leading `./`, surrounding spaces) or listing it twice is no change.
         const p = f.trim().replace(/\\/g, "/").replace(/^\.\//, "");
-        if (!p) continue;
+        if (!p) { warnings.push(`Removed an empty file path from "${id}"`); continue; }
         if (!isRepoRelative(p)) { warnings.push(`Removed the file "${f}" from "${id}": outside the repository`); continue; }
         if (ctx.fileExists && !ctx.fileExists(p) && !guarded.has(id)) { warnings.push(`Removed the file "${p}" from "${id}": not found in the repository`); continue; }
         if (!files.includes(p)) files.push(p);
       }
       if (files.length > LIMITS.files) { warnings.push(`Kept the first ${LIMITS.files} files of "${id}"`); files.length = LIMITS.files; }
-      const pl = obj(n.place);
-      const place: Place | null = Number.isInteger(pl.row) && Number.isInteger(pl.col) ? { row: clampPlace(pl.row as number), col: clampPlace(pl.col as number) } : null;
-      const label = clip(str(n.label).trim() || id, LIMITS.label, `the label of "${id}"`);
-      const description = clip(str(n.description).trim() || "No description yet.", LIMITS.description, `the description of "${id}"`);
+      const place = placeOf(n.place, id);
+      const label = clip(str(n.label).trim() || filled(id, `Component "${id}": no label, labelled with its id`), LIMITS.label, `the label of "${id}"`);
+      const description = clip(str(n.description).trim() || filled("No description yet.", `Component "${id}": no description, set to "No description yet."`), LIMITS.description, `the description of "${id}"`);
       const kept = basePos.get(id);
       const lane = laneOf(n.lane, id);
       const at = obj(n.at);
@@ -205,13 +245,13 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
     const byId = new Map(nodes.map((n) => [n.id, n]));
     for (const n of nodes) {
       if (n.parent !== null) {
-        const mapped = guarded.has(n.id) ? n.parent : idMap.get(n.parent);
+        const mapped = guarded.has(n.id) ? n.parent : idMap.get(n.parent.trim());
         const par = mapped ? byId.get(mapped) : undefined;
         if (!par || par.form !== "group" || par.id === n.id) { warnings.push(`Component "${n.id}": parent "${n.parent}" is not a group here, moved to top level`); n.parent = null; }
         else n.parent = par.id;
       }
       if (n.detail !== null) {
-        const mapped = viewIds.get(n.detail);
+        const mapped = viewIds.get(n.detail.trim());
         if (!mapped || mapped === vid) { warnings.push(`Component "${n.id}": inside view "${n.detail}" does not exist, link removed`); n.detail = null; }
         else n.detail = mapped;
       }
@@ -236,7 +276,7 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
       else orders.add(k);
     }
     for (const n of nodes) if (n.lane && "anchor" in n.lane) {
-      const target = byId.get(idMap.get(n.lane.anchor) ?? n.lane.anchor);
+      const target = byId.get(idMap.get(n.lane.anchor.trim()) ?? n.lane.anchor);
       let inside = false;
       for (let p: NodeInput | undefined = target; p; p = p.parent ? byId.get(p.parent) : undefined) if (p.id === n.id) { inside = true; break; }
       if (!target || !target.lane || !("spine" in target.lane) || inside) {
@@ -247,7 +287,7 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
 
     // Positions: `relayout` drops a position so the layout places it again; `at` moves.
     for (const r of arr(v.relayout).map(str)) {
-      const id = idMap.get(r);
+      const id = idMap.get(r.trim());
       if (!id || !byId.has(id)) { warnings.push(`Ignored "${r}" in relayout: no such component`); continue; }
       if (guarded.has(id)) { warnings.push(`Ignored "${byId.get(id)!.label}" in relayout: it is outside the selected parts`); continue; }
       const n = byId.get(id)!;
@@ -261,7 +301,7 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
       // A group moves with everything inside it, by a whole number of grid steps; members with an
       // `at` of their own go to theirs.
       const box = baseRects.get(id);
-      if (!box) continue;
+      if (!box) { warnings.push(`Ignored the position of the new group "${id}": a group takes its place from what it holds`); continue; }
       const raw = groupAt.get(id)!;
       const dx = snap(raw.x - box.x), dy = snap(raw.y - box.y);
       for (const k of descendantsOf(nodes, id)) {
@@ -276,7 +316,7 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
     const pairs = new Map<string, DiagramEdge>();
     const fenced = (a: string, b: string) => guarded.has(a) && guarded.has(b);
     for (const e of arr(v.edges).map(obj)) {
-      const from = idMap.get(str(e.from)), to = idMap.get(str(e.to));
+      const from = idMap.get(str(e.from).trim()), to = idMap.get(str(e.to).trim());
       if (!from || !to) { warnings.push(`Dropped the connection ${str(e.from)} → ${str(e.to)}: "${!from ? str(e.from) : str(e.to)}" does not exist`); continue; }
       if (from === to) { warnings.push(`Dropped the connection ${from} → ${to}: a component cannot connect to itself`); continue; }
       if (fenced(from, to)) continue; // between two guarded components: the stored connections come back below
@@ -285,7 +325,9 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
       if (back) { back.both = true; warnings.push(`Merged the connection ${from} → ${to} into ${to} → ${from} as two-way`); continue; }
       let style = str(e.style) as EdgeStyle;
       if (!STYLES.includes(style)) { warnings.push(`Connection ${from} → ${to}: style "${str(e.style)}" drawn as call`); style = "call"; }
-      const step = Number.isInteger(e.step) && (e.step as number) > 0 ? (e.step as number) : null;
+      let step: number | null = null;
+      if (Number.isInteger(e.step) && (e.step as number) > 0) step = e.step as number;
+      else if (e.step !== null && e.step !== undefined) warnings.push(`Connection ${from} → ${to}: step ${JSON.stringify(e.step)} is not a positive whole number, dropped`);
       const edge: DiagramEdge = { id: "", from, to, label: clip(str(e.label), LIMITS.edgeLabel, `the label of ${from} → ${to}`), style, both: e.both === true, step };
       pairs.set(`${from}>${to}`, edge);
       edges.push(edge);
@@ -293,7 +335,7 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
     if (guarded.size && baseView) {
       const said = new Map<string, Record<string, unknown>>();
       for (const e of arr(v.edges).map(obj)) {
-        const from = idMap.get(str(e.from)), to = idMap.get(str(e.to));
+        const from = idMap.get(str(e.from).trim()), to = idMap.get(str(e.to).trim());
         if (from && to && fenced(from, to)) said.set(`${from}>${to}`, e);
       }
       for (const b of baseView.edges.filter((x) => fenced(x.from, x.to))) {
@@ -308,13 +350,17 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
     const texts: DiagramText[] = (baseView?.texts ?? []).map((t) => ({ ...t }));
     const caption = obj(v.caption);
     const keepCaption = guarded.size > 0 && !!baseView;
+    if (keepCaption && (!sameText(v.title, baseView!.title) || !sameText(caption.title, baseView!.caption.title) || !sameText(caption.lede, baseView!.caption.lede))) {
+      warnings.push(`Kept the title and caption of view "${vid}" as they were: outside the selected parts`);
+    }
+    const titled = (said: unknown, fallback: string, what: string) => str(said).trim() || filled(fallback, `View "${vid}": no ${what}, set to "${fallback}"`);
     const view: DiagramView = {
       id: vid,
       // The server owns a post's association: a refine answer keeps it for a surviving view.
       postOf: baseView?.postOf ?? null,
-      title: keepCaption ? baseView!.title : clip(str(v.title).trim() || baseView?.title || "View", LIMITS.viewTitle, `the title of view "${vid}"`),
+      title: keepCaption ? baseView!.title : clip(titled(v.title, baseView?.title || "View", "title"), LIMITS.viewTitle, `the title of view "${vid}"`),
       caption: keepCaption ? { ...baseView!.caption } : {
-        title: clip(str(caption.title).trim() || baseView?.caption.title || ctx.base.title, LIMITS.captionTitle, `the caption of view "${vid}"`),
+        title: clip(titled(caption.title, baseView?.caption.title || ctx.base.title, "caption title"), LIMITS.captionTitle, `the caption of view "${vid}"`),
         lede: clip(str(caption.lede), LIMITS.lede, `the description of view "${vid}"`),
       },
       nodes: nodes as unknown as DiagramNode[],
@@ -344,9 +390,14 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
     clearOverlaps(out, b.placed, b.fresh, warnings);
     return out;
   });
+  let title: string;
+  if (scope.kind === "parts") {
+    if (!sameText(d.title, ctx.base.title)) warnings.push(`Kept the drawing's title "${ctx.base.title}": outside the selected parts`);
+    title = ctx.base.title;
+  } else title = clip(str(d.title).trim() || filled(ctx.base.title, `The drawing has no title, kept "${ctx.base.title}"`), LIMITS.title, "the title");
   return {
     ...ctx.base,
-    title: scope.kind === "parts" ? ctx.base.title : clip(str(d.title).trim() || ctx.base.title, LIMITS.title, "the title"),
+    title,
     engine: ctx.engine,
     updatedAt: ctx.now,
     views: laid,
@@ -354,6 +405,8 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
   };
 }
 
+/** Equal but for whitespace, which normalisation changes silently. */
+const sameText = (said: unknown, stored: string) => str(said).replace(/\s+/g, " ").trim() === stored.replace(/\s+/g, " ").trim();
 const clampPlace = (v: number) => Math.max(-LIMITS.place, Math.min(LIMITS.place, v));
 
 /** Ids of everything inside `id` (children, their children …). */

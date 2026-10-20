@@ -148,7 +148,7 @@ describe("post runs", () => {
     expect(post.nodes.filter((n) => n.form === "group").map((n) => n.label)).toEqual(["App runtime"]);
     expect(post.edges.filter((e) => e.both)).toHaveLength(1);
     expect(post.edges.filter((e) => e.step !== null).every((e) => e.label === "")).toBe(true);
-    expect(after.warnings.length - before.warnings.length).toBe(1);
+    expect(after.warnings.slice(before.warnings.length)).toEqual(["Joined result → approval and approval → result into one two-way connection"]);
     // part i stands for the source's component i
     expect(post.nodes.find((n) => n.label === "Request")!.from).toEqual([before.views[0].nodes[0].id]);
     expect(done.layoutReport).toMatchObject({ view: "overview-linkedin", format: "feed", overLimitText: [], counts: { parts: 6, zones: 1, connections: 5 } });

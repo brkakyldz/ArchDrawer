@@ -112,8 +112,9 @@ adds its own lines (`Checking the drawing`, `Saved`, …).
 - `[fixture:invalid]` — refine and simplify: the answer also holds a copy of
   the view's first component (label `Duplicate`) and a connection from it to
   `ghost`; repair renames the copy `<id>-2` and drops the connection, one
-  warning each. Post: the intent also has a connection to `ghost`, so the run
-  fails without saving.
+  warning each, and the copy, which names the fact its original shows, keeps
+  its text as its own and shows no fact (one more warning). Post: the intent
+  also has a connection to `ghost`, so the run fails without saving.
 - `[fixture:lose]` — simplify: the last overview component and its
   connections are left out of the detail view, so coverage fails naming it
   and nothing is saved.

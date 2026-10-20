@@ -1,14 +1,15 @@
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";
+import { applyChannel } from "../core/channels";
 import { applyDrawing } from "../core/drawing";
-import { channelOfView, type ChannelId, type Document3 } from "../core/file3";
+import { channelOfView, validateDocument3, type ChannelId, type Document3 } from "../core/file3";
 import { isPostView, validateDocument, type DiagramDocument } from "../core/model";
 import { startSwitches, type FormatId } from "../core/export/share";
 import { layoutReport, type LayoutReport } from "../core/report";
 import { intentToDocument, parseIntent, postSource, STORY_SCHEMA, StoryError } from "../core/intent";
 import { postPrompt } from "./engines/prompt";
 import { diffDocuments, type Changes } from "../core/diff";
-import { CoverageError, keepUnrelatedViews, missingComponents, SIMPLIFY_INSTRUCTION } from "../core/simplify";
+import { CoverageError, keepUnrelatedViews, missingFacts, SIMPLIFY_INSTRUCTION } from "../core/simplify";
 import { answerToDocument, documentToDraft, EmptyDiagramError, type RunScope } from "../core/repair";
 import { repoFileChecker } from "./files";
 import { nowIso, type Store } from "./store";
@@ -58,8 +59,14 @@ export interface StartRun {
   view: string;
   /** What the run may change; default the whole document. */
   scope?: RunScope;
-  /** The drawing to update in place, as it was when the run started, as one view list (`joinDrawing`). */
+  /**
+   * The drawing as the engine sees it, as it was when the run started: the run's channel
+   * (`joinChannel`, each part's facts as its `from`) for refine and simplify; the overview and the
+   * post as one view list (`joinDrawing`) for a post until #30.
+   */
   base: DiagramDocument;
+  /** The channel the run changes; default the overview. */
+  channel?: ChannelId;
   /** The same drawing as stored. */
   stored: Document3;
   /** The format the result's layout report is measured in; default README (a post: the feed). */
@@ -186,19 +193,25 @@ export class RunManager {
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the drawing");
     let doc = answerToDocument(answer, { base: req.base, now: nowIso(), engine: { id: req.engine.id, model: req.model }, fileExists: repoFileChecker(root), scope, view: req.view });
-    if (simplify) {
-      doc = keepUnrelatedViews(req.base, doc).doc;
-      // After repair and before the save: a lost component fails the run, nothing is saved.
-      const missing = missingComponents(req.base, doc);
-      if (missing.length) throw new CoverageError(missing);
-    }
+    if (simplify) doc = keepUnrelatedViews(req.base, doc).doc;
     // Never replace a readable drawing with one the store would refuse to read back.
-    const checked = validateDocument(doc);
+    // The view shape is checked on its own: a LinkedIn view's `postOf` (its post style) names no view of its channel.
+    const checked = validateDocument({ ...doc, views: doc.views.map((v) => ({ ...v, postOf: null })) });
     if (!checked.ok) throw new EngineError(`The engine's drawing could not be repaired into a valid document: ${checked.error}`);
     if (signal.aborted) throw new EngineError("Cancelled");
-    // Content goes to the facts and appearance to its channel (diagram contract, Writing the answer back).
-    const split = applyDrawing(req.stored, doc, { keepFacts: simplify });
+    // The answer is a new state of the run's channel: content goes to the facts, appearance stays in the
+    // channel, and the other channels are marked (diagram contract, Writing the answer back). Simplify
+    // changes the overview's appearance only.
+    const channel = req.channel ?? "overview";
+    const split = applyChannel(req.stored, channel, { views: doc.views, title: doc.title, engine: doc.engine, warnings: doc.warnings }, { keepFacts: simplify });
     if (!split.ok) throw new EngineError(split.error);
+    if (simplify) {
+      // After repair and before the save: a fact no part shows fails the run, nothing is saved.
+      const missing = missingFacts(req.stored, split.doc);
+      if (missing.length) throw new CoverageError(missing);
+    }
+    const stored = validateDocument3(split.doc);
+    if (!stored.ok) throw new EngineError(`The engine's drawing could not be repaired into a valid document: ${stored.error}`);
     // Never overwrite a drawing that changed after the run started (the editor, a session, the CLI).
     const saved = this.store.put(req.base.id, split.doc, { base: req.base.updatedAt, announce: true });
     if (!saved) throw new EngineError("The drawing was removed while the instruction ran.");
@@ -209,7 +222,7 @@ export class RunManager {
     const format = req.format ?? "readme";
     const view = doc.views.find((v) => v.id === req.view) ?? doc.views[0];
     const report = layoutReport(doc, view.id, { ...startSwitches(format, isPostView(view)), format, theme: doc.theme });
-    return { diagramId: req.base.id, changes: diffDocuments(req.base, doc, scope.kind === "all" ? undefined : [req.view]), layoutReport: report, channel: channelOfView(split.doc, req.view) ?? "overview", view: req.view };
+    return { diagramId: req.base.id, changes: diffDocuments(req.base, doc, scope.kind === "all" ? undefined : [req.view]), layoutReport: report, channel, view: req.view };
   }
 
   /** A post run: the engine designs the story, code converts, places and measures it. */

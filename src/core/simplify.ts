@@ -1,4 +1,5 @@
 import type { DiagramDocument, DiagramView } from "./model";
+import type { Document3 } from "./file3";
 
 /** The instruction a simplify run always carries (api contract Run kinds; ui contract `simplify-overview`). */
 export const SIMPLIFY_INSTRUCTION = "Simplify the overview: keep every component in a detail view or a merged part's from";
@@ -61,8 +62,31 @@ export function missingComponents(before: Pick<DiagramDocument, "views">, after:
 
 export class CoverageError extends Error {
   constructor(readonly missing: string[]) {
-    super(`The simplified drawing loses ${missing.length === 1 ? "a component" : `${missing.length} components`}: ${missing.join(", ")}. Nothing was changed.`);
+    super(`The simplified drawing loses ${missing.length} component${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}. Nothing was changed.`);
   }
+}
+
+/**
+ * Simplify coverage on facts (diagram contract, Simplify coverage): the component facts no part
+ * shows any more in the overview, in a view reached from it through `detail`, or in a view left
+ * exactly as it was. In file order.
+ */
+export function missingFacts(before: Document3, after: Document3): string[] {
+  const views = after.channels.overview.views;
+  const reach = new Set<string>();
+  const walk = (id: string) => {
+    if (reach.has(id)) return;
+    reach.add(id);
+    for (const p of views.find((v) => v.id === id)?.nodes ?? []) if (p.detail) walk(p.detail);
+  };
+  if (views[0]) walk(views[0].id);
+  const shown = new Set<string>();
+  for (const v of views) {
+    const kept = before.channels.overview.views.find((b) => b.id === v.id);
+    if (!reach.has(v.id) && !(kept && JSON.stringify(kept) === JSON.stringify(v))) continue;
+    for (const p of v.nodes) for (const f of p.facts) shown.add(f);
+  }
+  return before.facts.components.map((c) => c.id).filter((id) => !shown.has(id));
 }
 
 /** The overview's one-line suggestion (ui contract `overview-suggestion`), e.g. "This overview has 32 connections — simplify it?". */

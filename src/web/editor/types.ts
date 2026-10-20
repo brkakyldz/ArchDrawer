@@ -1,5 +1,6 @@
 import type { DiagramDocument, DiagramView } from "../../core/model";
 import type { Palette } from "../../core/theme";
+import type { Found } from "./Find";
 import type { Viewport } from "./viewport";
 
 export type Tool = "select" | "pan" | "component" | "connect" | "text";
@@ -51,4 +52,6 @@ export interface Ctl {
   /** The callout is a side panel (ui contract, callout-pin). */
   pinned: boolean;
   setPinned: (on: boolean) => void;
+  /** While searching with text: the matches on this view, lit, and the one stepped to. */
+  found: Found | null;
 }

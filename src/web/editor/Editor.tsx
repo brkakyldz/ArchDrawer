@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { layoutRects, routeEdges, viewBounds } from "../../core/geometry";
-import { isPostView, LIMITS, overviewMiss, TEXT_SIZE, viewById, type DiagramDocument, type Form, type Kind } from "../../core/model";
+import { isPostView, LIMITS, overviewMiss, TEXT_SIZE, viewById, type DiagramDocument, type DiagramView, type Form, type Kind } from "../../core/model";
 import { overviewSuggestion, SIMPLIFY_INSTRUCTION } from "../../core/simplify";
 import { PALETTES } from "../../core/theme";
 import { summarize, touched, type Changes } from "../../core/diff";
@@ -10,7 +10,7 @@ import { Icon } from "../ui/Icon";
 import { Logo } from "../ui/Logo";
 import { AiPanel, type ScopeChoice } from "./AiPanel";
 import { AskBox } from "./AskBox";
-import { Search, type Hit } from "./Find";
+import { Search, type Found, type Hit } from "./Find";
 import { ViewsMenu } from "./Views";
 import { LoadError } from "./LoadError";
 import { Callout } from "./Callout";
@@ -23,7 +23,7 @@ import { NOTHING } from "./types";
 import { chooseEngine, ENGINE_KEY, engineName, modelKey, rememberedModel, useRunner, type RunRequest } from "./runner";
 import { useAutosave } from "./useAutosave";
 import { useDocHistory } from "./useDocHistory";
-import { fitView, zoomAt, zoomPercent, type Viewport } from "./viewport";
+import { FIT, fitView, reveal, zoomAt, zoomPercent, type Viewport } from "./viewport";
 
 const TOOLS: { id: Tool; icon: string; label: string; key: string }[] = [
   { id: "select", icon: "select", label: "Select", key: "V" },
@@ -85,6 +85,10 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
   const [ai, setAi] = useState<{ text: string; scope: ScopeChoice; at: number } | null>(null);
   const [changed, setChanged] = useState<Set<string>>(new Set());
   const [searching, setSearching] = useState(false);
+  const [searchRound, setSearchRound] = useState(0);
+  const [found, setFound] = useState<Found | null>(null);
+  /** Opens search, or focuses its input again when it is already open. */
+  const openSearch = () => { setSearching(true); setSearchRound((n) => n + 1); };
   const [pinned, setPinnedState] = useState(() => { try { return localStorage.getItem(PIN_KEY) === "1"; } catch { return false; } });
   const setPinned = (on: boolean) => { try { if (on) localStorage.setItem(PIN_KEY, "1"); else localStorage.removeItem(PIN_KEY); } catch { /* private mode */ } setPinnedState(on); };
   const narrow = useNarrow();
@@ -191,14 +195,23 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
 
   /* ---------- views and viewport ---------- */
   const view = doc ? viewById(doc, vid ?? "") ?? doc.views[0] : null;
-  const fitTo = useCallback((v = view) => {
-    if (!v) return;
+  const fitOf = useCallback((v: DiagramView) => {
     const rects = layoutRects(v);
     const routes = routeEdges(v, rects);
     const b = viewBounds(v, rects, routes, true, doc?.showSteps);
     const s = stageEl.current?.getBoundingClientRect();
-    setVp(fitView(b.w > 0 ? b : { x: 0, y: 0, w: 400, h: 300 }, s?.width ?? stage.w, s?.height ?? stage.h));
-  }, [view, stage, doc?.showSteps]);
+    return fitView(b.w > 0 ? b : { x: 0, y: 0, w: 400, h: 300 }, s?.width ?? stage.w, s?.height ?? stage.h);
+  }, [stage, doc?.showSteps]);
+  const fitTo = useCallback((v = view) => { if (v) setVp(fitOf(v)); }, [view, fitOf]);
+  /** The viewport that shows component `id` of view `v`: `from` itself unless the part is off screen or under the search panel. */
+  const revealIn = (v: DiagramView, id: string, from: Viewport) => {
+    const r = layoutRects(v).get(id);
+    const st = stageEl.current?.getBoundingClientRect();
+    if (!r || !st) return from;
+    const panel = stageEl.current?.querySelector("[data-testid=search]")?.getBoundingClientRect();
+    const cover = panel ? { x: panel.left - st.left, y: panel.top - st.top, w: panel.width, h: panel.height } : undefined;
+    return reveal(from, r, st.width, st.height, { top: FIT.top, side: FIT.side, bottom: FIT.bottom }, cover);
+  };
 
   // Fitted before the first paint: the toolbar never shows a provisional 100 % (and `full`) the fit then
   // takes back a frame later.
@@ -225,11 +238,11 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
     return () => ro.disconnect();
   }, [doc !== null]);
 
-  /** Go to a view; with `focus`, select that component, open its callout and centre it at 100 % or more. */
+  /** Go to a view, fitted; with `focus`, select that component and move the view further only if it is still off screen. */
   const goView = useCallback((v: string, next?: DiagramDocument, focus?: string) => {
     const d = next ?? docRef.current;
     if (!d || !viewById(d, v)) return;
-    setVid(v); setSel(focus ? { ...NOTHING, nodes: [focus] } : NOTHING); setCallout(focus ?? null); setEditing(null); setPicker(null);
+    setVid(v); setSel(focus ? { ...NOTHING, nodes: [focus] } : NOTHING); setCallout(null); setEditing(null); setPicker(null);
     const url = v === d.views[0].id ? `/d/${d.id}` : `/d/${d.id}?view=${encodeURIComponent(v)}`;
     history.replaceState({}, "", url);
     pendingFit.current = { view: v, focus };
@@ -243,10 +256,8 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
     if (!p || !doc || vid !== p.view || !viewById(doc, p.view)) return;
     pendingFit.current = null;
     const target = viewOf(doc, p.view);
-    const r = p.focus ? layoutRects(target).get(p.focus) : null;
-    const s = stageEl.current?.getBoundingClientRect();
-    if (!r || !s) { fitTo(target); return; }
-    setVp((old) => { const k = Math.max(1, old.k); return { k, x: s.width / 2 - (r.x + r.w / 2) * k, y: s.height / 2 - (r.y + r.h / 2) * k }; });
+    const fitted = fitOf(target);
+    setVp(p.focus ? revealIn(target, p.focus, fitted) : fitted);
   });
 
   // A view removed by undo or a run: fall back to the first.
@@ -268,7 +279,7 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
   const ctl: Ctl | null = doc && view ? {
     doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: hist.checkpoint,
     sel, setSel, callout, setCallout, tool, setTool, editing, setEditing, textSize, picker, setPicker,
-    toast, goView, changed, pinned, setPinned,
+    toast, goView, changed, pinned, setPinned, found,
     changePart: (nid) => { setSel({ ...NOTHING, nodes: [nid] }); openAi("", "selection"); },
   } : null;
 
@@ -277,6 +288,8 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
   ctlRef.current = ctl;
   const menuOpenRef = useRef(menuOpen);
   menuOpenRef.current = menuOpen;
+  const searchingRef = useRef(searching);
+  searchingRef.current = searching;
   // The header menu closes on a click outside it.
   useEffect(() => {
     if (!menuOpen) return;
@@ -299,10 +312,11 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
         if (menuOpenRef.current) { setMenuOpen(false); return; }
         if (c.picker) { c.setPicker(null); return; }
         if (typing(e.target)) return;
+        if (searchingRef.current) { setSearching(false); return; }
         c.setSel(NOTHING); c.setCallout(null); c.setTool("select");
         return;
       }
-      if (!typing(e.target) && !sharing && (e.key === "/" || (mod && e.key.toLowerCase() === "k"))) { e.preventDefault(); setSearching(true); return; }
+      if (!typing(e.target) && !sharing && (e.key === "/" || (mod && e.key.toLowerCase() === "k"))) { e.preventDefault(); openSearch(); return; }
       if (typing(e.target) || mod || e.altKey || sharing) return;
       const t = TOOLS.find((x) => x.key.toLowerCase() === e.key.toLowerCase());
       if (t) { c.setTool(t.id); c.setPicker(null); return; }
@@ -453,7 +467,9 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
   );
   const docked = pinned && callout ? <Callout key={`d-${callout}`} ctl={ctl} id={callout} docked /> : null;
   const side = !!docked || !!(ai && engines);
-  const pick = (h: Hit) => { setSearching(false); goView(h.view, undefined, h.id); };
+  // Stepping selects the match and moves the view only when the match is off screen (ui contract, search).
+  const step = (id: string) => { setSel({ ...NOTHING, nodes: [id] }); setCallout(null); setEditing(null); setVp((v) => revealIn(view, id, v)); };
+  const openHit = (h: Hit) => goView(h.view, undefined, h.id);
 
   return (
     <div className={`app${side ? " with-side" : ""}`} data-testid="editor" data-theme={doc.theme} data-view={view.id}>
@@ -518,7 +534,7 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
         )}
         <div className="overlay">
           {callout && !editing && !pinned && <Callout key={callout} ctl={ctl} id={callout} />}
-          {searching && <Search doc={doc} onPick={pick} onClose={() => setSearching(false)} />}
+          {searching && <Search doc={doc} view={view.id} focusRound={searchRound} onFound={setFound} onStep={step} onOpen={openHit} onClose={() => setSearching(false)} />}
           {sel1 && <EdgeCallout key={sel1} ctl={ctl} id={sel1} />}
           {text1 && <TextToolbar ctl={ctl} id={text1} />}
           {picker && <Picker ctl={ctl} onAdd={addFromPicker} />}

@@ -2,7 +2,8 @@
 
 Author history: the suite was first written by Codex as an independent acceptance
 author, then revised by Claude in separate contexts, and on 2026-10-20 trimmed and
-re-mapped to the current requirements by Claude Sonnet 5.5 (`claude-sonnet-5-5`).
+re-mapped to the current requirements by Claude Sonnet 5.5 (`claude-sonnet-5-5`);
+on 2026-10-20 H35 was rewritten for NAV-3 by Claude Sonnet 5.5 (`claude-sonnet-5-5`).
 
 The suite holds 33 Playwright acceptance journeys, written from the product
 contracts and never from product code. Each title reads

@@ -6,7 +6,7 @@ export interface Viewport { x: number; y: number; k: number }
 export const MIN_ZOOM = 0.15;
 export const MAX_ZOOM = 3;
 /** Fit margins (DESIGN.md Layout): the ask box never covers the drawing. */
-const FIT = { top: 34, side: 56, bottom: 96, maxK: 1.15 };
+export const FIT = { top: 34, side: 56, bottom: 96, maxK: 1.15 };
 
 export const clampZoom = (k: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, k));
 /** The zoom as the toolbar shows it, in whole percent. */
@@ -27,7 +27,22 @@ export function zoomAt(v: Viewport, factor: number, at: { x: number; y: number }
   return { k, x: at.x - (at.x - v.x) * f, y: at.y - (at.y - v.y) * f };
 }
 
-export const toWorld = (v: Viewport, p: { x: number; y: number }) => ({ x: (p.x - v.x) / v.k, y: (p.y - v.y) / v.k });
+/**
+ * The viewport that shows the world rect `r` on a stage of `w` × `h`: unchanged (the same object)
+ * when `r` is already wholly on the stage and clear of `cover` (a panel over the stage, in stage
+ * pixels), otherwise moved at the same zoom so that `r` is centred in the stage less `inset`,
+ * below `cover`.
+ */
+export function reveal(v: Viewport, r: Rect, w: number, h: number, inset: { top: number; side: number; bottom: number }, cover?: Rect): Viewport {
+  const s = rectToScreen(v, r);
+  const under = !!cover && s.x < cover.x + cover.w && s.x + s.w > cover.x && s.y < cover.y + cover.h && s.y + s.h > cover.y;
+  if (!under && s.x >= 0 && s.x + s.w <= w && s.y >= 0 && s.y + s.h <= h) return v;
+  const left = inset.side, right = w - inset.side, bottom = h - inset.bottom;
+  const top = Math.max(inset.top, cover ? cover.y + cover.h + 16 : 0);
+  return { k: v.k, x: (left + right) / 2 - (r.x + r.w / 2) * v.k, y: (top + Math.max(top, bottom)) / 2 - (r.y + r.h / 2) * v.k };
+}
+
+export const toWorld =(v: Viewport, p: { x: number; y: number }) => ({ x: (p.x - v.x) / v.k, y: (p.y - v.y) / v.k });
 export const toScreen = (v: Viewport, p: { x: number; y: number }) => ({ x: p.x * v.k + v.x, y: p.y * v.k + v.y });
 export const rectToScreen = (v: Viewport, r: Rect): Rect => ({ x: r.x * v.k + v.x, y: r.y * v.k + v.y, w: r.w * v.k, h: r.h * v.k });
 

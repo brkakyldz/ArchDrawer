@@ -1,6 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { validateDocument, type DiagramDocument } from "../core/model";
+import { validateDocument3 } from "../core/file3";
+import type { DiagramDocument } from "../core/model";
+import { joinDrawing } from "../core/drawing";
 import { FixtureEngine } from "./engines/fixture";
 import { makeApp, makeFolder, shopRepo } from "./testkit";
 
@@ -12,13 +14,14 @@ async function setup(stepMs = 1) {
     const r = await t.req("/api/runs", { method: "POST", json: { diagramId: id, view: "overview", instruction, engine: "fixture", model: null, ...extra } });
     return { status: r.status, body: (await r.json()) as { runId?: string; error?: string } };
   };
-  const doc = () => JSON.parse(readFileSync(file, "utf8")) as DiagramDocument;
-  return { ...t, file, id, run, doc };
+  const doc = (): DiagramDocument => joinDrawing(JSON.parse(readFileSync(file, "utf8")));
+  const stored = () => JSON.parse(readFileSync(file, "utf8"));
+  return { ...t, file, id, run, doc, stored };
 }
 
 describe("instruction-box runs", () => {
   it("adds a component through the same pipeline, keeping positions, and reports progress", async () => {
-    const { run, runs, doc, id } = await setup();
+    const { run, runs, doc, stored, id } = await setup();
     const before = doc();
     const { status, body } = await run("add Cache component");
     expect(status).toBe(202);
@@ -26,7 +29,7 @@ describe("instruction-box runs", () => {
     expect(done).toMatchObject({ status: "succeeded", diagramId: id, error: null });
     expect(done!.progress).toEqual(["Reading the drawing", "Reading the code", "Updating the drawing", "Checking the drawing", "Saved"]);
     const after = doc();
-    expect(validateDocument(after).ok).toBe(true);
+    expect(validateDocument3(stored()).ok).toBe(true);
     const cache = after.views[0].nodes.find((n) => n.id === "cache")!;
     expect(cache).toMatchObject({ label: "Cache", kind: "service", form: "card", description: "Added by the fixture engine." });
     expect(after.views[0].edges).toContainEqual(expect.objectContaining({ from: "web", to: "cache", style: "call", both: false, step: null, label: "" }));
@@ -80,7 +83,7 @@ describe("instruction-box runs", () => {
     writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), title: "Edited meanwhile" }, null, 2));
     const done = await runs.wait(body.runId!);
     expect(done).toMatchObject({ status: "failed", error: "The drawing changed while the instruction ran." });
-    const after = JSON.parse(readFileSync(file, "utf8"));
+    const after = joinDrawing(JSON.parse(readFileSync(file, "utf8")));
     expect(after.title).toBe("Edited meanwhile");
     expect(after.views[0].nodes.some((n: { id: string }) => n.id === "cache")).toBe(false);
   });
@@ -135,26 +138,26 @@ describe("instruction-box runs", () => {
     const t = makeApp();
     const { root, file } = shopRepo({ "src/api.ts": "// api\n" });
     const doc = t.store.register(file);
-    const withApi = { ...doc, views: doc.views.map((v, i) => (i ? v : { ...v, nodes: v.nodes.map((n) => (n.id === "api" ? { ...n, files: ["src/api.ts"] } : n)) })) };
+    const withApi = { ...doc, facts: { ...doc.facts, components: doc.facts.components.map((c) => (c.id === "api" ? { ...c, files: ["src/api.ts"] } : c)) } };
     t.store.put(doc.id, withApi);
     const cwds: string[] = [];
     const engine = new FixtureEngine(1);
     const run = engine.run.bind(engine);
     engine.run = (req) => { cwds.push(req.cwd); return run(req); };
     // A base naming another folder, where src/api.ts does not exist.
-    const base = { ...t.store.get(doc.id)!, source: { kind: "local" as const, path: makeFolder({}) } };
-    const done = await t.runs.wait(t.runs.start({ engine, model: null, instruction: "add Cache component", view: "overview", base }));
+    const stored = { ...t.store.get(doc.id)!, source: { kind: "local" as const, path: makeFolder({}) } };
+    const done = await t.runs.wait(t.runs.start({ engine, model: null, instruction: "add Cache component", view: "overview", base: joinDrawing(stored), stored }));
     expect(done).toMatchObject({ status: "succeeded" });
     expect(cwds).toEqual([root]);
     const after = t.store.get(doc.id)!;
-    expect(after.views[0].nodes.find((n) => n.id === "api")!.files).toEqual(["src/api.ts"]);
+    expect(after.facts.components.find((c) => c.id === "api")!.files).toEqual(["src/api.ts"]);
     expect(after.warnings).toEqual([]);
   });
 });
 
 describe("post runs", () => {
   it("designs the view's post from the canned intent: postOf, one warning for the reverse pair, the report of the saved view", async () => {
-    const { run, runs, doc } = await setup();
+    const { run, runs, doc, stored } = await setup();
     const before = doc();
     const { status, body } = await run("", { kind: "post" });
     expect(status).toBe(202);
@@ -162,7 +165,7 @@ describe("post runs", () => {
     expect(done).toMatchObject({ kind: "post", status: "succeeded", view: "overview-linkedin", error: null });
     expect(done.progress).toContain("Checking the post");
     const after = doc();
-    expect(validateDocument(after).ok).toBe(true);
+    expect(validateDocument3(stored()).ok).toBe(true);
     expect(after.views[0]).toEqual(before.views[0]);
     const post = after.views.find((v) => v.id === "overview-linkedin")!;
     expect(post).toMatchObject({ postOf: "overview", caption: { title: "How a request becomes a result" } });

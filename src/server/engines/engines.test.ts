@@ -5,13 +5,13 @@ import { describe, expect, it } from "vitest";
 import { validateFile } from "../../core/model";
 import { normalizeFile } from "../../core/normalize";
 import { documentToDraft, DRAFT_JSON_SCHEMA } from "../../core/repair";
-import { makeFolder, shopFile, tempDir } from "../testkit";
+import { makeFolder, shopFile2, tempDir } from "../testkit";
 import { ClaudeEngine, ClaudeStreamParser, extractJson } from "./claude";
 import { CodexEngine, CodexEventParser, describeCommand } from "./codex";
 import { engineEnv, resolveCommand, shimTarget } from "./process";
 import { RULES_FILE } from "./prompt";
 
-const draft = documentToDraft(normalizeFile(validateFile(shopFile()).file!, { id: "d_fake000001", now: "2026-10-13T00:00:00.000Z", source: null }));
+const draft = documentToDraft(normalizeFile(validateFile(shopFile2()).file!, { id: "d_fake000001", now: "2026-10-13T00:00:00.000Z", source: null }));
 
 /**
  * Fake CLIs: node scripts that answer `--version` and `--help` like the real ones, record their argv,

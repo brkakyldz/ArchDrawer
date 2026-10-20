@@ -27,8 +27,10 @@ export function makeFolder(files: Record<string, string>): string {
   return dir;
 }
 
-/** The contract's minimal valid file (testing contract) as an object. */
+/** The bundled example (an `@3` file) as an object. */
 export const shopFile = (): Record<string, unknown> => JSON.parse(readFileSync(join(APP_ROOT, "examples", "shop.archdraw.json"), "utf8"));
+/** The same drawing as an `@2` file, which is converted when read. */
+export const shopFile2 = (): Record<string, unknown> => JSON.parse(readFileSync(join(APP_ROOT, "tests", "fixtures", "shop.archdraw.json"), "utf8"));
 
 /** A repository folder holding `shop.archdraw.json` (and `.git`, so it is the repository root). */
 export function shopRepo(extra: Record<string, string> = {}): { root: string; file: string } {

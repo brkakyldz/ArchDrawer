@@ -5,7 +5,7 @@ import { normalizeFile } from "./normalize";
 import { answerToDocument, documentToDraft, DRAFT_JSON_SCHEMA, EmptyDiagramError } from "./repair";
 
 const base = (): DiagramDocument => {
-  const f = JSON.parse(readFileSync("examples/shop.archdraw.json", "utf8"));
+  const f = JSON.parse(readFileSync("tests/fixtures/shop.archdraw.json", "utf8"));
   const doc = normalizeFile(validateFile(f).file!, { id: "d_shop000001", now: "2026-10-13T00:00:00.000Z", source: { kind: "local", path: "C:/shop" } });
   doc.views[0].texts.push({ id: "t1", text: "The order path", x: 900, y: 40, size: 28 });
   return doc;

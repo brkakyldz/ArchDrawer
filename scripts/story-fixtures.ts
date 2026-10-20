@@ -11,7 +11,7 @@ interface Intent {
 
 export function storyFixture(name: string, portrait: boolean, labels = true): DiagramDocument {
   if (name === "shop") {
-    const file = JSON.parse(readFileSync("examples/shop.archdraw.json", "utf8"));
+    const file = JSON.parse(readFileSync("tests/fixtures/shop.archdraw.json", "utf8"));
     const doc = fillDefaults(file);
     assignEdgeIds(doc);
     const view = doc.views[0];

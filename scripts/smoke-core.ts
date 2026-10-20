@@ -18,7 +18,7 @@ const failures: string[] = [];
 const check = (ok: boolean, what: string) => { console.log(`${ok ? "ok  " : "FAIL"} ${what}`); if (!ok) failures.push(what); };
 
 const inputs = [
-  { name: "shop", path: "examples/shop.archdraw.json" },
+  { name: "shop", path: "tests/fixtures/shop.archdraw.json" },
   { name: "hotel", path: "tests/fixtures/hotel.archdraw.json" },
 ];
 

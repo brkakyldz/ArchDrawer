@@ -1,89 +1,138 @@
 {
-  "schema": "archdraw/diagram@2",
+  "schema": "archdraw/diagram@3",
   "title": "Sample Shop",
-  "views": [
-    {
-      "id": "overview",
-      "title": "Overview",
-      "caption": {
-        "title": "How an order flows through Sample Shop",
-        "lede": ""
+  "facts": {
+    "components": [
+      {
+        "id": "web",
+        "label": "Web app",
+        "kind": "client",
+        "sub": "React",
+        "description": "The shop's pages.",
+        "files": [],
+        "items": []
       },
-      "nodes": [
+      {
+        "id": "api",
+        "label": "Order API",
+        "kind": "api",
+        "sub": "",
+        "description": "Takes orders.",
+        "files": [],
+        "items": [
+          "Validate order",
+          "Create order"
+        ]
+      },
+      {
+        "id": "db",
+        "label": "Orders DB",
+        "kind": "data",
+        "sub": "Postgres",
+        "description": "Keeps orders.",
+        "files": [],
+        "items": []
+      }
+    ],
+    "relations": [
+      {
+        "id": "r1",
+        "from": "web",
+        "to": "api",
+        "label": "POST /orders",
+        "style": "call",
+        "both": true
+      },
+      {
+        "id": "r2",
+        "from": "api",
+        "to": "db",
+        "label": "",
+        "style": "call",
+        "both": false
+      }
+    ]
+  },
+  "channels": {
+    "overview": {
+      "views": [
         {
-          "id": "web",
-          "label": "Web app",
-          "kind": "client",
-          "form": "card",
-          "icon": null,
-          "sub": "React",
-          "items": [],
-          "description": "The shop's pages.",
-          "files": [],
-          "parent": null,
-          "detail": null,
-          "place": {
-            "row": 0,
-            "col": 0
-          }
-        },
-        {
-          "id": "api",
-          "label": "Order API",
-          "kind": "api",
-          "form": "panel",
-          "icon": null,
-          "sub": "",
-          "items": [
-            "Validate order",
-            "Create order"
+          "id": "overview",
+          "title": "Overview",
+          "caption": {
+            "title": "How an order flows through Sample Shop",
+            "lede": ""
+          },
+          "nodes": [
+            {
+              "id": "web",
+              "form": "card",
+              "icon": null,
+              "parent": null,
+              "detail": null,
+              "place": {
+                "row": 0,
+                "col": 0
+              },
+              "lane": null,
+              "facts": [
+                "web"
+              ]
+            },
+            {
+              "id": "api",
+              "form": "panel",
+              "icon": null,
+              "parent": null,
+              "detail": null,
+              "place": {
+                "row": 0,
+                "col": 1
+              },
+              "lane": null,
+              "facts": [
+                "api"
+              ]
+            },
+            {
+              "id": "db",
+              "form": "card",
+              "icon": null,
+              "parent": null,
+              "detail": null,
+              "place": {
+                "row": 1,
+                "col": 1
+              },
+              "lane": null,
+              "facts": [
+                "db"
+              ]
+            }
           ],
-          "description": "Takes orders.",
-          "files": [],
-          "parent": null,
-          "detail": null,
-          "place": {
-            "row": 0,
-            "col": 1
-          }
-        },
-        {
-          "id": "db",
-          "label": "Orders DB",
-          "kind": "data",
-          "form": "card",
-          "icon": null,
-          "sub": "Postgres",
-          "items": [],
-          "description": "Keeps orders.",
-          "files": [],
-          "parent": null,
-          "detail": null,
-          "place": {
-            "row": 1,
-            "col": 1
-          }
+          "edges": [
+            {
+              "from": "web",
+              "to": "api",
+              "relations": [
+                "r1"
+              ],
+              "step": 1
+            },
+            {
+              "from": "api",
+              "to": "db",
+              "relations": [
+                "r2"
+              ],
+              "step": 2
+            }
+          ],
+          "texts": []
         }
       ],
-      "edges": [
-        {
-          "from": "web",
-          "to": "api",
-          "label": "POST /orders",
-          "style": "call",
-          "both": true,
-          "step": 1
-        },
-        {
-          "from": "api",
-          "to": "db",
-          "label": "",
-          "style": "call",
-          "both": false,
-          "step": 2
-        }
-      ],
-      "texts": []
+      "showSteps": false,
+      "outdated": []
     }
-  ]
+  }
 }

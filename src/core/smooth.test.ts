@@ -15,7 +15,7 @@ const cases: Case[] = [];
 for (const name of ["reference", "claude", "codex", "shop"]) for (const portrait of [true, false]) {
   for (const view of storyFixture(name, portrait).views) cases.push({ name: `story ${name} ${portrait ? "feed" : "wide"}`, view, post: true });
 }
-for (const path of ["tests/fixtures/archdrawer.archdraw.json", "examples/shop.archdraw.json"]) {
+for (const path of ["tests/fixtures/archdrawer.archdraw.json", "tests/fixtures/shop.archdraw.json"]) {
   for (const view of fillDefaults(JSON.parse(readFileSync(path, "utf8"))).views) cases.push({ name: `${path} ${view.id}`, view: view as DiagramView, post: !!view.postOf });
 }
 // Fuzzed: parts on distinct cells of a loose grid, two groups holding the parts in their own corner

@@ -1,13 +1,12 @@
 import { useCallback, useState } from "react";
-import type { DiagramDocument } from "../../core/model";
 
 const LIMIT = 200;
 const COALESCE_MS = 900;
 
-interface State {
-  past: DiagramDocument[];
-  present: DiagramDocument | null;
-  future: DiagramDocument[];
+interface State<D> {
+  past: D[];
+  present: D | null;
+  future: D[];
   key: string | null;
   at: number;
 }
@@ -20,15 +19,15 @@ export interface ApplyOptions {
 }
 
 /** Document state with undo/redo: at least 100 steps, typing in one field coalesced until it loses focus, drags one step each. */
-export function useDocHistory() {
-  const [s, setS] = useState<State>({ past: [], present: null, future: [], key: null, at: 0 });
+export function useDocHistory<D>() {
+  const [s, setS] = useState<State<D>>({ past: [], present: null, future: [], key: null, at: 0 });
 
-  const reset = useCallback((doc: DiagramDocument) => setS({ past: [], present: doc, future: [], key: null, at: 0 }), []);
+  const reset = useCallback((doc: D) => setS({ past: [], present: doc, future: [], key: null, at: 0 }), []);
 
-  const apply = useCallback((next: DiagramDocument | ((d: DiagramDocument) => DiagramDocument), opts: ApplyOptions = {}) => {
+  const apply = useCallback((next: D | ((d: D) => D), opts: ApplyOptions = {}) => {
     setS((st) => {
       if (!st.present) return st;
-      const doc = typeof next === "function" ? next(st.present) : next;
+      const doc = typeof next === "function" ? (next as (d: D) => D)(st.present) : next;
       if (doc === st.present) return st;
       if (opts.record === false) return { ...st, present: doc };
       const now = Date.now();

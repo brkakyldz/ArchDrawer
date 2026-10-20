@@ -2,8 +2,11 @@ import { spawn, spawnSync } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { DEFAULT_SHARE, FORMAT_IDS, renderShare, type FormatId } from "../core/export/share";
+import { joinChannel } from "../core/channels";
+import { readAnyFile } from "../core/convert";
+import { CHANNELS, isChannel, type ChannelId } from "../core/file3";
 import { isV1, migrateV1 } from "../core/migrate";
-import { newDocumentId, SCHEMA_ID, THEMES, type Theme } from "../core/model";
+import { newDocumentId, SCHEMA_V2, SCHEMA_V3, THEMES, type Theme } from "../core/model";
 import { APP_ROOT, BUILD, loadConfig, VERSION, type Config } from "../server/config";
 import { checkFile, docText, normaliseFile, writeAtomic } from "../server/files";
 import { readServerInfo, type ServerInfo } from "../server/serverfile";
@@ -19,10 +22,10 @@ const HELP = `archdrawer ${VERSION} — draw and edit a repository's architectur
 Usage:
   archdrawer validate <file>                 check a drawing file, list every problem
   archdrawer open <file> [--no-browser]      check, tidy and open the file in the editor
-  archdrawer svg <file> [--view <id>] [--format linkedin|readme|slide|square|feed]
+  archdrawer svg <file> [--channel <c>] [--view <id>] [--format linkedin|readme|slide|square|feed]
                         [--theme light|dark] [--out <path>]
                                              write the share image as SVG
-  archdrawer migrate <file>                  rewrite an archdraw/diagram@1 file as @2
+  archdrawer migrate <file>                  rewrite an archdraw/diagram@1 or @2 file as @3
   archdrawer status                          is the editor server running?
   archdrawer stop                            stop the editor server
   archdrawer --version | --help`;
@@ -153,17 +156,21 @@ async function cmdOpen(args: string[], io: CliIo, config: Config): Promise<numbe
 }
 
 function cmdSvg(args: string[], io: CliIo): number {
-  const { pos, opt } = parse(args, ["view", "format", "theme", "out"]);
+  const { pos, opt } = parse(args, ["channel", "view", "format", "theme", "out"]);
   if (pos.length !== 1) throw new Usage("svg needs exactly one file");
+  if (opt.channel !== undefined && !isChannel(opt.channel)) throw new Usage(`Unknown channel "${opt.channel}"; use one of ${CHANNELS.join(", ")}`);
   const format = (opt.format ?? "linkedin") as FormatId;
   if (!FORMAT_IDS.includes(format)) throw new Usage(`Unknown format "${format}"; use one of ${FORMAT_IDS.join(", ")}`);
   if (opt.theme && !THEMES.includes(opt.theme as Theme)) throw new Usage(`Unknown theme "${opt.theme}"; use light or dark`);
   const file = resolve(pos[0]);
   const r = checkFile(file, "warn");
   if (!report(io, r) || !r.file) return 1;
-  const { doc } = normaliseFile(r.file, { path: file, id: r.file.id ?? "d_unsaved", now: new Date().toISOString(), text: r.text });
+  const { doc: stored } = normaliseFile(r.file, { path: file, id: r.file.id ?? "d_unsaved", now: new Date().toISOString(), text: r.text });
+  const channel = (opt.channel ?? "overview") as ChannelId;
+  const doc = joinChannel(stored, channel);
+  if (doc.views.length === 0) { io.err(`The channel "${channel}" has no drawing in ${file}`); return 1; }
   const view = opt.view ?? doc.views[0].id;
-  if (!doc.views.some((v) => v.id === view)) { io.err(`No view "${view}" in ${file}; views: ${doc.views.map((v) => v.id).join(", ")}`); return 1; }
+  if (!doc.views.some((v) => v.id === view)) { io.err(`No view "${view}" in the ${channel} channel of ${file}; views: ${doc.views.map((v) => v.id).join(", ")}`); return 1; }
   const font = (name: string) => readFileSync(join(APP_ROOT, "src", "web", "fonts", name)).toString("base64");
   const img = renderShare(doc, view, { ...DEFAULT_SHARE, format, theme: (opt.theme as Theme) ?? doc.theme, fonts: { sans: font("Geist-Variable.woff2"), mono: font("GeistMono-Variable.woff2") } });
   const out = resolve(opt.out ?? join(dirname(file), `${basename(file, extname(file)).replace(/\.archdraw$/, "")}-${view}-${format}.svg`));
@@ -178,11 +185,16 @@ function cmdMigrate(args: string[], io: CliIo): number {
   const file = resolve(pos[0]);
   let raw: unknown;
   try { raw = JSON.parse(readFileSync(file, "utf8").replace(/^﻿/, "")); } catch (e) { io.out(`ERROR json: ${(e as Error).message}`); return 1; }
-  if ((raw as { schema?: unknown })?.schema === SCHEMA_ID) { io.out(`already ${SCHEMA_ID}`); return 0; }
-  if (!isV1(raw)) { io.out("ERROR schema: not an archdrawer drawing"); return 1; }
-  const { doc, warnings } = migrateV1(raw, new Date().toISOString());
-  writeAtomic(file, docText(doc));
-  for (const w of warnings) io.out(w);
+  const schema = (raw as { schema?: unknown })?.schema;
+  if (schema === SCHEMA_V3) { io.out(`already ${SCHEMA_V3}`); return 0; }
+  if (!isV1(raw) && schema !== SCHEMA_V2) { io.out("ERROR schema: not an archdrawer drawing"); return 1; }
+  const now = new Date().toISOString();
+  // @1 converts through @2 (diagram contract, Reading archdraw/diagram@1).
+  const v1 = isV1(raw) ? migrateV1(raw, now) : null;
+  const r = readAnyFile(v1 ? v1.doc : raw);
+  if (!r.ok || !r.file) { for (const e of r.errors) io.out(`ERROR ${e}`); io.out(`${r.errors.length} error(s)`); return 1; }
+  writeAtomic(file, docText(r.file));
+  for (const w of [...(v1?.warnings ?? []), ...r.warnings]) io.out(w);
   io.out("migrated");
   return 0;
 }

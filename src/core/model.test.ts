@@ -4,7 +4,7 @@ import { depthWarnings, validateDocument, validateFile } from "./model";
 import { normalizeFile } from "./normalize";
 import { edge, file, node } from "./testkit";
 
-const shop = () => JSON.parse(readFileSync("examples/shop.archdraw.json", "utf8"));
+const shop = () => JSON.parse(readFileSync("tests/fixtures/shop.archdraw.json", "utf8"));
 
 describe("validateFile", () => {
   it("reads texts, and turns a v2.0 file's notes into 16 px texts with one warning per view", () => {

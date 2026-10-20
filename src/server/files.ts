@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { channelWarnings, normalizeFile3 } from "../core/channels";
+import { readAnyFile } from "../core/convert";
+import { fillDefaults3, type Document3, type File3 } from "../core/file3";
 import { isV1 } from "../core/migrate";
-import { validateFile, type DiagramDocument, type DiagramFile } from "../core/model";
-import { normalizeFile } from "../core/normalize";
 
 /**
  * Drawing files on disk, shared by the CLI and the server (the cli and diagram contracts):
@@ -62,29 +63,37 @@ export interface FileReport {
   /** `<json path>: <message>` per violation. */
   errors: string[];
   warnings: string[];
-  file: DiagramFile | null;
+  /** The file as `@3`: an `@2` file converted (diagram contract, Reading `archdraw/diagram@2`). */
+  file: File3 | null;
   /** The raw JSON value when it parsed (for migration). */
   raw: unknown;
   v1: boolean;
+  /** The format the text was in, when it was a drawing. */
+  from: "@3" | "@2" | "@1" | null;
 }
 
 /**
  * Validate a file's text against the diagram contract, checking `files` against the repository root.
  * A missing path is an error for `validate` and a warning wherever a drawing is opened or saved
- * (diagram contract rule 10), so a file deleted from the repository never locks a drawing.
+ * (diagram contract rule 14), so a file deleted from the repository never locks a drawing.
  */
 export function checkText(text: string, root: string, missingFiles: "error" | "warn" = "error"): FileReport {
   let raw: unknown;
   try {
     raw = JSON.parse(text.replace(/^﻿/, ""));
   } catch (e) {
-    return { ok: false, errors: [`json: ${(e as Error).message}`], warnings: [], file: null, raw: undefined, v1: false };
+    return { ok: false, errors: [`json: ${(e as Error).message}`], warnings: [], file: null, raw: undefined, v1: false, from: null };
   }
   if (isV1(raw)) {
-    return { ok: false, errors: ['schema: this is archdraw/diagram@1; run "archdrawer migrate <file>"'], warnings: [], file: null, raw, v1: true };
+    return { ok: false, errors: ['schema: this is archdraw/diagram@1; run "archdrawer migrate <file>"'], warnings: [], file: null, raw, v1: true, from: "@1" };
   }
-  const r = validateFile(raw, { fileExists: repoFileChecker(root), missingFiles });
-  return { ...r, raw, v1: false };
+  return { ...withWarnings(readAnyFile(raw, { fileExists: repoFileChecker(root), missingFiles })), raw, v1: false };
+}
+
+/** A read report plus the depth checks on every channel (diagram contract, Warnings). */
+export function withWarnings<R extends { ok: boolean; file: File3 | null; warnings: string[] }>(r: R): R {
+  if (!r.ok || !r.file) return r;
+  return { ...r, warnings: [...r.warnings, ...channelWarnings(fillDefaults3(r.file))] };
 }
 
 export function checkFile(path: string, missingFiles: "error" | "warn" = "error"): FileReport & { text: string } {
@@ -93,7 +102,7 @@ export function checkFile(path: string, missingFiles: "error" | "warn" = "error"
     text = readFileSync(path, "utf8");
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
-    return { ok: false, errors: [`file: ${code === "ENOENT" ? "not found" : (e as Error).message}`], warnings: [], file: null, raw: undefined, v1: false, text: "" };
+    return { ok: false, errors: [`file: ${code === "ENOENT" ? "not found" : (e as Error).message}`], warnings: [], file: null, raw: undefined, v1: false, from: null, text: "" };
   }
   return { ...checkText(text, repoRootOf(path), missingFiles), text };
 }
@@ -103,9 +112,9 @@ export function checkFile(path: string, missingFiles: "error" | "warn" = "error"
  * root, edge ids, positions. `updatedAt` moves to `now` only when the content changed, so
  * opening an untouched file twice writes nothing.
  */
-export function normaliseFile(file: DiagramFile, ctx: { path: string; id: string; now: string; text?: string }): { doc: DiagramDocument; text: string; changed: boolean } {
+export function normaliseFile(file: File3, ctx: { path: string; id: string; now: string; text?: string }): { doc: Document3; text: string; changed: boolean } {
   const source = { kind: "local" as const, path: repoRootOf(ctx.path) };
-  const doc = normalizeFile(file, { id: ctx.id, now: ctx.now, source });
+  const doc = normalizeFile3(file, { id: ctx.id, now: ctx.now, source });
   let text = docText(doc);
   const changed = text !== ctx.text;
   if (changed && file.updatedAt) {

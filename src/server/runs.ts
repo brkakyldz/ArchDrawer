@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";
+import { applyDrawing } from "../core/drawing";
+import { channelOfView, type ChannelId, type Document3 } from "../core/file3";
 import { isPostView, validateDocument, type DiagramDocument } from "../core/model";
 import { startSwitches, type FormatId } from "../core/export/share";
 import { layoutReport, type LayoutReport } from "../core/report";
@@ -16,13 +18,14 @@ export type RunStatus = "running" | "succeeded" | "failed" | "cancelled";
 export type RunKind = "refine" | "post" | "simplify";
 export type RunEvent =
   | { type: "progress"; message: string }
-  | { type: "done"; status: Exclude<RunStatus, "running">; diagramId: string | null; error: string | null; changes: Changes | null; view: string; layoutReport: LayoutReport | null };
+  | { type: "done"; status: Exclude<RunStatus, "running">; diagramId: string | null; error: string | null; changes: Changes | null; channel: ChannelId; view: string; layoutReport: LayoutReport | null };
 
 export interface RunRecord {
   id: string;
   /** What the run does (api contract, Run kinds). */
   kind: RunKind;
-  /** The view the run worked on; on success, the resulting view. */
+  /** The channel and view the run worked on; on success, the resulting ones. */
+  channel: ChannelId;
   view: string;
   status: RunStatus;
   progress: string[];
@@ -55,8 +58,10 @@ export interface StartRun {
   view: string;
   /** What the run may change; default the whole document. */
   scope?: RunScope;
-  /** The drawing to update in place, as it was when the run started. */
+  /** The drawing to update in place, as it was when the run started, as one view list (`joinDrawing`). */
   base: DiagramDocument;
+  /** The same drawing as stored. */
+  stored: Document3;
   /** The format the result's layout report is measured in; default README (a post: the feed). */
   format?: FormatId;
   /** Default refine: an instruction-box change. A post designs the view's LinkedIn image; simplify makes the overview a map. */
@@ -75,7 +80,7 @@ export class RunManager {
   get(id: string): RunRecord | null {
     const r = this.runs.get(id);
     return r ? {
-      id: r.id, kind: r.kind, view: r.view, status: r.status, progress: [...r.progress], diagramId: r.diagramId, error: r.error,
+      id: r.id, kind: r.kind, channel: r.channel, view: r.view, status: r.status, progress: [...r.progress], diagramId: r.diagramId, error: r.error,
       engine: r.engine, model: r.model, changes: r.changes, layoutReport: r.layoutReport,
     } : null;
   }
@@ -117,7 +122,7 @@ export class RunManager {
     const id = `r_${randomBytes(6).toString("hex")}`;
     let resolveFinished!: () => void;
     const run: Run = {
-      id, kind: req.kind ?? "refine", view: req.view, status: "running", progress: [], diagramId: null, error: null, engine: req.engine.id, model: req.model,
+      id, kind: req.kind ?? "refine", channel: (req.kind === "post" ? "linkedin" : channelOfView(req.stored, req.view)) ?? "overview", view: req.view, status: "running", progress: [], diagramId: null, error: null, engine: req.engine.id, model: req.model,
       changes: null, layoutReport: null, target: req.base.id,
       events: [], listeners: new Set(), abort: new AbortController(),
       finished: new Promise((r) => (resolveFinished = r)), timedOut: false,
@@ -141,12 +146,12 @@ export class RunManager {
       run.error = error;
       run.changes = changes;
       run.layoutReport = report;
-      emit({ type: "done", status, diagramId, error, changes, view: run.view, layoutReport: report });
+      emit({ type: "done", status, diagramId, error, changes, channel: run.channel, view: run.view, layoutReport: report });
       run.listeners.clear();
       resolveFinished();
     };
     void this.execute(req, run.abort.signal, progress).then(
-      (r) => { run.view = r.view; end("succeeded", r.diagramId, null, r.changes, r.layoutReport); },
+      (r) => { run.channel = r.channel; run.view = r.view; end("succeeded", r.diagramId, null, r.changes, r.layoutReport); },
       (err: unknown) => {
         if (run.timedOut) return end("failed", null, `Timed out after ${Math.round(this.opts.timeoutMs / 60_000) || 1} min — try a narrower instruction`);
         if (run.abort.signal.aborted) return end("cancelled", null, null);
@@ -161,7 +166,7 @@ export class RunManager {
     return id;
   }
 
-  private async execute(req: StartRun, signal: AbortSignal, progress: (m: string) => void): Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; view: string }> {
+  private async execute(req: StartRun, signal: AbortSignal, progress: (m: string) => void): Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string }> {
     // The root the store checks this drawing's files against, so a repair and a save never disagree.
     const root = this.store.rootOf(req.base.id);
     if (!root) throw new EngineError("This drawing has no repository folder to read");
@@ -191,8 +196,11 @@ export class RunManager {
     const checked = validateDocument(doc);
     if (!checked.ok) throw new EngineError(`The engine's drawing could not be repaired into a valid document: ${checked.error}`);
     if (signal.aborted) throw new EngineError("Cancelled");
+    // Content goes to the facts and appearance to its channel (diagram contract, Writing the answer back).
+    const split = applyDrawing(req.stored, doc, { keepFacts: simplify });
+    if (!split.ok) throw new EngineError(split.error);
     // Never overwrite a drawing that changed after the run started (the editor, a session, the CLI).
-    const saved = this.store.put(req.base.id, doc, { base: req.base.updatedAt, announce: true });
+    const saved = this.store.put(req.base.id, split.doc, { base: req.base.updatedAt, announce: true });
     if (!saved) throw new EngineError("The drawing was removed while the instruction ran.");
     if (!saved.ok) throw new EngineError(saved.conflict ? "The drawing changed while the instruction ran." : `The drawing could not be saved: ${saved.error}`);
     const added = doc.warnings.length - req.base.warnings.length;
@@ -201,7 +209,7 @@ export class RunManager {
     const format = req.format ?? "readme";
     const view = doc.views.find((v) => v.id === req.view) ?? doc.views[0];
     const report = layoutReport(doc, view.id, { ...startSwitches(format, isPostView(view)), format, theme: doc.theme });
-    return { diagramId: req.base.id, changes: diffDocuments(req.base, doc, scope.kind === "all" ? undefined : [req.view]), layoutReport: report, view: req.view };
+    return { diagramId: req.base.id, changes: diffDocuments(req.base, doc, scope.kind === "all" ? undefined : [req.view]), layoutReport: report, channel: channelOfView(split.doc, req.view) ?? "overview", view: req.view };
   }
 
   /** A post run: the engine designs the story, code converts, places and measures it. */
@@ -218,12 +226,16 @@ export class RunManager {
     const { doc, view, warnings } = intentToDocument(req.base, source, parseIntent(answer), { portrait: format === "feed" });
     const stamped = { ...doc, engine: { id: req.engine.id, model: req.model }, updatedAt: nowIso() };
     if (signal.aborted) throw new EngineError("Cancelled");
-    const saved = this.store.put(req.base.id, stamped, { base: req.base.updatedAt, announce: true });
+    // A post is the LinkedIn channel's view; it changes no fact (diagram contract, Post answers).
+    const split = applyDrawing(req.stored, stamped, { keepFacts: true });
+    if (!split.ok) throw new EngineError(split.error);
+    const toSave = { ...split.doc, channels: { ...split.doc.channels, linkedin: { ...split.doc.channels.linkedin, outdated: [] } } };
+    const saved = this.store.put(req.base.id, toSave, { base: req.base.updatedAt, announce: true });
     if (!saved) throw new EngineError("The drawing was removed while the post was designed.");
     if (!saved.ok) throw new EngineError(saved.conflict ? "The drawing changed while the post was designed." : `The drawing could not be saved: ${saved.error}`);
     progress(warnings.length ? `Saved with ${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : "Saved");
     const report = layoutReport(stamped, view, { ...startSwitches(format, true), format, theme: stamped.theme });
-    return { diagramId: req.base.id, changes: diffDocuments(req.base, stamped, [view]), layoutReport: report, view };
+    return { diagramId: req.base.id, changes: diffDocuments(req.base, stamped, [view]), layoutReport: report, channel: "linkedin" as ChannelId, view };
   }
 }
 

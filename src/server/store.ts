@@ -1,13 +1,14 @@
 import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
-import { isV1, migrateV1 } from "../core/migrate";
-import { DOC_ID_RE, newDocumentId, validateDocument, validateFile, type DiagramDocument } from "../core/model";
-import { normalizeFile } from "../core/normalize";
+import { markOutside, normalizeFile3 } from "../core/channels";
+import { readAnyFile } from "../core/convert";
+import { validateDocument3, type Document3, type File3 } from "../core/file3";
+import { DOC_ID_RE, newDocumentId } from "../core/model";
 import { checkFile, docText, hashOf, normaliseFile, repoFileChecker, repoRootOf, writeAtomic } from "./files";
 
 export interface DiagramSummary { id: string; title: string; path: string | null; updatedAt: string }
-export type ReadResult = { ok: true; doc: DiagramDocument } | { ok: false; error: string; errors: string[] };
+export type ReadResult = { ok: true; doc: Document3 } | { ok: false; error: string; errors: string[] };
 export type PutResult = { ok: true; updatedAt: string } | { ok: false; conflict: true; updatedAt: string | null } | { ok: false; conflict: false; error: string; errors: string[] };
 
 export class FileError extends Error {
@@ -42,6 +43,8 @@ export class Store extends EventEmitter {
   private readonly stamps = new Map<string, string>();
   /** When each stamp was taken: a same-size write soon after can keep the file's mtime. */
   private readonly stampedAt = new Map<string, number>();
+  /** The document as this store last wrote or read it, to mark what an outside write changed. */
+  private readonly last = new Map<string, Document3>();
   private timer: NodeJS.Timeout | null = null;
 
   constructor(readonly dataDir: string) {
@@ -80,7 +83,7 @@ export class Store extends EventEmitter {
   }
 
   /** Register a drawing file (POST /api/files, `archdrawer open`): validated, given a unique id, normalised. */
-  register(path: string): DiagramDocument {
+  register(path: string): Document3 {
     if (!isAbsolute(path)) throw new FileError("The path must be absolute");
     const abs = resolve(path);
     if (!existsSync(abs) || !statSync(abs).isFile()) throw new FileError(`Not found: ${abs}`);
@@ -101,15 +104,13 @@ export class Store extends EventEmitter {
     return r.doc;
   }
 
-  /** Import a document (archdraw/diagram@1 or @2) into the data directory under a new id. */
+  /** Import a document (archdraw/diagram@3, @2 or @1; older ones converted) into the data directory under a new id. */
   import(raw: unknown): { ok: true; id: string } | { ok: false; error: string; errors: string[] } {
     const id = newDocumentId();
     const now = nowIso();
-    let file: unknown = raw;
-    if (isV1(raw)) file = migrateV1(raw, now).doc;
-    const r = validateFile(file);
+    const r = readAnyFile(raw, {}, { allowV1: true, now });
     if (!r.ok || !r.file) return { ok: false, error: "Invalid diagram", errors: r.errors };
-    const doc = normalizeFile({ ...r.file, id: undefined, createdAt: undefined, updatedAt: undefined }, { id, now, source: r.file.source ?? null });
+    const doc = normalizeFile3({ ...r.file, id: undefined, createdAt: undefined, updatedAt: undefined }, { id, now, source: r.file.source ?? null });
     const text = docText(doc);
     writeAtomic(this.importFile(id)!, text);
     this.known.set(id, hashOf(text));
@@ -125,15 +126,18 @@ export class Store extends EventEmitter {
     const h = hashOf(text);
     const seen = this.known.get(id);
     if (seen === h) {
-      const v = validateDocument(JSON.parse(text));
-      if (v.ok) { this.versions.set(id, v.doc.updatedAt); return { ok: true, doc: v.doc }; }
+      const v = validateDocument3(JSON.parse(text));
+      if (v.ok) { this.versions.set(id, v.doc.updatedAt); this.last.set(id, v.doc); return { ok: true, doc: v.doc }; }
     }
     const report = this.files.has(id) ? checkFile(path, "warn") : this.checkImport(text);
     if (!report.ok || !report.file) return { ok: false, error: `The file ${basename(path)} is not a valid drawing`, errors: report.errors };
     const now = nowIso();
-    const n = normaliseFile({ ...report.file, id }, { path, id, now, text });
+    let n = normaliseFile({ ...report.file, id }, { path, id, now, text });
     if (!this.files.has(id)) n.doc.source = report.file.source ?? null;
     const outside = seen !== undefined;
+    const prev = this.last.get(id);
+    // An outside write marks the channels it did not draw (diagram contract, Edits: facts or channel).
+    if (outside && prev) n = { ...n, doc: markOutside(prev, n.doc) };
     if (outside) {
       // A writer that set its own new `updatedAt` keeps it; one that left the old value gets now.
       const theirs = report.file.updatedAt;
@@ -143,17 +147,18 @@ export class Store extends EventEmitter {
     if (out !== text) writeAtomic(path, out);
     this.known.set(id, hashOf(out));
     this.versions.set(id, n.doc.updatedAt);
+    this.last.set(id, n.doc);
     this.stamp(id, path);
     if (outside) this.emit("changed", id, n.doc.updatedAt);
     return { ok: true, doc: n.doc };
   }
 
   /** Imported documents keep their own `source`; their `files` are not checked against a folder. */
-  private checkImport(text: string): { ok: boolean; errors: string[]; file: ReturnType<typeof validateFile>["file"] } {
-    try { return validateFile(JSON.parse(text)); } catch (e) { return { ok: false, errors: [`json: ${(e as Error).message}`], file: null }; }
+  private checkImport(text: string): { ok: boolean; errors: string[]; file: File3 | null } {
+    try { return readAnyFile(JSON.parse(text)); } catch (e) { return { ok: false, errors: [`json: ${(e as Error).message}`], file: null }; }
   }
 
-  get(id: string): DiagramDocument | null {
+  get(id: string): Document3 | null {
     const r = this.read(id);
     return r?.ok ? r.doc : null;
   }
@@ -170,16 +175,17 @@ export class Store extends EventEmitter {
     if (!body || typeof body !== "object" || (body as { id?: unknown }).id !== id) return { ok: false, conflict: false, error: "The document id does not match the URL", errors: [] };
     const updatedAt = nowIso();
     const path = this.pathOf(id)!;
-    // A path missing from the repository does not block a save (diagram contract rule 10); the
+    // A path missing from the repository does not block a save (diagram contract rule 14); the
     // editor marks it (`POST /api/diagrams/:id/check-files`). A registered file's source stays its
     // repository, the one root its files are checked and its runs read against.
     const source = this.files.has(id) ? { source: { kind: "local", path: repoRootOf(path) } } : {};
-    const v = validateDocument({ ...(body as object), ...source, updatedAt });
+    const v = validateDocument3({ ...(body as object), ...source, updatedAt });
     if (!v.ok) return { ok: false, conflict: false, error: v.error, errors: v.errors };
     const text = docText(v.doc);
     writeAtomic(path, text);
     this.known.set(id, hashOf(text));
     this.versions.set(id, updatedAt);
+    this.last.set(id, v.doc);
     this.stamp(id, path);
     if (opts.announce) this.emit("changed", id, updatedAt);
     return { ok: true, updatedAt };

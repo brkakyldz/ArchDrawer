@@ -10,7 +10,7 @@ import { normalizeFile } from "./normalize";
 
 const NOW = "2026-10-21T00:00:00.000Z";
 const read = (p: string): DiagramFile => JSON.parse(readFileSync(p, "utf8"));
-const FIXTURES = ["examples/shop.archdraw.json", "tests/fixtures/archdrawer.archdraw.json", "tests/fixtures/hotel.archdraw.json"];
+const FIXTURES = ["tests/fixtures/shop.archdraw.json", "tests/fixtures/archdrawer.archdraw.json", "tests/fixtures/hotel.archdraw.json"];
 
 /** A normalised @2 document of a fixture, and the same file converted and normalised as @3. */
 function both(f: DiagramFile): { d2: DiagramDocument; d3: Document3 } {
@@ -167,7 +167,7 @@ describe("convertV2", () => {
   });
 
   it("turns a merged component into a part that points to the facts it merges, and keeps a second post as an overview view", () => {
-    const f: DiagramFile = read("examples/shop.archdraw.json");
+    const f: DiagramFile = read("tests/fixtures/shop.archdraw.json");
     const v0 = f.views[0];
     v0.nodes.push({ ...v0.nodes[0], id: "merged", label: "Merged", from: [v0.nodes[0].id, v0.nodes[1].id, "gone"], place: { row: 3, col: 0 } } as never);
     const inside = { id: "inside", title: "Inside", caption: { title: "Inside", lede: "" }, nodes: [], edges: [], texts: [] };
@@ -191,7 +191,7 @@ describe("convertV2", () => {
   });
 
   it("refuses an invalid @2 file with its @2 paths", () => {
-    const f = read("examples/shop.archdraw.json");
+    const f = read("tests/fixtures/shop.archdraw.json");
     f.views[0].nodes[0].kind = "database" as never;
     expect(readAnyFile(f).errors[0]).toMatch(/^views\[0\]\.nodes\[0\]\.kind: "database" is not a kind/);
   });
@@ -249,13 +249,22 @@ describe("applyChannel", () => {
 
   it("adding a part adds a fact; outside the overview it also gets a part in the overview's first view", () => {
     const doc = edit(small(), "linkedin", (d) => {
-      d.views[0].nodes.push({ ...node(d, "a"), id: "new-component", label: "New component", facts: [], x: 900, y: 0, lane: null });
+      d.views[0].nodes.push({ ...node(d, "a"), id: "new-component", label: "New component", facts: undefined, x: 900, y: 0, lane: null });
     });
     expect(fact(doc, "new-component")).toMatchObject({ label: "New component" });
     const added = doc.channels.overview.views[0].nodes.find((n) => n.facts[0] === "new-component")!;
     expect(added).toMatchObject({ id: "new-component", form: "card" });
     expect(doc.channels.overview.outdated).toEqual(["new-component"]);
     expect(doc.channels.linkedin.outdated).toEqual([]);
+  });
+
+  it("a new part with facts: [] belongs to its channel only and adds no fact", () => {
+    const doc = edit(small(), "linkedin", (d) => {
+      d.views[0].nodes.push({ ...node(d, "a"), id: "zone", label: "Zone", kind: "service", description: "A frame.", facts: [], form: "group", x: 900, y: 0, lane: null });
+    });
+    expect(doc.facts.components).toHaveLength(3);
+    expect(doc.channels.linkedin.views[0].nodes.find((n) => n.id === "zone")).toMatchObject({ facts: [], label: "Zone", kind: "service", description: "A frame." });
+    expect(doc.channels.overview.outdated).toEqual([]);
   });
 
   it("refuses an addition outside the overview when the overview's first view is full", () => {
@@ -266,7 +275,7 @@ describe("applyChannel", () => {
       }
     });
     const j = joinChannel(full, "linkedin");
-    j.views[0].nodes.push({ ...node(j, "a"), id: "extra", facts: [] });
+    j.views[0].nodes.push({ ...node(j, "a"), id: "extra", facts: undefined });
     expect(applyChannel(full, "linkedin", j)).toEqual({ ok: false, error: OVERVIEW_FULL });
   });
 

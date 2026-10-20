@@ -1,0 +1,89 @@
+{
+  "schema": "archdraw/diagram@2",
+  "title": "Sample Shop",
+  "views": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "caption": {
+        "title": "How an order flows through Sample Shop",
+        "lede": ""
+      },
+      "nodes": [
+        {
+          "id": "web",
+          "label": "Web app",
+          "kind": "client",
+          "form": "card",
+          "icon": null,
+          "sub": "React",
+          "items": [],
+          "description": "The shop's pages.",
+          "files": [],
+          "parent": null,
+          "detail": null,
+          "place": {
+            "row": 0,
+            "col": 0
+          }
+        },
+        {
+          "id": "api",
+          "label": "Order API",
+          "kind": "api",
+          "form": "panel",
+          "icon": null,
+          "sub": "",
+          "items": [
+            "Validate order",
+            "Create order"
+          ],
+          "description": "Takes orders.",
+          "files": [],
+          "parent": null,
+          "detail": null,
+          "place": {
+            "row": 0,
+            "col": 1
+          }
+        },
+        {
+          "id": "db",
+          "label": "Orders DB",
+          "kind": "data",
+          "form": "card",
+          "icon": null,
+          "sub": "Postgres",
+          "items": [],
+          "description": "Keeps orders.",
+          "files": [],
+          "parent": null,
+          "detail": null,
+          "place": {
+            "row": 1,
+            "col": 1
+          }
+        }
+      ],
+      "edges": [
+        {
+          "from": "web",
+          "to": "api",
+          "label": "POST /orders",
+          "style": "call",
+          "both": true,
+          "step": 1
+        },
+        {
+          "from": "api",
+          "to": "db",
+          "label": "",
+          "style": "call",
+          "both": false,
+          "step": 2
+        }
+      ],
+      "texts": []
+    }
+  ]
+}

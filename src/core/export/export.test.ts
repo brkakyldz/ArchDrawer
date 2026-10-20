@@ -12,7 +12,7 @@ import { drawView } from "./svg";
 
 const load = (path: string) =>
   normalizeFile(validateFile(JSON.parse(readFileSync(path, "utf8"))).file!, { id: "d_test000001", now: "2026-10-13T00:00:00.000Z", source: null });
-const shop = () => load("examples/shop.archdraw.json");
+const shop = () => load("tests/fixtures/shop.archdraw.json");
 const hotel = () => load("tests/fixtures/hotel.archdraw.json");
 
 const firstRect = (svg: string, id: string) => {

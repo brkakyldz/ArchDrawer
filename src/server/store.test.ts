@@ -1,9 +1,9 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { validateDocument } from "../core/model";
+import { validateDocument3 as validateDocument } from "../core/file3";
 import { Store } from "./store";
-import { makeFolder, shopFile, shopRepo, tempDir } from "./testkit";
+import { makeFolder, shopFile, shopFile2, shopRepo, tempDir } from "./testkit";
 
 const read = (p: string) => JSON.parse(readFileSync(p, "utf8"));
 
@@ -28,7 +28,7 @@ describe("file-backed store", () => {
     const store = new Store(tempDir());
     const dir = makeFolder({});
     const bad = join(dir, "bad.json");
-    const f = shopFile() as { views: { nodes: { kind: string }[] }[] };
+    const f = shopFile2() as { views: { nodes: { kind: string }[] }[] };
     f.views[0].nodes[0].kind = "database";
     f.views[0].nodes[1].kind = "queue";
     writeFileSync(bad, JSON.stringify(f));
@@ -55,10 +55,11 @@ describe("file-backed store", () => {
     store.on("changed", (id: string, at: string) => events.push(`${id}@${at}`));
     // A session adds a component without a position and does not touch updatedAt.
     const edited = read(file);
-    edited.views[0].nodes.push({ id: "cache", label: "Cache", kind: "data", form: "card", icon: null, sub: "", items: [], description: "Caches.", files: [], parent: null, detail: null, place: null });
+    edited.facts.components.push({ id: "cache", label: "Cache", kind: "data", sub: "", items: [], description: "Caches.", files: [] });
+    edited.channels.overview.views[0].nodes.push({ id: "cache", facts: ["cache"], form: "card", icon: null, parent: null, detail: null, place: null });
     writeFileSync(file, JSON.stringify(edited));
     const next = store.get(doc.id)!;
-    expect(next.views[0].nodes.find((n) => n.id === "cache")).toMatchObject({ x: expect.any(Number), y: expect.any(Number) });
+    expect(next.channels.overview.views[0].nodes.find((n) => n.id === "cache")).toMatchObject({ x: expect.any(Number), y: expect.any(Number) });
     expect(next.updatedAt > doc.updatedAt).toBe(true);
     expect(events).toEqual([`${doc.id}@${next.updatedAt}`]);
     expect(validateDocument(read(file)).ok).toBe(true);
@@ -105,7 +106,7 @@ describe("file-backed store", () => {
     const store = new Store(tempDir());
     const { root, file } = shopRepo({ "src/api.ts": "// api\n" });
     const doc = store.register(file);
-    const withFiles = (d: typeof doc, files: string[]) => ({ ...d, views: d.views.map((v, i) => (i ? v : { ...v, nodes: v.nodes.map((n, j) => (j ? n : { ...n, files })) })) });
+    const withFiles = (d: typeof doc, files: string[]) => ({ ...d, facts: { ...d.facts, components: d.facts.components.map((c, j) => (j ? c : { ...c, files })) } });
     const saved = store.put(doc.id, withFiles(doc, ["src/api.ts", "web/index.html"]), { base: doc.updatedAt });
     expect(saved).toMatchObject({ ok: true });
     expect(store.missingFiles(doc.id, ["src/api.ts", "web/index.html"])).toEqual([]);
@@ -114,7 +115,7 @@ describe("file-backed store", () => {
     const cur = store.get(doc.id)!;
     const again = store.put(doc.id, { ...cur, title: "Edited after the delete" }, { base: cur.updatedAt });
     expect(again).toMatchObject({ ok: true });
-    expect(store.get(doc.id)!.views[0].nodes[0].files).toEqual(["src/api.ts", "web/index.html"]);
+    expect(store.get(doc.id)!.facts.components[0].files).toEqual(["src/api.ts", "web/index.html"]);
     expect(store.missingFiles(doc.id, ["src/api.ts", "web/index.html"])).toEqual(["src/api.ts"]);
     // A fresh process (no hash known) still opens it, and so does registering it again.
     const reopened = new Store(store.dataDir);

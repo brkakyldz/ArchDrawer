@@ -3,10 +3,19 @@ import { join } from "node:path";
 import { APP_ROOT } from "../config";
 import type { EngineRunRequest } from "./types";
 
-/** The drawing rules a session's skill follows; the instruction box gives the engine the same file. */
+/**
+ * The drawing rules a session's skill follows. The instruction box gives the engine the same
+ * rules without the file section: an engine answers in the view shape its schema names, and the
+ * server writes the file.
+ */
 export const RULES_FILE = join(APP_ROOT, "skills", "archdrawer", "rules.md");
 let rules: string | null = null;
-export const drawingRules = () => (rules ??= readFileSync(RULES_FILE, "utf8"));
+export const drawingRules = () => (rules ??= rulesWithoutFile(readFileSync(RULES_FILE, "utf8")));
+const rulesWithoutFile = (text: string) => {
+  const t = text.replace(/\r\n/g, "\n");
+  const at = t.indexOf("\n## The file\n");
+  return (at < 0 ? t : t.slice(0, at)).trimEnd() + "\n";
+};
 
 type PromptInput = Pick<EngineRunRequest, "instruction" | "folderName" | "view" | "base" | "scope" | "parts" | "simplify">;
 

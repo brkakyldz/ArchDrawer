@@ -1,7 +1,11 @@
-# Drawing a repository's architecture (archdraw/diagram@2)
+# Drawing a repository's architecture (archdraw/diagram@3)
 
-You write one JSON file that an editor opens. The drawing must carry the real
-architecture, read from the code — at the same depth for any repository:
+You write one JSON file that an editor opens. It holds two things: the
+**facts** — what the system is made of and who talks to whom, read from the
+code — and the **overview drawing** of those facts. The editor draws the
+LinkedIn, README and presentation versions from the same facts later. The
+drawing must carry the real architecture, at the same depth for any
+repository:
 
 - **What each component holds.** A component whose code shows distinct
   mechanisms lists them as `items` in a `panel` (e.g. a tool gateway: "Schema
@@ -30,7 +34,7 @@ architecture, read from the code — at the same depth for any repository:
   what it is for and what it guarantees, for a reader new to the code.
   `files`: repository-relative paths you actually opened that implement it.
 - **Finer detail lives one level down.** A component whose inside deserves its
-  own drawing gets `detail`: the id of another view in `views`, drawn by the
+  own drawing gets `detail`: the id of another overview view, drawn by the
   same rules.
 
 - **Items are names, not sentences.** 2–5 words each ("Schema validation",
@@ -67,9 +71,11 @@ inventory:
 - **Detail goes one level down.** What does not fit the map goes into a view
   reached by a zone's or component's `detail`; that view is drawn by the rules
   above, at full depth, with no zone target.
-- **Nothing is lost.** A component moved into a detail view keeps its id, its
-  content, its files and its connections there. A part that stands for several
-  components lists their ids in `from`, and keeps the `from` they already had.
+- **Nothing is lost.** Every component fact is drawn by at least one part of
+  the overview or its detail views. A component moved into a detail view keeps
+  its fact, its files and its relations. A part that stands for several
+  components lists their facts in `facts` and gives its own `label`, `kind`
+  and `description`.
 
 Size: 8–20 components per detail view including those inside groups. Merge
 small helpers into what they serve; leave out tests and build scripts.
@@ -78,37 +84,59 @@ small helpers into what they serve; leave out tests and build scripts.
 
 ```json
 {
-  "schema": "archdraw/diagram@2",
+  "schema": "archdraw/diagram@3",
   "title": "Hotel Operations Agent",
-  "views": [
-    {
-      "id": "overview",
-      "title": "Overview",
-      "caption": { "title": "Runtime architecture of the hotel agent", "lede": "One sentence that tells the story." },
-      "nodes": [
-        { "id": "runtime", "label": "Agent runtime", "kind": "llm", "form": "group", "icon": "cpu", "sub": "OpenAI Agents SDK",
-          "items": [], "description": "…", "files": ["src/agent/"], "parent": null, "detail": null, "place": { "row": 0, "col": 3 },
-          "lane": { "spine": 3 }, "from": [] },
-        { "id": "llm", "label": "LLM", "kind": "llm", "form": "compact", "icon": "spark", "sub": "",
-          "items": [], "description": "…", "files": [], "parent": "runtime", "detail": null, "place": null,
-          "lane": { "spine": 0 }, "from": [] },
-        { "id": "gateway", "label": "Tool gateway", "kind": "gate", "form": "panel", "icon": "shield", "sub": "every call passes here",
-          "items": ["Schema validation", "Scope re-check", "Typed errors"], "description": "…", "files": ["src/tools/gateway.py"],
-          "parent": null, "detail": null, "place": { "row": 0, "col": 4 },
-          "lane": { "spine": 4 }, "from": [] }
-      ],
-      "edges": [
-        { "from": "runtime", "to": "gateway", "label": "", "style": "call", "both": true, "step": 4 }
-      ],
-      "texts": []
+  "facts": {
+    "components": [
+      { "id": "runtime", "label": "Agent runtime", "kind": "llm", "sub": "OpenAI Agents SDK", "description": "Runs the agent loop for every guest request.",
+        "files": ["src/agent/"], "items": [] },
+      { "id": "llm", "label": "LLM", "kind": "llm", "sub": "", "description": "Chooses the next step from the conversation so far.",
+        "files": [], "items": [] },
+      { "id": "gateway", "label": "Tool gateway", "kind": "gate", "sub": "every call passes here", "description": "The only way the agent reaches a tool.",
+        "files": ["src/tools/gateway.py"], "items": ["Schema validation", "Scope re-check", "Typed errors"] }
+    ],
+    "relations": [
+      { "id": "r1", "from": "runtime", "to": "gateway", "label": "", "style": "call", "both": true }
+    ]
+  },
+  "channels": {
+    "overview": {
+      "views": [
+        {
+          "id": "overview",
+          "title": "Overview",
+          "caption": { "title": "Runtime architecture of the hotel agent", "lede": "One sentence that tells the story." },
+          "nodes": [
+            { "id": "runtime", "facts": ["runtime"], "form": "group", "icon": "cpu", "parent": null, "detail": null,
+              "place": { "row": 0, "col": 3 }, "lane": { "spine": 3 } },
+            { "id": "llm", "facts": ["llm"], "form": "compact", "icon": "spark", "parent": "runtime", "detail": null,
+              "place": null, "lane": { "spine": 0 } },
+            { "id": "gateway", "facts": ["gateway"], "form": "panel", "icon": "shield", "parent": null, "detail": null,
+              "place": { "row": 0, "col": 4 }, "lane": { "spine": 4 } }
+          ],
+          "edges": [
+            { "from": "runtime", "to": "gateway", "relations": ["r1"], "step": 4 }
+          ],
+          "texts": []
+        }
+      ]
     }
-  ]
+  }
 }
 ```
 
-Every property shown is required, except `lane` and `from`, which default to
-`null` and `[]`; use `null`, `""` or `[]` for none. Leave
-`texts` empty: titles and remarks on the canvas are the user's to add.
+**Facts** (`facts.components`, `facts.relations`) say what is true: every
+property shown is required; use `""` or `[]` for none. A component's `items`
+are what it holds; a part with form `panel` shows them. A relation joins two
+component facts, once per pair (`both: true` for two-way).
+
+**The overview** (`channels.overview.views`) draws the facts. A part (`nodes`)
+points to the fact it shows with `facts: ["<id>"]` and carries only how it is
+drawn: `form`, `icon`, `parent`, `detail`, `place`, `lane` (optional,
+default `null`). Give it the fact's id. A connection (`edges`) joins two parts
+of its view and names the relation it shows in `relations`, plus its `step`.
+Leave `texts` empty: titles and remarks on the canvas are the user's to add.
+Leave out the other channels: the editor draws them from the facts.
 
 - `kind`: actor (a person or role), client (browser, app, CLI the user
   touches), api (an HTTP/RPC surface), service (code this repo owns that
@@ -117,12 +145,14 @@ Every property shown is required, except `lane` and `from`, which default to
   ops (monitoring, tracing, evaluation), gate (a check: auth, validation,
   policy, approval rule), data (database, cache, queue, file store, log).
 - `form`: card (a plain component), compact (a small part, mostly inside a
-  group), panel (a component with `items`), group (a component holding other
-  components; only a group may be a `parent`).
+  group), panel (a component whose fact has `items`), group (a component
+  holding other components; only a group may be a `parent`).
 - `icon`: null for the kind's default, or one of: user, users, clipboard,
   monitor, window, zap, timer, spark, cloud, shield, scale, layers, bell, db,
   chat, loop, book, pen, receipt, inbox, box, cpu, cog, globe, key, lock, mail,
   file, folder, terminal, code, server, queue, search, chart, eye, git, plug.
 - `label` ≤ 48 characters, `sub` ≤ 60, each item ≤ 44, `description` ≤ 400.
-- Ids: letters, digits, `_` and `-`, unique across the whole file.
+- Ids: letters, digits, `_` and `-`. Fact ids (components and relations) are
+  unique among facts, view ids across the file, part and connection ids within
+  the overview.
 - Components inside a group get `place: null`.

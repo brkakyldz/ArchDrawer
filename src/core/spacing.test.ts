@@ -105,7 +105,7 @@ describe("connection ends and arcs", () => {
 });
 
 describe("labels and badges keep clear", () => {
-  const drawings = ["examples/shop.archdraw.json", "tests/fixtures/archdrawer.archdraw.json", "tests/fixtures/hotel.archdraw.json"];
+  const drawings = ["tests/fixtures/shop.archdraw.json", "tests/fixtures/archdrawer.archdraw.json", "tests/fixtures/hotel.archdraw.json"];
   const views = drawings.flatMap((path) => {
     const doc = normalizeFile(JSON.parse(readFileSync(path, "utf8")) as DiagramFile, { id: "d_spacing", now: "2026-10-20T00:00:00Z" });
     return doc.views.map((v) => [`${path} ${v.id}`, v] as const);

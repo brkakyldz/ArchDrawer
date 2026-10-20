@@ -1,0 +1,53 @@
+name: Bug report
+description: Something in Archdrawer does not work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did and what you saw. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See …
+  - type: input
+    id: version
+    attributes:
+      label: Archdrawer version
+      description: The `version` in `package.json`, or from `http://127.0.0.1:4317/api/health`.
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node --version`.
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      options: [Claude Code, Codex, None, Not relevant]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The end of `~/.archdraw/server.log`, or the terminal output. Remove anything private first.
+      render: text

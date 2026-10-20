@@ -68,8 +68,12 @@ export interface FileReport {
   v1: boolean;
 }
 
-/** Validate a file's text against the diagram contract, checking `files` against the repository root. */
-export function checkText(text: string, root: string): FileReport {
+/**
+ * Validate a file's text against the diagram contract, checking `files` against the repository root.
+ * A missing path is an error for `validate` and a warning wherever a drawing is opened or saved
+ * (diagram contract rule 10), so a file deleted from the repository never locks a drawing.
+ */
+export function checkText(text: string, root: string, missingFiles: "error" | "warn" = "error"): FileReport {
   let raw: unknown;
   try {
     raw = JSON.parse(text.replace(/^﻿/, ""));
@@ -79,11 +83,11 @@ export function checkText(text: string, root: string): FileReport {
   if (isV1(raw)) {
     return { ok: false, errors: ['schema: this is archdraw/diagram@1; run "archdrawer migrate <file>"'], warnings: [], file: null, raw, v1: true };
   }
-  const r = validateFile(raw, { fileExists: repoFileChecker(root) });
+  const r = validateFile(raw, { fileExists: repoFileChecker(root), missingFiles });
   return { ...r, raw, v1: false };
 }
 
-export function checkFile(path: string): FileReport & { text: string } {
+export function checkFile(path: string, missingFiles: "error" | "warn" = "error"): FileReport & { text: string } {
   let text: string;
   try {
     text = readFileSync(path, "utf8");
@@ -91,7 +95,7 @@ export function checkFile(path: string): FileReport & { text: string } {
     const code = (e as NodeJS.ErrnoException).code;
     return { ok: false, errors: [`file: ${code === "ENOENT" ? "not found" : (e as Error).message}`], warnings: [], file: null, raw: undefined, v1: false, text: "" };
   }
-  return { ...checkText(text, repoRootOf(path)), text };
+  return { ...checkText(text, repoRootOf(path), missingFiles), text };
 }
 
 /**

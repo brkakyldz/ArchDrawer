@@ -1,9 +1,10 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { layoutRects } from "../../core/geometry";
 import {
   descendants, FORM_LABELS, FORMS, iconOf, ICONS, isRepoRelative, KIND_INFO, KINDS, LIMITS,
   type DiagramNode, type IconName,
 } from "../../core/model";
+import { api } from "../api";
 import { Icon } from "../ui/Icon";
 import { FormThumb } from "./FormThumb";
 import { createInside, deleteNodes, setNode, type NodePatch } from "./ops";
@@ -12,6 +13,20 @@ import { NOTHING } from "./types";
 import { placeCallout, rectToScreen } from "./viewport";
 
 type Menu = "kind" | "form" | "icon" | null;
+
+/** The paths among `files` that are not in the drawing's repository (api contract, check-files); none until the server answers. */
+function useMissingFiles(docId: string, files: string[]): Set<string> {
+  const key = JSON.stringify(files);
+  const [missing, setMissing] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    const paths = JSON.parse(key) as string[];
+    let live = true;
+    if (!paths.length) { setMissing(new Set()); return; }
+    api.checkFiles(docId, paths).then((m) => { if (live) setMissing(new Set(m)); }, () => { if (live) setMissing(new Set()); });
+    return () => { live = false; };
+  }, [docId, key]);
+  return missing;
+}
 
 /** The explanation of a component, beside it in free canvas at screen size, every field editable (ui contract, Callout). */
 export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; docked?: boolean }) {
@@ -24,6 +39,7 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
   const [addFile, setAddFile] = useState(false);
   const [editTitle, setEditTitle] = useState(false);
   useLayoutEffect(() => { if (box.current) setH(box.current.offsetHeight); });
+  const missing = useMissingFiles(ctl.doc.id, node?.files ?? []);
   if (!node) return null;
 
   const patch = (p: NodePatch, coalesce?: string) => ctl.apply((d) => setNode(d, ctl.vid, id, p), coalesce ? { coalesce } : undefined);
@@ -172,8 +188,8 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
         <h4>In the code</h4>
         <div className="paths" data-testid="callout-files">
           {node.files.map((f) => (
-            <span key={f} className="path" data-testid="callout-file">
-              <span>{f}</span>
+            <span key={f} className="path" data-testid="callout-file" data-missing={missing.has(f) ? "true" : undefined}>
+              <span>{f}{missing.has(f) && <em data-testid="callout-file-missing">not in the repository</em>}</span>
               <button className="mini" data-testid="callout-file-remove" aria-label={`Remove ${f}`} onClick={() => patch({ files: node.files.filter((x) => x !== f) })}><Icon name="close" size={13} /></button>
             </span>
           ))}

@@ -49,6 +49,9 @@ export const api = {
   /** Save; `base` is the `updatedAt` the edit started from (409 when the file moved on). */
   save: (doc: DiagramDocument, base: string | null) =>
     call<{ ok: true; updatedAt: string }>("PUT", `/api/diagrams/${encodeURIComponent(doc.id)}`, doc, base ? { "If-Unmodified-Since-Version": base } : {}),
+  /** The paths among `files` that are not in the drawing's repository. */
+  checkFiles: (id: string, files: string[]) =>
+    call<{ missing: string[] }>("POST", `/api/diagrams/${encodeURIComponent(id)}/check-files`, { files }).then((r) => r.missing),
   import: (doc: unknown) => call<{ id: string }>("POST", "/api/diagrams", doc).then((r) => r.id),
   example: () => call<{ id: string }>("POST", "/api/example").then((r) => r.id),
   forget: (id: string) => call<void>("DELETE", `/api/diagrams/${encodeURIComponent(id)}`),

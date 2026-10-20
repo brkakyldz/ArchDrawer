@@ -155,10 +155,15 @@ with 400 and the first violation. Invalid files are never repaired.
    `both: true`.
 9. `place` is null or `{row, col}` with integers in −20…20.
 10. `files` are repository-relative: no leading `/` or `\`, no drive letter,
-    no `..` segment. When a file is checked against its repository (the CLI,
-    and the server for a registered file), each path must exist under the
-    repository root, symlinks resolved. The repository root is the nearest
-    ancestor of the file's folder holding `.git`, else the file's folder.
+    no `..` segment. When a file is checked against its repository
+    (`archdrawer validate`), each path must exist under the repository root,
+    symlinks resolved. Wherever a drawing is opened or saved (`archdrawer
+    open` and `svg`, and the server for a registered file) a missing path is
+    a warning instead, `<json path>: "<path>" does not exist in the
+    repository`, so a file deleted or renamed later never locks a drawing;
+    the editor marks it (ui contract, `callout-files`). The repository root
+    is the nearest ancestor of the file's folder holding `.git`, else the
+    file's folder; a registered drawing's `source` is always that root.
 11. At most 60 components per view and 30 views.
 12. `lane` and `from` follow *Lane* and *Provenance* below.
 13. `postOf` follows *Posts* below.

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readAnyFile } from "./convert";
 import { migrateV1 } from "./migrate";
 import { validateDocument } from "./model";
 
@@ -49,5 +50,17 @@ describe("v1 → v2 migration", () => {
     const { doc } = migrateV1(bare, "2026-10-13T00:00:00.000Z");
     expect(validateDocument(doc).ok).toBe(true);
     expect(doc.views[0].nodes[0].parent).toBeNull();
+  });
+});
+
+describe("v1 → v3", () => {
+  it("converts through @2 when v1 is allowed, and refuses it otherwise", () => {
+    expect(readAnyFile(v1).errors).toEqual(['schema: this is archdraw/diagram@1; run "archdrawer migrate <file>"']);
+    const r = readAnyFile(v1, {}, { allowV1: true, now: "2026-10-21T00:00:00.000Z" });
+    expect(r.errors).toEqual([]);
+    expect(r.from).toBe("@1");
+    expect(r.file!.facts.components.map((c) => c.id).sort()).toEqual(["api", "backend", "db", "web"]);
+    expect(r.file!.channels.overview.views[0].nodes.find((n) => n.id === "api")!.parent).toBe("backend");
+    expect(r.warnings).toContain("Converted from archdraw/diagram@2");
   });
 });

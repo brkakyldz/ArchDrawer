@@ -5,6 +5,9 @@
 
 export const SCHEMA_ID = "archdraw/diagram@2";
 export const SCHEMA_V1 = "archdraw/diagram@1";
+export const SCHEMA_V2 = SCHEMA_ID;
+/** The stored file format (ADR 0006): facts and four channels. Shape and rules in `./file3`. */
+export const SCHEMA_V3 = "archdraw/diagram@3";
 
 export const KINDS = ["actor", "client", "api", "service", "worker", "llm", "external", "ops", "gate", "data"] as const;
 export type Kind = (typeof KINDS)[number];
@@ -58,8 +61,14 @@ export interface DiagramNode {
   description: string; files: string[]; parent: string | null; detail: string | null; place: Place | null;
   x: number; y: number;
   lane?: Lane | null; from?: string[];
+  /** In a channel view (`./channels`): the component facts the part shows. */
+  facts?: string[];
 }
-export interface DiagramEdge { id: string; from: string; to: string; label: string; style: EdgeStyle; both: boolean; step: number | null }
+export interface DiagramEdge {
+  id: string; from: string; to: string; label: string; style: EdgeStyle; both: boolean; step: number | null;
+  /** In a channel view (`./channels`): the relation facts the connection shows. */
+  relations?: string[];
+}
 /** A text's font size in drawing px: any value in range; the toolbar offers four presets (diagram contract, Text). */
 export const TEXT_SIZE = { min: 8, max: 200, default: 20, note: 16 } as const;
 export const TEXT_PRESETS = [{ label: "S", size: 16 }, { label: "M", size: 20 }, { label: "L", size: 28 }, { label: "XL", size: 40 }] as const;
@@ -72,7 +81,7 @@ export interface DiagramView {
   postOf: string | null;
   nodes: DiagramNode[]; edges: DiagramEdge[]; texts: DiagramText[];
 }
-export interface DiagramRequest { id: string; text: string; view: string; at: string }
+export interface DiagramRequest { id: string; text: string; view: string; at: string; channel?: string }
 export type DiagramSource = { kind: "local"; path: string };
 export interface EngineRef { id: string; model: string | null }
 
@@ -386,7 +395,6 @@ export const LINKEDIN_SUFFIX = "-linkedin";
 export const isLinkedInView = (viewId: string) => viewId.endsWith(LINKEDIN_SUFFIX);
 /** A post view draws with the dense post style: one with a `postOf`, or a LinkedIn view. */
 export const isPostView = (v: { id?: string; postOf?: string | null }) => !!v.postOf || (!!v.id && isLinkedInView(v.id));
-export const linkedInViewId = (viewId: string) => `${viewId.slice(0, 64 - LINKEDIN_SUFFIX.length)}${LINKEDIN_SUFFIX}`;
 
 /** The overview's targets (diagram contract, Overview targets): 4–6 top-level zones, at most 15 connections. */
 export const OVERVIEW_TARGETS = { zones: { min: 4, max: 6 }, connections: 15 } as const;
@@ -399,17 +407,17 @@ export function overviewMiss(view: { nodes: readonly { parent?: string | null; f
 }
 
 /** The depth checks: they never make a file invalid. */
-export function depthWarnings(file: Pick<DiagramFile, "views">): string[] {
+export function depthWarnings(file: Pick<DiagramFile, "views">, o: { prefix?: string; overview?: boolean; share?: boolean } = {}): string[] {
   const out: string[] = [];
   file.views.forEach((v, vi) => {
-    const P = `views[${vi}]`;
-    const miss = vi === 0 && !isPostView(v) ? overviewMiss(v) : null;
+    const P = `${o.prefix ?? "views"}[${vi}]`;
+    const miss = vi === 0 && (o.overview ?? !isPostView(v)) ? overviewMiss(v) : null;
     if (miss) {
       out.push(`${P}: the overview has ${miss.zones} zone${miss.zones === 1 ? "" : "s"} and ${miss.connections} connection${miss.connections === 1 ? "" : "s"}; it targets 4–6 zones and at most 15 connections — simplify it, with finer detail in detail views`);
     }
     const top = v.nodes.filter((n) => n.parent === null);
     const stepped = v.edges.filter((e) => e.step !== null);
-    const share = typeof v.id === "string" && isLinkedInView(v.id);
+    const share = o.share ?? (typeof v.id === "string" && isLinkedInView(v.id));
     if (top.length >= 6 && !share) {
       const hinted = top.filter((n) => n.place);
       const rows = new Set(hinted.map((n) => n.place!.row));

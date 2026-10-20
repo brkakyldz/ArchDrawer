@@ -56,9 +56,9 @@ export const api = {
   example: () => call<{ id: string }>("POST", "/api/example").then((r) => r.id),
   forget: (id: string) => call<void>("DELETE", `/api/diagrams/${encodeURIComponent(id)}`),
   request: (id: string, channel: string, view: string, text: string) => call<{ id: string }>("POST", `/api/diagrams/${encodeURIComponent(id)}/requests`, { channel, view, text }),
-  startRun: (diagramId: string, channel: string, view: string, instruction: string, o: RunStart) =>
+  startRun: (diagramId: string, channel: string, view: string | null, instruction: string, o: RunStart) =>
     call<{ runId: string }>("POST", "/api/runs", {
-      diagramId, ...(o.kind === "post" ? {} : { channel }), view, instruction, engine: o.engine, model: o.model, scope: o.scope, ...(o.kind ? { kind: o.kind } : {}), ...(o.format ? { format: o.format } : {}),
+      diagramId, ...(o.kind === "post" ? {} : { channel }), ...(view === null ? {} : { view }), instruction, engine: o.engine, model: o.model, scope: o.scope, ...(o.kind ? { kind: o.kind } : {}), ...(o.format ? { format: o.format } : {}),
     }).then((r) => r.runId),
   run: (id: string) => call<RunRecord>("GET", `/api/runs/${id}`),
   cancelRun: (id: string) => call<{ ok: true }>("POST", `/api/runs/${id}/cancel`),

@@ -160,50 +160,52 @@ describe("instruction-box runs", () => {
 });
 
 describe("post runs", () => {
-  it("designs the view's post from the canned intent: postOf, one warning for the reverse pair, the report of the saved view", async () => {
+  it("draws the LinkedIn channel from the canned intent: one warning for the reverse pair, parts pointing at facts, the report of the saved view", async () => {
     const { run, runs, doc, stored } = await setup();
     const before = doc();
-    const { status, body } = await run("", { kind: "post" });
+    const { status, body } = await run("", { kind: "post", view: undefined });
     expect(status).toBe(202);
     const done = (await runs.wait(body.runId!))!;
-    expect(done).toMatchObject({ kind: "post", status: "succeeded", view: "overview-linkedin", error: null });
+    expect(done).toMatchObject({ kind: "post", status: "succeeded", channel: "linkedin", view: "linkedin", error: null });
     expect(done.progress).toContain("Checking the post");
     const after = doc();
     expect(validateDocument3(stored()).ok).toBe(true);
     expect(after.views[0]).toEqual(before.views[0]);
-    const post = after.views.find((v) => v.id === "overview-linkedin")!;
+    const post = after.views.find((v) => v.id === "linkedin")!;
     expect(post).toMatchObject({ postOf: "overview", caption: { title: "How a request becomes a result" } });
     expect(post.nodes.filter((n) => n.form === "group").map((n) => n.label)).toEqual(["App runtime"]);
     expect(post.edges.filter((e) => e.both)).toHaveLength(1);
     expect(post.edges.filter((e) => e.step !== null).every((e) => e.label === "")).toBe(true);
     expect(after.warnings.slice(before.warnings.length)).toEqual(["Joined result → approval and approval → result into one two-way connection"]);
-    // part i stands for the source's component i
-    expect(post.nodes.find((n) => n.label === "Request")!.from).toEqual([before.views[0].nodes[0].id]);
-    expect(done.layoutReport).toMatchObject({ view: "overview-linkedin", format: "feed", overLimitText: [], counts: { parts: 6, zones: 1, connections: 5 } });
+    // part i shows the fact the overview's part i shows; the facts stay as they were
+    expect(stored().channels.linkedin.views[0].nodes.find((n: { id: string }) => n.id === "request").facts).toEqual([before.views[0].nodes[0].id]);
+    expect(stored().channels.linkedin.outdated).toEqual([]);
+    expect(done.layoutReport).toMatchObject({ view: "linkedin", format: "feed", overLimitText: [], counts: { parts: 6, zones: 1, connections: 5 } });
   });
 
   it("redesigning keeps the post's id, and a wide post is measured wide", async () => {
     const { run, runs, doc } = await setup();
-    await runs.wait((await run("", { kind: "post" })).body.runId!);
-    const again = (await runs.wait((await run("", { kind: "post", view: "overview-linkedin", format: "linkedin" })).body.runId!))!;
-    expect(again).toMatchObject({ status: "succeeded", view: "overview-linkedin" });
+    await runs.wait((await run("", { kind: "post", view: undefined })).body.runId!);
+    const again = (await runs.wait((await run("", { kind: "post", view: "linkedin", format: "linkedin" })).body.runId!))!;
+    expect(again).toMatchObject({ status: "succeeded", view: "linkedin" });
     expect(again.layoutReport!.format).toBe("linkedin");
-    expect(doc().views.map((v) => v.id)).toEqual(["overview", "overview-linkedin"]);
+    expect(doc().views.map((v) => v.id)).toEqual(["overview", "linkedin"]);
   });
 
   it("keeps an over-target label whole and reports it; an invalid story saves nothing", async () => {
     const { run, runs, file } = await setup();
-    const long = (await runs.wait((await run("[fixture:long]", { kind: "post" })).body.runId!))!;
+    const long = (await runs.wait((await run("[fixture:long]", { kind: "post", view: undefined })).body.runId!))!;
     expect(long.layoutReport!.overLimitText).toContainEqual(expect.objectContaining({ field: "label", text: "A deliberately longer request name", limit: 28 }));
     const snapshot = readFileSync(file, "utf8");
-    const bad = (await runs.wait((await run("[fixture:invalid]", { kind: "post" })).body.runId!))!;
+    const bad = (await runs.wait((await run("[fixture:invalid]", { kind: "post", view: undefined })).body.runId!))!;
     expect(bad).toMatchObject({ status: "failed", layoutReport: null });
     expect(bad.error).toMatch(/ghost/);
     expect(readFileSync(file, "utf8")).toBe(snapshot);
   });
 
-  it("refuses a post's wrong scope, format or revision before any engine", async () => {
+  it("refuses a post's wrong scope, format, revision or view before any engine", async () => {
     const { run } = await setup();
+    expect(await run("", { kind: "post" })).toMatchObject({ status: 400, body: { error: 'Unknown view "overview"' } });
     expect((await run("", { kind: "post", scope: { kind: "all" } })).status).toBe(400);
     expect((await run("", { kind: "post", format: "readme" })).status).toBe(400);
     expect((await run("", { kind: "post", instruction: 3 })).status).toBe(400);

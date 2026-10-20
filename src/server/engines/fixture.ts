@@ -149,12 +149,12 @@ export const CANNED_INTENT = {
   lede: "A request enters the app, is checked, and produces a result.",
   zones: [{ id: "runtime", label: "App runtime" }],
   parts: [
-    { id: "request", label: "Request", sub: "start the work", kind: "client", chips: [], zone: null, spine: 0, anchor: null, side: null, from: [] },
-    { id: "intake", label: "Request intake", sub: "check the request", kind: "api", chips: ["Validate input", "Bind the scope"], zone: null, spine: 1, anchor: null, side: null, from: [] },
-    { id: "loop", label: "Work loop", sub: "choose the next action", kind: "llm", chips: ["Propose action", "Read tool result"], zone: "runtime", spine: 2, anchor: null, side: null, from: [] },
-    { id: "result", label: "Result", sub: "deliver the outcome", kind: "service", chips: [], zone: null, spine: 3, anchor: null, side: null, from: [] },
-    { id: "facts", label: "Stored facts", sub: "keep the current state", kind: "data", chips: [], zone: "runtime", spine: null, anchor: "loop", side: "below", from: [] },
-    { id: "approval", label: "Approval", sub: "review the action", kind: "actor", chips: [], zone: null, spine: null, anchor: "result", side: "above", from: [] },
+    { id: "request", label: "Request", sub: "start the work", kind: "client", chips: [], zone: null, spine: 0, anchor: null, side: null, facts: [] },
+    { id: "intake", label: "Request intake", sub: "check the request", kind: "api", chips: ["Validate input", "Bind the scope"], zone: null, spine: 1, anchor: null, side: null, facts: [] },
+    { id: "loop", label: "Work loop", sub: "choose the next action", kind: "llm", chips: ["Propose action", "Read tool result"], zone: "runtime", spine: 2, anchor: null, side: null, facts: [] },
+    { id: "result", label: "Result", sub: "deliver the outcome", kind: "service", chips: [], zone: null, spine: 3, anchor: null, side: null, facts: [] },
+    { id: "facts", label: "Stored facts", sub: "keep the current state", kind: "data", chips: [], zone: "runtime", spine: null, anchor: "loop", side: "below", facts: [] },
+    { id: "approval", label: "Approval", sub: "review the action", kind: "actor", chips: [], zone: null, spine: null, anchor: "result", side: "above", facts: [] },
   ],
   edges: [
     { from: "request", to: "intake", label: "", style: "call", step: 1 },
@@ -166,11 +166,11 @@ export const CANNED_INTENT = {
   ],
 };
 
-/** The fixture's post: part i stands for the source view's component i; markers per the testing contract. */
+/** The fixture's post: part i shows the fact the source view's part i shows; markers per the testing contract. */
 function fixturePost(base: unknown, view: string, instruction: string): unknown {
-  const intent = structuredClone(CANNED_INTENT) as unknown as { parts: { from: string[]; label: string }[]; edges: Record<string, unknown>[] };
-  const src = ((base as { views?: { id: string; nodes?: { id: string }[] }[] }).views ?? []).find((v) => v.id === view);
-  intent.parts.forEach((p, i) => { const id = src?.nodes?.[i]?.id; p.from = id ? [id] : []; });
+  const intent = structuredClone(CANNED_INTENT) as unknown as { parts: { facts: string[]; label: string }[]; edges: Record<string, unknown>[] };
+  const src = ((base as { views?: { id: string; nodes?: { facts?: string[] }[] }[] }).views ?? []).find((v) => v.id === view);
+  intent.parts.forEach((p, i) => { const facts = src?.nodes?.[i]?.facts ?? []; p.facts = facts.length === 1 ? [...facts] : []; });
   if (instruction.includes("[fixture:long]")) intent.parts[0].label = "A deliberately longer request name";
   if (instruction.includes("[fixture:invalid]")) intent.edges.push({ from: "request", to: "ghost", label: "", style: "call", step: null });
   return intent;

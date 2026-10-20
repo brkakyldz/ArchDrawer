@@ -7,7 +7,7 @@ import type { RunScope } from "../../core/repair";
 import { api, ApiError, type EngineInfo } from "../api";
 
 /** Where a run was started: each place shows its own error and summary; every place shows a run going. */
-export type RunOrigin = "ask" | "panel" | "share";
+export type RunOrigin = "ask" | "panel" | "linkedin";
 
 export interface RunRequest {
   instruction: string;
@@ -19,7 +19,7 @@ export interface RunRequest {
   view?: string;
   /** Edits the stored drawing once the run has succeeded (an undoable edit). */
   after?: (doc: DiagramDocument) => DiagramDocument;
-  /** A post run designs the view's LinkedIn image (api contract, Run kinds); its instruction may be empty. A simplify run makes the overview a map. */
+  /** A post run draws the LinkedIn channel (api contract, Run kinds); its instruction may be empty. A simplify run makes the overview a map. */
   kind?: "refine" | "post" | "simplify";
   format?: "feed" | "linkedin";
 }
@@ -75,7 +75,7 @@ interface Options {
   onSaved: () => void;
 }
 
-/** One instruction run at a time, shared by the ask box, the AI panel and the share dialog. */
+/** One instruction run at a time, shared by the ask box, the AI panel and the LinkedIn channel. */
 export function useRunner({ doc, vid, settle, onUpdated, onSaved }: Options) {
   const [state, setState] = useState<RunState>(IDLE);
   const source = useRef<EventSource | null>(null);
@@ -111,7 +111,9 @@ export function useRunner({ doc, vid, settle, onUpdated, onSaved }: Options) {
     }
     let id: string;
     try {
-      id = await api.startRun(d.id, channelOf(d, v), v, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format });
+      // A post names the LinkedIn channel's view when there is one; the server designs it from the overview.
+      const sent = req.kind === "post" ? d.views.find((x) => x.postOf)?.id ?? null : v;
+      id = await api.startRun(d.id, channelOf(d, v), sent, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format });
     } catch (e) {
       fail(e instanceof ApiError ? e.message : "Could not start the instruction");
       return;

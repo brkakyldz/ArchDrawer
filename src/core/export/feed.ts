@@ -1,5 +1,7 @@
+import { applyChannel, clearOutdated, joinChannel, type ApplyResult } from "../channels";
+import { freeIdAmong, type Document3 } from "../file3";
 import { measureNode } from "../geometry";
-import { postSource, postViewId } from "../intent";
+import { linkedInViewId, postSource, postViewId } from "../intent";
 import {
   allIds, LIMITS, slugify,
   type DiagramDocument, type DiagramEdge, type DiagramNode, type DiagramView,
@@ -60,6 +62,8 @@ export function foldForFeed(v: DiagramView, o: FoldOptions = {}): DiagramView {
   const fold = (into: DiagramEdge, e: DiagramEdge) => {
     if (e.step !== null && (into.step === null || e.step < into.step)) { into.step = e.step; if (e.label) into.label = e.label; }
     else if (!into.label && e.label) into.label = e.label;
+    // A folded connection shows every relation the connections it folds showed.
+    if (e.relations?.length) into.relations = [...new Set([...(into.relations ?? []), ...e.relations])];
   };
   for (const e of v.edges) {
     const a = top(e.from), b = top(e.to);
@@ -270,4 +274,28 @@ export function makeLinkedInView(doc: DiagramDocument, vid: string): { doc: Diag
  */
 export function explainInstruction(viewId: string): string {
   return `Rewrite only the view "${viewId}". It is the LinkedIn version of this drawing: one image for people scrolling LinkedIn who have never seen this repository, so a stranger must understand from the image alone what the system does and how a request moves through it. In this view: caption.title names what the system is in at most 9 words; caption.lede is one plain sentence of at most 160 characters on what it does and for whom; keep at most 8 components, merging or leaving out the rest, none with a parent; choose up to 3 that explain the system best and make them form "panel" with at most 4 items of at most 24 characters each saying what they hold, make the other parts on the main path form "card" and the rest form "compact", with no items; each component's sub is at most 28 characters in plain words saying what it does, not a file name or a list of technologies; number the main path 1, 2, 3 … with at most 6 steps, and label each numbered connection with a short sentence of at most 40 characters saying what happens (for example "You ask your agent for a drawing"); give other connections a label only when the reader needs it. Read the code where you need to, so every sentence is true. Keep the ids of the components you keep. The rules about groups and held items do not apply to this view. Change no other view.`;
+}
+
+/**
+ * The LinkedIn channel drawn without an engine (ui contract, The LinkedIn flow): the overview's first
+ * view folded and placed for the feed, as the channel's one view. Each part keeps its overview part's
+ * id and points to the same facts (a folded group to its own and its members'); connections show the
+ * relations their overview connections showed. The facts and the other channels stay; the channel's
+ * `outdated` is emptied.
+ */
+export function prepareLinkedIn(stored: Document3): ApplyResult {
+  const src = joinChannel(stored, "overview").views[0];
+  const laid = arrangeForFeed(src);
+  const id = linkedInViewId(stored);
+  const inside = (gid: string): string[] => src.nodes.filter((m) => m.parent === gid).flatMap((m) => [...(m.facts ?? []), ...inside(m.id)]);
+  const used = new Set<string>(laid.nodes.map((n) => n.id));
+  const view: DiagramView = {
+    id, title: "LinkedIn", caption: { ...src.caption }, postOf: null,
+    nodes: laid.nodes.map((n) => ({ ...n, facts: [...new Set([...(n.facts ?? []), ...(src.nodes.find((m) => m.id === n.id)?.form === "group" ? inside(n.id) : [])])] })),
+    edges: laid.edges.map((e) => { const eid = freeIdAmong(used, "li-e"); used.add(eid); return { ...e, id: eid, relations: [...(e.relations ?? [])] }; }),
+    texts: [],
+  };
+  const cleared: Document3 = { ...stored, channels: { ...stored.channels, linkedin: { ...stored.channels.linkedin, views: [] } } };
+  const r = applyChannel(cleared, "linkedin", { views: [view] }, { keepFacts: true });
+  return r.ok ? { ok: true, doc: clearOutdated(r.doc, "linkedin") } : r;
 }

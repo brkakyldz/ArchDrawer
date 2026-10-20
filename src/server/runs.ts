@@ -1,12 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";
-import { applyChannel } from "../core/channels";
-import { applyDrawing } from "../core/drawing";
+import { applyChannel, joinChannel } from "../core/channels";
 import { channelOfView, validateDocument3, type ChannelId, type Document3 } from "../core/file3";
 import { isPostView, validateDocument, type DiagramDocument } from "../core/model";
 import { startSwitches, type FormatId } from "../core/export/share";
 import { layoutReport, type LayoutReport } from "../core/report";
-import { intentToDocument, parseIntent, postSource, STORY_SCHEMA, StoryError } from "../core/intent";
+import { intentToChannel, linkedInViewId, parseIntent, STORY_SCHEMA, StoryError } from "../core/intent";
 import { postPrompt } from "./engines/prompt";
 import { diffDocuments, type Changes } from "../core/diff";
 import { CoverageError, keepUnrelatedViews, missingFacts, SIMPLIFY_INSTRUCTION } from "../core/simplify";
@@ -61,8 +60,7 @@ export interface StartRun {
   scope?: RunScope;
   /**
    * The drawing as the engine sees it, as it was when the run started: the run's channel
-   * (`joinChannel`, each part's facts as its `from`) for refine and simplify; the overview and the
-   * post as one view list (`joinDrawing`) for a post until #30.
+   * (`joinChannel`, each part's facts as its `from`); for a post, the overview channel it is designed from.
    */
   base: DiagramDocument;
   /** The channel the run changes; default the overview. */
@@ -129,7 +127,7 @@ export class RunManager {
     const id = `r_${randomBytes(6).toString("hex")}`;
     let resolveFinished!: () => void;
     const run: Run = {
-      id, kind: req.kind ?? "refine", channel: (req.kind === "post" ? "linkedin" : channelOfView(req.stored, req.view)) ?? "overview", view: req.view, status: "running", progress: [], diagramId: null, error: null, engine: req.engine.id, model: req.model,
+      id, kind: req.kind ?? "refine", channel: (req.kind === "post" ? "linkedin" : channelOfView(req.stored, req.view)) ?? "overview", view: req.kind === "post" ? linkedInViewId(req.stored) : req.view, status: "running", progress: [], diagramId: null, error: null, engine: req.engine.id, model: req.model,
       changes: null, layoutReport: null, target: req.base.id,
       events: [], listeners: new Set(), abort: new AbortController(),
       finished: new Promise((r) => (resolveFinished = r)), timedOut: false,
@@ -228,7 +226,8 @@ export class RunManager {
   /** A post run: the engine designs the story, code converts, places and measures it. */
   private async post(req: StartRun, root: string, signal: AbortSignal, progress: (m: string) => void) {
     const format = req.format === "linkedin" ? "linkedin" : "feed";
-    const source = postSource(req.base, req.view);
+    // The engine designs from the overview's first view (`base` is the overview's draft).
+    const source = req.base.views[0].id;
     const answer = await req.engine.run({
       cwd: root, folderName: basename(root), instruction: req.instruction, view: source, model: req.model, scope: { kind: "view" }, parts: [],
       base: documentToDraft(req.base), signal, timeoutMs: this.opts.timeoutMs, progress,
@@ -236,19 +235,17 @@ export class RunManager {
     });
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the post");
-    const { doc, view, warnings } = intentToDocument(req.base, source, parseIntent(answer), { portrait: format === "feed" });
-    const stamped = { ...doc, engine: { id: req.engine.id, model: req.model }, updatedAt: nowIso() };
+    // A post is the LinkedIn channel's one view; it changes no fact (diagram contract, Post answers).
+    const { doc, view, warnings } = intentToChannel(req.stored, parseIntent(answer), { portrait: format === "feed" });
+    const toSave: Document3 = { ...doc, engine: { id: req.engine.id, model: req.model }, updatedAt: nowIso() };
     if (signal.aborted) throw new EngineError("Cancelled");
-    // A post is the LinkedIn channel's view; it changes no fact (diagram contract, Post answers).
-    const split = applyDrawing(req.stored, stamped, { keepFacts: true });
-    if (!split.ok) throw new EngineError(split.error);
-    const toSave = { ...split.doc, channels: { ...split.doc.channels, linkedin: { ...split.doc.channels.linkedin, outdated: [] } } };
     const saved = this.store.put(req.base.id, toSave, { base: req.base.updatedAt, announce: true });
     if (!saved) throw new EngineError("The drawing was removed while the post was designed.");
     if (!saved.ok) throw new EngineError(saved.conflict ? "The drawing changed while the post was designed." : `The drawing could not be saved: ${saved.error}`);
     progress(warnings.length ? `Saved with ${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : "Saved");
-    const report = layoutReport(stamped, view, { ...startSwitches(format, true), format, theme: stamped.theme });
-    return { diagramId: req.base.id, changes: diffDocuments(req.base, stamped, [view]), layoutReport: report, channel: "linkedin" as ChannelId, view };
+    const after = joinChannel(toSave, "linkedin");
+    const report = layoutReport(after, view, { ...startSwitches(format, true), format, theme: toSave.theme });
+    return { diagramId: req.base.id, changes: diffDocuments(joinChannel(req.stored, "linkedin"), after, [view]), layoutReport: report, channel: "linkedin" as ChannelId, view };
   }
 }
 

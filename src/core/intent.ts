@@ -1,3 +1,5 @@
+import { applyChannel, clearOutdated, joinChannel } from "./channels";
+import { CHANNELS, freeIdAmong, validateDocument3, type Document3 } from "./file3";
 import { layoutView } from "./layout";
 import {
   allIds, ID_RE, KINDS, LIMITS, LINKEDIN_SUFFIX, validateDocument,
@@ -27,7 +29,7 @@ export const STORY_SCHEMA = {
     zones: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "label"],
       properties: { id: { type: "string" }, label: { type: "string" } } } },
     parts: { type: "array", items: { type: "object", additionalProperties: false,
-      required: ["id", "label", "sub", "kind", "chips", "zone", "spine", "anchor", "side", "from"],
+      required: ["id", "label", "sub", "kind", "chips", "zone", "spine", "anchor", "side", "facts"],
       properties: {
         id: { type: "string" }, label: { type: "string" }, sub: { type: "string" },
         kind: { type: "string", enum: ["actor", "client", "api", "service", "worker", "llm", "external", "ops", "gate", "data"] },
@@ -36,7 +38,7 @@ export const STORY_SCHEMA = {
         spine: { anyOf: [{ type: "integer" }, { type: "null" }] },
         anchor: { anyOf: [{ type: "string" }, { type: "null" }] },
         side: { anyOf: [{ type: "string", enum: ["above", "below"] }, { type: "null" }] },
-        from: { type: "array", items: { type: "string" } },
+        facts: { type: "array", items: { type: "string" } },
       } } },
     edges: { type: "array", items: { type: "object", additionalProperties: false,
       required: ["from", "to", "label", "style", "step"],
@@ -86,7 +88,9 @@ export function parseIntent(raw: unknown): StoryIntent {
         id: str(o.id, `${w}.id`), label: str(o.label, `${w}.label`), sub: str(o.sub, `${w}.sub`), kind: kind as Kind,
         chips: list(o.chips, `${w}.chips`).map((c, j) => str(c, `${w}.chips[${j}]`)),
         zone: strOrNull(o.zone, `${w}.zone`), spine: intOrNull(o.spine, `${w}.spine`), anchor: strOrNull(o.anchor, `${w}.anchor`),
-        side: side as StoryPart["side"], from: list(o.from, `${w}.from`).map((f, j) => str(f, `${w}.from[${j}]`)),
+        side: side as StoryPart["side"],
+        // The facts a part shows (diagram contract, Post answers).
+        from: list(o.facts, `${w}.facts`).map((f, j) => str(f, `${w}.facts[${j}]`)),
       };
     }),
     edges: list(r.edges, "edges").map((e, i) => {
@@ -120,7 +124,7 @@ export function postViewId(doc: Pick<DiagramDocument, "views" | "requests">, sou
  * Turn an intent into the source's post: the only changed view (created, or replaced keeping its
  * id). Impossible relations fail; every repair adds exactly one warning; text is never shortened.
  */
-export function intentToDocument(doc: DiagramDocument, source: string, intent: StoryIntent, o: { portrait: boolean }): { doc: DiagramDocument; view: string; warnings: string[] } {
+export function intentToDocument(doc: DiagramDocument, source: string, intent: StoryIntent, o: { portrait: boolean; ids?: { view: string; taken?: Iterable<string> } }): { doc: DiagramDocument; view: string; warnings: string[] } {
   const src = doc.views.find((v) => v.id === source);
   if (!src) throw new StoryError(`There is no view "${source}" to design a post for`);
   if (src.postOf) throw new StoryError(`"${source}" is a post; design from its source "${src.postOf}"`);
@@ -189,9 +193,10 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
 
   // Ids: unique across the file, the post being replaced aside; references remapped together. The
   // intent's ids only tie the intent together, so a taken one gets a suffix without a warning.
-  const id = postViewId(doc, source);
+  // With `ids` (the LinkedIn channel) the view's id is given and ids need only be unique in it.
+  const id = o.ids?.view ?? postViewId(doc, source);
   const others = { ...doc, views: doc.views.filter((v) => v.id !== id) };
-  const used = new Set([...allIds(others), ...others.views.map((v) => v.id), id]);
+  const used = new Set(o.ids ? [...(o.ids.taken ?? []), id] : [...allIds(others), ...others.views.map((v) => v.id), id]);
   const fresh = (want: string) => {
     let base = ID_RE.test(want) ? want : want.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "part";
     if (base !== want) warnings.push(`Renamed the post's id "${want}" to "${base}": ids use letters, digits, - and _`);
@@ -203,14 +208,15 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
   const zoneOf = new Map(intent.zones.map((z) => [z.id, fresh(`zone-${z.id}`)]));
   const partOf = new Map(intent.parts.map((p) => [p.id, fresh(p.id)]));
 
-  // Parts take what they represent from the source components they name.
-  const sourceNodes = new Map(doc.views.flatMap((v) => v.nodes).map((n) => [n.id, n]));
+  // Parts take what they represent from the source components they name: by the facts they show
+  // when the source names them (a channel view), else by their ids.
+  const sourceNodes = new Map(doc.views.flatMap((v) => v.nodes).flatMap((n) => (n.facts?.length ? n.facts : [n.id]).map((f) => [f, n] as const)));
   const nodes: NodeInput[] = intent.zones.map((z) => ({
     id: zoneOf.get(z.id)!, label: z.label, kind: "service", form: "group", icon: null, sub: "", items: [],
-    description: z.label, files: [], parent: null, detail: null, place: null, lane: null, from: [],
+    description: o.ids ? "A group of components." : z.label, files: [], parent: null, detail: null, place: null, lane: null, from: [],
   }));
   for (const p of intent.parts) {
-    const from = p.from.filter((f) => sourceNodes.has(f));
+    const from = [...new Set(p.from.filter((f) => sourceNodes.has(f)))];
     for (const f of p.from) if (!sourceNodes.has(f)) warnings.push(`Dropped "${f}" from what "${p.id}" represents: no such component`);
     const represented = from.map((f) => sourceNodes.get(f)!);
     const files = [...new Set(represented.flatMap((n) => n.files))];
@@ -256,8 +262,39 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
     views: exists ? doc.views.map((v) => (v.id === id ? view : v)) : [...doc.views, view],
     warnings: [...doc.warnings, ...warnings],
   };
+  // A channel's view is checked once it is part of the file (`intentToChannel`).
+  if (o.ids) return { doc: next, view: id, warnings };
   const checked = validateDocument(next);
   if (!checked.ok) throw new StoryError(`The engine's post could not become a valid drawing: ${checked.error}`);
   return { doc: checked.doc, view: id, warnings };
 }
 
+
+/**
+ * A post answer as the LinkedIn channel's one view (diagram contract, Post answers): designed from
+ * the overview's first view, its parts pointing to the facts the intent names, replacing what the
+ * channel held. The facts and every other channel stay; the channel's `outdated` is emptied.
+ */
+export function intentToChannel(stored: Document3, intent: StoryIntent, o: { portrait: boolean }): { doc: Document3; view: string; warnings: string[] } {
+  const overview = joinChannel(stored, "overview");
+  const src = overview.views[0];
+  const view = linkedInViewId(stored);
+  const r = intentToDocument({ ...overview, warnings: [] }, src.id, intent, { portrait: o.portrait, ids: { view } });
+  const post = r.doc.views.find((v) => v.id === r.view)!;
+  const cleared: Document3 = { ...stored, channels: { ...stored.channels, linkedin: { ...stored.channels.linkedin, views: [] } } };
+  const split = applyChannel(cleared, "linkedin", {
+    views: [{ ...post, postOf: null, nodes: post.nodes.map((n) => ({ ...n, facts: [...(n.from ?? [])] })) }],
+    warnings: [...stored.warnings, ...r.warnings],
+  }, { keepFacts: true });
+  if (!split.ok) throw new StoryError(split.error);
+  const doc = clearOutdated(split.doc, "linkedin");
+  const checked = validateDocument3(doc);
+  if (!checked.ok) throw new StoryError(`The engine's post could not become a valid drawing: ${checked.error}`);
+  return { doc: checked.doc, view, warnings: doc.warnings.slice(stored.warnings.length) };
+}
+
+/** The LinkedIn view's id (diagram contract, Post answers): kept, else `linkedin`, or `linkedin-2` … when another view has it. */
+export function linkedInViewId(stored: Document3): string {
+  const others = new Set(CHANNELS.filter((c) => c !== "linkedin").flatMap((c) => stored.channels[c].views.map((v) => v.id)));
+  return stored.channels.linkedin.views[0]?.id ?? freeIdAmong(others, "linkedin");
+}

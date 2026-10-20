@@ -69,6 +69,17 @@ describe("archdrawer svg", () => {
     expect((await cli("svg", file, "--theme", "blue")).code).toBe(2);
     expect((await cli("svg", file, "--view", "nope")).code).toBe(1);
   });
+
+  it("draws a file whose part names a path missing from the repository, with a warning; validate still refuses it", async () => {
+    const { file } = shopRepo();
+    const f = shopFile() as { views: { nodes: Record<string, unknown>[] }[] };
+    f.views[0].nodes[1].files = ["src/gone.ts"];
+    writeFileSync(file, JSON.stringify(f));
+    const r = await cli("svg", file, "--out", join(tempDir(), "x.svg"));
+    expect(r.code).toBe(0);
+    expect(r.out[0]).toBe('WARN  views[0].nodes[1].files[0]: "src/gone.ts" does not exist in the repository');
+    expect(await cli("validate", file)).toMatchObject({ code: 1, out: ['ERROR views[0].nodes[1].files[0]: "src/gone.ts" does not exist in the repository', "1 error(s)"] });
+  });
 });
 
 describe("archdrawer migrate, usage", () => {

@@ -129,7 +129,7 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **NAV-2** (To build) Tabs show the channels (overview, LinkedIn, README,
   presentation) with a "needs update" mark; a breadcrumb shows the path into
   detail views.
-- **NAV-3** (To change) Search highlights matching parts on the canvas as the
+- **NAV-3** (Today) Search highlights matching parts on the canvas as the
   user types, dims the rest, shows the match count and steps through matches
   with Enter; the view moves only when a match is off screen.
 - **NAV-4** (To build) A cleaner header with the new Archdrawer logo.

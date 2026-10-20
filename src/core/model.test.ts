@@ -87,6 +87,10 @@ describe("validateFile", () => {
       expect.stringMatching(/files\[2\]: "C:\/abs\.ts" must be a repository-relative path/),
       expect.stringMatching(/files\[3\]: "missing\.ts" does not exist in the repository/),
     ]);
+    // Opening or saving a drawing: a missing path is a warning and the file stays valid.
+    const warned = validateFile(file([node("a", { files: ["src/a.ts", "missing.ts"] })]), { fileExists: (p) => p === "src/a.ts", missingFiles: "warn" });
+    expect(warned).toMatchObject({ ok: true, errors: [] });
+    expect(warned.warnings).toContainEqual(expect.stringMatching(/files\[1\]: "missing\.ts" does not exist in the repository/));
   });
 
   it("requires x and y together, ids unique across the file, detail naming another view", () => {

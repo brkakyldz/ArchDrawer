@@ -42,8 +42,10 @@ check. Writes nothing.
 
 ## `archdrawer open <file> [--no-browser]`
 
-1. Validates as `validate` does; on errors prints them the same way and exits
-   1 without writing or starting anything.
+1. Validates as `validate` does, except that a path missing from the
+   repository is a `WARN` line, not an error (drawing contract rule 10); on
+   errors prints them the same way and exits 1 without writing or starting
+   anything.
 2. Normalises the document (drawing contract) and writes it back only when
    its text changed.
 3. Reads `server.json` in the data directory. When that server answers
@@ -69,7 +71,7 @@ another registered drawing gets a new id, written back.
 
 Writes the share image (ui contract, The share image) with title, held items,
 steps, connection labels, colour key and texts on and description off, the
-fonts embedded. `--view` defaults to the first view; `--format` is
+fonts embedded. The file is checked as `open` checks it. `--view` defaults to the first view; `--format` is
 `linkedin` (default, 1620×1080), `readme`, `slide`, `square` or `feed`
 (1080×1350); `--theme` defaults to the document's. Default output, next to the
 file: `<name>-<view>-<format>.svg`, where `<name>` is the file name without
@@ -89,7 +91,7 @@ Rewrites an `archdraw/diagram@1` file in the current format (drawing
 contract, Reading `archdraw/diagram@1`), prints each conversion warning, then
 `migrated`; exit 0. A file already in the current format prints
 `already archdraw/diagram@2`, exit 0. Not JSON: `ERROR json: <message>`; any
-other schema: `ERROR schema: not an archdraw drawing`; exit 1.
+other schema: `ERROR schema: not an archdrawer drawing`; exit 1.
 
 ## `archdrawer status` and `archdrawer stop`
 

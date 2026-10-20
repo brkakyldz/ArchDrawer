@@ -84,7 +84,7 @@ export class Store extends EventEmitter {
     if (!isAbsolute(path)) throw new FileError("The path must be absolute");
     const abs = resolve(path);
     if (!existsSync(abs) || !statSync(abs).isFile()) throw new FileError(`Not found: ${abs}`);
-    const report = checkFile(abs);
+    const report = checkFile(abs, "warn");
     if (!report.ok || !report.file) throw new FileError("The file is not a valid drawing", report.errors);
     const key = pathKey(abs);
     let id = [...this.files].find(([, p]) => pathKey(p) === key)?.[0];
@@ -128,7 +128,7 @@ export class Store extends EventEmitter {
       const v = validateDocument(JSON.parse(text));
       if (v.ok) { this.versions.set(id, v.doc.updatedAt); return { ok: true, doc: v.doc }; }
     }
-    const report = this.files.has(id) ? checkFile(path) : this.checkImport(text);
+    const report = this.files.has(id) ? checkFile(path, "warn") : this.checkImport(text);
     if (!report.ok || !report.file) return { ok: false, error: `The file ${basename(path)} is not a valid drawing`, errors: report.errors };
     const now = nowIso();
     const n = normaliseFile({ ...report.file, id }, { path, id, now, text });
@@ -170,10 +170,11 @@ export class Store extends EventEmitter {
     if (!body || typeof body !== "object" || (body as { id?: unknown }).id !== id) return { ok: false, conflict: false, error: "The document id does not match the URL", errors: [] };
     const updatedAt = nowIso();
     const path = this.pathOf(id)!;
-    // A registered file is checked as `open` checks it (diagram contract rule 10), or the next process
-    // to read it would refuse what this one wrote.
-    const check = this.files.has(id) ? { fileExists: repoFileChecker(repoRootOf(path)) } : {};
-    const v = validateDocument({ ...(body as object), updatedAt }, check);
+    // A path missing from the repository does not block a save (diagram contract rule 10); the
+    // editor marks it (`POST /api/diagrams/:id/check-files`). A registered file's source stays its
+    // repository, the one root its files are checked and its runs read against.
+    const source = this.files.has(id) ? { source: { kind: "local", path: repoRootOf(path) } } : {};
+    const v = validateDocument({ ...(body as object), ...source, updatedAt });
     if (!v.ok) return { ok: false, conflict: false, error: v.error, errors: v.errors };
     const text = docText(v.doc);
     writeAtomic(path, text);
@@ -182,6 +183,21 @@ export class Store extends EventEmitter {
     this.stamp(id, path);
     if (opts.announce) this.emit("changed", id, updatedAt);
     return { ok: true, updatedAt };
+  }
+
+  /** The repository a drawing's files are checked and its runs read against: a registered file's, else the document's source. */
+  rootOf(id: string): string | null {
+    const p = this.files.get(id);
+    if (p) return repoRootOf(p);
+    return this.get(id)?.source?.path ?? null;
+  }
+
+  /** The repository-relative paths among `files` that are not in the drawing's repository (none without a local one). */
+  missingFiles(id: string, files: string[]): string[] {
+    const root = this.rootOf(id);
+    if (!root || !existsSync(root)) return [];
+    const has = repoFileChecker(root);
+    return [...new Set(files)].filter((f) => !has(f.replace(/\\/g, "/")));
   }
 
   /** Forget a registered file (it stays on disk) or delete an imported document. */

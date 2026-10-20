@@ -134,9 +134,11 @@ key or archdrawer account. The only model-provider traffic is what your own
 Claude Code or Codex CLI sends through your existing subscription.
 
 The engine reads your source code with read-only tools. It cannot edit that
-code; changes are applied to the drawing file. Every part of the drawing
-points to real files, and every automatic repair of AI output is surfaced as
-a warning.
+code; changes are applied to the drawing file. The files a part points to are
+checked against your repository when you open or save a drawing file and when
+the engine changes it; a part may also point to no files, and a drawing
+imported into the app rather than opened from your repository is not checked.
+Every automatic repair of AI output is surfaced as a warning.
 
 ## Current limits
 

@@ -187,7 +187,8 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
     for (const c of p.chips) target(c, c.length, STORY_LIMITS.chip, `A chip of "${p.id}"`);
   }
 
-  // Ids: unique across the file, the post being replaced aside; references remapped together.
+  // Ids: unique across the file, the post being replaced aside; references remapped together. The
+  // intent's ids only tie the intent together, so a taken one gets a suffix without a warning.
   const id = postViewId(doc, source);
   const others = { ...doc, views: doc.views.filter((v) => v.id !== id) };
   const used = new Set([...allIds(others), ...others.views.map((v) => v.id), id]);
@@ -212,10 +213,12 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
     const from = p.from.filter((f) => sourceNodes.has(f));
     for (const f of p.from) if (!sourceNodes.has(f)) warnings.push(`Dropped "${f}" from what "${p.id}" represents: no such component`);
     const represented = from.map((f) => sourceNodes.get(f)!);
-    const files = [...new Set(represented.flatMap((n) => n.files))].slice(0, LIMITS.files);
+    const files = [...new Set(represented.flatMap((n) => n.files))];
+    if (files.length > LIMITS.files) { warnings.push(`Kept the first ${LIMITS.files} of the ${files.length} files "${p.id}" represents`); files.length = LIMITS.files; }
+    // A stored description, a sub-line and a label are all within the description's limit.
     nodes.push({
       id: partOf.get(p.id)!, label: p.label, sub: p.sub, kind: p.kind, form: p.chips.length ? "panel" : "card", icon: null,
-      items: [...p.chips], description: (represented[0]?.description || p.sub || p.label).slice(0, LIMITS.description), files,
+      items: [...p.chips], description: represented[0]?.description || p.sub || p.label, files,
       parent: p.zone === null ? null : zoneOf.get(p.zone)!, detail: null, place: null,
       lane: p.spine !== null ? { spine: p.spine } : { anchor: partOf.get(p.anchor!)!, side: p.side! }, from,
     });

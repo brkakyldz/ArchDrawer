@@ -51,6 +51,17 @@ describe("story intent → post view", () => {
     expect(post.nodes.map((n) => n.id).some((id) => base.views[0].nodes.some((m) => m.id === id))).toBe(false);
   });
 
+  it("keeps the first 20 files a part represents, with one warning", () => {
+    const base = shop();
+    const files = (k: string, n: number) => Array.from({ length: n }, (_, i) => `src/${k}/f${i}.ts`);
+    base.views[0].nodes.find((n) => n.id === "web")!.files = files("web", 15);
+    base.views[0].nodes.find((n) => n.id === "api")!.files = files("api", 10);
+    const i = small({ parts: [part("web", { spine: 0, from: ["web", "api"] }), part("db", { spine: 1, from: ["db"] })], edges: [] });
+    const { doc, view, warnings } = intentToDocument(base, "overview", i, { portrait: true });
+    expect(doc.views.find((v) => v.id === view)!.nodes.find((n) => n.label === "web")!.files).toEqual([...files("web", 15), ...files("api", 5)]);
+    expect(warnings).toEqual(['Kept the first 20 of the 25 files "web" represents']);
+  });
+
   it("joins reverse pairs, drops repeats and renumbers steps, one warning each", () => {
     const i = small({ edges: [
       { from: "web", to: "api", label: "", style: "call", step: 4 },

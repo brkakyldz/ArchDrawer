@@ -10,9 +10,9 @@ import { detailAt, toWorld, zoomAt } from "./viewport";
 
 /* ---------- pieces of the drawing: the same markup as every export (invariant 5) ---------- */
 
-const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, changed, open = false, post }: { node: DiagramNode; rect: Rect; P: Palette; selected: boolean; dim: boolean; changed: boolean; open?: boolean; post: boolean }) {
+const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, changed, open = false, post, match }: { node: DiagramNode; rect: Rect; P: Palette; selected: boolean; dim: boolean; changed: boolean; open?: boolean; post: boolean; match?: "true" | "current" }) {
   return (
-    <g className={`nd${dim ? " dim" : ""}${changed ? " changed" : ""}${open ? " open" : ""}`} data-changed={changed ? "true" : undefined} data-testid={`node-${node.id}`} data-node-id={node.id} data-kind={node.kind} data-form={node.form}
+    <g className={`nd${dim ? " dim" : ""}${changed ? " changed" : ""}${open ? " open" : ""}`} data-changed={changed ? "true" : undefined} data-dim={dim ? "true" : undefined} data-match={match} data-testid={`node-${node.id}`} data-node-id={node.id} data-kind={node.kind} data-form={node.form}
       data-parent={node.parent ?? ""} data-selected={String(selected)} style={{ ["--hover-k" as string]: P.kinds[node.kind] }}
       dangerouslySetInnerHTML={{ __html: nodeMarkup(node, rect, P, { testIds: true, post }) }} />
   );
@@ -20,7 +20,7 @@ const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, change
 
 const EdgeShape = memo(function EdgeShape({ edge, route, P, from, to, selected, dim, flow, open = false }: { edge: DiagramEdge; route: EdgeRoute; P: Palette; from: Kind; to: Kind; selected: boolean; dim: boolean; flow: boolean; open?: boolean }) {
   return (
-    <g className={`ed${dim ? " dim" : ""}${open ? " open" : ""}`} data-testid={`edge-${edge.id}`} data-edge-id={edge.id} data-style={edge.style} data-both={String(edge.both)}
+    <g className={`ed${dim ? " dim" : ""}${open ? " open" : ""}`} data-dim={dim ? "true" : undefined} data-testid={`edge-${edge.id}`} data-edge-id={edge.id} data-style={edge.style} data-both={String(edge.both)}
       data-step={edge.step ?? ""} data-selected={String(selected)}>
       <g dangerouslySetInnerHTML={{ __html: edgeMarkup(edge, route, P, { fromKind: from, toKind: to }) }} />
       {flow && <path className="flow" d={route.d} />}
@@ -282,8 +282,12 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   /* ---------- render ---------- */
   const groups = order.filter((n) => n.form === "group");
   const plain = order.filter((n) => n.form !== "group");
-  const dimNode = (id: string) => !!lit && !lit.has(id);
-  const dimEdge = (e: DiagramEdge) => (steps && e.step === null) || (!!lit && !(lit.has(e.from) && lit.has(e.to) && (e.from === ctl.callout || e.to === ctl.callout || descendants(view, ctl.callout!).has(e.from))));
+  // While searching, the matches stay lit and everything else dims (ui contract, search); otherwise an open callout decides.
+  const found = ctl.found;
+  const matchOf = (id: string) => (!found?.ids.has(id) ? undefined : found.current === id ? "current" : "true");
+  const dimNode = (id: string) => (found ? !found.ids.has(id) : !!lit && !lit.has(id));
+  const dimEdge = (e: DiagramEdge) => (steps && e.step === null) || (found ? !(found.ids.has(e.from) && found.ids.has(e.to))
+    : !!lit && !(lit.has(e.from) && lit.has(e.to) && (e.from === ctl.callout || e.to === ctl.callout || descendants(view, ctl.callout!).has(e.from))));
   const hovered = hover && rects.get(hover) && ctl.tool !== "pan" && !live ? hover : null;
   const k = vp.k;
   // Semantic zoom: the level comes from the zoom only; sizes never change.
@@ -310,12 +314,12 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
       <svg className="world" aria-label={view.title}>
         <defs dangerouslySetInnerHTML={{ __html: defs }} />
         <g transform={`translate(${vp.x} ${vp.y}) scale(${k})`}>
-          {groups.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} />)}
+          {groups.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} />)}
           {view.edges.map((e) => {
             const r = routes.get(e.id);
             return r ? <EdgeShape key={e.id} edge={e} route={r} P={P} from={kindOf.get(e.from)!} to={kindOf.get(e.to)!} selected={selEdges.has(e.id)} dim={dimEdge(e)} flow={steps && e.step !== null} open={touchesOpen(e)} /> : null;
           })}
-          {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} />)}
+          {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} />)}
           {view.edges.map((e) => {
             const r = routes.get(e.id);
             if (!r) return null;
@@ -333,7 +337,14 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
           })}
           {view.texts.map((t) => <TextShape key={t.id} text={t} P={P} selected={selTexts.has(t.id)} typing={ctl.editing?.kind === "text" && ctl.editing.id === t.id} />)}
 
-          {/* editor-only marks: selection, ports, drag feedback (never in an export) */}
+          {/* editor-only marks: search matches, selection, ports, drag feedback (never in an export) */}
+          {found && [...found.ids].map((id) => {
+            const r = rects.get(id);
+            if (!r) return null;
+            const rx = (view.nodes.find((n) => n.id === id)?.form === "group" ? 18 : 12) + 4;
+            return <rect key={`m-${id}`} className={`search-ring${found.current === id ? " current" : ""}`} x={r.x - 4} y={r.y - 4} width={r.w + 8} height={r.h + 8} rx={rx}
+              strokeWidth={(found.current === id ? 3 : 2) / k} pointerEvents="none" />;
+          })}
           {sel.nodes.map((id) => {
             const r = rects.get(id);
             if (!r) return null;

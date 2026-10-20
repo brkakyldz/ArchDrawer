@@ -91,6 +91,17 @@ describe("drawings over HTTP", () => {
     expect((await req(`/api/diagrams/${id}/requests`, { method: "POST", json: { view: "nope", text: "x" } })).status).toBe(400);
   });
 
+  it("names the paths that are not in the drawing's repository, with the token", async () => {
+    const { req, id } = await opened();
+    const check = (files: unknown, token?: string | null) => req(`/api/diagrams/${id}/check-files`, { method: "POST", json: { files }, token });
+    expect(await json(await check(["web/index.html", "src/gone.ts"]))).toEqual({ status: 200, body: { missing: ["src/gone.ts"] } });
+    expect((await check(["../outside.txt"])).status).toBe(400);
+    expect((await check(Array.from({ length: 21 }, (_, i) => `f${i}.ts`))).status).toBe(400);
+    expect((await check("web/index.html")).status).toBe(400);
+    expect((await check(["web/index.html"], null)).status).toBe(403);
+    expect((await req("/api/diagrams/d_unknown00/check-files", { method: "POST", json: { files: [] } })).status).toBe(404);
+  });
+
   it("refuses a model name that an engine's command line would read as an option", async () => {
     const { req, id } = await opened();
     const start = async (model: string) => json(await req("/api/runs", { method: "POST", json: { diagramId: id, view: "overview", instruction: "add Cache component", engine: "fixture", model } }));

@@ -1,3 +1,5 @@
+import { rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { open, savedWhen, shop } from "./helpers";
 
@@ -55,4 +57,23 @@ test("the callout names the kind it sets, and refuses a file path outside the re
   await c.getByTestId("callout-file-input").press("Escape");
   const d = await savedWhen(page, path, (x) => x.views[0].nodes.find((n) => n.id === "db")!.files.length === 1);
   expect(d.views[0].nodes.find((n) => n.id === "db")).toMatchObject({ kind: "worker", files: ["src/api.ts"] });
+});
+
+test("a path deleted from the repository is marked in the callout and never blocks a save", async ({ page }) => {
+  const { path } = await open(page, shop((f) => { f.views[0].nodes.find((n: { id: string }) => n.id === "db").files = ["src/api.ts"]; }));
+  // The file goes away after the drawing was saved.
+  rmSync(join(dirname(path), "src", "api.ts"));
+  await page.getByTestId("node-db").click();
+  const c = page.getByTestId("callout-db");
+  await expect(c.getByTestId("callout-file")).toHaveAttribute("data-missing", "true");
+  await expect(c.getByTestId("callout-file-missing")).toHaveText("not in the repository");
+  await c.getByTestId("callout-file-add").click();
+  await c.getByTestId("callout-file-input").fill("web/index.html");
+  await c.getByTestId("callout-file-input").press("Enter");
+  await savedWhen(page, path, (x) => x.views[0].nodes.find((n) => n.id === "db")!.files.length === 2);
+  await expect(c.getByTestId("callout-file").nth(1)).not.toHaveAttribute("data-missing");
+  await expect(c.getByTestId("callout-file").first()).toHaveAttribute("data-missing", "true");
+  await c.getByTestId("callout-file").first().getByTestId("callout-file-remove").click();
+  const d = await savedWhen(page, path, (x) => x.views[0].nodes.find((n) => n.id === "db")!.files.length === 1);
+  expect(d.views[0].nodes.find((n) => n.id === "db")!.files).toEqual(["web/index.html"]);
 });

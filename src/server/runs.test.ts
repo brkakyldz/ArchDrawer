@@ -1,7 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { validateDocument, type DiagramDocument } from "../core/model";
-import { makeApp, shopRepo } from "./testkit";
+import { FixtureEngine } from "./engines/fixture";
+import { makeApp, makeFolder, shopRepo } from "./testkit";
 
 async function setup(stepMs = 1) {
   const t = makeApp({ stepMs });
@@ -129,6 +130,26 @@ describe("instruction-box runs", () => {
     expect((await run("add A", { format: 3 })).status).toBe(400);
     expect((await run("add A", { kind: "refine", format: "feed" })).status).toBe(202);
   });
+
+  it("reads and repairs against the store's repository root, not the base document's source", async () => {
+    const t = makeApp();
+    const { root, file } = shopRepo({ "src/api.ts": "// api\n" });
+    const doc = t.store.register(file);
+    const withApi = { ...doc, views: doc.views.map((v, i) => (i ? v : { ...v, nodes: v.nodes.map((n) => (n.id === "api" ? { ...n, files: ["src/api.ts"] } : n)) })) };
+    t.store.put(doc.id, withApi);
+    const cwds: string[] = [];
+    const engine = new FixtureEngine(1);
+    const run = engine.run.bind(engine);
+    engine.run = (req) => { cwds.push(req.cwd); return run(req); };
+    // A base naming another folder, where src/api.ts does not exist.
+    const base = { ...t.store.get(doc.id)!, source: { kind: "local" as const, path: makeFolder({}) } };
+    const done = await t.runs.wait(t.runs.start({ engine, model: null, instruction: "add Cache component", view: "overview", base }));
+    expect(done).toMatchObject({ status: "succeeded" });
+    expect(cwds).toEqual([root]);
+    const after = t.store.get(doc.id)!;
+    expect(after.views[0].nodes.find((n) => n.id === "api")!.files).toEqual(["src/api.ts"]);
+    expect(after.warnings).toEqual([]);
+  });
 });
 
 describe("post runs", () => {
@@ -148,7 +169,7 @@ describe("post runs", () => {
     expect(post.nodes.filter((n) => n.form === "group").map((n) => n.label)).toEqual(["App runtime"]);
     expect(post.edges.filter((e) => e.both)).toHaveLength(1);
     expect(post.edges.filter((e) => e.step !== null).every((e) => e.label === "")).toBe(true);
-    expect(after.warnings.length - before.warnings.length).toBe(1);
+    expect(after.warnings.slice(before.warnings.length)).toEqual(["Joined result → approval and approval → result into one two-way connection"]);
     // part i stands for the source's component i
     expect(post.nodes.find((n) => n.label === "Request")!.from).toEqual([before.views[0].nodes[0].id]);
     expect(done.layoutReport).toMatchObject({ view: "overview-linkedin", format: "feed", overLimitText: [], counts: { parts: 6, zones: 1, connections: 5 } });

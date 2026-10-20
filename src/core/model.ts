@@ -105,6 +105,8 @@ export interface DiagramFile {
 export interface FileCheck {
   /** Returns true when the repo-relative path exists. Omit to skip the existence check (rule 10). */
   fileExists?: (relPath: string) => boolean;
+  /** A path missing from the repository is an error (`validate`, the default) or a warning (opening a drawing). */
+  missingFiles?: "error" | "warn";
 }
 export interface ValidationReport { ok: boolean; errors: string[]; warnings: string[]; file: DiagramFile | null }
 
@@ -124,6 +126,8 @@ export function isRepoRelative(p: string): boolean {
 export function validateFile(raw: unknown, check: FileCheck = {}): ValidationReport {
   const errors: string[] = [];
   const err = (path: string, msg: string) => errors.push(`${path}: ${msg}`);
+  const missing: string[] = [];
+  const absent = check.missingFiles === "warn" ? (path: string, msg: string) => { missing.push(`${path}: ${msg}`); } : err;
   if (!isObj(raw)) return { ok: false, errors: ["(root): must be a JSON object"], warnings: [], file: null };
   if (raw.schema === SCHEMA_V1) {
     return { ok: false, errors: ['schema: this is archdraw/diagram@1; run "archdrawer migrate <file>"'], warnings: [], file: null };
@@ -214,7 +218,7 @@ export function validateFile(raw: unknown, check: FileCheck = {}): ValidationRep
         if (n.files.length > LIMITS.files) err(`${p}.files`, `has ${n.files.length} paths; at most ${LIMITS.files}`);
         n.files.forEach((f, j) => {
           if (typeof f !== "string" || !isRepoRelative(f)) err(`${p}.files[${j}]`, `${q(f)} must be a repository-relative path (no leading /, drive letter or ..)`);
-          else if (check.fileExists && !check.fileExists(f.replace(/\\/g, "/"))) err(`${p}.files[${j}]`, `${q(f)} does not exist in the repository`);
+          else if (check.fileExists && !check.fileExists(f.replace(/\\/g, "/"))) absent(`${p}.files[${j}]`, `${q(f)} does not exist in the repository`);
         });
       }
       if (!("parent" in n)) err(`${p}.parent`, "is required (null for top level)");
@@ -350,7 +354,7 @@ export function validateFile(raw: unknown, check: FileCheck = {}): ValidationRep
 
   if (errors.length) return { ok: false, errors, warnings: [], file: null };
   const { file, changed } = notesToTexts(raw as unknown as LegacyFile);
-  return { ok: true, errors: [], warnings: [...changed.map((w) => `${w}; "archdrawer open" writes them as texts`), ...depthWarnings(file)], file };
+  return { ok: true, errors: [], warnings: [...missing, ...changed.map((w) => `${w}; "archdrawer open" writes them as texts`), ...depthWarnings(file)], file };
 }
 
 /** Notes of older @2 files become body texts at their place; one warning per view that had any. */

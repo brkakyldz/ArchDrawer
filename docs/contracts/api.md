@@ -36,7 +36,7 @@ Implemented by: `src/server/app.ts` (routes), `src/server/main.ts`
 | `GET /api/health` | 200 `{"ok": true, "app": "archdrawer", "version", "build"}`; `build` is a hash of the code this process runs (the web page embeds the build it was made from) | — |
 | `GET /api/engines` | 200 `{"engines": [{"id", "label", "available", "version", "detail", "test", "models"}]}` in `ARCHDRAW_ENGINES` order; detection is cached for 60 s | — |
 | `GET /api/diagrams` | 200 `{"diagrams": [{"id", "title", "path", "updatedAt"}]}`, newest `updatedAt` first; `path` is the file of a registered drawing, `null` for an imported one | — |
-| `POST /api/files` `{"path"}` | 200 `{"id", "url"}`: validates (with the repository file check), normalises, writes back and registers the file; the same path (case-insensitive on Windows) gets the same id; the file's own `id` is kept unless another drawing has it | 400 `Give the absolute path of a drawing file` / `The path must be absolute` / `Not found: <path>` / `The file is not a valid drawing` + `errors` |
+| `POST /api/files` `{"path"}` | 200 `{"id", "url"}`: validates (a path missing from the repository is no error, drawing contract rule 10), normalises, writes back and registers the file; the same path (case-insensitive on Windows) gets the same id; the file's own `id` is kept unless another drawing has it | 400 `Give the absolute path of a drawing file` / `The path must be absolute` / `Not found: <path>` / `The file is not a valid drawing` + `errors` |
 | `POST /api/diagrams` (a document, `@2` or `@1`) | 201 `{"id"}`: imported into the data directory under a new id; files are not checked | 400 `Invalid diagram` + `errors` |
 | `POST /api/example` | 201 `{"id"}`: imports the bundled `examples/shop.archdraw.json` (title `Sample Shop`) | 500 |
 | `GET /api/diagrams/:id` | 200 the document, re-read from disk | 404 `Diagram not found`; 400 `The file <name> is not a valid drawing` + `errors` |
@@ -46,6 +46,7 @@ Implemented by: `src/server/app.ts` (routes), `src/server/main.ts`
 | `GET /api/diagrams/:id/export.svg?view=&format=&theme=&parts=` | 200 `image/svg+xml`: the share image (ui contract) with title, held items, steps, labels, colour key and texts on and description off; `view` defaults to the first, `format` to `linkedin`, `theme` to the document's (an unknown theme falls back to it); `parts` (comma-separated ids) draws only those components, everything inside the groups among them, and the connections between them | 404; 400 `Unknown view "<v>"`, `Unknown format "<f>"; use one of linkedin, readme, slide, square, feed`, `Unknown component "<id>" in the view "<v>"` |
 | `GET /api/diagrams/:id/export.mmd?view=` | 200 `text/plain`: a Mermaid `flowchart LR` of the view (groups as subgraphs) | 404; 400 unknown view |
 | `POST /api/diagrams/:id/requests` `{"view", "text"}` | 201 `{"id"}` (`q<n>`): appends to `requests` | 400 `The instruction is empty` / `The instruction is too long (4000 characters at most)` / unknown view; 404; 409 `The drawing could not be saved` |
+| `POST /api/diagrams/:id/check-files` `{"files": [path, …]}` | 200 `{"missing": [path, …]}`: the given repository-relative paths that do not exist under the drawing's repository root (*Runs*), symlinks resolved; none when that folder is not on this machine | 400 `files must be at most 20 repository-relative paths`; 404 |
 | `POST /api/runs` | 202 `{"runId"}` | see *Runs* |
 | `GET /api/runs/:runId` | 200 the run record | 404 `Run not found` |
 | `GET /api/runs/:runId/events` | 200 event stream: past events replayed, then `progress` `{"message"}` …, then exactly one `done` `{"status", "diagramId", "error", "changes", "view", "layoutReport"}` | 404 |
@@ -56,8 +57,9 @@ Implemented by: `src/server/app.ts` (routes), `src/server/main.ts`
 
 The body is a whole stored document: valid by the drawing contract, with an
 `id` equal to the URL's, a position on every component and an id on every
-connection. For a registered file the repository file check applies, so a
-document naming a path that does not exist in the repository is refused.
+connection. A path that does not exist in the repository is saved (drawing
+contract rule 10); `check-files` names it. A registered file's `source` is
+set to its repository root, whatever the body says.
 
 - Header `If-Unmodified-Since-Version: <updatedAt the edit was based on>`
   (optional). When given and the stored `updatedAt` differs, or the stored
@@ -125,8 +127,9 @@ model it used in the document's `engine`.
 | `post` | a story intent; the optional instruction is added to the fixed brief | only the source's post (created or replaced); `view` may name the source or its post | `feed` (1080 × 1350, default) or `linkedin` (1620 × 1080) |
 
 **Lifecycle.** `status` is `running`, `succeeded`, `failed` or `cancelled`.
-A run reads the document's `source` folder (none:
-`This drawing has no repository folder to read`). Before saving it checks
+A run reads the drawing's repository root, the one its files are checked
+against: a registered file's (drawing contract rule 10), else the document's
+`source` folder (none: `This drawing has no repository folder to read`). Before saving it checks
 the stored `updatedAt` is still the one it started from; otherwise it fails
 with `The drawing changed while the instruction ran.` (post:
 `… while the post was designed.`) and the outside edit stays. A failed,

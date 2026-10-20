@@ -14,8 +14,8 @@ async function download(page: Page, id: string) {
 }
 
 // Formats, sizes, file names, PNG scale, focus, readability, the layout report and shortened text
-// are held-out H15, H28, H38, H39, H63, H64, H85 and H86; the LinkedIn post flow has none, since it
-// is rebuilt with the channels.
+// are held-out H15, H28, H38, H39, H63, H64, H85 and H86; drawing the LinkedIn channel and packaging
+// it are H99 and H100.
 // What stays here is stricter than those: the browser download byte-equal to the CLI image, a copy
 // that must succeed, and a post's zone box clear of outside parts.
 
@@ -46,11 +46,10 @@ test("copy puts a PNG on the clipboard", async ({ page, context }) => {
 // On the canvas and in the preview, a post's zone holds no outside part.
 test("a designed post's zone box holds no outside part on the canvas or in the preview, in both orientations", async ({ page }) => {
   const { path } = await open(page);
-  await page.getByTestId("share-button").click();
-  await page.getByTestId("format-feed").click();
+  await page.getByTestId("channel-tab-linkedin").click();
   await page.getByTestId("design-post").click();
-  await expect(page.getByTestId("share-preview")).toHaveAttribute("data-view", "overview-linkedin", { timeout: 15_000 });
-  const post = onDisk(path).views.find((v) => v.postOf === "overview")!;
+  await expect(page.getByTestId("editor")).toHaveAttribute("data-view", "linkedin", { timeout: 15_000 });
+  const post = onDisk(path).views.find((v) => v.postOf)!;
   const boxes = async (scope: string, sel: (id: string) => string) => {
     const sels = post.nodes.map((n) => [n.id, sel(n.id)] as const);
     return page.evaluate(([scope, sels]) => sels.flatMap(([id, s]) => {
@@ -69,10 +68,11 @@ test("a designed post's zone box holds no outside part on the canvas or in the p
       expect(hit, `${a.id}/${b.id}`).toBe(false);
     }
   };
+  clear(await boxes("[data-testid=editor]", (id) => `[data-testid="node-${id}"]`));
+  await page.getByTestId("share-button").click();
+  await expect(page.getByTestId("format-feed")).toHaveAttribute("aria-pressed", "true");
   clear(await boxes("[data-testid=share-preview]", (id) => `[data-node-id="${id}"]`));
   await page.getByTestId("share-advanced-toggle").click();
   await page.getByTestId("format-linkedin").click();
   clear(await boxes("[data-testid=share-preview]", (id) => `[data-node-id="${id}"]`));
-  await page.getByTestId("linkedin-edit").click();
-  clear(await boxes("[data-testid=editor]", (id) => `[data-testid="node-${id}"]`));
 });

@@ -22,7 +22,7 @@
       "spine": 0,
       "anchor": null,
       "side": null,
-      "from": [
+      "facts": [
         "guest",
         "ui"
       ]
@@ -42,7 +42,7 @@
       "spine": 1,
       "anchor": null,
       "side": null,
-      "from": [
+      "facts": [
         "guest_api",
         "run_service",
         "channel"
@@ -62,7 +62,7 @@
       "spine": 2,
       "anchor": null,
       "side": null,
-      "from": [
+      "facts": [
         "runtime",
         "agent_def",
         "model"
@@ -82,7 +82,7 @@
       "spine": 3,
       "anchor": null,
       "side": null,
-      "from": [
+      "facts": [
         "gateway",
         "t_record",
         "t_checks",
@@ -105,7 +105,7 @@
       "spine": 4,
       "anchor": null,
       "side": null,
-      "from": [
+      "facts": [
         "services",
         "rules",
         "s_scope",
@@ -134,7 +134,7 @@
       "spine": null,
       "anchor": "request_run",
       "side": "above",
-      "from": [
+      "facts": [
         "operator_api",
         "operator_services",
         "update_gate",
@@ -155,7 +155,7 @@
       "spine": null,
       "anchor": "hotel_actions",
       "side": "above",
-      "from": [
+      "facts": [
         "operator",
         "s_operator",
         "s_review",
@@ -178,7 +178,7 @@
       "spine": null,
       "anchor": "hotel_actions",
       "side": "below",
-      "from": [
+      "facts": [
         "hotel_db",
         "s_db",
         "t_store"

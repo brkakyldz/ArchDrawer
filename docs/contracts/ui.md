@@ -323,32 +323,32 @@ and not on the LinkedIn channel, `the LinkedIn version would help`; else
 
 ### The LinkedIn flow
 
-`linkedin-flow` shows for both post formats. The preview shows the LinkedIn
-channel's view when it has one; otherwise the opened view in the post format.
-In 0.2 the controls below move from the share dialog to the LinkedIn channel
-(issue #30), which then only packages it (SHARE-2).
+The LinkedIn channel is drawn and redrawn on its own tab; the share dialog
+only packages what the current channel shows (SHARE-2) and holds none of the
+controls below.
 
-- Without a post previewed: with an engine, `design-post` (`Design the
-  post`) starts a `post` run (scope view, the chosen engine and model,
-  format `feed` or `linkedin`); without one, `linkedin-prepare`
+- On the LinkedIn channel's `channel-empty` stage, `linkedin-flow`: with an
+  engine, `design-post` (`Design the post`) starts a `post` run (the chosen
+  engine and model, format `feed`); without one, `linkedin-prepare`
   (`Prepare the simple version`) and `post-engine-note`
   (`No engine available — prepared without AI`).
-- With a post previewed: `share-caption-title` and `share-caption-lede` edit
-  its caption (undoable, the preview follows); `linkedin-edit`
-  (`Edit on the canvas`) closes the dialog and goes to it; `arrange-feed`
-  (`Re-arrange`) places its parts again by their lanes for the chosen
-  orientation (an undoable edit, no engine); `design-post` (with an engine)
-  redesigns it; `explain-feed` (`Rewrite it in plain words`) starts a `post`
-  run on the post with the instruction `Rewrite this post in plain words for
-  someone who has never seen the project`; without an engine
+- Beside the drawn LinkedIn channel, `linkedin-panel` (`LinkedIn post`):
+  `share-caption-title` and `share-caption-lede` edit its caption
+  (undoable); `arrange-feed` (`Re-arrange`) places its parts again by their
+  lanes for the portrait feed (an undoable edit, no engine); `design-post`
+  (with an engine) redesigns it; `explain-feed` (`Rewrite it in plain words`)
+  starts a `post` run with the instruction `Rewrite this post in plain words
+  for someone who has never seen the project`; without an engine
   `post-engine-note` shows, and a rewrite is saved as a request
   (`share-run-saved` with the `ask-saved` text).
-- During a post run started here: `share-run` with the latest line and
+- During a post run started there: `share-run` with the latest line and
   `share-run-cancel`; caption, design, rewrite and re-arrange are disabled.
   On failure or cancel `share-run-error` with `share-run-retry`
-  (`Try again`, same request). On success the preview shows the saved post.
-- Switching between portrait and wide previews the post placed by its lanes
-  for that orientation without writing anything; `arrange-feed` commits it.
+  (`Try again`, same request). On success the LinkedIn tab shows the saved
+  post.
+- In the share dialog on the LinkedIn channel, switching between the portrait
+  and the wide format previews the post placed by its lanes for that
+  orientation without writing anything.
 
 **Without an engine**, `linkedin-prepare` draws the LinkedIn channel's view
 from the overview channel's first view as one undoable edit, replacing what

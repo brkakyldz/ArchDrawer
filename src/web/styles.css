@@ -457,5 +457,13 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .header-menu .channel-tabs { flex-wrap: wrap; }
 .channel-outdated { position: absolute; top: 14px; left: 14px; z-index: 12; display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); box-shadow: var(--shadow); font-size: 12.5px; color: var(--ink); }
 .channel-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 15px; }
-.channel-empty p { margin: 0; padding: 18px 24px; border: 1px dashed var(--line-2); border-radius: 12px; background: var(--surface); }
+.channel-empty .box { display: grid; gap: 12px; justify-items: stretch; width: min(360px, calc(100% - 32px)); }
+.channel-empty .box > p { margin: 0; padding: 18px 24px; border: 1px dashed var(--line-2); border-radius: 12px; background: var(--surface); text-align: center; }
+/* The LinkedIn channel's own controls: on its empty stage, and beside its drawing. */
+.li-start { color: var(--ink); }
+.side-col > .li-panel { flex: 0 0 auto; }
+.li-panel { display: grid; gap: 10px; padding: 12px 14px 14px; border-bottom: 1px solid var(--line); }
+.li-panel h2 { margin: 0; font-size: 14.5px; font-weight: 600; letter-spacing: -.01em; }
+.li-panel .hint { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--soft); }
+.li-panel .btn.wide { grid-column: 1 / -1; justify-content: center; }
 .bar > .nav-row { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; min-width: 0; margin-top: -2px; }

@@ -22,7 +22,7 @@
       "spine": 0,
       "anchor": null,
       "side": null,
-      "from": []
+      "facts": []
     },
     {
       "id": "intake",
@@ -34,7 +34,7 @@
       "spine": 1,
       "anchor": null,
       "side": null,
-      "from": []
+      "facts": []
     },
     {
       "id": "scope",
@@ -46,7 +46,7 @@
       "spine": 2,
       "anchor": null,
       "side": null,
-      "from": []
+      "facts": []
     },
     {
       "id": "loop",
@@ -63,7 +63,7 @@
       "spine": 3,
       "anchor": null,
       "side": null,
-      "from": []
+      "facts": []
     },
     {
       "id": "limits",
@@ -75,7 +75,7 @@
       "spine": null,
       "anchor": "loop",
       "side": "below",
-      "from": []
+      "facts": []
     },
     {
       "id": "gateway",
@@ -92,7 +92,7 @@
       "spine": 4,
       "anchor": null,
       "side": null,
-      "from": []
+      "facts": []
     },
     {
       "id": "domain",
@@ -108,7 +108,7 @@
       "spine": 5,
       "anchor": null,
       "side": null,
-      "from": []
+      "facts": []
     },
     {
       "id": "db",
@@ -120,7 +120,7 @@
       "spine": null,
       "anchor": "domain",
       "side": "below",
-      "from": []
+      "facts": []
     },
     {
       "id": "approval",
@@ -136,7 +136,7 @@
       "spine": null,
       "anchor": "domain",
       "side": "above",
-      "from": []
+      "facts": []
     },
     {
       "id": "notify",
@@ -150,7 +150,7 @@
       "spine": null,
       "anchor": "loop",
       "side": "above",
-      "from": []
+      "facts": []
     },
     {
       "id": "audit",
@@ -166,7 +166,7 @@
       "spine": null,
       "anchor": "gateway",
       "side": "below",
-      "from": []
+      "facts": []
     },
     {
       "id": "obs",
@@ -182,7 +182,7 @@
       "spine": null,
       "anchor": "loop",
       "side": "below",
-      "from": []
+      "facts": []
     }
   ],
   "edges": [

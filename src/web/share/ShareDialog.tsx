@@ -1,9 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { makeLinkedInView, rearrangeForFeed } from "../../core/export/feed";
-import { layoutView } from "../../core/layout";
 import { FORMATS, renderShare, startSwitches, type FormatId, type ShareOptions, type ShareSwitches } from "../../core/export/share";
-import { isLinkedInView, LIMITS, slugify, type DiagramDocument, type DiagramView, type Theme } from "../../core/model";
-import type { Runner } from "../editor/runner";
+import { slugify, type DiagramDocument, type DiagramView, type Theme } from "../../core/model";
+import { hasLanes, placePost } from "../editor/LinkedIn";
 import { Icon } from "../ui/Icon";
 import { LayoutReportLine } from "../ui/LayoutReport";
 import { reportOf } from "../../core/report";
@@ -29,13 +27,8 @@ const SHOW: { key: keyof Show; label: string }[] = [
 ];
 /** The toggles a choice starts with: Detailed for README, Slide and the landscape post, Simple for Square. */
 const startFor = startSwitches;
-const SAVED = "Saved in the file for your next archdrawer session";
-const REWRITE = "Rewrite this post in plain words for someone who has never seen the project";
 
-/** A view placed by lanes can be placed again for either orientation. */
-const hasLanes = (v: DiagramView) => v.nodes.some((n) => n.lane);
-const place = (v: DiagramView, portrait: boolean): DiagramView =>
-  ({ ...v, ...layoutView({ ...v, nodes: v.nodes.map((n) => ({ ...n, x: undefined, y: undefined })) }, { portrait, post: true }) });
+const place = placePost;
 const samePlaces = (a: DiagramView, b: DiagramView) => a.nodes.every((n, i) => n.x === b.nodes[i]?.x && n.y === b.nodes[i]?.y);
 /** The post as the chosen orientation shows it: re-placed only when it sits as the other one does (edits by hand stay). */
 function orient(v: DiagramView, portrait: boolean): DiagramView {
@@ -85,36 +78,23 @@ const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([di
 
 interface Props {
   doc: DiagramDocument;
-  /** The view the editor shows: the one the dialog shares, or whose LinkedIn version it prepares. */
+  /** The view the editor shows, the one the dialog packages. */
   view: DiagramView;
-  runner: Runner;
-  /** The engine and model a rewrite uses (ui contract, Choosing the engine). */
-  engine: string | null;
-  /** How the engine is named (the fixture is `Test engine (no AI)`). */
-  engineLabel?: string | null;
-  model: string;
-  apply: (fn: (d: DiagramDocument) => DiagramDocument, opts?: { coalesce?: string }) => void;
-  /** Close and go to a view (`linkedin-edit`). */
-  goView: (vid: string, next?: DiagramDocument) => void;
   onClose: () => void;
   toast: (m: string) => void;
 }
 
 /**
- * The share dialog (ui contract, Share): where the image goes, then what that place needs — the LinkedIn
- * flow from drawing to download, the theme, and an honest readability line beside the download. It
- * packages what is ready; it does not simplify the drawing. Modal: focus stays inside it.
+ * The share dialog (ui contract, Share): where the image goes, the theme, and an honest readability
+ * line beside the download. It packages the current channel's view as it is; drawing the LinkedIn
+ * post happens on its channel. Modal: focus stays inside it.
  */
-export function ShareDialog({ doc, view, runner, engine, engineLabel, model, apply, goView, onClose, toast }: Props) {
-  // The version is found by its association, never by its name (diagram contract, Post-view identity).
-  const current = doc.views.find((v) => v.id === view.id) ?? view;
-  const own = current.postOf ? current : doc.views.find((v) => v.postOf === current.id) ?? null;
-  const [format, setFormat] = useState<FormatId>(current.postOf || isLinkedInView(view.id) ? "feed" : "readme");
-  const postFormat = format === "feed" || format === "linkedin";
-  // On LinkedIn the preview is the LinkedIn version when there is one; elsewhere the view itself.
-  const pvId = current.postOf ? current.id : postFormat && own ? own.id : view.id;
-  const stored = doc.views.find((v) => v.id === pvId) ?? view;
+export function ShareDialog({ doc, view, onClose, toast }: Props) {
+  // A view with a post style is the LinkedIn channel's (`joinDrawing`).
+  const stored = doc.views.find((v) => v.id === view.id) ?? view;
   const onVersion = !!stored.postOf;
+  const [format, setFormat] = useState<FormatId>(onVersion ? "feed" : "readme");
+  const postFormat = format === "feed" || format === "linkedin";
   // Portrait and wide place the same lanes; the other orientation is only previewed (ui contract).
   const pv = useMemo(() => (onVersion && postFormat ? orient(stored, format === "feed") : stored), [stored, onVersion, postFormat, format]);
   const shown = pv === stored ? doc : { ...doc, views: doc.views.map((v) => (v.id === pv.id ? pv : v)) };
@@ -198,28 +178,6 @@ export function ShareDialog({ doc, view, runner, engine, engineLabel, model, app
     }
   };
 
-  /* ---------- the LinkedIn version ---------- */
-  const prepare = () => {
-    try { apply((d) => makeLinkedInView(d, view.id).doc); setFormat("feed"); }
-    catch (e) { toast((e as Error).message); }
-  };
-  // Re-arrange places the parts again by their lanes for the chosen orientation (an undoable edit).
-  const rearrange = (vid: string) => (d: DiagramDocument): DiagramDocument =>
-    ({ ...d, views: d.views.map((v) => (v.id !== vid ? v : hasLanes(v) ? place(v, format !== "linkedin") : rearrangeForFeed(v))) });
-  const setCaption = (key: "title" | "lede", value: string) =>
-    apply((d) => ({ ...d, views: d.views.map((v) => (v.id === pv.id ? { ...v, caption: { ...v.caption, [key]: value } } : v)) }), { coalesce: `caption-${pv.id}-${key}` });
-  const { state } = runner;
-  const mine = state.req?.origin === "share";
-  const running = state.status === "running";
-  const postFmt = format === "linkedin" ? "linkedin" : "feed";
-  // A post run: the engine designs the story; the server converts, places and saves it.
-  const design = () => {
-    void runner.start({ instruction: "", engine, model: model || null, scope: { kind: "view" }, view: onVersion ? pv.id : current.id, origin: "share", kind: "post", format: postFmt });
-  };
-  const rewrite = () => {
-    void runner.start({ instruction: REWRITE, engine, model: model || null, scope: { kind: "view" }, view: pv.id, origin: "share", kind: "post", format: postFmt });
-  };
-
   const r = img.readability;
 
   return (
@@ -245,60 +203,6 @@ export function ShareDialog({ doc, view, runner, engine, engineLabel, model, app
                 ))}
               </div>
             </section>
-
-            {postFormat && (
-              <section className="li-flow" data-testid="linkedin-flow">
-                <h3>LinkedIn version</h3>
-                {!onVersion ? (
-                  engine ? (
-                    <>
-                      <p className="hint">The engine designs one image for the post from this drawing and the code: the story, the main path and what sits beside it. Code places it and checks it. This drawing stays as it is.</p>
-                      <button className="btn primary wide" data-testid="design-post" disabled={running} onClick={design}>
-                        <Icon name="spark" size={15} /> Design the post
-                      </button>
-                      {engineLabel && <p className="hint">With {engineLabel}</p>}
-                    </>
-                  ) : (
-                    <>
-                      <p className="hint">A view of its own for a tall post: the parts that explain the system open, the rest small. This drawing stays as it is.</p>
-                      <button className="btn primary wide" data-testid="linkedin-prepare" onClick={prepare}>Prepare the simple version</button>
-                      <p className="hint" data-testid="post-engine-note">No engine available — prepared without AI</p>
-                    </>
-                  )
-                ) : (
-                  <>
-                    <label className="field">Title
-                      <input data-testid="share-caption-title" value={pv.caption.title} maxLength={LIMITS.captionTitle} disabled={running} onChange={(e) => setCaption("title", e.target.value)} />
-                    </label>
-                    <label className="field">Description
-                      <textarea data-testid="share-caption-lede" value={pv.caption.lede} maxLength={LIMITS.lede} rows={3} disabled={running} onChange={(e) => setCaption("lede", e.target.value)} />
-                    </label>
-                    <div className="flow-actions">
-                      <button className="btn" data-testid="linkedin-edit" onClick={() => { onClose(); goView(pv.id); }}>Edit on the canvas</button>
-                      <button className="btn" data-testid="arrange-feed" disabled={running} onClick={() => apply(rearrange(pv.id))}>Re-arrange</button>
-                      {engine && <button className="btn" data-testid="design-post" disabled={running} onClick={design}>Design the post</button>}
-                      <button className="btn primary wide" data-testid="explain-feed" disabled={running} onClick={rewrite}>
-                        <Icon name="spark" size={15} /> Rewrite it in plain words
-                      </button>
-                    </div>
-                    {!engine && <p className="hint" data-testid="post-engine-note">No engine available — prepared without AI</p>}
-                  </>
-                )}
-                {running && mine && (
-                  <div className="run" data-testid="share-run" role="status">
-                    <span className="spinner" /><span className="line">{state.lines[state.lines.length - 1] ?? "Starting"}</span>
-                    <button className="btn small" data-testid="share-run-cancel" onClick={runner.cancel}>Cancel</button>
-                  </div>
-                )}
-                {mine && !running && state.error && (
-                  <div className="run err" data-testid="share-run-error" role="alert">
-                    <span className="line">{state.error}</span>
-                    <button className="btn small" data-testid="share-run-retry" onClick={runner.retry}>Try again</button>
-                  </div>
-                )}
-                {mine && state.status === "saved" && <div className="run" data-testid="share-run-saved">{SAVED}</div>}
-              </section>
-            )}
 
             <section>
               <h3>Theme</h3>

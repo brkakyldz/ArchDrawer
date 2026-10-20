@@ -30,11 +30,14 @@ export function OutdatedBanner({ count, onKeep }: { count: number; onKeep: () =>
   );
 }
 
-/** `channel-empty` (ui contract, Channels): the stage of a channel with no drawing. */
-export function EmptyStage({ channel }: { channel: ChannelId }) {
+/** `channel-empty` (ui contract, Channels): the stage of a channel with no drawing, and how to draw it. */
+export function EmptyStage({ channel, children }: { channel: ChannelId; children?: React.ReactNode }) {
   return (
-    <div className="channel-empty" data-testid="channel-empty" role="status">
-      <p>{channel === "linkedin" ? "The LinkedIn post is not drawn yet" : "This channel comes in 0.3"}</p>
+    <div className="channel-empty" data-testid="channel-empty">
+      <div className="box">
+        <p role="status">{channel === "linkedin" ? "The LinkedIn post is not drawn yet" : "This channel comes in 0.3"}</p>
+        {children}
+      </div>
     </div>
   );
 }

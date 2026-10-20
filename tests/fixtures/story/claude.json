@@ -25,7 +25,7 @@
       "spine": null,
       "anchor": "app",
       "side": "above",
-      "from": [
+      "facts": [
         "guest"
       ]
     },
@@ -44,7 +44,7 @@
       "spine": 0,
       "anchor": null,
       "side": null,
-      "from": [
+      "facts": [
         "ui"
       ]
     },
@@ -63,7 +63,7 @@
       "spine": 1,
       "anchor": null,
       "side": null,
-      "from": [
+      "facts": [
         "guest_api"
       ]
     },
@@ -82,7 +82,7 @@
       "spine": 2,
       "anchor": null,
       "side": null,
-      "from": [
+      "facts": [
         "run_service",
         "channel",
         "conv_db"
@@ -103,7 +103,7 @@
       "spine": 3,
       "anchor": null,
       "side": null,
-      "from": [
+      "facts": [
         "runtime",
         "agent_def"
       ]
@@ -123,7 +123,7 @@
       "spine": 4,
       "anchor": null,
       "side": null,
-      "from": [
+      "facts": [
         "gateway"
       ]
     },
@@ -142,7 +142,7 @@
       "spine": 5,
       "anchor": null,
       "side": null,
-      "from": [
+      "facts": [
         "services",
         "rules"
       ]
@@ -161,7 +161,7 @@
       "spine": null,
       "anchor": "agent",
       "side": "above",
-      "from": [
+      "facts": [
         "model"
       ]
     },
@@ -179,7 +179,7 @@
       "spine": null,
       "anchor": "run",
       "side": "above",
-      "from": [
+      "facts": [
         "operator",
         "operator_api",
         "operator_services"
@@ -200,7 +200,7 @@
       "spine": null,
       "anchor": "run",
       "side": "above",
-      "from": [
+      "facts": [
         "update_gate"
       ]
     },
@@ -218,7 +218,7 @@
       "spine": null,
       "anchor": "domain",
       "side": "below",
-      "from": [
+      "facts": [
         "hotel_db"
       ]
     },
@@ -236,7 +236,7 @@
       "spine": null,
       "anchor": "run",
       "side": "below",
-      "from": [
+      "facts": [
         "telemetry"
       ]
     }

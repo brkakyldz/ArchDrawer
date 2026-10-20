@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { applyDrawing, joinDrawing } from "../../core/drawing";
 import { clearOutdated } from "../../core/channels";
+import { prepareLinkedIn } from "../../core/export/feed";
 import { channelOfView, isChannel, type ChannelId, type Document3 } from "../../core/file3";
 import { layoutRects, routeEdges, viewBounds } from "../../core/geometry";
 import { isPostView, LIMITS, overviewMiss, TEXT_SIZE, viewById, type DiagramDocument, type DiagramView, type Form, type Kind } from "../../core/model";
@@ -16,6 +17,7 @@ import { AskBox } from "./AskBox";
 import { Search, type Found, type Hit } from "./Find";
 import { ViewsMenu } from "./Views";
 import { ChannelTabs, EmptyStage, OutdatedBanner } from "./Channels";
+import { LinkedInPanel, LinkedInStart } from "./LinkedIn";
 import { LoadError } from "./LoadError";
 import { Callout } from "./Callout";
 import { Canvas } from "./Canvas";
@@ -301,8 +303,18 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     setVp(p.focus ? revealIn(target, p.focus, fitted) : fitted);
   });
 
-  // A view removed by undo or a run: fall back to the first.
-  useEffect(() => { if (doc && vid && !viewById(doc, vid)) goView(doc.views[0].id); }, [doc, vid, goView]);
+  // The LinkedIn tab shows the post once there is one (prepared, designed, redone) and its own stage when
+  // it is gone (undone); elsewhere a view removed by undo or a run falls back to the first.
+  useEffect(() => {
+    if (!doc || !vid) return;
+    const post = doc.views.find((v) => v.postOf);
+    if (chan === "linkedin") {
+      if (post && vid !== post.id) goView(post.id);
+      else if (!post && !viewById(doc, vid)) { setVid(doc.views[0].id); setSel(NOTHING); setCallout(null); setEditing(null); history.replaceState({}, "", `/d/${doc.id}?channel=linkedin`); }
+      return;
+    }
+    if (!viewById(doc, vid)) goView(doc.views[0].id);
+  }, [doc, vid, chan, goView]);
 
   // A run pauses edits (api contract); an edit saved meanwhile would fail the run's version check and its
   // result would be thrown away. The run's own result goes through `hist.apply`.
@@ -325,6 +337,11 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const keep = () => {
     if (running.current) { toast(PAUSED); return; }
     histApply((d) => clearOutdated(d, chan));
+  };
+  /** The simple LinkedIn version, drawn by code from the overview (ui contract, The LinkedIn flow): one undoable edit. */
+  const prepare = () => {
+    if (running.current) { toast(PAUSED); return; }
+    histApply((d) => { const r = prepareLinkedIn(d); if (!r.ok) { toast(r.error); return d; } return r.doc; });
   };
   const undo = () => { if (running.current) toast(PAUSED); else hist.undo(); };
   const redo = () => { if (running.current) toast(PAUSED); else hist.redo(); };
@@ -532,7 +549,9 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     </button>
   );
   const docked = pinned && callout ? <Callout key={`d-${callout}`} ctl={ctl} id={callout} docked /> : null;
-  const side = !!docked || !!(ai && engines);
+  const post = chan === "linkedin" && !blank && view.postOf ? view : null;
+  const engineProps = { runner, engine: engine?.id ?? null, engineLabel: engine ? engineName(engine) : null, model };
+  const side = !!docked || !!(ai && engines) || !!post;
   // Stepping selects the match and moves the view only when the match is off screen (ui contract, search).
   const step = (id: string) => { setSel({ ...NOTHING, nodes: [id] }); setCallout(null); setEditing(null); setVp((v) => revealIn(view, id, v)); };
   const openHit = (h: Hit) => goView(h.view, undefined, h.id);
@@ -597,7 +616,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       </header>
 
       <main className="stage" ref={stageEl}>
-        {blank ? <EmptyStage channel={chan} /> : <>
+        {blank ? <EmptyStage channel={chan}>{chan === "linkedin" && <LinkedInStart {...engineProps} onPrepare={prepare} />}</EmptyStage> : <>
         <Canvas ctl={ctl} steps={stepsOn} onDouble={onDouble} />
         {outdated > 0 && <OutdatedBanner count={outdated} onKeep={keep} />}
         {HINTS[tool] && <div className="tool-hint" data-testid="tool-hint" role="status">{HINTS[tool]}</div>}
@@ -628,6 +647,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       {side && (
         <div className="side-col">
           {docked}
+          {post && <LinkedInPanel {...engineProps} view={post} apply={apply} />}
           {ai && engines && (
             <AiPanel runner={runner} engines={engines} engine={engine} model={model} onEngine={pickEngine} onModel={pickModel}
               selected={sel.nodes} initial={ai} onClose={() => setAi(null)}
@@ -638,8 +658,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       )}
       {toastMsg && <div className="toast" data-testid="toast" role="status">{toastMsg}</div>}
       {sharing && (
-        <ShareDialog doc={doc} view={view} runner={runner} engine={engine?.id ?? null} engineLabel={engine ? engineName(engine) : null} model={model}
-          apply={apply} goView={goView} onClose={() => setSharing(false)} toast={toast} />
+        <ShareDialog doc={doc} view={view} onClose={() => setSharing(false)} toast={toast} />
       )}
     </div>
   );

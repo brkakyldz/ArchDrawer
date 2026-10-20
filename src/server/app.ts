@@ -7,7 +7,6 @@ import { renderMermaid } from "../core/export/mermaid";
 import { DEFAULT_SHARE, FORMAT_IDS, renderShare, type FormatId } from "../core/export/share";
 import { joinChannel } from "../core/channels";
 import type { DiagramDocument } from "../core/model";
-import { joinDrawing } from "../core/drawing";
 import { CHANNELS, channelOfView, isChannel, type ChannelId, type Document3 } from "../core/file3";
 import { isRepoRelative, LIMITS, THEMES, type Theme } from "../core/model";
 import type { RunScope } from "../core/repair";
@@ -264,12 +263,13 @@ export function createApp(deps: AppDeps): Hono {
     if (b.channel !== undefined && !isChannel(b.channel)) return err(c, 400, `Unknown channel "${String(b.channel)}"; use one of ${CHANNELS.join(", ")}`);
     if (kind === "post" && b.channel !== undefined && b.channel !== "linkedin") return err(c, 400, "A post is drawn in the linkedin channel");
     // Refine and simplify read the run's channel, its parts' facts given as `from`; a post reads the
-    // overview and the post as one view list until #30.
+    // overview it is designed from, and its optional view is the LinkedIn channel's.
     const first = stored.channels.overview.views[0].id;
-    const view = typeof b.view === "string" ? b.view : kind === "post" ? first : "";
     const channel = (b.channel as ChannelId | undefined) ?? (kind === "post" ? "linkedin" : "overview");
+    if (kind === "post" && b.view !== undefined && (typeof b.view !== "string" || channelOfView(stored, b.view) !== "linkedin")) return err(c, 400, `Unknown view "${String(b.view)}"`);
+    const view = kind === "post" ? first : typeof b.view === "string" ? b.view : "";
     if (kind !== "post" && stored.channels[channel].views.length === 0) return err(c, 400, `The channel "${channel}" has no drawing`);
-    const doc = kind === "post" ? joinDrawing(stored) : draftOf(stored, channel);
+    const doc = draftOf(stored, kind === "post" ? "overview" : channel);
     if (!doc.views.some((v) => v.id === view) || (kind !== "post" && channelOfView(stored, view) !== channel)) return err(c, 400, `Unknown view "${view}"`);
     if (kind === "simplify" && view !== first) return err(c, 400, `Only the overview is simplified: give the view "${first}"`);
     const scope = parseScope(b.scope, doc.views.find((v) => v.id === view)!.nodes.map((n) => n.id));

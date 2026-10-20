@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { drawing, component, workspace, openDrawing, readDrawing, previewSVG, svgInfo, baseURL } from './helpers';
-import { previewTextSizes, checkReadability } from './helpers-v5';
+import { previewTextSizes, checkReadability } from './helpers';
 
-test('H64 [SHR-4, SHR-10] distinguish readable names from readable detail and print the three measured sizes', async ({ page, request }) => {
+test('H64 [LAYOUT-3, QUAL-2] distinguish readable names from readable detail and report the level the measured sizes give', async ({ page, request }) => {
   const doc = drawing('Readability levels');
   doc.views[0].nodes = [component('start', { label: 'Start', x: 0, y: 0 }), component('finish', { label: 'Finish', x: 1400, y: 0 })];
   doc.views[0].edges = [];

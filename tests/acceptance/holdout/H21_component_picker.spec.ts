@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { component, drawing, kinds, workspace, openDrawing, readDrawing, persisted, saved, box, canvasClick, emptyCanvasPoint } from './helpers';
 
-test('H21 [EDT-3, DM-2, EDT-6, PER-1] choose kinds and forms at their destination, including a child in a group, and cancel safely', async ({ page, request }) => {
+test('H21 [EDIT-1, FILE-1] choose kinds and forms at their destination, including a child in a group, and cancel safely', async ({ page, request }) => {
   const doc = drawing('Growing the system');
   doc.views[0].nodes = [component('container', { label: 'Runtime', form: 'group', x: 500, y: 220 })]; doc.views[0].edges = [];
   const { file } = await workspace('picker', doc); await openDrawing(page, request, file);

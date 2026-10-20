@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { drawing, component, workspace, openDrawing, readDrawing, finishRun, baseURL } from './helpers';
 
-test('H33 [ASK-5, ASK-6, ASK-7, ASK-9, PLT-2] record exact changes for add, rename, hold, move and remove and reject invalid scopes without edits', async ({ page, request }) => {
+test('H33 [AI-1] record exact changes for add, rename, hold, move and remove and reject invalid scopes without edits', async ({ page, request }) => {
   const doc = drawing('Run ledger');
   doc.views.push({ id: 'inside', title: 'Inside', caption: { title: 'Inside the ledger', lede: '' }, nodes: [component('audit', { label: 'Audit store', kind: 'data' })], edges: [], texts: [] });
   const { file } = await workspace('run-ledger', doc), opened = await openDrawing(page, request, file);

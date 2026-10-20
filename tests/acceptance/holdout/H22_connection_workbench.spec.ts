@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { drawing, workspace, openDrawing, readDrawing, saved, box, persisted, callout, clickEdge } from './helpers';
 
-test('H22 [EDT-2, EDT-4, EDT-6, DM-3, VIEW-1, PER-1] connect two parts, merge the return direction and edit the whole connection', async ({ page, request }) => {
+test('H22 [EDIT-1, EDIT-2, FILE-1] connect two parts, merge the return direction and edit the whole connection', async ({ page, request }) => {
   const doc = drawing('Connection workshop'); doc.views[0].edges = [];
   const { file } = await workspace('connections', doc); await openDrawing(page, request, file);
   async function connect(from: string, to: string, port: boolean) {

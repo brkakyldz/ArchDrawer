@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { component, drawing, workspace, openDrawing, readDrawing, persisted, saved, box, callout, emptyCanvasPoint } from './helpers';
 
-test('H20 [VIEW-2, VIEW-3, EDT-2, EDT-6, EDT-7, PER-1] enter and create detail views and retain a hundred undo steps across views', async ({ page, request }) => {
+test('H20 [NAV-1, EDIT-1, FILE-1, LOOK-1] enter and create detail views and retain a hundred undo steps across views', async ({ page, request }) => {
   const doc = drawing('Inside the shop'); doc.views[0].nodes[1].detail = 'inside-api';
   doc.views.push({ id: 'inside-api', title: 'Inside API', caption: { title: 'Inside order intake', lede: '' },
     nodes: [component('validator', { label: 'Validator', kind: 'gate', form: 'panel', items: ['Check scope'] }), component('writer', { label: 'Writer' })],

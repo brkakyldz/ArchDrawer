@@ -13,8 +13,9 @@ async function download(page: Page, id: string) {
   return { name: d.suggestedFilename(), path: (await d.path())! };
 }
 
-// Formats, sizes, presets, file names, PNG scale, focus, the LinkedIn flow, readability, the layout
-// report and shortened text are held-out H15, H28, H37–H39, H42, H43, H45, H50, H56, H61 and H63.
+// Formats, sizes, presets, file names, PNG scale, focus, readability, the layout report and
+// shortened text are held-out H15, H28, H38, H39, H63, H64, H85 and H86; the LinkedIn post flow has
+// none, since it is rebuilt with the channels.
 // What stays here is stricter than those: the browser download byte-equal to the CLI image, a copy
 // that must succeed, a toggle leaving its preset, and a post's zone box clear of outside parts.
 

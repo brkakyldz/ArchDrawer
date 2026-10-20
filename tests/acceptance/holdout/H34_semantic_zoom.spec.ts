@@ -2,7 +2,7 @@ import { test, expect, type Locator } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { drawing, workspace, openDrawing, baseURL, edgePaths } from './helpers';
 
-test('H34 [VIEW-5, VIEW-1, VIEW-3, SHR-6] fade detail at distance while keeping the open part lit and every shape and export unchanged', async ({ page, request }) => {
+test('H34 [LAYOUT-1, EDIT-2] fade detail at distance while keeping the open part lit and every shape and export unchanged', async ({ page, request }) => {
   const doc = drawing('Zoom shop'); doc.views[0].nodes[1].sub = 'Order intake';
   doc.views[0].edges[1].label = 'Store the order';
   doc.views[0].edges.push({ id: 'background', from: 'web', to: 'db', label: 'Lookup history', style: 'dep', both: false, step: null });

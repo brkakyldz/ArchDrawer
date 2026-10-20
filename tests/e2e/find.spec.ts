@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { open } from "./helpers";
 
-// Search, the views menu, the pinned callout and the narrow header are held-out H35 and H36. What
-// stays here: the Ctrl/Cmd+K shortcut and Escape, and a pin that outlives a reload while pinned.
+// The views menu, the pinned callout and the narrow header are held-out H35 and H36; search has no
+// held-out scenario while NAV-3 changes it. What stays here: the Ctrl/Cmd+K shortcut and Escape,
+// and a pin that outlives a reload while pinned.
 
 test("Ctrl+K opens search, picking a result closes it, Escape closes it", async ({ page }) => {
   await open(page);

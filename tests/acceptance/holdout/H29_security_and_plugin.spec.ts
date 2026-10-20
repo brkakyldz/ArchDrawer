@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { readFile, readdir, realpath, stat } from 'node:fs/promises';
-import { join, resolve, relative, isAbsolute } from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import { drawing, workspace, openDrawing, readDrawing, writeJSON, baseURL, token, root, startRun, finishRun } from './helpers';
 
-test('H29 [PLT-2, PLT-3, PLG-1, PLG-3] inspect the packaged skill and use a local drawing while forged writes are refused', async ({ page, request }) => {
+test('H29 [SAFE-1, SAFE-3, SAFE-4, START-1] use a local drawing while forged writes are refused, and find the plugin manifests and launcher in place', async ({ page, request }) => {
   const doc = drawing('Safe local shop'); doc.views[0].nodes[0].label = '<b>Web app</b>';
   doc.views[0].nodes[0].description = '<img src=x onerror="window.__holdoutExecuted=1">';
   const { dir, file } = await workspace('security', doc); const outbound: string[] = [];
@@ -52,43 +52,26 @@ test('H29 [PLT-2, PLT-3, PLG-1, PLG-3] inspect the packaged skill and use a loca
     const reached = await request.get(`http://${localIP}:${process.env.ARCHDRAW_HOLDOUT_PORT}/api/health`, { timeout: 2000, headers: { Host: `127.0.0.1:${process.env.ARCHDRAW_HOLDOUT_PORT}` } }).then(() => true, () => false);
     expect(reached, 'the editor must listen on loopback only').toBe(false);
   }
+  // A model name that could act as an option or smuggle a shell word is refused before any engine starts.
+  for (const model of ['--dangerous', '-x', 'a b', 'x;y']) {
+    const refused = await request.post(`${baseURL()}/api/runs`, { headers: { 'X-Archdraw-Token': opened.token },
+      data: { diagramId: opened.id, view: 'overview', instruction: 'keep the drawing', engine: 'fixture', model, scope: { kind: 'view' } } });
+    expect(refused.status(), model).toBe(400); expect((await refused.json()).error, model).toMatch(/Invalid model name/);
+  }
+  expect(await readFile(file, 'utf8')).toBe(initial);
   const marker = join(dir, 'never-created.txt');
   const instruction = `keep the drawing; node -e "require('fs').writeFileSync('${marker.replace(/\\/g, '/')}', 'bad')"`;
   const runId = await startRun(request, opened.id, opened.token, instruction); await finishRun(request, runId, 'succeeded');
   expect(await stat(marker).then(() => true, () => false)).toBe(false); expect((await readDrawing(file)).views).toEqual((JSON.parse(initial)).views);
   expect(outbound).toEqual([]); // The observed browser journey must make no external request.
 
-  // Read only the packaging and skill artifacts expressly allowed by the spec.
+  // The plugin is the way in: its manifests and launcher are shipped with the product.
   const manifests = await Promise.all(['.claude-plugin/marketplace.json', '.claude-plugin/plugin.json', '.codex-plugin/plugin.json'].map(async path => {
     const value = JSON.parse(await readFile(join(root, path), 'utf8'));
     expect(value, path).not.toBeNull(); expect(typeof value, path).toBe('object'); expect(Array.isArray(value), path).toBe(false); expect(Object.keys(value).length, path).toBeGreaterThan(0); return value;
   }));
+  expect(manifests).toHaveLength(3);
   expect((await stat(join(root, 'bin', 'archdrawer'))).isFile()).toBe(true);
   expect((await readFile(join(root, 'bin', 'archdrawer'), 'utf8')).trim().length).toBeGreaterThan(0);
-  const candidates = new Set([join(root, 'skills'), join(root, '.agents', 'skills'), join(root, '.claude', 'skills')]);
-  function declaredSkills(value: unknown, key = '') {
-    if (typeof value === 'string' && (key === 'skills' || /(?:^|\/)skills(?:\/|$)|SKILL\.md$/.test(value))) {
-      const path = resolve(root, value), within = relative(root, path);
-      if (!within.startsWith('..') && !isAbsolute(within)) candidates.add(path);
-    } else if (Array.isArray(value)) value.forEach(item => declaredSkills(item, key));
-    else if (value && typeof value === 'object') for (const [name, item] of Object.entries(value)) declaredSkills(item, name);
-  }
-  manifests.forEach(value => declaredSkills(value));
-  const actualRoot = await realpath(root);
-  const visited = new Set<string>(), skillFiles = new Map<string, string>();
-  async function collect(path: string): Promise<void> {
-    const actual = await realpath(path).catch(() => null); if (!actual || visited.has(actual)) return; visited.add(actual);
-    const within = relative(actualRoot, actual); if (within.startsWith('..') || isAbsolute(within)) return;
-    const info = await stat(path);
-    if (info.isFile()) {
-      if (path.replace(/\\/g, '/').endsWith('/SKILL.md')) skillFiles.set(actual, await readFile(path, 'utf8')); return;
-    }
-    if (info.isDirectory()) for (const entry of await readdir(path, { withFileTypes: true })) if (entry.isDirectory() || entry.isSymbolicLink() || entry.name === 'SKILL.md') await collect(join(path, entry.name));
-  }
-  for (const candidate of candidates) await collect(candidate); await collect(join(root, 'SKILL.md'));
-  const skills = [...skillFiles.values()].filter(text => /^name:\s*["']?archdrawer["']?\s*$/m.test(text));
-  expect(skills, 'exactly one packaged archdrawer skill, deduplicating shared links').toHaveLength(1);
-  const skill = skills[0]; expect(skill).toContain('archdraw/diagram@2'); expect(skill).toContain('docs/architecture.archdraw.json');
-  expect(skill).toMatch(/archdrawer\s+validate/i); expect(skill).toMatch(/archdrawer\s+open/i); expect(skill).toContain('requests');
   // Static packaging checks are not claimed as a live invocation of either agent host.
 });

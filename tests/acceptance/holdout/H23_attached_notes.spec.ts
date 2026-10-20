@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { drawing, workspace, openDrawing, readDrawing, saved, drag, canvasClick, emptyCanvasPoint, previewSVG, svgInfo, persisted } from './helpers';
 
-test('H23 [EDT-5, EDT-6, SHR-1, PER-1] type and resize free text, move a neighbouring part, share the text and undo its deletion', async ({ page, request }) => {
+test('H23 [EDIT-1, SHARE-1, FILE-1] type and resize free text, move a neighbouring part, share the text and undo its deletion', async ({ page, request }) => {
   const { file } = await workspace('texts', drawing('Texts shop')); await openDrawing(page, request, file);
   await page.getByTestId('tool-text').click(); let point = await emptyCanvasPoint(page); await canvasClick(page, point.x, point.y);
   await expect(page.getByTestId('text-input')).toHaveValue(''); await expect(page.getByTestId('text-input')).toBeFocused();

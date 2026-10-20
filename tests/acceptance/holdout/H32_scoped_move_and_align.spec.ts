@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { drawing, workspace, openDrawing, readDrawing, finishRun, persisted, svgInfo, baseURL } from './helpers';
 
-test('H32 [ASK-5, ASK-7, ASK-9, LAY-3, DM-5, EDT-6] move and align just one part and warn once for a move outside selected parts', async ({ page, request }) => {
+test('H32 [AI-1, LAYOUT-1, EDIT-1] move and align just one part and warn once for a move outside selected parts', async ({ page, request }) => {
   const doc = drawing('Position shop');
   for (const [i, node] of doc.views[0].nodes.entries()) { node.place = null; node.x = [80, 400, 80][i]; node.y = [80, 240, 480][i]; }
   doc.views[0].texts.push({ id: 'position-title', text: 'A stored order', x: 80, y: 680, size: 28 });

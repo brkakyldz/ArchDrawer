@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { workspace, cli, readDrawing, baseURL, download } from './helpers';
 import { compareSVGs } from './helpers-svg-parity';
 
-test('H15 [CLI-1, CLI-2, CLI-3, CLI-4, DM-1, SHR-6] validate a session file, reopen the same editor and export it', async ({ page, request }) => {
+test('H15 [START-5, FILE-1, LAYOUT-1, SHARE-1] validate a session file, reopen the same editor and export it', async ({ page, request }) => {
   const { dir, file } = await workspace('CLI Shop');
   const original = await readFile(file, 'utf8');
   const validation = await cli(['validate', file]);

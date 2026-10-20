@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { component, drawing, workspace, openDrawing, readDrawing, persisted, saved, box, overlaps, callout as getCallout } from './helpers';
 
-test('H18 [EDT-2, VIEW-1, DM-2, PER-1] explain a component and edit every field and held item without losing its neighbours', async ({ page, request }) => {
+test('H18 [EDIT-1, EDIT-2, FILE-1] explain a component and edit every field and held item without losing its neighbours', async ({ page, request }) => {
   const doc = drawing('Callout shop'); doc.views[0].nodes.push(component('runtime', { label: 'Runtime', form: 'group', place: { row: -1, col: 1 } }));
   const { file } = await workspace('callout', doc); await openDrawing(page, request, file);
   const node = page.getByTestId('node-api'); await node.click();

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { drawing, workspace, openDrawing, callout, box, overlaps, persisted, readDrawing } from './helpers';
 
-test('H36 [VIEW-8, VIEW-1, EDT-6, EDT-7, PER-1] pin explanations beside the canvas and keep editing controls reachable in a narrow header', async ({ page, request }) => {
+test('H36 [EDIT-1, EDIT-2, LOOK-1, FILE-1] pin explanations beside the canvas and keep editing controls reachable in a narrow header', async ({ page, request }) => {
   const { file } = await workspace('narrow', drawing('Narrow shop')); await openDrawing(page, request, file);
   const baseline = await readDrawing(file), freeWidth = (await box(page.getByTestId('canvas'))).width;
   let detail = await callout(page, 'api'); await expect(detail).toHaveAttribute('data-docked', 'false');

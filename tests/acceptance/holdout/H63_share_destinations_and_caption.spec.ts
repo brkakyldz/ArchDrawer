@@ -2,12 +2,10 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { drawing, component, workspace, openDrawing, readDrawing, previewSVG, svgInfo, svgBoxes, overlaps, download, settledReport } from './helpers';
-import { checkReadability } from './helpers-v5';
-import { routeGeometry } from './helpers-v7';
-import { compareRoutes } from './helpers-v8';
-import { visibleTextContent } from './helpers-v9';
+import { checkReadability } from './helpers';
+import { routeGeometry, compareRoutes, visibleTextContent } from './helpers-svg-parity';
 
-test('H63 [SHR-1, SHR-2, SHR-7, SHR-10] share a full ordinary view for three destinations with a wrapped caption and explicit clipping warning', async ({ page, request }) => {
+test('H63 [SHARE-1, LAYOUT-1, LAYOUT-3] share a full ordinary view for three destinations with a wrapped caption and explicit clipping warning', async ({ page, request }) => {
   const doc = drawing('Partner handoff'), source = doc.views[0];
   source.caption.title = 'How the request reaches the partner team through the intake, the stored record and the final delivery service';
   source.caption.lede = 'Each request is checked before it is stored, then the partner receives the result with enough context to continue the work.';

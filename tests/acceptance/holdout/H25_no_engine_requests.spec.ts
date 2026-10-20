@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { drawing, workspace, freePort, cli, openDrawing, readDrawing, persisted, token } from './helpers';
 
-test('H25 [ASK-2, CLI-2, CLI-4, PER-1, PLT-3] a machine without engines saves a literal request for the next session and stops only its own server', async ({ page, request }) => {
+test('H25 [AI-1, START-5, SAFE-1, FILE-1] a machine without engines saves a literal request for the next session and stops only its own server', async ({ page, request }) => {
   const { dir, file } = await workspace('offline', drawing('Offline shop'));
   const data = await mkdtemp(join(tmpdir(), 'archdrawer-no-engine-')); const port = await freePort(); const base = `http://127.0.0.1:${port}`;
   const env = { PORT: String(port), ARCHDRAW_DATA_DIR: data, ARCHDRAW_ENGINES: '' };

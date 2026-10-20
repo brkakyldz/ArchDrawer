@@ -9,7 +9,7 @@ import { createServer } from 'node:net';
 export const root = fileURLToPath(new URL('../../../', import.meta.url));
 export const baseURL = () => `http://127.0.0.1:${process.env.ARCHDRAW_HOLDOUT_PORT}`;
 export const kinds = ['actor', 'client', 'api', 'service', 'worker', 'llm', 'external', 'ops', 'gate', 'data'] as const;
-// diagram-v2, Lane: exactly one of these shapes, or null.
+// diagram contract, Lane: exactly one of these shapes, or null.
 export type Lane = null | { spine: number } | { anchor: string; side: 'above' | 'below' };
 export interface Component {
   id: string; label: string; kind: string; form: string; icon: string | null; sub: string;
@@ -22,16 +22,6 @@ export interface Text { id: string; text: string; x: number; y: number; size: nu
 export interface View {
   id: string; title: string; caption: { title: string; lede: string }; postOf?: string | null;
   nodes: Component[]; edges: Connection[]; texts: Text[];
-}
-export interface LayoutReport {
-  view: string; format: string; crossings: number;
-  edgesOverParts: { edge: string; node: string }[];
-  cutText: { id: string; field: string; text: string }[];
-  overLimitText: { id: string; field: string; text: string; limit: number }[];
-  smallestText: { inPlace: number; opened: number; level: string };
-  counts: { parts: number; zones: number; connections: number };
-  targets: { parts: number | null; zones: { min: number; max: number } | null; connections: number | null };
-  longestConnection: number;
 }
 export interface Drawing {
   schema: string; id?: string; title: string; theme?: string; showSteps?: boolean;
@@ -221,37 +211,15 @@ export async function isolatedDrawing(page: Page, request: APIRequestContext, fi
     return { ...await openDrawing(page, request, file, base), base, data, env, close };
   } catch (error) { await close(); throw error; }
 }
-// api-v2, Run kinds: the raw response, so a scenario can assert 202 or a 400 before any engine starts.
-export async function postRun(request: APIRequestContext, auth: string, data: Record<string, unknown>, base = baseURL()) {
-  return await request.post(`${base}/api/runs`, { headers: { 'X-Archdraw-Token': auth }, data });
-}
+// A run started with a full request body (kind, format, scope ...); the run id of the accepted run.
 export async function startKind(request: APIRequestContext, auth: string, data: Record<string, unknown>, base = baseURL()) {
-  const response = await postRun(request, auth, data, base);
+  const response = await request.post(`${base}/api/runs`, { headers: { 'X-Archdraw-Token': auth }, data });
   expect(response.status(), await response.text()).toBe(202);
   return (await response.json()).runId as string;
 }
-export function viewOf(doc: Drawing, id: string) {
-  const result = doc.views.find(v => v.id === id); expect(result, `view ${id}`).toBeTruthy(); return result!;
-}
-// diagram-v2, Post-view identity: a post is owned through postOf, never found by its name.
-export function postViewOf(doc: Drawing, source: string) {
-  const owned = doc.views.filter(v => v.postOf === source);
-  expect(owned, `exactly one post of ${source}`).toHaveLength(1); return owned[0];
-}
-export function labelled(view: View, label: string) {
-  const found = view.nodes.filter(n => n.label === label);
-  expect(found, `one component labelled ${label} in ${view.id}`).toHaveLength(1); return found[0];
-}
-export function ids(doc: Drawing) {
-  return doc.views.flatMap(v => [...v.nodes.map(n => n.id), ...v.edges.map(e => e.id!), ...v.texts.map(t => t.id)]);
-}
 export interface Shape { tag: string; testId: string; nodeId: string; edgeId: string; text: string; x: number; y: number; width: number; height: number }
-// Boxes inside the rendered share preview, in image pixels (its viewBox is 0 0 width height).
-export async function previewBoxes(page: Page, selector: string): Promise<Shape[]> {
-  return await boxesIn(page.getByTestId('share-preview'), selector);
-}
-// The same boxes for an exported SVG (ui-v2, The share image): rendered in its own blank page, so a
-// downloaded or HTTP image can be measured in image pixels like the preview.
+// Boxes inside an exported SVG (ui contract, The share image): rendered in its own blank page, so a
+// downloaded or HTTP image can be measured in image pixels.
 export async function svgBoxes(page: Page, svg: string, selector: string): Promise<Shape[]> {
   const holder = await page.context().newPage();
   try {
@@ -278,36 +246,7 @@ async function boxesIn(locator: Locator, selector: string): Promise<Shape[]> {
     });
   }, selector);
 }
-// ui-v2, Readability meter: the smallest visible text actually drawn in the preview, in image pixels
-// (each text's own font size after its SVG transform). Empty text contributes nothing; 0 = no text.
-export async function smallestPreviewText(page: Page) {
-  return await page.getByTestId('share-preview').evaluate(element => {
-    const svg = (element.tagName.toLowerCase() === 'svg' ? element : element.querySelector('svg')) as SVGSVGElement;
-    const toRoot = svg.getScreenCTM()!.inverse();
-    let smallest = 0;
-    for (const found of Array.from(svg.querySelectorAll('text'))) {
-      const text = found as SVGGraphicsElement;
-      if (!(text.textContent ?? '').trim()) continue;
-      let hidden = false;
-      for (let at: Element | null = text; at && at !== svg.parentElement; at = at.parentElement) {
-        const style = getComputedStyle(at);
-        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) { hidden = true; break; }
-      }
-      if (hidden) continue;
-      const matrix = toRoot.multiply(text.getScreenCTM()!);
-      const drawn = parseFloat(getComputedStyle(text).fontSize) * Math.hypot(matrix.a, matrix.b);
-      if (!Number.isFinite(drawn) || drawn <= 0) continue;
-      smallest = smallest === 0 ? drawn : Math.min(smallest, drawn);
-    }
-    return smallest;
-  });
-}
-export function bounds(boxes: { x: number; y: number; width: number; height: number }[]) {
-  expect(boxes.length).toBeGreaterThan(0);
-  return { left: Math.min(...boxes.map(b => b.x)), top: Math.min(...boxes.map(b => b.y)),
-    right: Math.max(...boxes.map(b => b.x + b.width)), bottom: Math.max(...boxes.map(b => b.y + b.height)) };
-}
-// ui-v2, Layout report: the unrounded values the surface exposes.
+// ui contract, Layout report: the unrounded values the surface exposes.
 export function reportNumber(raw: string | null, name: string) {
   if (raw === null || raw.trim() === '' || !Number.isFinite(Number(raw)))
     throw new Error(`Missing, empty or non-finite layout-report data-${name}: ${JSON.stringify(raw)}`);
@@ -327,7 +266,7 @@ export async function reportAttributes(page: Page, scope = 'share-dialog') {
     view: await read('view'), format: await read('format'),
   };
 }
-// ui-v2, Layout report: in Share it recomputes when format, part, toggles or caption change. Read it
+// ui contract, Layout report: in Share it recomputes when format, part, toggles or caption change. Read it
 // only once two consecutive readings agree, so a report still being recomputed is never compared.
 export async function settledReport(page: Page, scope = 'share-dialog') {
   let last = await reportAttributes(page, scope);
@@ -336,4 +275,114 @@ export async function settledReport(page: Page, scope = 'share-dialog') {
     const same = JSON.stringify(next) === JSON.stringify(last); last = next; return same;
   }, { timeout: 15_000, intervals: [200, 200, 300, 500, 1000] }).toBe(true);
   return last;
+}
+
+// Match names against the public document, including wrapped lines and explicitly shortened names.
+// shortcut: repeated label/detail strings are ambiguous in exports, keep fixtures distinct until a name role is contracted.
+export async function previewTextSizes(page: Page) {
+  const url = new URL(page.url()), id = url.pathname.split('/').at(-1)!;
+  const response = await page.request.get(`${url.origin}/api/diagrams/${id}`);
+  expect(response.status()).toBe(200);
+  const doc = await response.json() as Drawing;
+  const preview = page.getByTestId('share-preview'), viewId = await preview.getAttribute('data-view');
+  const drawn = doc.views.find(v => v.id === viewId); expect(drawn).toBeTruthy();
+  return await visibleTextSizes(preview, drawn!);
+}
+
+export async function visibleTextSizes(surface: Locator, view: View) {
+  return await surface.evaluate((element, labels) => {
+    const svg = (element.tagName.toLowerCase() === 'svg' ? element : element.querySelector('svg')) as SVGSVGElement;
+    const toRoot = svg.getScreenCTM()!.inverse();
+    const walker = document.createTreeWalker(svg, NodeFilter.SHOW_TEXT);
+    const characters: { source: Node; text: string; nodeId: string | null; name: boolean; font: number; weight: number; opened: number; lineYs: number[] }[] = [];
+    const offsets = new Map<SVGTextElement, number>();
+    let run: Node | null;
+    while ((run = walker.nextNode())) {
+      const text = run.parentElement as SVGTextContentElement | null;
+      const nameText = text?.closest('text') as SVGTextElement | null;
+      if (!text || !nameText) continue;
+      const content = run.textContent ?? '', offset = offsets.get(nameText) ?? 0;
+      offsets.set(nameText, offset + content.length);
+      if (!content.trim() || text.closest('defs, clipPath, mask, marker')) continue;
+      const style = getComputedStyle(text);
+      if (style.visibility === 'hidden' || style.visibility === 'collapse') continue;
+      if ((style.fill === 'none' || Number(style.fillOpacity) === 0)
+        && (style.stroke === 'none' || Number(style.strokeOpacity) === 0)) continue;
+      let hidden = false;
+      for (let at: Element | null = text; at && at !== svg.parentElement; at = at.parentElement) {
+        const own = getComputedStyle(at);
+        if (own.display === 'none' || Number(own.opacity) === 0) { hidden = true; break; }
+      }
+      if (hidden) continue;
+      const matrix = toRoot.multiply(text.getScreenCTM()!);
+      const font = parseFloat(style.fontSize), opened = font * Math.hypot(matrix.a, matrix.b);
+      if (!Number.isFinite(opened) || opened <= 0) throw new Error('Invalid visible text size');
+      const nameMatrix = toRoot.multiply(nameText.getScreenCTM()!);
+      for (let i = 0; i < content.length; i++) {
+        const y = content[i].trim() ? nameText.getStartPositionOfChar(offset + i).matrixTransform(nameMatrix).y : 0;
+        characters.push({ source: run, text: content[i], nodeId: text.closest('g[data-node-id]')?.getAttribute('data-node-id') ?? null,
+          name: false, font, weight: Number(style.fontWeight), opened, lineYs: content[i].trim() ? [Math.round(y * 1000) / 1000] : [] });
+      }
+    }
+    for (const group of Array.from(svg.querySelectorAll('g[data-node-id]'))) {
+      const id = group.getAttribute('data-node-id')!, label = labels[id].replace(/\s/g, '');
+      const own = characters.filter(c => c.nodeId === id && c.text.trim()), actual = own.map(c => c.text).join('');
+      let start = actual.indexOf(label), length = label.length;
+      if (start < 0) {
+        for (let at = 0; at < own.length; at++) {
+          const end = actual.indexOf('…', at);
+          if (end >= at && label.startsWith(actual.slice(at, end))) { start = at; length = end - at + 1; break; }
+        }
+      }
+      if (start < 0 || !length) throw new Error(`No rendered name for ${id}: ${actual}`);
+      own.slice(start, start + length).forEach(c => { c.name = true; });
+    }
+    const runs: { text: string; nodeId: string | null; name: boolean; font: number; weight: number; opened: number; lineYs: number[] }[] = [];
+    for (const source of new Set(characters.map(c => c.source))) {
+      const own = characters.filter(c => c.source === source), first = own.findIndex(c => c.name), last = own.map(c => c.name).lastIndexOf(true);
+      const slices = first < 0 ? [own] : [own.slice(0, first), own.slice(first, last + 1), own.slice(last + 1)];
+      for (const slice of slices) {
+        if (!slice.some(c => c.text.trim())) continue;
+        const name = slice.some(c => c.name), { nodeId, font, weight, opened } = slice[0];
+        runs.push({ text: slice.map(c => c.text).join(''), nodeId, name, font, weight, opened,
+          lineYs: name ? slice.flatMap(c => c.lineYs) : [] });
+      }
+    }
+    const minimum = (values: number[]) => values.length ? Math.min(...values) : 0;
+    return { opened: minimum(runs.map(r => r.opened)), namesOpened: minimum(runs.filter(r => r.name).map(r => r.opened)), runs };
+  }, Object.fromEntries(view.nodes.map(n => [n.id, n.label])));
+}
+
+async function reportFields(page: Page, scope = 'share-dialog') {
+  const report = page.getByTestId(scope).getByTestId('layout-report');
+  for (const name of ['crossings', 'over-parts', 'cut', 'over-limit', 'in-place', 'opened', 'parts', 'zones', 'connections', 'longest']) {
+    await expect.poll(async () => {
+      const raw = await report.getAttribute(`data-${name}`);
+      return raw !== null && raw.trim() !== '' && Number.isFinite(Number(raw)) && Number(raw) >= 0;
+    }).toBe(true);
+  }
+  await expect(report).toHaveAttribute('data-level', /^(good|ok|warn)$/);
+}
+
+// The share dialog's layout report and readability level agree with the text actually drawn in the preview.
+// The meter's wording and the numbers it prints are not pinned: only its level, which the report also carries.
+export async function checkReadability(page: Page, width: number, seen: number) {
+  await reportFields(page);
+  const surface = page.getByTestId('share-dialog').getByTestId('layout-report');
+  await expect(surface).toHaveAttribute('data-view', (await page.getByTestId('share-preview').getAttribute('data-view'))!);
+  const format = await page.getByTestId('share-preview').evaluate(el => (el.tagName.toLowerCase() === 'svg' ? el : el.querySelector('svg'))!.getAttribute('data-format'));
+  expect(format).toBeTruthy(); await expect(surface).toHaveAttribute('data-format', format!);
+  await expect.poll(async () => {
+    const report = await settledReport(page);
+    return Math.abs(report.opened - (await previewTextSizes(page)).opened);
+  }).toBeLessThan(0.001);
+  const report = await settledReport(page), measured = await previewTextSizes(page);
+  expect(measured.runs.length).toBeGreaterThan(0); expect(measured.namesOpened).toBeGreaterThan(0);
+  expect(report.opened).toBeGreaterThan(0);
+  expect(report.inPlace).toBeCloseTo(report.opened * seen / width, 6);
+  const namesInPlace = measured.namesOpened * seen / width;
+  expect(report.level).toBe(namesInPlace >= 9 && report.inPlace >= 6.5 ? 'good' : report.opened >= 8 ? 'ok' : 'warn');
+  const meter = page.getByTestId('share-dialog').getByTestId('readability');
+  await expect(meter).toHaveAttribute('data-level', report.level!);
+  return { ...report, namesInPlace, namesOpened: measured.namesOpened };
 }

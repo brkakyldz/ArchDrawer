@@ -54,7 +54,11 @@ describe("instruction-box runs", () => {
     await runs.wait((await run("[fixture:invalid] anything")).body.runId!);
     const after = doc();
     expect(after.views[0].nodes.map((n) => n.id)).toContain("web-2");
-    expect(after.warnings).toEqual(['Renamed the duplicate id "web" to "web-2"', 'Dropped the connection web → ghost: "ghost" does not exist']);
+    expect(after.warnings).toEqual([
+      'Renamed the duplicate id "web" to "web-2"', 'Dropped the connection web → ghost: "ghost" does not exist',
+      // The copy names the same fact as "web", which this view already shows (drawing contract, rule 6).
+      'View "overview": "web-2" no longer shows "web", which an earlier part shows',
+    ]);
   });
 
   it("fails cleanly and leaves the file untouched", async () => {

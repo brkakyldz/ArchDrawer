@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { joinDrawing } from "../core/drawing";
 import { runCli } from "../cli/main";
+import { fixtureAnswer } from "./engines/fixture";
+import type { Engine, EngineInfo, EngineRunRequest } from "./engines/types";
 import { makeApp, makeFolder, shopFile, shopFile2, tempDir } from "./testkit";
 
 async function cli(...argv: string[]) {
@@ -102,5 +104,48 @@ describe("the command line on @3 (FILE-2, START-5)", () => {
     expect(await cli("svg", file, "--channel", "blog")).toMatchObject({ code: 2, err: ['Unknown channel "blog"; use one of overview, linkedin, readme, presentation', 'Run "archdrawer --help" for the commands.'] });
     expect(await cli("svg", file, "--channel", "readme")).toMatchObject({ code: 1, err: [`The channel "readme" has no drawing in ${file}`] });
     expect(await cli("svg", file, "--channel", "linkedin", "--view", "overview")).toMatchObject({ code: 1, err: [`No view "overview" in the linkedin channel of ${file}; views: overview-linkedin`] });
+  });
+});
+
+/** A stand-in for Claude Code or Codex: it answers the draft it is given as the fixture does. */
+class FakeReal implements Engine {
+  readonly id = "claude"; readonly label = "Claude Code";
+  drafts: unknown[] = [];
+  async detect(): Promise<EngineInfo> { return { id: this.id, label: this.label, available: true, version: "1", detail: "", test: false, models: [] }; }
+  async run(req: EngineRunRequest): Promise<unknown> { this.drafts.push(req.base); return fixtureAnswer(req.base, req.view, req.instruction); }
+}
+
+describe("an instruction changes the current channel (AI-1, FILE-3)", () => {
+  it("a rename in the overview reaches the LinkedIn channel's mark; the draft names facts", async () => {
+    const engine = new FakeReal();
+    const t = makeApp({ engines: [engine] });
+    const { file } = v2WithPost();
+    const id = (await json(await t.req("/api/files", { method: "POST", json: { path: file } }))).body.id as string;
+    const doc = JSON.parse(readFileSync(file, "utf8"));
+    doc.channels.linkedin.views[0].nodes[0].label = "Shop";
+    t.store.put(id, doc);
+    const r = await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, channel: "overview", view: "overview", instruction: "rename Web app to Storefront", engine: "claude", model: null } }));
+    expect(r.status).toBe(202);
+    expect(await t.runs.wait(r.body.runId)).toMatchObject({ status: "succeeded", channel: "overview" });
+    const after = t.store.get(id)!;
+    expect(after.facts.components[0].label).toBe("Storefront");
+    expect(after.channels.linkedin.outdated).toEqual(["web"]);
+    expect(after.channels.overview.outdated).toEqual([]);
+    // The engine read the overview channel only, each part naming its facts.
+    const draft = engine.drafts[0] as { views: { id: string; nodes: { id: string; facts: string[] }[] }[] };
+    expect(draft.views.map((v) => v.id)).toEqual(["overview"]);
+    expect(draft.views[0].nodes.map((n) => n.facts)).toEqual([["web"], ["api"], ["db"]]);
+  });
+
+  it("a rename by a run on the LinkedIn channel is that channel's own name; the facts stay", async () => {
+    const t = makeApp();
+    const { file } = v2WithPost();
+    const id = (await json(await t.req("/api/files", { method: "POST", json: { path: file } }))).body.id as string;
+    const r = await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, channel: "linkedin", view: "overview-linkedin", instruction: "rename Web app to Shop", engine: "fixture", model: null, scope: { kind: "view" } } }));
+    expect(await t.runs.wait(r.body.runId)).toMatchObject({ status: "succeeded", channel: "linkedin", view: "overview-linkedin" });
+    const after = t.store.get(id)!;
+    expect(after.channels.linkedin.views[0].nodes[0]).toMatchObject({ id: "web-li", label: "Shop", facts: ["web"] });
+    expect(after.facts.components[0].label).toBe("Web app");
+    expect(after.channels.overview.outdated).toEqual([]);
   });
 });

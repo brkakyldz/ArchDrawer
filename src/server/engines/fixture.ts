@@ -4,7 +4,7 @@ export const FIXTURE_STEPS = ["Reading the drawing", "Reading the code", "Updati
 export const FIXTURE_MODELS = [{ id: "fixture-fast", label: "Fast (test)" }, { id: "fixture-careful", label: "Careful (test)" }];
 
 interface Box { x: number; y: number; w: number; h: number }
-interface DraftNode { id: string; label: string; kind: string; form: string; icon: string | null; sub: string; items: string[]; description: string; files: string[]; parent: string | null; detail: string | null; place: { row: number; col: number } | null; lane?: unknown; from?: string[]; box?: Box; at?: { x: number; y: number } | null }
+interface DraftNode { id: string; label: string; kind: string; form: string; icon: string | null; sub: string; items: string[]; description: string; files: string[]; parent: string | null; detail: string | null; place: { row: number; col: number } | null; lane?: unknown; facts?: string[]; box?: Box; at?: { x: number; y: number } | null }
 interface DraftEdge { from: string; to: string; label: string; style: string; both: boolean; step: number | null }
 interface DraftView { id: string; title: string; caption: { title: string; lede: string }; nodes: DraftNode[]; edges: DraftEdge[]; relayout?: string[] }
 interface Draft { title: string; views: DraftView[] }
@@ -136,7 +136,7 @@ export function fixtureSimplify(base: unknown, instruction: string): Draft {
   overview.nodes = [{
     id: groupId, label: "System map", kind: "service", form: "group", icon: null, sub: "", items: [],
     description: "The whole system; open it for its parts.", files, parent: null, detail: viewId, place: null,
-    lane: { spine: 0 }, from: [], at: null,
+    lane: { spine: 0 }, facts: [], at: null,
   }];
   overview.edges = [];
   draft.views.push(detail);

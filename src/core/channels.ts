@@ -166,7 +166,9 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
       if (!old || !drawn) return newPart(n);
       const p: Part = structuredClone(old);
       Object.assign(p, appearance(n));
-      if (n.facts && !same(n.facts, p.facts)) p.facts = [...new Set(n.facts.filter((f) => comps.has(f)))];
+      // The facts a part shows, named by the editor (`facts`) or by an engine's answer (`from`).
+      const named = n.facts ?? (n.from?.length ? n.from : undefined);
+      if (named && !same(named, p.facts)) p.facts = [...new Set(named.filter((f) => comps.has(f)))];
       for (const f of TEXT_FIELDS) if (n[f] !== drawn[f]) writeText(p, f, n[f]);
       items(p, drawn, n);
       files(p, drawn, n);
@@ -231,6 +233,25 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
     const first = comps.get(p.facts[0]);
     if (first) for (const f of added) if (!first.files.includes(f) && first.files.length < LIMITS.files) first.files.push(f);
   }
+
+  // A fact is shown by one part of a view (rule 6): a later part showing it again stops showing it, and a
+  // part left with no fact keeps what it drew as its own text. One warning each (an engine's answer).
+  const repairs: string[] = [];
+  next.views.forEach((v, vi) => {
+    const seen = new Set<string>();
+    views[vi].nodes.forEach((p, i) => {
+      const twice = p.facts.filter((f) => seen.has(f));
+      p.facts.forEach((f) => seen.add(f));
+      if (!twice.length) return;
+      const n = v.nodes[i];
+      p.facts = p.facts.filter((f) => !twice.includes(f));
+      for (const f of twice) repairs.push(`View "${v.id}": "${p.id}" no longer shows "${f}", which an earlier part shows`);
+      if (p.facts.length === 0) {
+        Object.assign(p, { label: n.label, kind: n.kind, sub: n.sub, description: n.description });
+        if (p.form === "panel") p.items = [...n.items];
+      }
+    });
+  });
 
   // Connections.
   const partsById = new Map<string, Part>();
@@ -328,7 +349,7 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
     engine: next.engine !== undefined ? next.engine : doc.engine,
     facts, channels,
     requests: next.requests ? next.requests.map((r) => toRequest3(r, channel)) : doc.requests.map((r) => ({ ...r })),
-    warnings: next.warnings ? [...next.warnings] : [...doc.warnings],
+    warnings: [...(next.warnings ?? doc.warnings), ...repairs],
   };
   cascade(result, deletedFacts, deletedRels);
   orient(result);

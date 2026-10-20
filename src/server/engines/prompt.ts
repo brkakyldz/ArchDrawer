@@ -21,7 +21,7 @@ type PromptInput = Pick<EngineRunRequest, "instruction" | "folderName" | "view" 
 
 /** What the engine may change, in words (the repair enforces it either way). */
 function scopeText(p: PromptInput): string {
-  if (p.simplify) return `Make the overview "${p.view}" a map: 4 to 6 zones (top-level groups) and at most 15 connections, zone interiors included, with "lane" on every top-level component. Finer detail goes one view down: move components into detail views linked by a component's "detail" (a new view or one the overview already links to), or merge several into one part whose "from" lists their ids. Every component of the drawing must remain, with its id, in the overview or a view it links to, or be named in a surviving part's "from"; a moved component keeps its id, content, files and connections. Return every other view exactly as it is.`;
+  if (p.simplify) return `Make the overview "${p.view}" a map: 4 to 6 zones (top-level groups) and at most 15 connections, zone interiors included, with "lane" on every top-level component. Finer detail goes one view down: move components into detail views linked by a component's "detail" (a new view or one the overview already links to), or merge several into one part whose "facts" lists all the facts they show. Every fact of the drawing must remain shown by a part of the overview or a view it links to; a moved component keeps its id, its facts, content, files and connections. Return every other view exactly as it is.`;
   if (p.scope.kind === "view") return `Change only the view "${p.view}". Return every other view exactly as it is.`;
   if (p.scope.kind === "parts") {
     const names = p.scope.ids.map((id, i) => `"${p.parts[i] ?? id}" (id ${id})`).join(", ");
@@ -50,7 +50,7 @@ ${p.instruction.trim()}
 
 Scope: ${scopeText(p)}
 
-Lanes and provenance: "lane" places a component along the main path ({"spine": 0}, {"spine": 1} … in order) or beside one spine part ({"anchor": "<its id>", "side": "above" | "below"}), or is null; "from" lists the ids of the existing components a merged part stands for ([] otherwise). Keep both as they are unless the change needs them.
+Lanes and provenance: "lane" places a component along the main path ({"spine": 0}, {"spine": 1} … in order) or beside one spine part ({"anchor": "<its id>", "side": "above" | "below"}), or is null; "facts" lists the facts a part shows: usually one, its own; several for a merged part; [] for a new component. Keep both as they are unless the change needs them.
 
 Positions: in your answer every component has "at", where its top-left corner goes. null keeps the component exactly where it is now; a new component with "at": null is placed automatically beside what it connects to. Give "at" only for the components the request moves or places — for example "align", "put it next to", "move", "re-arrange" — and never for the others. Leave at least 48 px between components; a new card is 196 x 108 px. Moving a group moves everything inside it. "relayout" (one list per view) holds ids of components to place again automatically by their "place" hint, for a rearrangement that is easier to say as grid cells than as coordinates; usually it is empty. Do not return "box".
 

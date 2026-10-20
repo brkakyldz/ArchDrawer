@@ -6,6 +6,7 @@ import { streamSSE } from "hono/streaming";
 import { renderMermaid } from "../core/export/mermaid";
 import { DEFAULT_SHARE, FORMAT_IDS, renderShare, type FormatId } from "../core/export/share";
 import { joinChannel } from "../core/channels";
+import type { DiagramDocument } from "../core/model";
 import { joinDrawing } from "../core/drawing";
 import { CHANNELS, channelOfView, isChannel, type ChannelId, type Document3 } from "../core/file3";
 import { isRepoRelative, LIMITS, THEMES, type Theme } from "../core/model";
@@ -38,6 +39,16 @@ export function envelopeError(port: number, host: string | undefined, origin: st
   if (!hosts.includes((host ?? "").toLowerCase())) return "Forbidden host";
   if (origin !== undefined && !hosts.some((h) => `http://${h}` === origin.toLowerCase())) return "Forbidden origin";
   return null;
+}
+
+/**
+ * What a refine or simplify run's engine reads (diagram contract, Engine answers): the run's channel
+ * as drawn, each part naming the facts it shows in `from`, so a merged part the engine answers points
+ * to facts.
+ */
+function draftOf(stored: Document3, channel: ChannelId): DiagramDocument {
+  const d = joinChannel(stored, channel);
+  return { ...d, views: d.views.map((v) => ({ ...v, nodes: v.nodes.map((n) => ({ ...n, from: [...(n.facts ?? [])] })) })) };
 }
 
 /** The HTTP surface of docs/contracts/api.md, as a Hono app (testable with app.request). */
@@ -252,12 +263,13 @@ export function createApp(deps: AppDeps): Hono {
     if (!stored) return res!;
     if (b.channel !== undefined && !isChannel(b.channel)) return err(c, 400, `Unknown channel "${String(b.channel)}"; use one of ${CHANNELS.join(", ")}`);
     if (kind === "post" && b.channel !== undefined && b.channel !== "linkedin") return err(c, 400, "A post is drawn in the linkedin channel");
-    // Until each channel has its own tab (#29, #30) a run reads the overview and the post as one view list.
-    const doc = joinDrawing(stored);
+    // Refine and simplify read the run's channel, its parts' facts given as `from`; a post reads the
+    // overview and the post as one view list until #30.
     const first = stored.channels.overview.views[0].id;
     const view = typeof b.view === "string" ? b.view : kind === "post" ? first : "";
     const channel = (b.channel as ChannelId | undefined) ?? (kind === "post" ? "linkedin" : "overview");
     if (kind !== "post" && stored.channels[channel].views.length === 0) return err(c, 400, `The channel "${channel}" has no drawing`);
+    const doc = kind === "post" ? joinDrawing(stored) : draftOf(stored, channel);
     if (!doc.views.some((v) => v.id === view) || (kind !== "post" && channelOfView(stored, view) !== channel)) return err(c, 400, `Unknown view "${view}"`);
     if (kind === "simplify" && view !== first) return err(c, 400, `Only the overview is simplified: give the view "${first}"`);
     const scope = parseScope(b.scope, doc.views.find((v) => v.id === view)!.nodes.map((n) => n.id));
@@ -273,7 +285,7 @@ export function createApp(deps: AppDeps): Hono {
       if (!engine) return err(c, 400, "No engine is available: install and log in to Claude Code or Codex");
     }
     if (runs.runningOn(doc.id)) return err(c, 409, "An instruction is already running on this drawing");
-    const runId = runs.start({ engine, model, instruction, view, base: doc, stored, scope: kind === "refine" ? scope : { kind: "view" }, format, kind });
+    const runId = runs.start({ engine, model, instruction, view, base: doc, stored, channel: kind === "post" ? "linkedin" : channel, scope: kind === "refine" ? scope : { kind: "view" }, format, kind });
     return c.json({ runId }, 202);
   });
 

@@ -237,7 +237,8 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
       return {
         id, label, kind, form, icon, sub: clip(str(n.sub), LIMITS.sub, `the sub-line of "${id}"`), items, description, files,
         parent: str(n.parent) || null, detail: str(n.detail) || null, place,
-        lane: lane === undefined ? kept?.lane ?? null : lane, from: fromOf(n.from, id, kept?.from ?? []),
+        // The answer names the facts a part shows in `facts` (diagram contract, Engine answers).
+        lane: lane === undefined ? kept?.lane ?? null : lane, from: fromOf(n.facts ?? n.from, id, kept?.from ?? []),
         ...(kept ? { x: kept.x, y: kept.y } : {}),
       };
     });
@@ -443,10 +444,10 @@ function clearOverlaps(view: DiagramView, placed: Set<string>, fresh: Set<string
   for (const g of view.nodes) if (g.form === "group") { const r = rects.get(g.id)!; g.x = Math.round(r.x); g.y = Math.round(r.y); }
 }
 
-/** A component as the engine sees it (no position). */
+/** A component as the engine sees it (no position); `facts` names the facts it shows (its `from` here). */
 function draftNode(n: DiagramNode) {
   const { id, label, kind, form, icon, sub, items, description, files, parent, detail, place } = n;
-  return { id, label, kind, form, icon, sub, items: [...items], description, files: [...files], parent, detail, place, lane: n.lane ?? null, from: [...(n.from ?? [])] };
+  return { id, label, kind, form, icon, sub, items: [...items], description, files: [...files], parent, detail, place, lane: n.lane ?? null, facts: [...(n.from ?? [])] };
 }
 
 /** A stored view as the engine would have written it back unchanged. */
@@ -526,7 +527,7 @@ export const DRAFT_JSON_SCHEMA = {
             items: {
               type: "object",
               additionalProperties: false,
-              required: ["id", "label", "kind", "form", "icon", "sub", "items", "description", "files", "parent", "detail", "place", "lane", "from", "at"],
+              required: ["id", "label", "kind", "form", "icon", "sub", "items", "description", "files", "parent", "detail", "place", "lane", "facts", "at"],
               properties: {
                 id: { type: "string" },
                 label: { type: "string" },
@@ -545,7 +546,7 @@ export const DRAFT_JSON_SCHEMA = {
                   { type: "object", additionalProperties: false, required: ["anchor", "side"], properties: { anchor: { type: "string" }, side: { type: "string", enum: ["above", "below"] } } },
                   { type: "null" },
                 ] },
-                from: { type: "array", items: { type: "string" } },
+                facts: { type: "array", items: { type: "string" } },
                 at: nullable({ type: "object", additionalProperties: false, required: ["x", "y"], properties: { x: { type: "integer" }, y: { type: "integer" } } }),
               },
             },

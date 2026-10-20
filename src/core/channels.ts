@@ -43,6 +43,7 @@ export function joinPart(p: Part, comps: Map<string, ComponentFact>): DiagramNod
     description: p.description ?? single?.description ?? "No description yet.",
     files, parent: p.parent, detail: p.detail, place: p.place,
     x: p.x, y: p.y, lane: p.lane ?? null, from: [], facts: [...p.facts],
+    held: [...(p.items ?? single?.items ?? [])],
   };
   return n;
 }
@@ -197,7 +198,14 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
   }
 
   function items(p: Part, drawn: DiagramNode, n: DiagramNode) {
-    if (n.form !== "panel") { delete p.items; return; }
+    if (n.form !== "panel") {
+      // A panel whose last item was removed turns into a card: the item goes from the fact too. Leaving
+      // the panel form otherwise only hides the items (contract, Items).
+      const fact = keep ? null : single(p);
+      if (drawn.form === "panel" && drawn.items.length > 0 && n.items.length === 0 && fact && !isSet(p.items)) fact.items = [];
+      delete p.items;
+      return;
+    }
     const fact = keep ? null : single(p);
     const X = [...n.items];
     if (drawn.form === "panel") {

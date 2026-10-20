@@ -238,8 +238,15 @@ describe("applyChannel", () => {
     const doc = edit(withPanel, "overview", (d) => { node(d, "a").items = ["One", "Two", "Three"]; });
     expect(fact(doc, "a")!.items).toEqual(["One", "Two", "Three"]);
     expect(node(joinChannel(doc, "linkedin"), "a").items).toEqual(["One", "Two", "Three"]);
-    const empty = edit(withPanel, "overview", (d) => { node(d, "a").form = "card"; node(d, "a").items = []; });
-    expect(fact(empty, "a")!.items).toEqual(["One", "Two"]); // leaving panel removes nothing from the fact
+    const hidden = edit(withPanel, "overview", (d) => { node(d, "a").form = "card"; });
+    expect(fact(hidden, "a")!.items).toEqual(["One", "Two"]); // leaving panel removes nothing from the fact
+    // Removing the last item empties the fact; every panel that showed it becomes a card.
+    const one = edit(withPanel, "overview", (d) => { node(d, "a").items = ["One"]; });
+    const none = edit(one, "overview", (d) => { node(d, "a").form = "card"; node(d, "a").items = []; });
+    expect(fact(none, "a")!.items).toEqual([]);
+    expect(none.channels.linkedin.views[0].nodes[0].form).toBe("card");
+    // A card shows nothing it holds, but the editor knows it.
+    expect(node(joinChannel(hidden, "overview"), "a")).toMatchObject({ items: [], held: ["One", "Two"] });
   });
 
   it("files belong to the facts", () => {

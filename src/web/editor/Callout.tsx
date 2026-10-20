@@ -185,6 +185,7 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
           </div>
         ) : <span className="empty">Nothing yet</span>}
 
+        {(node.facts?.length ?? 1) > 0 && <>
         <h4>In the code</h4>
         <div className="paths" data-testid="callout-files">
           {node.files.map((f) => (
@@ -213,6 +214,7 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
             <button className="add" data-testid="callout-file-add" onClick={() => setAddFile(true)}>+ Add a file</button>
           )}
         </div>
+        </>}
 
         <h4>Inside</h4>
         <div className="field-row">

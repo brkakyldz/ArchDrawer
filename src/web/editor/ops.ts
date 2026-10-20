@@ -193,11 +193,12 @@ export function setNode(doc: DiagramDocument, vid: string, id: string, patch: No
     const n: DiagramNode = { ...old, ...patch };
     if (patch.label !== undefined && !patch.label.trim()) n.label = old.label;
     n.label = n.label.trim().slice(0, LIMITS.label);
+    // Becoming a panel shows what the part holds, or `New item` when it holds nothing; emptying a
+    // panel makes it a card; leaving the panel form only hides the items (diagram contract, Items).
     if (n.form === "panel" && n.items.length === 0) {
-      if (patch.form === "panel") n.items = ["New item"];
+      if (patch.form === "panel") n.items = old.held?.length ? [...old.held] : ["New item"];
       else n.form = "card";
     }
-    if (n.form !== "panel" && patch.form !== undefined) n.items = [];
     let nodes = v.nodes.map((m) => (m.id === id ? n : m));
     if (old.form === "group" && n.form !== "group") nodes = nodes.map((m) => (m.parent === id ? { ...m, parent: old.parent } : m));
     if (patch.parent !== undefined && patch.parent !== old.parent) {

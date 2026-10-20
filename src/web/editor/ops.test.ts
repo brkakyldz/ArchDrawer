@@ -76,9 +76,11 @@ describe("editor edits", () => {
     expect(viewOf(ok(deleteNodes(d1, V, ["llm"])), V).texts).toHaveLength(1);
   });
 
-  it("form rules: panel gets an item, an emptied panel is a card, leaving group frees the members", () => {
+  it("form rules: panel shows what it holds or gets an item, an emptied panel is a card, leaving group frees the members", () => {
     const d0 = doc();
     expect(n(setNode(d0, V, "api", { form: "panel" }), "api").items).toEqual(["New item"]);
+    const holding = { ...d0, views: d0.views.map((v) => ({ ...v, nodes: v.nodes.map((m) => (m.id === "api" ? { ...m, held: ["Check"] } : m)) })) };
+    expect(n(setNode(holding, V, "api", { form: "panel" }), "api").items).toEqual(["Check"]);
     const p = setNode(d0, V, "api", { form: "panel" });
     expect(n(setNode(p, V, "api", { items: [] }), "api").form).toBe("card");
     const d1 = ok(setNode(d0, V, "rt", { form: "card" }));

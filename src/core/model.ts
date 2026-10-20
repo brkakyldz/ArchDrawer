@@ -63,6 +63,8 @@ export interface DiagramNode {
   lane?: Lane | null; from?: string[];
   /** In a channel view (`./channels`): the component facts the part shows. */
   facts?: string[];
+  /** In a channel view: what the part holds, shown or not (its own items, else its single fact's). */
+  held?: string[];
 }
 export interface DiagramEdge {
   id: string; from: string; to: string; label: string; style: EdgeStyle; both: boolean; step: number | null;

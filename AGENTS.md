@@ -51,9 +51,12 @@ copy a user's CLI credentials.
 
 ## Invariants
 
-1. Nothing the user types reaches a shell. Engines and git are spawned with
-   argument arrays; prompts go through stdin or a temp file; inputs are
-   validated before use, and values starting with `-` are refused.
+1. Nothing the user types reaches a shell. Engine CLIs are spawned with
+   argument arrays and the prompt goes through stdin. Two user inputs reach an
+   engine's arguments: the model name, refused when it starts with `-` or
+   holds anything but letters, digits and `._:/@[]-`, and the repository
+   folder of an opened drawing file, passed as the working directory and as
+   the value of Codex's `-C`.
 2. Engines only read: Claude with read/search tools only and
    `--permission-mode dontAsk`; Codex with `--sandbox read-only`. Never
    `--bare` (it breaks subscription sign-in), never a write-capable tool.
@@ -79,8 +82,9 @@ copy a user's CLI credentials.
   real-engine path is never reported working from fixture evidence.
 - **Success without a drawing** — a run ends `succeeded` but no document was
   written. `succeeded` must imply a `diagramId` and a readable file.
-- **Shell injection through an input** — a value like `foo; rm -rf ~` or
-  `--upload-pack=…` reaching git or a shell.
+- **Shell injection through an input** — a model name like `x; rm -rf ~` or
+  `--dangerously-skip-permissions`, or a drawing path with shell characters,
+  reaching an engine CLI as anything other than a single argument.
 - **Orphaned engine processes** — cancel marks the run cancelled but the CLI
   keeps running (on Windows a `.cmd` shim kill stops only the shell). The
   cancel test checks the child exits.

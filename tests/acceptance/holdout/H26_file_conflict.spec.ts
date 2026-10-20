@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFile, chmod, stat } from 'node:fs/promises';
-import { drawing, workspace, openDrawing, readDrawing, persisted, saved, outsideWrite, baseURL } from './helpers';
+import { drawing, workspace, openDrawing, readDocument, readDrawing, persisted, saved, outsideWrite, setDrawnLabel, baseURL } from './helpers';
 
 test('H26 [FILE-1, EDIT-3] save to the repository file, follow an outside edit and refuse a stale editor write with a reload offer', async ({ page, request }) => {
   const { file } = await workspace('persistence', drawing('Persistence shop')); const opened = await openDrawing(page, request, file);
@@ -8,11 +8,12 @@ test('H26 [FILE-1, EDIT-3] save to the repository file, follow an outside edit a
   await page.getByTestId('node-label-input').fill('Storefront'); await page.getByTestId('node-label-input').press('Enter');
   await persisted(file, d => d.views[0].nodes[0].label === 'Storefront', 1000); await saved(page);
   await page.reload(); await expect(label).toHaveText('Storefront');
-  const external = await readDrawing(file); external.views[0].nodes[0].label = 'Session storefront'; external.updatedAt = '2098-01-01T00:00:00.000Z';
+  // The session reads the stored document and writes it back with one label changed and a newer version.
+  const external = await readDocument(file); setDrawnLabel(external, 'web', 'Session storefront'); external.updatedAt = '2098-01-01T00:00:00.000Z';
   await outsideWrite(file, external);
   await expect(label).toHaveText('Session storefront', { timeout: 2000 }); await expect(page.getByTestId('toast')).toHaveText('Updated from the file');
   await saved(page);
-  const stale = await readDrawing(file);
+  const stale = await readDocument(file);
   // Schedule a race at the HTTP boundary. The real PUT is forwarded unchanged to the real
   // server after the external write; no response, engine or server is mocked.
   let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
@@ -27,7 +28,7 @@ test('H26 [FILE-1, EDIT-3] save to the repository file, follow an outside edit a
   try {
     await label.dblclick(); await page.getByTestId('node-label-input').fill('Unsaved local version'); await page.getByTestId('node-label-input').press('Enter');
     await intercepted; expect(header).toBe(stale.updatedAt);
-    const newer = structuredClone(stale); newer.views[0].nodes[0].label = 'Newer session version'; newer.updatedAt = '2099-01-01T00:00:00.000Z';
+    const newer = structuredClone(stale); setDrawnLabel(newer, 'web', 'Newer session version'); newer.updatedAt = '2099-01-01T00:00:00.000Z';
     await outsideWrite(file, newer); release(); const response = await rejected; expect(response.status()).toBe(409);
     expect(await response.json()).toMatchObject({ updatedAt: newer.updatedAt });
     await expect(page.getByTestId('save-status')).toContainText('The file changed outside the editor');

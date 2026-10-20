@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { component, kinds, drawing, workspace, openDrawing, readDrawing, writeJSON, cli, baseURL, box, overlaps, svgInfo } from './helpers';
+import { component, kinds, drawing, workspace, openDrawing, readDrawing, writeDrawing, cli, baseURL, box, overlaps, svgInfo } from './helpers';
 
 test('H17 [LAYOUT-1, START-5] a hinted system and nested loop render with matching export geometry and kept positions', async ({ page, request }) => {
   const doc = drawing('System geometry');
@@ -61,8 +61,9 @@ test('H17 [LAYOUT-1, START-5] a hinted system and nested loop render with matchi
   expect(storedGroup.x).toBe(minX - 18); expect(storedGroup.y).toBe(minY - 46);
   expect(groupBox.width).toBeGreaterThanOrEqual(maxX - minX + 36); expect(groupBox.height).toBe(maxY - minY + 64);
   const before = new Map(nodes.filter(n => n.form !== 'group').map(n => [n.id, [n.x, n.y]]));
+  // A session adds a part without a position by writing the file again; the others keep their places.
   placed.views[0].nodes.push(component('new-cache', { kind: 'data', label: 'Cache', place: null }));
-  await writeJSON(file, placed); expect((await cli(['open', file, '--no-browser'])).code).toBe(0);
+  await writeDrawing(file, placed); expect((await cli(['open', file, '--no-browser'])).code).toBe(0);
   const after = await readDrawing(file);
   for (const node of after.views[0].nodes.filter(n => before.has(n.id))) expect([node.x, node.y]).toEqual(before.get(node.id));
   const newSVG = await svgInfo(page, await (await request.get(`${baseURL()}/api/diagrams/${opened.id}/export.svg`)).text());

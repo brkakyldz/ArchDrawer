@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { drawing, component, workspace, openDrawing, readDrawing, previewSVG, svgInfo, baseURL } from './helpers';
+import { drawing, component, workspace, openDrawing, readDocument, readDrawing, previewSVG, svgInfo, baseURL } from './helpers';
 import { previewTextSizes, checkReadability } from './helpers';
 
 // SHARE-3 helpers (kept in this file: helpers.ts is not edited). The `readability` line is the sentence alone: the
@@ -68,12 +68,13 @@ test('H64 [LAYOUT-3, QUAL-2, SHARE-3] distinguish readable names from readable d
       if (validSize && region) { tuned = true; break; }
       const image = await svgInfo(page, await previewSVG(page)); expect(image.nodes).toHaveLength(2);
       const card = image.nodes.find(n => n.id === 'finish')!;
-      const updated = await readDrawing(file), view = updated.views[0];
+      // Move the card and resize the note in the stored document, then save it through the API as a whole.
+      const updated = await readDocument(file), view = updated.channels.overview.views![0];
       const first = view.nodes.find(n => n.id === 'start')!, last = view.nodes.find(n => n.id === 'finish')!;
       const span = last.x! + card.width - first.x!;
       last.x = first.x! + span * namesInPlace / target.names - card.width;
-      view.texts[0].size = target.size;
-      expect(view.texts[0].size).toBeGreaterThanOrEqual(8); expect(view.texts[0].size).toBeLessThanOrEqual(200);
+      view.texts![0].size = target.size;
+      expect(view.texts![0].size).toBeGreaterThanOrEqual(8); expect(view.texts![0].size).toBeLessThanOrEqual(200);
       const response = await request.put(`${baseURL()}/api/diagrams/${opened.id}`, {
         headers: { 'X-Archdraw-Token': opened.token, 'If-Unmodified-Since-Version': updated.updatedAt! }, data: updated,
       });

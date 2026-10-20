@@ -25,7 +25,7 @@ test('H44 [LAYOUT-1, AI-1, START-5] accept lane hints in a session file, place w
   for (const id of ['a', 'b', 'c']) {
     const original = view.nodes.find(n => n.id === id)!;
     expect([at(id).x, at(id).y], id).toEqual([original.x, original.y]);
-    expect(at(id).from).toEqual([]);
+    expect(at(id).facts, `${id} shows its own fact`).toEqual([id]);
   }
   for (const id of ['d', 'e']) { expect(at(id).lane, id).toBeNull(); expect(Number.isFinite(at(id).x)).toBe(true); }
   expect(at('d').y!).toBeLessThan(at('e').y!); // Place hints still order unpositioned components by row.

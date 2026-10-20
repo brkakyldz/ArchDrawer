@@ -21,7 +21,8 @@ test('H25 [AI-1, START-5, SAFE-1, FILE-1] a machine without engines saves a lite
     await expect(page.getByTestId('ask-saved')).toHaveText('Saved in the file for your next archdrawer session');
     await persisted(file, d => d.requests?.length === 1 && d.requests[0].text === instruction);
     const stored = await readDrawing(file); expect(stored.views).toEqual(initial.views);
-    expect(stored.requests![0]).toMatchObject({ text: instruction, view: 'overview' }); expect(stored.requests![0].id).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
+    // The request names the channel and the view it was typed in (drawing contract, Requests).
+    expect(stored.requests![0]).toMatchObject({ text: instruction, channel: 'overview', view: 'overview' }); expect(stored.requests![0].id).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
     expect(Number.isFinite(Date.parse(stored.requests![0].at))).toBe(true);
     expect(await stat(marker).then(() => true, () => false)).toBe(false); // Shell-looking text is data.
     await page.reload(); await expect(page.getByTestId('repo-name')).toHaveText('Offline shop');

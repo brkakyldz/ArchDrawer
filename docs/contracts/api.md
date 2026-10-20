@@ -36,20 +36,20 @@ Implemented by: `src/server/app.ts` (routes), `src/server/main.ts`
 | `GET /api/health` | 200 `{"ok": true, "app": "archdrawer", "version", "build"}`; `build` is a hash of the code this process runs (the web page embeds the build it was made from) | — |
 | `GET /api/engines` | 200 `{"engines": [{"id", "label", "available", "version", "detail", "test", "models"}]}` in `ARCHDRAW_ENGINES` order; detection is cached for 60 s | — |
 | `GET /api/diagrams` | 200 `{"diagrams": [{"id", "title", "path", "updatedAt"}]}`, newest `updatedAt` first; `path` is the file of a registered drawing, `null` for an imported one | — |
-| `POST /api/files` `{"path"}` | 200 `{"id", "url"}`: validates (a path missing from the repository is no error, drawing contract rule 10), normalises, writes back and registers the file; the same path (case-insensitive on Windows) gets the same id; the file's own `id` is kept unless another drawing has it | 400 `Give the absolute path of a drawing file` / `The path must be absolute` / `Not found: <path>` / `The file is not a valid drawing` + `errors` |
-| `POST /api/diagrams` (a document, `@2` or `@1`) | 201 `{"id"}`: imported into the data directory under a new id; files are not checked | 400 `Invalid diagram` + `errors` |
+| `POST /api/files` `{"path"}` | 200 `{"id", "url"}`: validates (a path missing from the repository is no error, drawing contract rule 14), normalises, writes back and registers the file; the same path (case-insensitive on Windows) gets the same id; the file's own `id` is kept unless another drawing has it | 400 `Give the absolute path of a drawing file` / `The path must be absolute` / `Not found: <path>` / `The file is not a valid drawing` + `errors` |
+| `POST /api/diagrams` (a document, `@3`, `@2` or `@1`) | 201 `{"id"}`: imported into the data directory under a new id, an older format converted (drawing contract); files are not checked | 400 `Invalid diagram` + `errors` |
 | `POST /api/example` | 201 `{"id"}`: imports the bundled `examples/shop.archdraw.json` (title `Sample Shop`) | 500 |
-| `GET /api/diagrams/:id` | 200 the document, re-read from disk | 404 `Diagram not found`; 400 `The file <name> is not a valid drawing` + `errors` |
+| `GET /api/diagrams/:id` | 200 the document, re-read from disk (an `@2` file is converted and written back as `@3` first) | 404 `Diagram not found`; 400 `The file <name> is not a valid drawing` + `errors` |
 | `PUT /api/diagrams/:id` | 200 `{"ok": true, "updatedAt"}`; atomic write | see *Saving* |
 | `DELETE /api/diagrams/:id` | 204: forgets a registered file (it stays on disk) or deletes an imported document | 404 |
 | `GET /api/diagrams/:id/events` | 200 `text/event-stream`: `event: changed`, `data: {"updatedAt"}` when the stored document changes other than through `PUT` (a session or the CLI edited the file, a request was saved, a run saved its result); a `: ping` comment every 20 s | 404 |
-| `GET /api/diagrams/:id/export.svg?view=&format=&theme=&parts=` | 200 `image/svg+xml`: the share image (ui contract) with title, held items, steps, labels, colour key and texts on and description off; `view` defaults to the first, `format` to `linkedin`, `theme` to the document's (an unknown theme falls back to it); `parts` (comma-separated ids) draws only those components, everything inside the groups among them, and the connections between them | 404; 400 `Unknown view "<v>"`, `Unknown format "<f>"; use one of linkedin, readme, slide, square, feed`, `Unknown component "<id>" in the view "<v>"` |
-| `GET /api/diagrams/:id/export.mmd?view=` | 200 `text/plain`: a Mermaid `flowchart LR` of the view (groups as subgraphs) | 404; 400 unknown view |
-| `POST /api/diagrams/:id/requests` `{"view", "text"}` | 201 `{"id"}` (`q<n>`): appends to `requests` | 400 `The instruction is empty` / `The instruction is too long (4000 characters at most)` / unknown view; 404; 409 `The drawing could not be saved` |
+| `GET /api/diagrams/:id/export.svg?channel=&view=&format=&theme=&parts=` | 200 `image/svg+xml`: the share image (ui contract) of a channel view with title, held items, steps, labels, colour key and texts on and description off; `channel` defaults to `overview`, `view` to the channel's first, `format` to `linkedin`, `theme` to the document's (an unknown theme falls back to it); `parts` (comma-separated ids) draws only those components, everything inside the groups among them, and the connections between them | 404; 400 `Unknown channel "<c>"; use one of overview, linkedin, readme, presentation`, `The channel "<c>" has no drawing`, `Unknown view "<v>"`, `Unknown format "<f>"; use one of linkedin, readme, slide, square, feed`, `Unknown component "<id>" in the view "<v>"` |
+| `GET /api/diagrams/:id/export.mmd?channel=&view=` | 200 `text/plain`: a Mermaid `flowchart LR` of the channel view (groups as subgraphs); defaults as for `export.svg` | 404; 400 unknown or empty channel, unknown view |
+| `POST /api/diagrams/:id/requests` `{"channel", "view", "text"}` | 201 `{"id"}` (`q<n>`): appends to `requests`; `channel` defaults to `overview` | 400 `The instruction is empty` / `The instruction is too long (4000 characters at most)` / unknown channel / unknown view; 404; 409 `The drawing could not be saved` |
 | `POST /api/diagrams/:id/check-files` `{"files": [path, …]}` | 200 `{"missing": [path, …]}`: the given repository-relative paths that do not exist under the drawing's repository root (*Runs*), symlinks resolved; none when that folder is not on this machine | 400 `files must be at most 20 repository-relative paths`; 404 |
 | `POST /api/runs` | 202 `{"runId"}` | see *Runs* |
 | `GET /api/runs/:runId` | 200 the run record | 404 `Run not found` |
-| `GET /api/runs/:runId/events` | 200 event stream: past events replayed, then `progress` `{"message"}` …, then exactly one `done` `{"status", "diagramId", "error", "changes", "view", "layoutReport"}` | 404 |
+| `GET /api/runs/:runId/events` | 200 event stream: past events replayed, then `progress` `{"message"}` …, then exactly one `done` `{"status", "diagramId", "error", "changes", "channel", "view", "layoutReport"}` | 404 |
 | `POST /api/runs/:runId/cancel` | 200 `{"ok": true}` | 404 |
 | `POST /api/shutdown` | 200 `{"ok": true}`; then the server cancels running runs, removes `server.json` if it is still its own, and exits | — |
 
@@ -58,7 +58,7 @@ Implemented by: `src/server/app.ts` (routes), `src/server/main.ts`
 The body is a whole stored document: valid by the drawing contract, with an
 `id` equal to the URL's, a position on every component and an id on every
 connection. A path that does not exist in the repository is saved (drawing
-contract rule 10); `check-files` names it. A registered file's `source` is
+contract rule 14); `check-files` names it. A registered file's `source` is
 set to its repository root, whatever the body says.
 
 - Header `If-Unmodified-Since-Version: <updatedAt the edit was based on>`
@@ -73,7 +73,9 @@ set to its repository root, whatever the body says.
 ### Outside changes
 
 Registered files are polled every 400 ms. A file whose text differs from what
-the server last wrote or read is re-validated and normalised; its `updatedAt`
+the server last wrote or read is re-validated (an `@2` file converted) and
+normalised; the facts it changed mark `outdated` in every channel whose views
+the write did not change (drawing contract, *Edits: facts or channel*); its `updatedAt`
 moves (unless the writer set a new valid one) and `changed` fires.
 
 ## Runs
@@ -81,11 +83,12 @@ moves (unless the writer set a new valid one) and `changed` fires.
 `POST /api/runs` body:
 
 ```jsonc
-{ "diagramId": "d_…", "view": "overview",
+{ "diagramId": "d_…", "channel": "overview",   // optional, default overview
+  "view": "overview",                // a view of that channel; post: optional
   "instruction": "Add a cache",      // required for refine; optional otherwise
   "engine": "claude",                // engine id, or null for the default
   "model": null,                     // model id, or null for the engine's default
-  "scope": { "kind": "view" },       // refine: all (default) | view | parts; others: absent or view
+  "scope": { "kind": "view" },       // refine: all (default, the whole channel) | view | parts; others: absent or view
   "kind": "refine",                  // refine (default) | post | simplify
   "format": "readme",                // the report's format
   "revise": false }                  // optional boolean
@@ -104,7 +107,11 @@ simplify → `instruction must be a string`; a scope other than `{"kind":
 or engine; a model (trimmed, at most 100 chars) that starts with `-` or
 contains anything outside `A–Z a–z 0–9 . _ : / @ [ ] -` →
 `Invalid model name "<m>"`; then 404 for the diagram; `Unknown view "<v>"`;
-simplify on a view other than the first →
+`Unknown channel "<c>"; use one of overview, linkedin, readme, presentation`;
+a refine on a channel with no view → `The channel "<c>" has no drawing`;
+post on a channel other than `linkedin` (absent means `linkedin` for post) →
+`A post is drawn in the linkedin channel`; simplify on a channel other than
+the overview or a view other than its first →
 `Only the overview is simplified: give the view "<first>"`; an invalid scope
 (`Invalid scope: …`, `Invalid scope kind …`,
 `A parts scope needs the ids of the selected components`,
@@ -122,26 +129,26 @@ model it used in the document's `engine`.
 
 | Kind | Engine answers | What may change | Report format |
 |---|---|---|---|
-| `refine` | the whole draft (drawing contract, Engine answers) | by `scope`: `all` the whole document; `view` only that view; `parts` only the named components of that view (and what they hold), connections touching them, and new components — everything else stays, one warning per ignored change | `format`, default `readme` |
-| `simplify` | the whole draft; the instruction is `Simplify the overview: keep every component in a detail view or a merged part's from`, plus whatever the caller adds after it | the overview and views reached from it; coverage enforced | default `readme` |
-| `post` | a story intent; the optional instruction is added to the fixed brief | only the source's post (created or replaced); `view` may name the source or its post | `feed` (1080 × 1350, default) or `linkedin` (1620 × 1080) |
+| `refine` | the draft of the run's channel (drawing contract, Engine answers) | by `scope`: `all` the whole channel; `view` only that view; `parts` only the named components of that view (and what they hold), connections touching them, and new components — everything else stays, one warning per ignored change. The answer is written back through the facts/channel split (drawing contract), so a fact it changes shows in every channel and marks `outdated` where the rules say | `format`, default `readme` |
+| `simplify` | the overview channel's draft; the instruction is `Simplify the overview: keep every component in a detail view or a merged part`, plus whatever the caller adds after it | the overview channel's views reached from its first, appearance only; coverage enforced (every fact still drawn) | default `readme` |
+| `post` | a story intent; the optional instruction is added to the fixed brief | only the LinkedIn channel's view (created or replaced, its `outdated` emptied); the facts and other channels stay | `feed` (1080 × 1350, default) or `linkedin` (1620 × 1080) |
 
 **Lifecycle.** `status` is `running`, `succeeded`, `failed` or `cancelled`.
 A run reads the drawing's repository root, the one its files are checked
-against: a registered file's (drawing contract rule 10), else the document's
+against: a registered file's (drawing contract rule 14), else the document's
 `source` folder (none: `This drawing has no repository folder to read`). Before saving it checks
 the stored `updatedAt` is still the one it started from; otherwise it fails
 with `The drawing changed while the instruction ran.` (post:
 `… while the post was designed.`) and the outside edit stays. A failed,
 cancelled, invalid or coverage-losing result writes nothing. `succeeded`
 means the file was rewritten with a valid document; `diagramId`, the final
-`view` (for a post, the post's id), `changes` and `layoutReport` are then
-set. Runs time out after `ARCHDRAW_RUN_TIMEOUT_MS` (`Timed out after <n> min
+`channel` and `view` (for a post, `linkedin` and its view), `changes` and
+`layoutReport` are then set. Runs time out after `ARCHDRAW_RUN_TIMEOUT_MS` (`Timed out after <n> min
 — try a narrower instruction`); cancel and timeout kill the engine's whole
 process tree. A finished run is forgotten after one hour.
 
 **Run record** (`GET /api/runs/:runId`):
-`{"id", "kind", "view", "status", "progress": [string], "diagramId", "error",
+`{"id", "kind", "channel", "view", "status", "progress": [string], "diagramId", "error",
 "engine", "model", "changes", "layoutReport"}`; `changes` and `layoutReport`
 are null until success.
 
@@ -152,8 +159,9 @@ are null until success.
 ### Change summary
 
 `{"added", "removed", "changed", "moved", "edgesAdded", "edgesRemoved",
-"edgesChanged"}`, id lists, computed over the views the run could change
-(refine `view`/`parts`: that view; post: the post; otherwise every view). A
+"edgesChanged"}`, id lists, computed over the channel views the run could change
+(refine `view`/`parts`: that view; post: the LinkedIn view; otherwise every
+view of the run's channel). A
 component is `changed` when any field but its position differs and `moved`
 when its position differs (never a group). One that moved to another view is
 `moved`, not added and removed, and the connections that went with it are not
@@ -162,11 +170,11 @@ are `changed` when label, style, two-way flag, step or direction differs.
 
 ### Layout report
 
-Computed by `src/core/report.ts` from the saved view as the share image draws
-it, with the format's starting switches (ui contract):
+Computed by `src/core/report.ts` from the saved channel view as the share
+image draws it, with the format's starting switches (ui contract):
 
 ```jsonc
-{ "view": "overview-linkedin", "format": "feed",
+{ "channel": "linkedin", "view": "linkedin", "format": "feed",
   "crossings": 0,
   "edgesOverParts": [{ "edge": "e1", "node": "db" }],
   "cutText": [{ "id": "api", "field": "sub", "text": "full text" }],
@@ -183,15 +191,15 @@ it, with the format's starting switches (ui contract):
   ends.
 - `cutText`: component labels, sub-lines and items drawn shorter than they
   are, and labels left out for lack of room (only when labels are shown).
-- `overLimitText` (posts only): text over the post targets (title in words,
+- `overLimitText` (LinkedIn channel only): text over the post targets (title in words,
   lede 140, label and sub-line 28, items 22, side labels in words); a label on
   a numbered connection is listed with `limit: 0`.
 - `smallestText`: the readability numbers (ui contract); an empty view gives
   zeros and `warn`.
 - `counts`: non-group components, top-level groups, drawn connections.
-  `targets`: a post `{"parts": 12, "zones": {"min": 0, "max": 4},
-  "connections": 14}`; the overview `{"parts": null, "zones": {"min": 4,
-  "max": 6}, "connections": 15}`; any other view all null. Targets are advice.
+  `targets`: the LinkedIn view `{"parts": 12, "zones": {"min": 0, "max": 4},
+  "connections": 14}`; the overview channel's first view `{"parts": null,
+  "zones": {"min": 4, "max": 6}, "connections": 15}`; any other view all null. Targets are advice.
 - `longestConnection`: the longest curve ÷ the diagonal of the components'
   bounding box; 0 without connections.
 

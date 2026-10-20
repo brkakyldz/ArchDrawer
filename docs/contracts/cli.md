@@ -32,18 +32,20 @@ check. Writes nothing.
   then `valid`, or `valid with <n> warning(s)`; exit 0.
 - Invalid: one line per violation, `ERROR <json path>: <message>`, every
   violation listed, then `<n> error(s)`; exit 1. The path names the place to
-  fix (`views[0].nodes[3].kind`) and the message what is allowed
-  (`"database" is not a kind; use one of actor, client, …`). An invalid file
+  fix (`channels.overview.views[0].nodes[3].form`) and the message what is allowed
+  (`"box" is not a form; use one of card, compact, panel, group`). An invalid file
   prints no warnings.
 - Not JSON: `ERROR json: <parser message>`; unreadable: `ERROR file: not
   found` (or the system message); an `archdraw/diagram@1` file:
-  `ERROR schema: this is archdraw/diagram@1; run "archdrawer migrate <file>"`;
+  `ERROR schema: this is archdraw/diagram@1; run "archdrawer migrate <file>"`
+  (an `archdraw/diagram@2` file is checked as converted, with the conversion
+  warnings as `WARN` lines);
   each followed by `1 error(s)`, exit 1.
 
 ## `archdrawer open <file> [--no-browser]`
 
 1. Validates as `validate` does, except that a path missing from the
-   repository is a `WARN` line, not an error (drawing contract rule 10); on
+   repository is a `WARN` line, not an error (drawing contract rule 14); on
    errors prints them the same way and exits 1 without writing or starting
    anything.
 2. Normalises the document (drawing contract) and writes it back only when
@@ -67,30 +69,36 @@ check. Writes nothing.
 The same file always gets the same id and URL. A file whose `id` belongs to
 another registered drawing gets a new id, written back.
 
-## `archdrawer svg <file> [--view <id>] [--format <f>] [--theme light|dark] [--out <path>]`
+## `archdrawer svg <file> [--channel <c>] [--view <id>] [--format <f>] [--theme light|dark] [--out <path>]`
 
 Writes the share image (ui contract, The share image) with title, held items,
 steps, connection labels, colour key and texts on and description off, the
-fonts embedded. The file is checked as `open` checks it. `--view` defaults to the first view; `--format` is
+fonts embedded. The file is checked as `open` checks it. `--channel` is
+`overview` (default), `linkedin`, `readme` or `presentation`; `--view` defaults
+to the channel's first view; `--format` is
 `linkedin` (default, 1620×1080), `readme`, `slide`, `square` or `feed`
 (1080×1350); `--theme` defaults to the document's. Default output, next to the
 file: `<name>-<view>-<format>.svg`, where `<name>` is the file name without
 its extension and without a trailing `.archdraw`
-(`architecture.archdraw.json` → `architecture-overview-linkedin.svg`).
+(`architecture.archdraw.json` → `architecture-overview-linkedin.svg`); the
+same name for every channel, since view ids are unique in the file.
 Prints the path written.
 
 An unknown format or theme is a usage error (exit 2:
 `Unknown format "<f>"; use one of linkedin, readme, slide, square, feed`,
-`Unknown theme "<t>"; use light or dark`). An unknown view prints
-`No view "<v>" in <file>; views: <ids>` on stderr, exit 1. An invalid file is
+`Unknown theme "<t>"; use light or dark`). An unknown channel is a usage error
+(`Unknown channel "<c>"; use one of overview, linkedin, readme, presentation`).
+A channel with no view prints `The channel "<c>" has no drawing in <file>` on
+stderr, exit 1. An unknown view prints
+`No view "<v>" in the <c> channel of <file>; views: <ids>` on stderr, exit 1. An invalid file is
 reported as by `validate`, exit 1.
 
 ## `archdrawer migrate <file>`
 
-Rewrites an `archdraw/diagram@1` file in the current format (drawing
-contract, Reading `archdraw/diagram@1`), prints each conversion warning, then
-`migrated`; exit 0. A file already in the current format prints
-`already archdraw/diagram@2`, exit 0. Not JSON: `ERROR json: <message>`; any
+Rewrites an `archdraw/diagram@1` or `archdraw/diagram@2` file in the current
+format (drawing contract, Reading `archdraw/diagram@2` and `@1`), prints each
+conversion warning, then `migrated`; exit 0. A file already in the current
+format prints `already archdraw/diagram@3`, exit 0. Not JSON: `ERROR json: <message>`; any
 other schema: `ERROR schema: not an archdrawer drawing`; exit 1.
 
 ## `archdrawer status` and `archdrawer stop`

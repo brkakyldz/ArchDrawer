@@ -1,8 +1,24 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { component, drawing, workspace, openDrawing, readDrawing, svgInfo, previewSVG, download, box, overlaps, checkReadability } from './helpers';
 import { compareSVGs } from './helpers-svg-parity';
+
+// Reach a toggle state with the show-* checkboxes under "Advanced options" (the presets are gone).
+const ALL_TOGGLES = ['title', 'lede', 'items', 'steps', 'labels', 'legend', 'texts'];
+const SIMPLE_TOGGLES = ['title', 'lede', 'steps', 'texts'], DETAILED_TOGGLES = ['title', 'items', 'steps', 'labels', 'legend', 'texts'];
+async function openAdvanced(page: Page) {
+  if (await page.getByTestId('share-advanced-toggle').getAttribute('aria-expanded') !== 'true') await page.getByTestId('share-advanced-toggle').click();
+  await expect(page.getByTestId('share-advanced')).toBeVisible();
+}
+async function setToggles(page: Page, on: string[]) {
+  await openAdvanced(page);
+  for (const id of ALL_TOGGLES) { const box = page.getByTestId(`show-${id}`); if (on.includes(id)) await box.check(); else await box.uncheck(); }
+}
+async function expectToggles(page: Page, on: string[]) {
+  await openAdvanced(page);
+  for (const id of ALL_TOGGLES) { if (on.includes(id)) await expect(page.getByTestId(`show-${id}`)).toBeChecked(); else await expect(page.getByTestId(`show-${id}`)).not.toBeChecked(); }
+}
 
 test('H28 [SHARE-1, LAYOUT-1, LAYOUT-3] preview and download an image for every destination in both themes and keep the drawing untouched', async ({ page, request, context }) => {
   const doc = drawing('Share Shop');
@@ -22,13 +38,11 @@ test('H28 [SHARE-1, LAYOUT-1, LAYOUT-3] preview and download an image for every 
   const original = await readFile(file, 'utf8'), baseline = await readDrawing(file), source = baseline.views[0];
   await page.getByTestId('share-button').click(); await expect(page.getByTestId('share-dialog')).toHaveAttribute('role', 'dialog');
   await expect(page.getByTestId('format-readme')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('preset-detailed')).toHaveAttribute('aria-pressed', 'true');
-  for (const id of ['format-feed', 'format-readme', 'format-slide', 'format-square', 'preset-simple', 'preset-detailed']) await expect(page.getByTestId(id)).toBeVisible();
+  for (const id of ['format-feed', 'format-readme', 'format-slide', 'format-square']) await expect(page.getByTestId(id)).toBeVisible();
   await expect(page.getByTestId('share-advanced')).not.toBeVisible();
   await page.getByTestId('share-advanced-toggle').click();
   await expect(page.getByTestId('share-advanced-toggle')).toHaveAttribute('aria-expanded', 'true');
-  for (const id of ['show-title', 'show-items', 'show-steps', 'show-labels', 'show-legend', 'show-texts']) await expect(page.getByTestId('share-advanced').getByTestId(id)).toBeChecked();
-  await expect(page.getByTestId('show-lede')).not.toBeChecked();
+  await expectToggles(page, DETAILED_TOGGLES); // README starts with title, held items, path, labels, colour key and texts on; description off
   const actions = page.getByTestId('share-actions');
   for (const id of ['layout-report', 'readability', 'download-png', 'download-svg', 'copy-image']) await expect(actions.getByTestId(id)).toBeVisible();
 
@@ -41,7 +55,8 @@ test('H28 [SHARE-1, LAYOUT-1, LAYOUT-3] preview and download an image for every 
     { name: 'slide', w: 1920, h: 1080, seen: 1280 }, { name: 'square', w: 1080, h: 1080, seen: 552 },
   ];
   for (const format of formats) for (const theme of ['light', 'dark']) {
-    await page.getByTestId(`format-${format.name}`).click(); await page.getByTestId('preset-detailed').click(); await page.getByTestId(`share-theme-${theme}`).click();
+    await page.getByTestId(`format-${format.name}`).click(); await page.getByTestId(`share-theme-${theme}`).click();
+    await setToggles(page, DETAILED_TOGGLES);
     await expect(page.getByTestId('share-preview')).toHaveAttribute('data-width', String(format.w)); await expect(page.getByTestId('share-preview')).toHaveAttribute('data-height', String(format.h));
     await expect(page.getByTestId('share-size')).toHaveText(`${format.w} × ${format.h}`);
     const previewMarkup = await previewSVG(page), preview = await svgInfo(page, previewMarkup);
@@ -69,9 +84,9 @@ test('H28 [SHARE-1, LAYOUT-1, LAYOUT-3] preview and download an image for every 
     expect(pngDownload.suggestedFilename()).toBe(`share-shop-overview-${format.name}.png`); const png = await readFile(pngPath);
     expect(png.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a'); expect(png.readUInt32BE(16)).toBe(format.w * 2); expect(png.readUInt32BE(20)).toBe(format.h * 2);
   }
-  await page.getByTestId('preset-simple').click();
-  for (const id of ['show-title', 'show-lede', 'show-steps', 'show-texts']) await expect(page.getByTestId(id)).toBeChecked();
-  for (const id of ['show-items', 'show-labels', 'show-legend']) await expect(page.getByTestId(id)).not.toBeChecked();
+  // Changing the format resets the toggles to that format's start: Square starts with the short set.
+  await page.getByTestId('format-readme').click(); await page.getByTestId('format-square').click();
+  await expectToggles(page, SIMPLE_TOGGLES);
   await page.getByTestId('show-title').uncheck(); await page.getByTestId('show-steps').uncheck(); await page.getByTestId('show-texts').uncheck();
   const toggled = await svgInfo(page, await previewSVG(page));
   expect(toggled.text.join(' ')).not.toContain(source.caption.title); expect(toggled.text.join(' ')).toContain(source.caption.lede);

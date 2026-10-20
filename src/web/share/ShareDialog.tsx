@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { makeLinkedInView, rearrangeForFeed } from "../../core/export/feed";
 import { layoutView } from "../../core/layout";
-import { FORMATS, renderShare, startSwitches, SWITCH_PRESETS, type FormatId, type ShareOptions, type ShareSwitches } from "../../core/export/share";
+import { FORMATS, renderShare, startSwitches, type FormatId, type ShareOptions, type ShareSwitches } from "../../core/export/share";
 import { isLinkedInView, LIMITS, slugify, type DiagramDocument, type DiagramView, type Theme } from "../../core/model";
 import type { Runner } from "../editor/runner";
 import { Icon } from "../ui/Icon";
@@ -27,8 +27,6 @@ const SHOW: { key: keyof Show; label: string }[] = [
   { key: "legend", label: "Colour key" },
   { key: "texts", label: "Texts" },
 ];
-const { simple: SIMPLE, detailed: DETAILED } = SWITCH_PRESETS;
-const same = (a: Show, b: Show) => SHOW.every((s) => a[s.key] === b[s.key]);
 /** The toggles a choice starts with: Detailed for README, Slide and the landscape post, Simple for Square. */
 const startFor = startSwitches;
 const SAVED = "Saved in the file for your next archdrawer session";
@@ -89,8 +87,6 @@ interface Props {
   doc: DiagramDocument;
   /** The view the editor shows: the one the dialog shares, or whose LinkedIn version it prepares. */
   view: DiagramView;
-  /** Components selected in the editor (`share-part` `selection`). */
-  selected: string[];
   runner: Runner;
   /** The engine and model a rewrite uses (ui contract, Choosing the engine). */
   engine: string | null;
@@ -106,14 +102,13 @@ interface Props {
 
 /**
  * The share dialog (ui contract, Share): where the image goes, then what that place needs — the LinkedIn
- * flow from drawing to download, two presets, one part on its own, an honest readability line with
- * the fix beside the download. Modal: focus stays inside it.
+ * flow from drawing to download, the theme, and an honest readability line beside the download. It
+ * packages what is ready; it does not simplify the drawing. Modal: focus stays inside it.
  */
-export function ShareDialog({ doc, view, selected, runner, engine, engineLabel, model, apply, goView, onClose, toast }: Props) {
+export function ShareDialog({ doc, view, runner, engine, engineLabel, model, apply, goView, onClose, toast }: Props) {
   // The version is found by its association, never by its name (diagram contract, Post-view identity).
   const current = doc.views.find((v) => v.id === view.id) ?? view;
   const own = current.postOf ? current : doc.views.find((v) => v.postOf === current.id) ?? null;
-  const hasVersion = !!own;
   const [format, setFormat] = useState<FormatId>(current.postOf || isLinkedInView(view.id) ? "feed" : "readme");
   const postFormat = format === "feed" || format === "linkedin";
   // On LinkedIn the preview is the LinkedIn version when there is one; elsewhere the view itself.
@@ -125,11 +120,9 @@ export function ShareDialog({ doc, view, selected, runner, engine, engineLabel, 
   const shown = pv === stored ? doc : { ...doc, views: doc.views.map((v) => (v.id === pv.id ? pv : v)) };
   const [theme, setTheme] = useState<Theme>(doc.theme);
   const [show, setShow] = useState<Show>(() => startFor(format, onVersion));
-  const [part, setPart] = useState("");
   const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  const partRef = useRef<HTMLSelectElement>(null);
   const well = useRef<HTMLDivElement>(null);
   const [wellSize, setWellSize] = useState({ w: 800, h: 600 });
 
@@ -138,13 +131,8 @@ export function ShareDialog({ doc, view, selected, runner, engine, engineLabel, 
   const lastStart = useRef(startKey);
   useEffect(() => { if (lastStart.current !== startKey) { lastStart.current = startKey; setShow(startFor(format, onVersion)); } }, [startKey, format, onVersion]);
 
-  const groups = pv.nodes.filter((n) => n.form === "group");
-  const inView = selected.filter((id) => pv.nodes.some((n) => n.id === id));
-  const partValid = part === "" || (part === "selection" ? inView.length > 0 : groups.some((g) => `group:${g.id}` === part));
-  const partNow = partValid ? part : "";
-  const parts = partNow === "selection" ? inView : partNow.startsWith("group:") ? [partNow.slice(6)] : null;
-  const opts: ShareOptions = { format, theme, ...show, parts, selected: inView.length };
-  const img = useMemo(() => renderShare(shown, pv.id, opts), [shown, pv.id, format, theme, show, partNow, inView.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const opts: ShareOptions = { format, theme, ...show };
+  const img = useMemo(() => renderShare(shown, pv.id, opts), [shown, pv.id, format, theme, show]); // eslint-disable-line react-hooks/exhaustive-deps
   const report = useMemo(() => reportOf(img, shown, pv.id, opts), [img]); // eslint-disable-line react-hooks/exhaustive-deps
   const nameOf = (id: string) => {
     const n = pv.nodes.find((x) => x.id === id), e = pv.edges.find((x) => x.id === id);
@@ -152,8 +140,7 @@ export function ShareDialog({ doc, view, selected, runner, engine, engineLabel, 
     return n ? n.label : e ? `${label(e.from)} → ${label(e.to)}` : id === pv.id ? "The post" : id;
   };
   const f = FORMATS[format];
-  const partName = partNow === "selection" ? "selection" : partNow.slice(6);
-  const name = (ext: string) => `${slugify(doc.title) || "diagram"}-${pv.id}-${partName ? `${partName}-` : ""}${format}.${ext}`;
+  const name = (ext: string) => `${slugify(doc.title) || "diagram"}-${pv.id}-${format}.${ext}`;
 
   /* ---------- modal: Escape, focus in, focus trapped, focus back ---------- */
   useEffect(() => {
@@ -232,21 +219,8 @@ export function ShareDialog({ doc, view, selected, runner, engine, engineLabel, 
     void runner.start({ instruction: REWRITE, engine, model: model || null, scope: { kind: "view" }, view: pv.id, origin: "share", kind: "post", format: postFmt });
   };
 
-  /* ---------- readability and its fixes ---------- */
+  /* ---------- readability ---------- */
   const r = img.readability;
-  const linkedInFormat = format === "feed" || format === "linkedin";
-  const needsFix = r.level === "warn" || (r.level === "ok" && (linkedInFormat || format === "square"));
-  const useVersion = linkedInFormat && !onVersion;
-  const simplify = needsFix && (useVersion || !same(show, SIMPLE));
-  const onePart = needsFix && partNow === "" && (groups.length > 0 || inView.length > 0);
-  const fixSimplify = () => {
-    if (!useVersion) { setShow(SIMPLE); return; }
-    if (hasVersion) setFormat("feed"); else prepare();
-  };
-  const fixPart = () => {
-    setPart(groups.length ? `group:${groups[0].id}` : "selection");
-    requestAnimationFrame(() => partRef.current?.focus());
-  };
   const level = { good: "Readable in place", ok: "Readable when opened", warn: "Too small to read" }[r.level];
 
   return (
@@ -337,24 +311,6 @@ export function ShareDialog({ doc, view, selected, runner, engine, engineLabel, 
             </section>
 
             <section>
-              <h3>Detail</h3>
-              <div className="seg2">
-                <button className="opt" data-testid="preset-simple" aria-pressed={same(show, SIMPLE)} onClick={() => setShow(SIMPLE)}>Simple</button>
-                <button className="opt" data-testid="preset-detailed" aria-pressed={same(show, DETAILED)} onClick={() => setShow(DETAILED)}>Detailed</button>
-              </div>
-            </section>
-
-            <section>
-              <label className="field">What to share
-                <select ref={partRef} data-testid="share-part" value={partNow} onChange={(e) => setPart(e.target.value)}>
-                  <option value="">The whole view</option>
-                  {groups.map((g) => <option key={g.id} value={`group:${g.id}`}>{`${g.label} with what it holds`}</option>)}
-                  {inView.length > 0 && <option value="selection">{`The selected parts (${inView.length})`}</option>}
-                </select>
-              </label>
-            </section>
-
-            <section>
               <button className="disclose" data-testid="share-advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
                 <Icon name={advanced ? "down" : "send"} size={13} /> Advanced options
               </button>
@@ -387,12 +343,6 @@ export function ShareDialog({ doc, view, selected, runner, engine, engineLabel, 
             {r.text.replace(/^[^.]*\.\s*/, "")}
           </div>
           <LayoutReportLine report={report} nameOf={nameOf} />
-          {(simplify || onePart) && (
-            <div className="fixes">
-              {simplify && <button className="btn" data-testid="fix-simplify" onClick={fixSimplify}>{useVersion ? "Use the LinkedIn version" : "Simplify"}</button>}
-              {onePart && <button className="btn" data-testid="fix-part" onClick={fixPart}>Share one part</button>}
-            </div>
-          )}
           <button className="btn primary dl" data-testid="download-png" disabled={busy} onClick={() => void act("png")}><Icon name="download" size={16} /> Download PNG</button>
           <button className="btn" data-testid="download-svg" disabled={busy} onClick={() => void act("svg")}>Download SVG</button>
           <button className="btn" data-testid="copy-image" disabled={busy} onClick={() => void act("copy")}><Icon name="copy" size={16} /> Copy image</button>

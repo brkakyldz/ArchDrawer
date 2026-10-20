@@ -7,7 +7,7 @@ import { normalizeFile } from "../normalize";
 import { PALETTES } from "../theme";
 import { arrangeForFeed, explainInstruction, foldForFeed, importance, makeLinkedInView, rearrangeForFeed } from "./feed";
 import { renderMermaid } from "./mermaid";
-import { DEFAULT_SHARE, FORMAT_IDS, FORMATS, readabilityOf, renderShare, shortenedIn, suggestionFor } from "./share";
+import { DEFAULT_SHARE, FORMAT_IDS, FORMATS, readabilityOf, renderShare, shortenedIn, startSwitches, suggestionFor } from "./share";
 import { drawView } from "./svg";
 
 const load = (path: string) =>
@@ -191,12 +191,20 @@ describe("LinkedIn version", () => {
     expect(shortenedIn({ nodes: [v.nodes[1]] }, { items: true })).toEqual([]);
   });
 
+  it("starts each destination with its own toggles: the post's for a post or LinkedIn, fewer for Square", () => {
+    const on = (format: Parameters<typeof startSwitches>[0], post = false) =>
+      Object.entries(startSwitches(format, post)).filter(([, v]) => v).map(([k]) => k).sort();
+    expect(on("feed")).toEqual(["items", "labels", "lede", "steps", "texts", "title"]);
+    expect(on("readme", true)).toEqual(on("feed"));
+    expect(on("square")).toEqual(["lede", "steps", "texts", "title"]);
+    for (const f of ["readme", "slide", "linkedin"] as const) expect(on(f)).toEqual(["items", "labels", "legend", "steps", "texts", "title"]);
+  });
+
   it("suggests one change that has not been made yet", () => {
     const s = (o: Partial<Parameters<typeof suggestionFor>[1]>, level: "ok" | "warn" | "good" = "warn") =>
-      suggestionFor(level, { items: false, format: "readme", linkedInVersion: false, part: false, ...o });
+      suggestionFor(level, { items: false, format: "readme", linkedInVersion: false, ...o });
     expect(s({ items: true })).toBe("Hide what each part holds");
     expect(s({ format: "feed" })).toBe("Use the LinkedIn version");
-    expect(s({ format: "feed", linkedInVersion: true, part: true })).toBe("Share one part on its own");
     expect(s({ format: "feed", linkedInVersion: true })).toBe("Pick a larger format");
     expect(s({ items: true }, "good")).toBeNull();
   });

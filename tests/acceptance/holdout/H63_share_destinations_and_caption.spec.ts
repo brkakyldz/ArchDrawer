@@ -1,9 +1,25 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { drawing, component, workspace, openDrawing, readDrawing, previewSVG, svgInfo, svgBoxes, overlaps, download, settledReport } from './helpers';
 import { checkReadability } from './helpers';
 import { routeGeometry, compareRoutes, visibleTextContent } from './helpers-svg-parity';
+
+// Reach a toggle state with the show-* checkboxes under "Advanced options" (the presets are gone).
+const ALL_TOGGLES = ['title', 'lede', 'items', 'steps', 'labels', 'legend', 'texts'];
+const SIMPLE_TOGGLES = ['title', 'lede', 'steps', 'texts'], DETAILED_TOGGLES = ['title', 'items', 'steps', 'labels', 'legend', 'texts'];
+async function openAdvanced(page: Page) {
+  if (await page.getByTestId('share-advanced-toggle').getAttribute('aria-expanded') !== 'true') await page.getByTestId('share-advanced-toggle').click();
+  await expect(page.getByTestId('share-advanced')).toBeVisible();
+}
+async function setToggles(page: Page, on: string[]) {
+  await openAdvanced(page);
+  for (const id of ALL_TOGGLES) { const box = page.getByTestId(`show-${id}`); if (on.includes(id)) await box.check(); else await box.uncheck(); }
+}
+async function expectToggles(page: Page, on: string[]) {
+  await openAdvanced(page);
+  for (const id of ALL_TOGGLES) { if (on.includes(id)) await expect(page.getByTestId(`show-${id}`)).toBeChecked(); else await expect(page.getByTestId(`show-${id}`)).not.toBeChecked(); }
+}
 
 test('H63 [SHARE-1, LAYOUT-1, LAYOUT-3] share a full ordinary view for three destinations with a wrapped caption and explicit clipping warning', async ({ page, request }) => {
   const doc = drawing('Partner handoff'), source = doc.views[0];
@@ -17,7 +33,9 @@ test('H63 [SHARE-1, LAYOUT-1, LAYOUT-3] share a full ordinary view for three des
   await page.getByTestId('share-button').click(); await expect(page.getByTestId('share-dialog')).toHaveAttribute('role', 'dialog');
   const choices = [['readme', 1600, 900, 880], ['slide', 1920, 1080, 1280], ['square', 1080, 1080, 552]] as const;
   for (const [format, width, height, seen] of choices) {
-    await page.getByTestId(`format-${format}`).click(); await page.getByTestId('preset-simple').click();
+    await page.getByTestId(`format-${format}`).click();
+    await expectToggles(page, format === 'square' ? SIMPLE_TOGGLES : DETAILED_TOGGLES); // the starting toggles of this format
+    await setToggles(page, SIMPLE_TOGGLES);
     await expect(page.getByTestId('share-preview')).toHaveAttribute('data-view', 'overview');
     await expect(page.getByTestId('share-size')).toHaveText(`${width} × ${height}`);
     const preview = await previewSVG(page), info = await svgInfo(page, preview);
@@ -74,10 +92,8 @@ test('H63 [SHARE-1, LAYOUT-1, LAYOUT-3] share a full ordinary view for three des
         await routeGeometry(holder.locator('svg'), edge.id, edge.from, edge.to), false, 0.3);
     } finally { await holder.close(); }
   }
-  await page.getByTestId('share-advanced-toggle').click();
-  await expect(page.getByTestId('show-lede')).toBeChecked(); await expect(page.getByTestId('show-items')).not.toBeChecked();
-  await page.getByTestId('preset-detailed').click(); await expect(page.getByTestId('show-items')).toBeChecked();
-  await expect(page.getByTestId('show-lede')).not.toBeChecked();
+  await expectToggles(page, SIMPLE_TOGGLES);
+  await setToggles(page, DETAILED_TOGGLES); await expectToggles(page, DETAILED_TOGGLES);
   await page.getByTestId('share-theme-dark').click(); expect((await svgInfo(page, await previewSVG(page))).theme).toBe('dark');
   // Drive focus beyond one complete cycle in both directions; it never reaches the editor.
   const controls = await page.getByTestId('share-dialog').locator('button:visible, input:visible, select:visible, textarea:visible').count();
@@ -92,8 +108,7 @@ test('H63 [SHARE-1, LAYOUT-1, LAYOUT-3] share a full ordinary view for three des
   const empty = drawing('Cleared draft'); empty.views[0].nodes = []; empty.views[0].edges = [];
   const blank = await workspace('h63-empty-image', empty); await openDrawing(page, request, blank.file);
   await page.getByTestId('share-button').click();
-  if (await page.getByTestId('share-advanced-toggle').getAttribute('aria-expanded') !== 'true') await page.getByTestId('share-advanced-toggle').click();
-  for (const id of ['title', 'lede', 'items', 'steps', 'labels', 'legend', 'texts']) await page.getByTestId(`show-${id}`).uncheck();
+  await setToggles(page, []);
   await expect.poll(() => settledReport(page)).toMatchObject({ opened: 0, inPlace: 0, level: 'warn', parts: 0, zones: 0, connections: 0, longest: 0, cut: 0 });
   await expect(page.getByTestId('readability')).toHaveAttribute('data-level', 'warn');
 });

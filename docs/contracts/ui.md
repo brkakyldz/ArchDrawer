@@ -276,21 +276,19 @@ and `save-status` says so.
 `share-dialog` is a modal (`role="dialog"`): focus moves into it, Tab and
 Shift+Tab cycle inside it, closing returns focus to `share-button`. It shows
 `share-preview` — the actual export SVG with `data-view`, `data-width`,
-`data-height`, scaled to fit — and `share-size` (`1600 × 900`).
+`data-height`, scaled to fit — and `share-size` (`1600 × 900`). The dialog
+packages the view as it is: it offers no simplifying and no sharing of one
+part (SHARE-2).
 
 | Test id | Element and behaviour |
 |---|---|
 | `format-feed`, `format-readme`, `format-slide`, `format-square` | `Where will you share it?` (`aria-pressed`): `LinkedIn` 1080×1350, `README` 1600×900, `Slide` 1920×1080, `Square post` 1080×1080. `format-feed` is also pressed for the wide post. Default `format-feed` on a post or `-linkedin` view, else `format-readme` |
 | `share-theme-light`, `share-theme-dark` | the image theme (default the drawing's) |
-| `preset-simple`, `preset-detailed` | `aria-pressed` when the toggles match. Simple: title, description, numbered path, texts on; held items, labels, colour key off. Detailed: title, held items, numbered path, labels, colour key, texts on; description off. Starting toggles (reset when the format changes): on a post, or with `format-feed`, title, description, held items, numbered path, labels and texts on, colour key off; Square: Simple; otherwise Detailed |
-| `share-part` | `What to share`: `""` `The whole view`; `group:<id>` `<label> with what it holds` per group of the previewed view; `selection` `The selected parts (<n>)` when components of it are selected. Preview and downloads draw only those components, everything inside them, and connections between them |
-| `share-advanced-toggle` | `Advanced options` (`aria-expanded`); shows `share-advanced`: `format-linkedin` (`Landscape LinkedIn post`, 1620×1080) and checkboxes `show-title`, `show-lede`, `show-items`, `show-steps`, `show-labels`, `show-legend`, `show-texts` |
-| `share-actions` | always visible: `readability`, `layout-report`, fixes, `download-png`, `download-svg`, `copy-image` |
+| `share-advanced-toggle` | `Advanced options` (`aria-expanded`); shows `share-advanced`: `format-linkedin` (`Landscape LinkedIn post`, 1620×1080) and checkboxes `show-title`, `show-lede`, `show-items`, `show-steps`, `show-labels`, `show-legend`, `show-texts`. Starting toggles (reset when the format changes): on a post, or with `format-feed`, title, description, held items, numbered path, labels and texts on, colour key off; Square: title, description, numbered path and texts on, held items, labels and colour key off; otherwise title, held items, numbered path, labels, colour key and texts on, description off |
+| `share-actions` | always visible: `readability`, `layout-report`, `download-png`, `download-svg`, `copy-image` |
 | `readability` | `data-level` `good`/`ok`/`warn`; `Readable in place` / `Readable when opened` / `Too small to read`, then `Names <a> px and text <b> px in <where>, <c> px opened.` and one suggestion (below) |
-| `fix-simplify` | when the level is `warn`, or `ok` on a LinkedIn or Square format, and it would change something: `Use the LinkedIn version` on a LinkedIn format without a post previewed (shows the existing post, else adds one by the no-engine preparation below, even when an engine is available), else `Simplify` (applies Simple) |
-| `fix-part` | under the same level conditions, with no part chosen and a group or selection available: `Share one part` chooses the first group (or the selection) and focuses `share-part` |
 | `share-clipped` | when component text is shortened with `…`: `Shortened in this image:` and `share-clipped-item` per text (`<label>: <full text>`) |
-| `download-png` | `<slug>-<view>-<format>.png` (`<slug>-<view>-<part>-<format>.png` for a part: group id or `selection`), at twice the image size |
+| `download-png` | `<slug>-<view>-<format>.png`, at twice the image size |
 | `download-svg` | the same name with `.svg`; fonts embedded |
 | `copy-image` | copies the PNG; toast `Copied the image` or `Copying images is not allowed here — use Download PNG` |
 | `share-close` | closes; also Escape or a click on the backdrop |
@@ -300,8 +298,7 @@ trimmed (`diagram` when empty).
 
 Suggestion: none at `good`; with held items shown,
 `Hide what each part holds`; else on a LinkedIn or Square format and not on a
-post, `Use the LinkedIn version`; else with a group or selection,
-`Share one part on its own`; else `Pick a larger format`.
+post, `Use the LinkedIn version`; else `Pick a larger format`.
 
 ### The LinkedIn flow
 
@@ -368,7 +365,7 @@ otherwise the new post's id is `<v>-linkedin` when free, else
 `data-connections`, `data-longest`, `data-view`, `data-format` (unrounded).
 `layout-report-warning` lists one line per over-limit text, cut text and
 missed count target, naming the part and a fitting change. In the share
-dialog it is recomputed for the preview's format, toggles, caption and part;
+dialog it is recomputed for the preview's format, toggles and caption;
 in the AI panel it is the finished run's.
 
 ### The share image

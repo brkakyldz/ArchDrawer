@@ -36,8 +36,6 @@ export interface ShareOptions {
   fonts?: { sans: string; mono: string } | null;
   /** Share only these components (a group with all it holds) and the connections between them. */
   parts?: string[] | null;
-  /** Components selected in the editor: only chooses the readability suggestion. */
-  selected?: number;
 }
 
 /** Text the image draws shorter than it is, with `…` (ui contract, share-clipped). */
@@ -174,11 +172,10 @@ function shrinkPanels(view: DiagramView): DiagramView {
  * The one change the readability line suggests (ui contract, readability): never one already made.
  * `null` when the image reads in place.
  */
-export function suggestionFor(level: Readability["level"], s: { items: boolean; format: FormatId; linkedInVersion: boolean; part: boolean }): string | null {
+export function suggestionFor(level: Readability["level"], s: { items: boolean; format: FormatId; linkedInVersion: boolean }): string | null {
   if (level === "good") return null;
   if (s.items) return "Hide what each part holds";
   if ((s.format === "feed" || s.format === "linkedin" || s.format === "square") && !s.linkedInVersion) return "Use the LinkedIn version";
-  if (s.part) return "Share one part on its own";
   return "Pick a larger format";
 }
 
@@ -195,7 +192,7 @@ export function drawnSizes(body: string, k: number): { names: number[]; all: num
   return { names, all };
 }
 
-export function readabilityOf(sizes: { names: number[]; all: number[] }, f: Format, s: { items: boolean; selected?: number; whole: DiagramView }): Readability {
+export function readabilityOf(sizes: { names: number[]; all: number[] }, f: Format, s: { items: boolean; whole: DiagramView }): Readability {
   const least = (xs: number[]) => (xs.length ? Math.min(...xs) : 0);
   const opened = least(sizes.all), named = least(sizes.names);
   const seen = (px: number) => px * (f.seen / f.w);
@@ -204,7 +201,6 @@ export function readabilityOf(sizes: { names: number[]; all: number[] }, f: Form
   const head = { good: "Readable in place", ok: "Readable when opened", warn: "Too small to read" }[level];
   const hint = suggestionFor(level, {
     items: s.items, format: f.id, linkedInVersion: !!s.whole.postOf,
-    part: s.whole.nodes.some((n) => n.form === "group") || (s.selected ?? 0) > 0,
   });
   return { level, inPlace, opened, names, text: `${head}. Names ${names.inPlace.toFixed(1)} px and text ${inPlace.toFixed(1)} px in ${f.where}, ${opened.toFixed(1)} px opened.${hint ? ` ${hint}.` : ""}` };
 }
@@ -320,7 +316,7 @@ export function renderShare(doc: Pick<DiagramDocument, "views">, viewId: string,
   for (const m of caption.join("").matchAll(/<text\b[^>]*font-size="([\d.]+)"/g)) sizes.all.push(Number(m[1]));
   return {
     svg, width: f.w, height: f.h, scale: place.k, kinds, notes,
-    readability: readabilityOf(sizes, f, { items, selected: o.selected, whole }),
+    readability: readabilityOf(sizes, f, { items, whole }),
     shortened: shortenedIn(view, { items }),
     drawn: { view, rects: drawing.rects, routes: drawing.routes },
   };

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { joinDrawing } from "../core/drawing";
 import { runCli } from "../cli/main";
-import { fixtureAnswer } from "./engines/fixture";
+import { fixtureAnswer, FixtureEngine } from "./engines/fixture";
 import type { Engine, EngineInfo, EngineRunRequest } from "./engines/types";
 import { makeApp, makeFolder, shopFile, shopFile2, tempDir } from "./testkit";
 
@@ -147,5 +147,43 @@ describe("an instruction changes the current channel (AI-1, FILE-3)", () => {
     expect(after.channels.linkedin.views[0].nodes[0]).toMatchObject({ id: "web-li", label: "Shop", facts: ["web"] });
     expect(after.facts.components[0].label).toBe("Web app");
     expect(after.channels.overview.outdated).toEqual([]);
+  });
+});
+
+/** A stand-in for Claude Code that designs posts as the fixture does and keeps what it was asked. */
+class FakeStoryteller implements Engine {
+  readonly id = "claude"; readonly label = "Claude Code";
+  asked: EngineRunRequest[] = [];
+  private fixture = new FixtureEngine(1);
+  async detect(): Promise<EngineInfo> { return { id: this.id, label: this.label, available: true, version: "1", detail: "", test: false, models: [] }; }
+  async run(req: EngineRunRequest): Promise<unknown> { this.asked.push(req); return this.fixture.run(req); }
+}
+
+describe("the LinkedIn channel drawn from the facts (STORY-1)", () => {
+  it("a post with readCode false gives the engine the facts and no tools, and writes the channel", async () => {
+    const engine = new FakeStoryteller();
+    const t = makeApp({ engines: [engine] });
+    const dir = makeFolder({ "src/web.ts": "", "src/api.ts": "" });
+    const path = join(dir, "shop.archdraw.json");
+    writeFileSync(path, JSON.stringify(shopFile2()));
+    const id = (await json(await t.req("/api/files", { method: "POST", json: { path } }))).body.id as string;
+    const before = t.store.get(id)!;
+    const r = await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, kind: "post", instruction: "", engine: "claude", model: null, readCode: false } }));
+    expect(r.status).toBe(202);
+    expect(await t.runs.wait(r.body.runId)).toMatchObject({ status: "succeeded", kind: "post", channel: "linkedin", view: "linkedin" });
+    const task = engine.asked[0].task!;
+    expect(task.tools).toBe("none");
+    expect(task.prompt).toContain("<facts>");
+    expect(task.prompt).toContain("Do not read, list or search any file");
+    const after = t.store.get(id)!;
+    expect(after.facts).toEqual(before.facts);
+    expect(after.channels.overview).toEqual(before.channels.overview);
+    expect(after.channels.linkedin.views.map((v) => v.id)).toEqual(["linkedin"]);
+    // By default a post may read the code.
+    const again = await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, kind: "post", instruction: "", engine: "claude", model: null } }));
+    await t.runs.wait(again.body.runId);
+    expect(engine.asked[1].task!.tools).toBe("read");
+    expect((await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, kind: "post", engine: "claude", readCode: "no" } }))).body.error).toBe("readCode must be true or false");
+    expect((await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, view: "overview", instruction: "x", engine: "claude", readCode: false } }))).body.error).toBe("readCode is for a post");
   });
 });

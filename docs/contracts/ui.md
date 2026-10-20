@@ -118,8 +118,8 @@ leaves it out of that channel. The current channel is never marked.
 
 | Test id | Element and behaviour |
 |---|---|
-| `channel-empty` | the stage of a channel with no view, instead of the canvas. README and presentation: `This channel comes in 0.3`. LinkedIn: `The LinkedIn post is not drawn yet` and `channel-draw` (`Draw it`, drawing it as *The LinkedIn flow* does). Drawing tools, `ai-button`, the ask box and `share-button` are disabled there |
-| `channel-outdated` | on the stage of a channel whose `outdated` is not empty: `<n> change(s) in the facts since this was drawn`; `channel-keep` (`Keep as it is`) empties `outdated` as one undoable edit; on the LinkedIn channel also `channel-redraw` (`Redraw it`), which redraws it from the facts as one undoable step |
+| `channel-empty` | the stage of a channel with no view, instead of the canvas. README and presentation: `This channel comes in 0.3`. LinkedIn: `The LinkedIn post is not drawn yet` and the controls of *The LinkedIn flow*. Drawing tools, `ai-button`, the ask box and `share-button` are disabled there |
+| `channel-outdated` | on the stage of a channel whose `outdated` is not empty: `<n> change(s) in the facts since this was drawn`; `channel-keep` (`Keep as it is`) empties `outdated` as one undoable edit; on the LinkedIn channel also `channel-redraw` (`Redraw it`), which redraws it from the facts as one undoable step: with an engine a `post` run with `readCode: false`, without one the simple version (*The LinkedIn flow*). Both are disabled during a run |
 
 ## Drawing
 
@@ -328,10 +328,13 @@ only packages what the current channel shows (SHARE-2) and holds none of the
 controls below.
 
 - On the LinkedIn channel's `channel-empty` stage, `linkedin-flow`: with an
-  engine, `design-post` (`Design the post`) starts a `post` run (the chosen
-  engine and model, format `feed`); without one, `linkedin-prepare`
+  engine, `channel-draw` (`Draw it`) starts a `post` run from the facts
+  alone (`readCode: false`; the code is not read again, STORY-1) and
+  `design-post` (`Design the post`) one that may also read the code (the
+  chosen engine and model, format `feed`); without one, `linkedin-prepare`
   (`Prepare the simple version`) and `post-engine-note`
-  (`No engine available — prepared without AI`).
+  (`No engine available — prepared without AI`). Choosing a channel never
+  starts a run.
 - Beside the drawn LinkedIn channel, `linkedin-panel` (`LinkedIn post`):
   `share-caption-title` and `share-caption-lede` edit its caption
   (undoable); `arrange-feed` (`Re-arrange`) places its parts again by their
@@ -352,8 +355,8 @@ controls below.
 
 **Without an engine**, `linkedin-prepare` draws the LinkedIn channel's view
 from the overview channel's first view as one undoable edit, replacing what
-the channel held and emptying its `outdated`. The view's id is `linkedin`,
-its title `LinkedIn`, its caption copied from the overview's first view:
+the channel held and emptying its `outdated`. The view's id is kept when the
+channel already has a view, else `linkedin`; its title `LinkedIn`, its caption copied from the overview's first view:
 
 - groups fold into one part each (members not drawn); texts are left out;
   connections inside one group disappear; two connections between the same

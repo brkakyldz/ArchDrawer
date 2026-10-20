@@ -22,6 +22,8 @@ export interface RunRequest {
   /** A post run draws the LinkedIn channel (api contract, Run kinds); its instruction may be empty. A simplify run makes the overview a map. */
   kind?: "refine" | "post" | "simplify";
   format?: "feed" | "linkedin";
+  /** A post drawn from the facts alone: the engine reads no file (STORY-1). */
+  readCode?: boolean;
 }
 
 export interface RunState {
@@ -113,7 +115,7 @@ export function useRunner({ doc, vid, settle, onUpdated, onSaved }: Options) {
     try {
       // A post names the LinkedIn channel's view when there is one; the server designs it from the overview.
       const sent = req.kind === "post" ? d.views.find((x) => x.postOf)?.id ?? null : v;
-      id = await api.startRun(d.id, channelOf(d, v), sent, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format });
+      id = await api.startRun(d.id, channelOf(d, v), sent, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format, readCode: req.readCode });
     } catch (e) {
       fail(e instanceof ApiError ? e.message : "Could not start the instruction");
       return;

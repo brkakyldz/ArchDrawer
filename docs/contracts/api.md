@@ -91,14 +91,16 @@ moves (unless the writer set a new valid one) and `changed` fires.
   "scope": { "kind": "view" },       // refine: all (default, the whole channel) | view | parts; others: absent or view
   "kind": "refine",                  // refine (default) | post | simplify
   "format": "readme",                // the report's format
-  "revise": false }                  // optional boolean
+  "revise": false,                   // optional boolean
+  "readCode": true }                 // post only, optional: false designs it from the facts alone
 ```
 
 Checked in this order, all 400 before any engine starts:
 `Unknown run kind <k>: use refine, post or simplify`;
 `Invalid format <f>; use one of …` (post: `feed` or `linkedin`; others any
 share format); `revise must be true or false`; `revise: true` →
-`Layout revision is not enabled`; a non-string instruction for post or
+`Layout revision is not enabled`; `readCode must be true or false`;
+`readCode` on a run other than a post → `readCode is for a post`; a non-string instruction for post or
 simplify → `instruction must be a string`; a scope other than `{"kind":
 "view"}` for post (`A post designs one view: give no scope or {"kind":
 "view"}`) or simplify; an empty refine instruction →
@@ -131,7 +133,7 @@ model it used in the document's `engine`.
 |---|---|---|---|
 | `refine` | the draft of the run's channel (drawing contract, Engine answers) | by `scope`: `all` the whole channel; `view` only that view; `parts` only the named components of that view (and what they hold), connections touching them, and new components — everything else stays, one warning per ignored change. The answer is written back through the facts/channel split (drawing contract), so a fact it changes shows in every channel and marks `outdated` where the rules say | `format`, default `readme` |
 | `simplify` | the overview channel's draft; the instruction is `Simplify the overview: keep every component in a detail view or a merged part`, plus whatever the caller adds after it | the overview channel's views reached from its first, appearance only; coverage enforced (every fact still drawn) | default `readme` |
-| `post` | a story intent; the optional instruction is added to the fixed brief | only the LinkedIn channel's view (created or replaced, its `outdated` emptied); the facts and other channels stay | `feed` (1080 × 1350, default) or `linkedin` (1620 × 1080) |
+| `post` | a story intent; the brief carries the facts and the overview's first view, and the optional instruction is added to it. With `readCode: false` (drawing or redrawing the channel, STORY-1) it asks the engine to read no file, and Claude Code runs with no tools | only the LinkedIn channel's view (created or replaced, its `outdated` emptied); the facts and other channels stay | `feed` (1080 × 1350, default) or `linkedin` (1620 × 1080) |
 
 **Lifecycle.** `status` is `running`, `succeeded`, `failed` or `cancelled`.
 A run reads the drawing's repository root, the one its files are checked
@@ -219,7 +221,9 @@ stdin and the repository as working directory, read-only: Claude Code with
 `-p --output-format stream-json --json-schema <schema> --tools Read,Grep,Glob
 --allowedTools Read,Grep,Glob --permission-mode dontAsk` plus whichever of
 `--no-session-persistence --strict-mcp-config --safe-mode --restricted
---setting-sources user` it supports, never `--bare`; Codex with `exec --json
+--setting-sources user` it supports, never `--bare` (a post with `readCode:
+false`: `--tools ""` and no `--allowedTools`, so it answers from the prompt
+alone); Codex, which has no tool-free mode, always with `exec --json
 --sandbox read-only --skip-git-repo-check --output-schema <abs path> -o <abs
 path> -C <repo> [--ephemeral] -`. A model goes as `--model` / `-m`. The
 engine's environment is the server's minus `CLAUDECODE`, `CLAUDE_CODE_*` and,

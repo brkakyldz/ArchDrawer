@@ -71,6 +71,8 @@ export interface StartRun {
   format?: FormatId;
   /** Default refine: an instruction-box change. A post designs the view's LinkedIn image; simplify makes the overview a map. */
   kind?: RunKind;
+  /** A post designed from the facts alone (false: the engine reads no file); default true. */
+  readCode?: boolean;
 }
 
 /** Runs one instruction-box call end to end and keeps its event log for replay over SSE. */
@@ -231,7 +233,10 @@ export class RunManager {
     const answer = await req.engine.run({
       cwd: root, folderName: basename(root), instruction: req.instruction, view: source, model: req.model, scope: { kind: "view" }, parts: [],
       base: documentToDraft(req.base), signal, timeoutMs: this.opts.timeoutMs, progress,
-      task: { kind: "post", schema: STORY_SCHEMA, prompt: postPrompt({ folderName: basename(root), view: source, base: documentToDraft(req.base), format, instruction: req.instruction }) },
+      task: {
+        kind: "post", schema: STORY_SCHEMA, tools: req.readCode === false ? "none" : "read",
+        prompt: postPrompt({ folderName: basename(root), view: source, base: documentToDraft(req.base), facts: req.stored.facts, format, instruction: req.instruction, readCode: req.readCode }),
+      },
     });
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the post");

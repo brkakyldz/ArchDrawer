@@ -8,6 +8,7 @@
   --surface: #ffffff; --surface-2: #f1f3f6; --surface-3: #e8ebf0;
   --line: #e2e5ea; --line-2: #cdd2da;
   --ink: #14161b; --muted: #555c69; --soft: #6b7280;
+  --brand: #0891b2;
   --accent: #2563eb; --accent-ink: #ffffff; --accent-soft: rgba(37, 99, 235, .12);
   --note: #fff3bf; --note-ink: #4a3b00; --note-line: #ecd77a;
   --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 6px 16px -10px rgba(16, 24, 40, .18);
@@ -20,6 +21,7 @@
   --surface: #161920; --surface-2: #1d2129; --surface-3: #252a33;
   --line: #262b34; --line-2: #343a46;
   --ink: #eceef2; --muted: #a8afbb; --soft: #9aa1ad;
+  --brand: #00d8fa;
   --accent: #5b8cff; --accent-ink: #0b0f19; --accent-soft: rgba(91, 140, 255, .16);
   --note: #3a3420; --note-ink: #f4e7b0; --note-line: #5a4f2c;
   --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 24px -14px rgba(0, 0, 0, .7);
@@ -52,7 +54,12 @@ svg.i { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin
 .app { display: grid; grid-template-rows: auto 1fr; height: 100%; background: var(--canvas); color: var(--ink); }
 .bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 10px 14px; background: var(--surface); border-bottom: 1px solid var(--line); z-index: 30; }
 .where { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.mark { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--ink); color: var(--surface); flex: none; border: 0; cursor: pointer; }
+.brand { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.brand-mark { display: block; flex: none; color: var(--brand); }
+.brand-word { font-size: 15.5px; font-weight: 500; letter-spacing: -.01em; line-height: 1; color: var(--ink); }
+.brand-link { display: inline-flex; align-items: center; height: 34px; padding: 0 8px 0 6px; margin-left: -6px; border: 0; border-radius: 8px; background: none; color: var(--ink); cursor: pointer; flex: none; }
+.brand-link:hover { background: var(--surface-2); }
+.bar-sep { width: 1px; height: 18px; background: var(--line-2); flex: none; }
 .repo { font: 500 13px "Geist Mono", monospace; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
 .crumbs { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13.5px; white-space: nowrap; min-width: 0; }
 .crumbs .sl { color: var(--line-2); margin: 0 2px; }
@@ -424,6 +431,11 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
   .ask { width: calc(100% - 24px); bottom: 12px; }
   .app.with-side { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr); }
   .zoom { top: 12px; bottom: auto; left: 12px; }
+}
+/* A phone cannot hold three header groups on one line: the tools take a second row. */
+@media (max-width: 560px) {
+  .bar { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "where right" "tools tools"; row-gap: 6px; }
+  .bar > .where { grid-area: where; } .bar > .tools { grid-area: tools; } .bar > .right { grid-area: right; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

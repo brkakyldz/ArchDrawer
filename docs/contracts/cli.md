@@ -91,7 +91,7 @@ Rewrites an `archdraw/diagram@1` file in the current format (drawing
 contract, Reading `archdraw/diagram@1`), prints each conversion warning, then
 `migrated`; exit 0. A file already in the current format prints
 `already archdraw/diagram@2`, exit 0. Not JSON: `ERROR json: <message>`; any
-other schema: `ERROR schema: not an archdraw drawing`; exit 1.
+other schema: `ERROR schema: not an archdrawer drawing`; exit 1.
 
 ## `archdrawer status` and `archdrawer stop`
 

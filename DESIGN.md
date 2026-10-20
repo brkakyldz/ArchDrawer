@@ -12,6 +12,7 @@ colors:
   ink: "#14161b"
   muted: "#555c69"
   soft: "#6b7280"
+  brand: "#0891b2"
   accent: "#2563eb"
   accent-ink: "#ffffff"
   accent-soft: "rgba(37, 99, 235, .12)"
@@ -38,6 +39,7 @@ colors:
   dark-ink: "#eceef2"
   dark-muted: "#a8afbb"
   dark-soft: "#9aa1ad"
+  dark-brand: "#00d8fa"
   dark-accent: "#5b8cff"
   dark-accent-ink: "#0b0f19"
   dark-accent-soft: "rgba(91, 140, 255, .16)"
@@ -297,7 +299,7 @@ A dark theme carries the identical system: same structure, same tokens by role, 
 
 ## Colors
 
-A cool-grey neutral scaffold, one saturated selection blue, and ten kind hues that only ever live inside the drawing.
+A cool-grey neutral scaffold, one saturated selection blue, ten kind hues that only ever live inside the drawing, and one brand cyan that lives only in the logo.
 
 ### Primary
 - **Selection Blue** (accent; dark-accent in the dark theme): the only colour that means state or action. Selected component and group borders, the 3px soft selection ring (accent-soft), the active tool, toggled buttons, focus outlines, numbered step badges, the Share and Send buttons, the selected share format and the LinkedIn version block on a LinkedIn view. Its hue (221) is deliberately kept clear of every kind hue.
@@ -306,6 +308,7 @@ A cool-grey neutral scaffold, one saturated selection blue, and ten kind hues th
 - **Kind Hues** (k-actor slate, k-client cyan, k-api violet, k-service emerald, k-worker orange, k-llm rose, k-external stone, k-ops fuchsia, k-gate amber, k-data lime; dark-k-* are their bright siblings): one per component kind (Person, Client app, API, Service, Background job, AI agent, External, Monitoring, Check, Data store). Each paints the component's icon (with a drop-shadow glow), a radial tint at the top of the component, the under-glow, the hover border mix, the dot in a chip or colour key, and the gradient stroke of every edge, which runs from the source's hue to the target's. The AI-agent rose also marks the ask box's spark, because the ask box talks to the agent.
 
 ### Tertiary
+- **Brand Cyan** (brand; dark-brand, the brighter cyan of the logo, in the dark theme): the archdrawer mark and nothing else. It never marks state or a kind, and it never appears in an export.
 - **Note Butter** (note, note-ink, note-line): sticky-note yellow for user notes only, with its own dark ink and border so it never borrows a kind hue.
 
 ### Neutral
@@ -349,7 +352,7 @@ A cool-grey neutral scaffold, one saturated selection blue, and ten kind hues th
 
 ## Layout
 
-The editor is a two-row grid: a top bar (repo mark, repository name in mono, view breadcrumb and a saved dot left; tools centred; theme, Steps and Share right), then a canvas that fills the rest. Overlays float on the canvas, never in a docked panel: zoom controls bottom left (14px inset), the ask box bottom centre (16px up, at most 600px wide), toasts top centre.
+The editor is a two-row grid: a top bar (logo, repository name in mono, view breadcrumb and a saved dot left; tools centred; theme, Steps and Share right), then a canvas that fills the rest. Overlays float on the canvas, never in a docked panel: zoom controls bottom left (14px inset), the ask box bottom centre (16px up, at most 600px wide), toasts top centre.
 
 The canvas is infinite and transformed as a single world (translate plus scale). Fitting leaves 34px top, 56px sides and 96px bottom so the ask box never covers the drawing, and caps zoom at 115%. The drawing is two-dimensional: a main path with side paths above and below it, and groups that hold their own components.
 
@@ -396,7 +399,7 @@ Gently rounded rectangles throughout, radius rising with size: 6px for edge labe
 A segmented strip in a 10px-rounded surface box with a hairline border and 3px padding; 34 by 32 icon buttons, 1px separators between groups (select and pan / component, connect, note / undo and redo). Active tool takes accent-soft fill and accent icon; disabled icons fall to the firm hairline grey. Tooltips appear after 350ms below the button in an ink chip with the shortcut in mono.
 
 ### Top bar
-Surface white with a hairline bottom border, three-column grid. Left: a 28px ink tile holding the product mark (editor only), the repository name in mono, a slash-separated breadcrumb of views (current view in 600 ink), and a 7px saved dot. Centre: tools. Right: theme, Steps, Share.
+Surface white with a hairline bottom border, three-column grid. Left: the logo (the 22px brand-cyan mark and the lower-case wordmark `archdrawer` in 500 ink; below 900px the mark alone), which leads back to all drawings, a hairline divider, the repository name in mono, a slash-separated breadcrumb of views (current view in 600 ink), and a 7px saved dot. Centre: tools. Right: theme, Steps, Share. Below 560px the tools take a second row under the other two groups. The library page opens with the same logo and divider before its title.
 
 ### Components on the canvas
 - **Card** (196 by 108): centred 26px kind icon, title, sub-line. The shape a newly added component takes.

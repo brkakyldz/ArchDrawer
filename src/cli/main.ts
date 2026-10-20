@@ -179,7 +179,7 @@ function cmdMigrate(args: string[], io: CliIo): number {
   let raw: unknown;
   try { raw = JSON.parse(readFileSync(file, "utf8").replace(/^﻿/, "")); } catch (e) { io.out(`ERROR json: ${(e as Error).message}`); return 1; }
   if ((raw as { schema?: unknown })?.schema === SCHEMA_ID) { io.out(`already ${SCHEMA_ID}`); return 0; }
-  if (!isV1(raw)) { io.out("ERROR schema: not an archdraw drawing"); return 1; }
+  if (!isV1(raw)) { io.out("ERROR schema: not an archdrawer drawing"); return 1; }
   const { doc, warnings } = migrateV1(raw, new Date().toISOString());
   writeAtomic(file, docText(doc));
   for (const w of warnings) io.out(w);

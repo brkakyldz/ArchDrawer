@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type DiagramSummary } from "../api";
 import { navigate } from "../App";
 import { Icon } from "../ui/Icon";
+import { Logo } from "../ui/Logo";
 
 const when = (iso: string) => {
   const d = new Date(iso);
@@ -61,7 +62,8 @@ export function Library() {
     <div className="lib" data-theme={theme}>
       <div className="lib-in">
         <div className="lib-top">
-          <span className="mark" aria-hidden="true"><Icon name="mark" size={16} stroke={2} /></span>
+          <Logo />
+          <span className="bar-sep" aria-hidden="true" />
           <h1>Drawings</h1>
           <div className="right">
             <label className="btn">

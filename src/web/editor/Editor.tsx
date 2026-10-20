@@ -7,6 +7,7 @@ import { summarize, touched, type Changes } from "../../core/diff";
 import { api, ApiError, type EngineInfo } from "../api";
 import { navigate } from "../App";
 import { Icon } from "../ui/Icon";
+import { Logo } from "../ui/Logo";
 import { AiPanel, type ScopeChoice } from "./AiPanel";
 import { AskBox } from "./AskBox";
 import { Search, type Hit } from "./Find";
@@ -458,7 +459,8 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
     <div className={`app${side ? " with-side" : ""}`} data-testid="editor" data-theme={doc.theme} data-view={view.id}>
       <header className="bar">
         <div className="where">
-          <button className="mark" title="All drawings" aria-label="All drawings" onClick={() => navigate("/")}><Icon name="mark" size={16} stroke={2} /></button>
+          <button className="brand-link" title="All drawings" aria-label="archdrawer: all drawings" onClick={() => navigate("/")}><Logo wordmark={!narrow} /></button>
+          <span className="bar-sep" aria-hidden="true" />
           {narrow ? (
             <div className="hmenu" ref={menuEl}>
               <button className="btn icon-btn" data-testid="header-menu-button" aria-label="Drawing, view and history" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>

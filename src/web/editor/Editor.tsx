@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { applyDrawing, joinDrawing } from "../../core/drawing";
-import type { Document3 } from "../../core/file3";
+import { clearOutdated } from "../../core/channels";
+import { channelOfView, isChannel, type ChannelId, type Document3 } from "../../core/file3";
 import { layoutRects, routeEdges, viewBounds } from "../../core/geometry";
 import { isPostView, LIMITS, overviewMiss, TEXT_SIZE, viewById, type DiagramDocument, type DiagramView, type Form, type Kind } from "../../core/model";
 import { overviewSuggestion, SIMPLIFY_INSTRUCTION } from "../../core/simplify";
@@ -14,6 +15,7 @@ import { AiPanel, type ScopeChoice } from "./AiPanel";
 import { AskBox } from "./AskBox";
 import { Search, type Found, type Hit } from "./Find";
 import { ViewsMenu } from "./Views";
+import { ChannelTabs, EmptyStage, OutdatedBanner } from "./Channels";
 import { LoadError } from "./LoadError";
 import { Callout } from "./Callout";
 import { Canvas } from "./Canvas";
@@ -73,8 +75,23 @@ function splitEdit(d: Document3, fn: (d: DiagramDocument) => DiagramDocument, to
   return r.doc;
 }
 
+/**
+ * Where an address opens (ui contract, Routes): a named channel at the named view or its first; an
+ * older `?view=` at the channel holding that view; anything unknown at the overview.
+ */
+function startOf(stored: Document3, channel: string | null, view: string | null): { channel: ChannelId; view: string | null } {
+  if (isChannel(channel)) {
+    const views = stored.channels[channel].views;
+    if (!views.length) return { channel, view: null };
+    return { channel, view: view && views.some((v) => v.id === view) ? view : views[0].id };
+  }
+  const holding = view ? channelOfView(stored, view) : null;
+  if (view && holding) return { channel: holding, view };
+  return { channel: "overview", view: stored.channels.overview.views[0].id };
+}
+
 /** `/d/<id>`: the editor (ui contract). */
-export function Editor({ id, view: wantedView }: { id: string; view: string | null }) {
+export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: string; channel: string | null; view: string | null }) {
   // The history holds the stored @3 document; the editor draws and edits the overview and the post as
   // one view list (`joinDrawing`), and every edit is split back into facts and channels.
   const hist = useDocHistory<Document3>();
@@ -86,6 +103,8 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
   const [loadRound, setLoadRound] = useState(0);
   const [loading, setLoading] = useState(true);
   const [vid, setVid] = useState<string | null>(null);
+  /** The current channel; a channel with no drawing shows its own stage instead of the canvas. */
+  const [chan, setChan] = useState<ChannelId>("overview");
   const [vp, setVp] = useState<Viewport>({ x: 0, y: 0, k: 1 });
   const [stage, setStage] = useState({ w: 1200, h: 800 });
   const [sel, setSel] = useState<Selection>(NOTHING);
@@ -234,11 +253,13 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
   // Fitted before the first paint: the toolbar never shows a provisional 100 % (and `full`) the fit then
   // takes back a frame later.
   useLayoutEffect(() => {
-    if (!doc || vid) return;
-    const start = wantedView && viewById(doc, wantedView) ? wantedView : doc.views[0].id;
+    if (!doc || !stored || vid) return;
+    const s = startOf(stored, wantedChannel, wantedView);
+    const start = s.view && viewById(doc, s.view) ? s.view : doc.views[0].id;
+    setChan(s.channel);
     setVid(start);
     fitTo(viewOf(doc, start));
-  }, [doc, vid, wantedView, fitTo]);
+  }, [doc, stored, vid, wantedChannel, wantedView, fitTo]);
 
   useEffect(() => {
     const el = stageEl.current;
@@ -260,8 +281,10 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
   const goView = useCallback((v: string, next?: DiagramDocument, focus?: string) => {
     const d = next ?? docRef.current;
     if (!d || !viewById(d, v)) return;
-    setVid(v); setSel(focus ? { ...NOTHING, nodes: [focus] } : NOTHING); setCallout(null); setEditing(null); setPicker(null);
-    const url = v === d.views[0].id ? `/d/${d.id}` : `/d/${d.id}?view=${encodeURIComponent(v)}`;
+    // In the drawn view list the post is the LinkedIn channel's view; every other view is the overview's.
+    const c: ChannelId = viewById(d, v)!.postOf ? "linkedin" : "overview";
+    setChan(c); setVid(v); setSel(focus ? { ...NOTHING, nodes: [focus] } : NOTHING); setCallout(null); setEditing(null); setPicker(null);
+    const url = c === "overview" && v === d.views.find((x) => !x.postOf)?.id ? `/d/${d.id}` : `/d/${d.id}?channel=${c}&view=${encodeURIComponent(v)}`;
     history.replaceState({}, "", url);
     pendingFit.current = { view: v, focus };
     fitRound((n) => n + 1);
@@ -288,6 +311,21 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
     if (running.current) { toast(PAUSED); return; }
     histApply((d) => splitEdit(d, typeof next === "function" ? next : () => next, toast), opts);
   }, [histApply, toast]);
+  /** A tab: the channel's first view, or its own stage when it has no drawing (not an edit). */
+  const goChannel = useCallback((c: ChannelId) => {
+    const d = docRef.current;
+    if (!d) return;
+    const target = c === "overview" ? d.views.find((v) => !v.postOf) : c === "linkedin" ? d.views.find((v) => v.postOf) : undefined;
+    setMenuOpen(false);
+    if (target) { goView(target.id); return; }
+    setChan(c); setSel(NOTHING); setCallout(null); setEditing(null); setPicker(null); setAi(null); setSearching(false);
+    history.replaceState({}, "", `/d/${d.id}?channel=${c}`);
+  }, [goView]);
+  /** "Keep as it is": the channel's marks go, as one undoable edit (diagram contract, outdated). */
+  const keep = () => {
+    if (running.current) { toast(PAUSED); return; }
+    histApply((d) => clearOutdated(d, chan));
+  };
   const undo = () => { if (running.current) toast(PAUSED); else hist.undo(); };
   const redo = () => { if (running.current) toast(PAUSED); else hist.redo(); };
 
@@ -448,14 +486,24 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
     );
   }
   if (loadError) return <LoadError message={loadError} busy={loading} onRetry={() => { setLoadError(null); setLoading(true); setLoadRound((r) => r + 1); }} />;
-  if (!doc || !view || !ctl) return <div className="app" />;
+  if (!doc || !stored || !view || !ctl) return <div className="app" />;
 
+  const blank = stored.channels[chan].views.length === 0;
+  const outdated = blank ? 0 : stored.channels[chan].outdated.length;
   const crumbs = crumbsTo(doc, view.id);
   const sel1 = sel.edges.length === 1 && !sel.nodes.length && !sel.texts.length ? sel.edges[0] : null;
   const text1 = sel.texts.length === 1 && !sel.nodes.length && !sel.edges.length && !editing ? sel.texts[0] : null;
 
   const repoEl = <span className="repo" data-testid="repo-name" title={doc.source?.path ?? doc.title}>{doc.title}</span>;
-  const crumbsEl = (
+  // The steps switch is the current channel's (diagram contract, Shape).
+  const stepsOn = stored.channels[chan].showSteps;
+  const toggleSteps = () => {
+    if (chan === "overview") { apply((d) => ({ ...d, showSteps: !d.showSteps })); return; }
+    if (running.current) { toast(PAUSED); return; }
+    histApply((d) => ({ ...d, channels: { ...d.channels, [chan]: { ...d.channels[chan], showSteps: !d.channels[chan].showSteps } } }));
+  };
+  const tabsEl = <ChannelTabs stored={stored} current={chan} onPick={goChannel} />;
+  const crumbsEl = chan !== "overview" ? null : (
     <nav className="crumbs" data-testid="crumbs" aria-label="View">
       {crumbs.map((c, i) => {
         const v = viewOf(doc, c);
@@ -479,7 +527,7 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
     </button>
   );
   const stepsEl = (
-    <button className="btn" data-testid="tool-steps" aria-label="Numbered steps" aria-pressed={doc.showSteps} onClick={() => apply((d) => ({ ...d, showSteps: !d.showSteps }))}>
+    <button className="btn" data-testid="tool-steps" aria-label="Numbered steps" aria-pressed={stepsOn} disabled={blank} onClick={toggleSteps}>
       <Icon name="steps" size={16} /><span className="lbl">Steps</span>
     </button>
   );
@@ -490,7 +538,7 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
   const openHit = (h: Hit) => goView(h.view, undefined, h.id);
 
   return (
-    <div className={`app${side ? " with-side" : ""}`} data-testid="editor" data-theme={doc.theme} data-view={view.id}>
+    <div className={`app${side ? " with-side" : ""}`} data-testid="editor" data-theme={doc.theme} data-channel={chan} data-view={view.id}>
       <header className="bar">
         <div className="where">
           <button className="brand-link" title="All drawings" aria-label="archdrawer: all drawings" onClick={() => navigate("/")}><Logo wordmark={!narrow} /></button>
@@ -503,15 +551,16 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
               {menuOpen && (
                 <div className="menu header-menu" data-testid="header-menu">
                   {repoEl}
+                  {tabsEl}
                   {crumbsEl}
                   <div className="row">{undoEl}{redoEl}{themeEl}{stepsEl}</div>
                 </div>
               )}
             </div>
           ) : (
-            <>{repoEl}{crumbsEl}</>
+            repoEl
           )}
-          <ViewsMenu doc={doc} current={view.id} goView={(v) => goView(v)} />
+          {narrow && chan === "overview" && <ViewsMenu doc={doc} current={view.id} goView={(v) => goView(v)} />}
           <span className="save" data-testid="save-status" data-state={save.status} role="status">
             <i />{save.status === "saved" ? "Saved" : save.status === "saving" ? "Saving…" : save.error}
             {save.status === "error" && <button className="btn" data-testid="save-retry" onClick={save.retry}>Retry</button>}
@@ -522,7 +571,7 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
           {TOOLS.map((t, i) => (
             <span key={t.id} style={{ display: "contents" }}>
               {i === 2 && <span className="sep" />}
-              <button className="tb" data-testid={`tool-${t.id}`} aria-label={t.label} aria-pressed={tool === t.id} onClick={() => { setTool(t.id); setPicker(null); }}>
+              <button className="tb" data-testid={`tool-${t.id}`} aria-label={t.label} aria-pressed={tool === t.id} disabled={blank} onClick={() => { setTool(t.id); setPicker(null); }}>
                 <Icon name={t.icon} /><span className="tip">{t.label}<kbd>{t.key}</kbd></span>
               </button>
             </span>
@@ -534,15 +583,23 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
             <Icon name="search" size={16} />
           </button>
           {!narrow && <>{themeEl}{stepsEl}</>}
-          <button className="btn" data-testid="ai-button" aria-pressed={!!ai} aria-label="Change with AI" onClick={() => (ai ? setAi(null) : openAi(""))}>
+          <button className="btn" data-testid="ai-button" aria-pressed={!!ai} aria-label="Change with AI" disabled={blank} onClick={() => (ai ? setAi(null) : openAi(""))}>
             <Icon name="spark" size={16} /><span className="lbl">AI</span>
           </button>
-          <button className="btn primary" data-testid="share-button" aria-label="Share" onClick={() => setSharing(true)}><Icon name="share" size={16} /><span className="lbl">Share</span></button>
+          <button className="btn primary" data-testid="share-button" aria-label="Share" disabled={blank} onClick={() => setSharing(true)}><Icon name="share" size={16} /><span className="lbl">Share</span></button>
         </div>
+        {!narrow && (
+          <div className="nav-row">
+            {tabsEl}{crumbsEl}
+            {chan === "overview" && <ViewsMenu doc={doc} current={view.id} goView={(v) => goView(v)} />}
+          </div>
+        )}
       </header>
 
       <main className="stage" ref={stageEl}>
-        <Canvas ctl={ctl} steps={doc.showSteps} onDouble={onDouble} />
+        {blank ? <EmptyStage channel={chan} /> : <>
+        <Canvas ctl={ctl} steps={stepsOn} onDouble={onDouble} />
+        {outdated > 0 && <OutdatedBanner count={outdated} onKeep={keep} />}
         {HINTS[tool] && <div className="tool-hint" data-testid="tool-hint" role="status">{HINTS[tool]}</div>}
         {miss && (
           <div className="overview-suggestion" data-testid="overview-suggestion" role="status">
@@ -565,7 +622,8 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
           <button className="tb" data-testid="zoom-in" aria-label="Zoom in" onClick={() => setVp(zoomAt(vp, 1.2, { x: stage.w / 2, y: stage.h / 2 }))}><Icon name="plus" /></button>
           <button className="tb" data-testid="zoom-fit" aria-label="Fit to screen" onClick={() => fitTo()}><Icon name="fit" /></button>
         </div>
-        <AskBox runner={runner} engine={engine} model={model} onExpand={(t) => openAi(t)} />
+        </>}
+        <AskBox runner={runner} engine={engine} model={model} onExpand={(t) => openAi(t)} disabled={blank} />
       </main>
       {side && (
         <div className="side-col">

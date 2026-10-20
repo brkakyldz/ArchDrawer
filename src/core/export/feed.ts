@@ -1,6 +1,7 @@
 import { measureNode } from "../geometry";
+import { postSource, postViewId } from "../intent";
 import {
-  allIds, linkedInViewId, LIMITS, slugify,
+  allIds, LIMITS, slugify,
   type DiagramDocument, type DiagramEdge, type DiagramNode, type DiagramView,
 } from "../model";
 
@@ -230,11 +231,14 @@ export const rearrangeForFeed = (v: DiagramView): DiagramView => layoutForFeed(f
 
 /**
  * Add the LinkedIn version of view `vid` to the document, or return the one it already has.
- * Its components and connections get ids of their own: ids are unique across the file.
+ * The post is found and named as an engine's is (diagram contract, Post-view identity): by
+ * `postOf`, never by its id. Its components and connections get ids of their own: ids are
+ * unique across the file.
  */
 export function makeLinkedInView(doc: DiagramDocument, vid: string): { doc: DiagramDocument; view: string } {
-  const src = doc.views.find((v) => v.id === vid) ?? doc.views[0];
-  const id = linkedInViewId(src.id);
+  const asked = doc.views.find((v) => v.id === vid) ?? doc.views[0];
+  const src = doc.views.find((v) => v.id === postSource(doc, asked.id)) ?? asked;
+  const id = postViewId(doc, src.id);
   if (doc.views.some((v) => v.id === id)) return { doc, view: id };
   if (doc.views.length >= LIMITS.views) throw new Error(`A drawing holds at most ${LIMITS.views} views`);
   const used = allIds(doc);

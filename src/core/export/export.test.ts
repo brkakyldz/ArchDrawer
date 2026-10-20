@@ -2,11 +2,12 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { layoutRects, overlaps } from "../geometry";
 import { depthWarnings, isLinkedInView, LIMITS, validateDocument, validateFile, type DiagramDocument, type DiagramEdge, type DiagramNode, type DiagramView } from "../model";
+import { postViewId } from "../intent";
 import { normalizeFile } from "../normalize";
 import { PALETTES } from "../theme";
 import { arrangeForFeed, explainInstruction, foldForFeed, importance, makeLinkedInView, rearrangeForFeed } from "./feed";
 import { renderMermaid } from "./mermaid";
-import { DEFAULT_SHARE, FORMAT_IDS, FORMATS, renderShare, shortenedIn, suggestionFor } from "./share";
+import { DEFAULT_SHARE, FORMAT_IDS, FORMATS, readabilityOf, renderShare, shortenedIn, suggestionFor } from "./share";
 import { drawView } from "./svg";
 
 const load = (path: string) =>
@@ -231,6 +232,39 @@ describe("LinkedIn version", () => {
     expect(li.nodes).toHaveLength(3);
     expect(validateDocument(next).ok).toBe(true); // ids are unique across the whole file
     expect(makeLinkedInView(next, "main")).toEqual({ doc: next, view });
+  });
+
+  it("finds and names the post by postOf as an engine does, not by its id", () => {
+    // An ordinary view that happens to be called `main-linkedin` is not main's post.
+    const plain: DiagramView = { ...grouped(), id: "main-linkedin", title: "Plain", nodes: [part("p")], edges: [], texts: [] };
+    const doc = { ...shop(), views: [grouped(), plain] } as DiagramDocument;
+    const { doc: next, view } = makeLinkedInView(doc, "main");
+    expect(view).toBe("main-2-linkedin");
+    expect(view).toBe(postViewId(doc, "main"));
+    expect(next.views.find((v) => v.id === view)!.postOf).toBe("main");
+    expect(next.views.find((v) => v.id === "main-linkedin")).toEqual(plain);
+    expect(validateDocument(next).ok).toBe(true);
+    // Found again by its association, from the source or from the post itself.
+    expect(makeLinkedInView(next, "main")).toEqual({ doc: next, view });
+    expect(makeLinkedInView(next, view)).toEqual({ doc: next, view });
+    expect(postViewId(next, "main")).toBe(view);
+    // The plain view is its own source: preparing it gives it a post of its own.
+    const own = makeLinkedInView(next, "main-linkedin");
+    expect(own.view).toBe("main-linkedin-linkedin");
+    expect(own.doc.views.find((v) => v.id === own.view)!.postOf).toBe("main-linkedin");
+  });
+
+  it("returns a post whose id does not end in -linkedin", () => {
+    const { doc } = makeLinkedInView({ ...shop(), views: [grouped()] } as DiagramDocument, "main");
+    const renamed = { ...doc, views: doc.views.map((v) => (v.postOf ? { ...v, id: "story" } : v)) };
+    expect(makeLinkedInView(renamed, "main")).toEqual({ doc: renamed, view: "story" });
+  });
+
+  it("suggests the LinkedIn version on an ordinary -linkedin view and not on a post", () => {
+    const tiny = { names: [4], all: [4] };
+    const plain = { ...grouped(), id: "main-linkedin", postOf: null };
+    expect(readabilityOf(tiny, FORMATS.feed, { items: false, whole: plain }).text).toContain("Use the LinkedIn version");
+    expect(readabilityOf(tiny, FORMATS.feed, { items: false, whole: { ...plain, id: "story", postOf: "main" } }).text).not.toContain("Use the LinkedIn version");
   });
 
   it("re-arranges a LinkedIn view without changing the forms the user chose", () => {

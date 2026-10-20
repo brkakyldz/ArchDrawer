@@ -312,14 +312,15 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .toggle { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; padding: 3px 0; cursor: pointer; }
 .toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
 .meter { padding: 10px 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
-.meter b { display: flex; align-items: center; gap: 7px; font-size: 14px; color: var(--ink); margin-bottom: 2px; }
-.meter b i { width: 8px; height: 8px; border-radius: 50%; background: var(--k-service); }
-.meter b i[data-level="ok"] { background: var(--soft); }
-.meter b i[data-level="warn"] { background: var(--k-gate); }
+.meter .say { display: flex; align-items: baseline; gap: 7px; margin: 0 0 2px; font-size: 13.5px; line-height: 1.4; color: var(--ink); }
+.meter .say i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--k-service); transform: translateY(-1px); }
+.meter .say i[data-level="ok"] { background: var(--soft); }
+.meter .say i[data-level="warn"] { background: var(--k-gate); }
+.meter .disclose { font-size: 12px; }
+.meter .detail { margin: 2px 0 0; font-variant-numeric: tabular-nums; }
 /* The bottom row (ui-v2 share-actions): how readable it is, then the downloads. */
 .share > .actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--surface); }
-.share > .actions .meter { flex: 1; min-width: 0; padding: 7px 12px; }
-.share > .actions .meter b { font-size: 13.5px; }
+.share > .actions .meter { flex: 1 1 280px; min-width: 0; padding: 7px 12px; }
 .share > .actions .btn { height: 36px; flex: none; }
 .layout-report { font-size: 12px; line-height: 1.45; color: var(--muted); font-variant-numeric: tabular-nums; }
 .layout-report ul { margin: 4px 0 0; padding-left: 16px; color: var(--ink); }

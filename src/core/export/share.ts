@@ -15,17 +15,17 @@ export const FORMAT_IDS = ["linkedin", "readme", "slide", "square", "feed"] as c
 export type FormatId = (typeof FORMAT_IDS)[number];
 export interface Format {
   id: FormatId; name: string; w: number; h: number;
-  /** How wide the image is shown where it lands, in CSS px. */
+  /** How wide the image is shown where it lands, in CSS px, and where that is, as a sentence says it. */
   seen: number; where: string;
   /** Margin, and caption title / lede / key sizes, in image px. */
   m: number; t: number; l: number; kz: number;
 }
 export const FORMATS: Record<FormatId, Format> = {
-  linkedin: { id: "linkedin", name: "Wide LinkedIn post", w: 1620, h: 1080, seen: 552, where: "the LinkedIn feed", m: 24, t: 36, l: 28, kz: 27 },
-  readme: { id: "readme", name: "README", w: 1600, h: 900, seen: 880, where: "a GitHub README", m: 32, t: 32, l: 20, kz: 18 },
-  slide: { id: "slide", name: "Slide", w: 1920, h: 1080, seen: 1280, where: "a projected slide", m: 40, t: 38, l: 24, kz: 21 },
-  square: { id: "square", name: "Square post", w: 1080, h: 1080, seen: 552, where: "a feed, square", m: 24, t: 30, l: 19, kz: 18 },
-  feed: { id: "feed", name: "LinkedIn feed", w: 1080, h: 1350, seen: 552, where: "the LinkedIn feed", m: 32, t: 36, l: 22, kz: 21 },
+  linkedin: { id: "linkedin", name: "Wide LinkedIn post", w: 1620, h: 1080, seen: 552, where: "in the LinkedIn feed", m: 24, t: 36, l: 28, kz: 27 },
+  readme: { id: "readme", name: "README", w: 1600, h: 900, seen: 880, where: "in a GitHub README", m: 32, t: 32, l: 20, kz: 18 },
+  slide: { id: "slide", name: "Slide", w: 1920, h: 1080, seen: 1280, where: "on a projected slide", m: 40, t: 38, l: 24, kz: 21 },
+  square: { id: "square", name: "Square post", w: 1080, h: 1080, seen: 552, where: "in a feed", m: 24, t: 30, l: 19, kz: 18 },
+  feed: { id: "feed", name: "LinkedIn feed", w: 1080, h: 1350, seen: 552, where: "in the LinkedIn feed", m: 32, t: 36, l: 22, kz: 21 },
 };
 
 export interface ShareOptions {
@@ -86,7 +86,11 @@ export const DEFAULT_SHARE: Omit<ShareOptions, "theme"> = { format: "linkedin", 
  * The readability meter (ui contract): the smallest component or zone name and the smallest
  * text of any kind actually drawn, in image px (`opened`) and as seen where it lands (`inPlace`).
  */
-export interface Readability { level: "good" | "ok" | "warn"; inPlace: number; opened: number; names: { inPlace: number; opened: number }; text: string }
+export interface Readability {
+  level: "good" | "ok" | "warn"; inPlace: number; opened: number; names: { inPlace: number; opened: number };
+  /** One plain sentence for the destination (SHARE-3); `detail` holds the numbers behind it. */
+  text: string; detail: string;
+}
 export interface ShareImage {
   svg: string; width: number; height: number; scale: number; readability: Readability; kinds: Kind[]; shortened: Shortened[];
   /** Things the image left out that the options asked for (a key with no free corner). */
@@ -169,14 +173,14 @@ function shrinkPanels(view: DiagramView): DiagramView {
 }
 
 /**
- * The one change the readability line suggests (ui contract, readability): never one already made.
- * `null` when the image reads in place.
+ * The one change the readability sentence suggests (ui contract, readability): never one already
+ * made. `null` when the image reads in place.
  */
 export function suggestionFor(level: Readability["level"], s: { items: boolean; format: FormatId; linkedInVersion: boolean }): string | null {
   if (level === "good") return null;
-  if (s.items) return "Hide what each part holds";
-  if ((s.format === "feed" || s.format === "linkedin" || s.format === "square") && !s.linkedInVersion) return "Use the LinkedIn version";
-  return "Pick a larger format";
+  if (s.items) return "hiding what each part holds would help";
+  if ((s.format === "feed" || s.format === "linkedin" || s.format === "square") && !s.linkedInVersion) return "the LinkedIn version would help";
+  return "a larger format would help";
 }
 
 /** Font sizes of the texts in drawing markup, scaled by `k`: component and zone names, and every text. */
@@ -198,11 +202,17 @@ export function readabilityOf(sizes: { names: number[]; all: number[] }, f: Form
   const seen = (px: number) => px * (f.seen / f.w);
   const inPlace = seen(opened), names = { inPlace: seen(named), opened: named };
   const level = sizes.all.length && names.inPlace >= 9 && inPlace >= 6.5 ? "good" : opened >= 8 ? "ok" : "warn";
-  const head = { good: "Readable in place", ok: "Readable when opened", warn: "Too small to read" }[level];
   const hint = suggestionFor(level, {
     items: s.items, format: f.id, linkedInVersion: !!s.whole.postOf,
   });
-  return { level, inPlace, opened, names, text: `${head}. Names ${names.inPlace.toFixed(1)} px and text ${inPlace.toFixed(1)} px in ${f.where}, ${opened.toFixed(1)} px opened.${hint ? ` ${hint}.` : ""}` };
+  const said = {
+    good: `The text is readable ${f.where} as it is`,
+    ok: `The text is too small to read ${f.where} until the image is opened`,
+    warn: `The text will be too small to read ${f.where}, even when the image is opened`,
+  }[level];
+  const text = sizes.all.length ? `${said}${hint ? `; ${hint}` : ""}.` : "The image has no text to read.";
+  const detail = `Names ${names.inPlace.toFixed(1)} px and text ${inPlace.toFixed(1)} px ${f.where}, ${opened.toFixed(1)} px opened.`;
+  return { level, inPlace, opened, names, text, detail };
 }
 
 /** The share image of one view, exactly the format's size. */

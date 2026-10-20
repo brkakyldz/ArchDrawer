@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { component, drawing, workspace, openDrawing, readDrawing, persisted, saved, box, drag, edgePaths, callout } from './helpers';
 
-test('H19 [EDT-1, EDT-6, LAY-4, PER-1] select and move connected parts, regroup them and undo a destructive edit', async ({ page, request }) => {
+test('H19 [EDIT-1, FILE-1] select and move connected parts, regroup them and undo a destructive edit', async ({ page, request }) => {
   const doc = drawing('Moving order flow');
   for (const [i, n] of doc.views[0].nodes.entries()) { n.place = null; n.x = i === 0 ? 160 : 440; n.y = i === 2 ? 400 : 120; }
   doc.views[0].nodes.push(component('runtime', { label: 'Runtime', form: 'group', x: 840, y: 400 }));

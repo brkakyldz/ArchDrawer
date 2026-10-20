@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { drawing, workspace, isolatedDrawing, readDrawing, cli } from './helpers';
 
-test('H41 [PER-3, PER-4, CLI-2, PLT-2] open an example from an empty library and recover a registered file that became invalid', async ({ page, request }) => {
+test('H41 [START-5, FILE-1, LOOK-1] open an example from an empty library and recover a registered file that became invalid', async ({ page, request }) => {
   const { file } = await workspace('recovery', drawing('Recovery shop')), server = await isolatedDrawing(page, request, file);
   try {
     const healthResponse = await request.get(`${server.base}/api/health`); expect(healthResponse.status()).toBe(200);

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFile, chmod, stat } from 'node:fs/promises';
 import { drawing, workspace, openDrawing, readDrawing, persisted, saved, outsideWrite, baseURL } from './helpers';
 
-test('H26 [PER-1, PER-2, EDT-2] save to the repository file, follow an outside edit and refuse a stale editor write with a reload offer', async ({ page, request }) => {
+test('H26 [FILE-1, EDIT-3] save to the repository file, follow an outside edit and refuse a stale editor write with a reload offer', async ({ page, request }) => {
   const { file } = await workspace('persistence', drawing('Persistence shop')); const opened = await openDrawing(page, request, file);
   const label = page.getByTestId('node-web').getByTestId('node-label'); await label.dblclick();
   await page.getByTestId('node-label-input').fill('Storefront'); await page.getByTestId('node-label-input').press('Enter');

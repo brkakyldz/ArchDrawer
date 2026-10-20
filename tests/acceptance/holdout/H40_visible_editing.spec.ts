@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { drawing, workspace, openDrawing, callout, readDrawing, persisted, emptyCanvasPoint, canvasClick, box } from './helpers';
 
-test('H40 [EDT-8, EDT-2, EDT-3, EDT-6, PER-1] rename from the callout, choose pictured forms and follow tool hints without accidental edits', async ({ page, request }) => {
+test('H40 [EDIT-1, EDIT-2, FILE-1] rename from the callout, choose pictured forms and follow tool hints without accidental edits', async ({ page, request }) => {
   const { file } = await workspace('discover-editing', drawing('Editing shop')); await openDrawing(page, request, file);
   const baseline = await readDrawing(file); let detail = await callout(page, 'web');
   await detail.getByTestId('callout-title').click(); await expect(page.getByTestId('callout-title-input')).toHaveValue('Web app');

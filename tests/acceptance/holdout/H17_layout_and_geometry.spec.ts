@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { component, kinds, drawing, workspace, openDrawing, readDrawing, writeJSON, cli, baseURL, box, overlaps, svgInfo } from './helpers';
 
-test('H17 [DM-1, DM-2, DM-3, LAY-1, LAY-2, LAY-3, LAY-4, SHR-6] a hinted system and nested loop render with matching export geometry and kept positions', async ({ page, request }) => {
+test('H17 [LAYOUT-1, START-5] a hinted system and nested loop render with matching export geometry and kept positions', async ({ page, request }) => {
   const doc = drawing('System geometry');
   doc.views[0].nodes = kinds.map((kind, i) => component(`kind-${kind}`, {
     label: kind, kind, form: i === 2 ? 'panel' : i === 3 ? 'group' : i === 4 ? 'compact' : 'card',

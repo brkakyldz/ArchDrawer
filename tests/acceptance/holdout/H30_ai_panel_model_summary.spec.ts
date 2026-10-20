@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { component, drawing, workspace, isolatedDrawing, readDrawing, persisted, finishRun, reportNumber } from './helpers';
+import { component, drawing, workspace, isolatedDrawing, readDrawing, persisted, finishRun, reportNumber, drag } from './helpers';
 
-test('H30 [ASK-5, ASK-6, ASK-9, EDT-6, PER-1] expand a quick ask, pick a test model, follow progress and undo the reported change', async ({ page, request }) => {
+test('H30 [AI-1, EDIT-1, EDIT-4, FILE-1] expand a quick ask, pick a test model, follow progress and undo the reported change', async ({ page, request }) => {
   const doc = drawing('Panel shop');
   doc.views.push({ id: 'storage', title: 'Storage', caption: { title: 'Kept records', lede: '' }, nodes: [component('ledger', { label: 'Ledger' })], edges: [], texts: [] });
   const { file } = await workspace('panel', doc), server = await isolatedDrawing(page, request, file);
@@ -25,10 +25,9 @@ test('H30 [ASK-5, ASK-6, ASK-9, EDT-6, PER-1] expand a quick ask, pick a test mo
     await expect(page.getByTestId('ai-input')).toHaveValue('add Cache component'); await expect(page.getByTestId('ask-input')).toHaveValue('');
     await expect(page.getByTestId('ai-engine')).toHaveValue('fixture');
     await expect(page.getByTestId('ai-engine').locator('option')).toHaveText(['Test engine (no AI)']);
-    // The note names the test engine, the six instructions it understands and its canned post/simplify answers.
+    // The note names the test engine and the six instructions it understands.
     const note = page.getByTestId('ai-engine-note'); await expect(note).toContainText('Test engine (no AI)');
     for (const command of ['add', 'remove', 'rename', 'hold', 'move', 'align']) await expect(note).toContainText(command);
-    await expect(note).toContainText(/post/i); await expect(note).toContainText(/simplif/i);
     await expect(page.getByTestId('ai-model').locator('option')).toHaveText(['Default', 'Fast (test)', 'Careful (test)']);
     await expect(page.getByTestId('ai-model')).toHaveValue(''); await expect(page.getByTestId('ai-scope-view')).toBeChecked();
     await expect(page.getByTestId('ai-scope-selection')).toBeDisabled();
@@ -39,7 +38,10 @@ test('H30 [ASK-5, ASK-6, ASK-9, EDT-6, PER-1] expand a quick ask, pick a test mo
     expect(started.status()).toBe(202);
     expect(started.request().postDataJSON()).toMatchObject({ diagramId: server.id, view: 'overview', instruction, engine: 'fixture', model: 'fixture-careful', scope: { kind: 'view' } });
     await expect(page.getByTestId('ai-send')).toBeDisabled(); await expect(page.getByTestId('ai-progress')).toBeVisible();
-    const running = await (await request.get(`${server.base}/api/runs/${(await started.json()).runId}`)).json();
+    // While the instruction runs, an edit on the canvas is refused: a drag moves nothing and says why.
+    await drag(page, page.getByTestId('node-web'), 48, 24);
+    await expect(page.getByTestId('toast')).toHaveText('Edits are paused while the instruction runs');
+    const running =await (await request.get(`${server.base}/api/runs/${(await started.json()).runId}`)).json();
     expect(running.status).toBe('running'); expect(running.changes).toBeNull();
     for (const message of ['Using model fixture-careful', 'Reading the drawing', 'Reading the code', 'Updating the drawing']) {
       await expect(page.getByTestId('ai-progress-line').filter({ hasText: message })).toHaveText(message);

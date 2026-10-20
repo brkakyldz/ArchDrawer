@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { drawing, workspace, openDrawing, readDrawing, persisted, saved, finishRun, startRun, baseURL, outsideWrite, svgInfo, overlaps } from './helpers';
 
-test('H24 [ASK-1, ASK-4, DM-5, LAY-3, EDT-6, PER-1] apply and repair an instruction, undo it, cancel and protect a concurrent session edit', async ({ page, request }) => {
+test('H24 [AI-1, FILE-1, LAYOUT-1] apply and repair an instruction, undo it, cancel and protect a concurrent session edit', async ({ page, request }) => {
   const { file } = await workspace('fixture', drawing('Fixture shop')); const opened = await openDrawing(page, request, file);
   const baseline = await readDrawing(file);
   const responsePromise = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/runs');

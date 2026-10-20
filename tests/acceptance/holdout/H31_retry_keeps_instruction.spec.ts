@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { drawing, workspace, openDrawing, readDrawing, finishRun } from './helpers';
 
-test('H31 [ASK-5, ASK-8, ASK-9, EDT-6] retry failed and cancelled changes with the same text, model and selection', async ({ page, request }) => {
+test('H31 [AI-1, EDIT-1] retry failed and cancelled changes with the same text, model and selection', async ({ page, request }) => {
   const { file } = await workspace('retry', drawing('Retry shop')); await openDrawing(page, request, file);
   const baseline = await readDrawing(file);
   await page.getByTestId('node-api').getByTestId('node-label').click();

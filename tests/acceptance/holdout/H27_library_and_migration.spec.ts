@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { drawing, workspace, writeJSON, readDrawing, cli, openDrawing, register, baseURL } from './helpers';
 
-test('H27 [PER-3, DM-4, CLI-4, CLI-2] migrate an old drawing, import both versions and forget them without deleting repository files', async ({ page, request }) => {
+test('H27 [START-5, FILE-1] migrate an old drawing, import both versions and forget them without deleting repository files', async ({ page, request }) => {
   const { dir, file } = await workspace('library', drawing('Library source'));
   const first = await openDrawing(page, request, file); const normal = await readDrawing(file);
   // This legacy example uses only fields named in the v2 migration contract.

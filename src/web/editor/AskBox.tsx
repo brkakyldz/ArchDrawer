@@ -14,6 +14,8 @@ interface Props {
   model: string;
   /** Open the AI panel with what is typed. */
   onExpand: (text: string) => void;
+  /** A channel with no drawing: nothing to change (ui contract, Channels). */
+  disabled?: boolean;
 }
 
 const SAVED = "Saved in the file for your next archdrawer session";
@@ -23,7 +25,7 @@ const SAVED = "Saved in the file for your next archdrawer session";
  * headless on the repository for the current view and the drawing updates in place; without one,
  * the instruction waits in the file for the next session. The AI panel holds the longer form.
  */
-export const AskBox = forwardRef<AskHandle, Props>(function AskBox({ runner, engine, model, onExpand }, ref) {
+export const AskBox = forwardRef<AskHandle, Props>(function AskBox({ runner, engine, model, onExpand, disabled = false }, ref) {
   const [text, setText] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const { state } = runner;
@@ -56,14 +58,14 @@ export const AskBox = forwardRef<AskHandle, Props>(function AskBox({ runner, eng
           </>
         ) : (
           <>
-            <input ref={input} data-testid="ask-input" value={shown} placeholder={placeholder} aria-label={placeholder} autoComplete="off" maxLength={4000}
+            <input ref={input} data-testid="ask-input" disabled={disabled} value={shown} placeholder={placeholder} aria-label={placeholder} autoComplete="off" maxLength={4000}
               onChange={(e) => { setText(e.target.value); if (mine) runner.clear(); }}
               onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") input.current?.blur(); }} />
             <button type="button" className="btn icon-btn expand" data-testid="ask-expand" aria-label="Open the AI panel" title="More options"
               onClick={() => { const t = shown; setText(""); if (mine) runner.clear(); onExpand(t); }}>
               <Icon name="expand" size={16} />
             </button>
-            <button className="btn primary send" data-testid="ask-send" aria-label="Send" type="submit"><Icon name="send" size={16} /></button>
+            <button className="btn primary send" data-testid="ask-send" aria-label="Send" type="submit" disabled={disabled}><Icon name="send" size={16} /></button>
           </>
         )}
       </form>

@@ -24,6 +24,6 @@ export function App() {
   const { path, search } = useLocation();
   const m = /^\/d\/([^/]+)\/?$/.exec(path);
   if (!m) return <Library />;
-  const view = new URLSearchParams(search).get("view");
-  return <EditorBoundary key={m[1]}><Editor id={decodeURIComponent(m[1])} view={view} /></EditorBoundary>;
+  const q = new URLSearchParams(search);
+  return <EditorBoundary key={m[1]}><Editor id={decodeURIComponent(m[1])} channel={q.get("channel")} view={q.get("view")} /></EditorBoundary>;
 }

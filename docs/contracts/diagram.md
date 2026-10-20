@@ -324,18 +324,35 @@ absence as `null`, `""` or `[]`) without `box`, plus `at` (`{x, y}` or null)
 on every component and `relayout` (component ids) on every view; `lane` and
 `from` are required on every component.
 
-The answer is repaired, one warning per repair: an unknown kind becomes
-`service`; an unknown form `card`; a panel without items `card`; items on a
-non-panel are dropped; an unknown icon or style becomes the default; an
-invalid or duplicate id is replaced or renamed `<id>-2`; a dangling `parent`
-or `detail` is cleared; parent loops and over-deep nesting move to top level;
-an invalid lane, a taken spine order or a bad anchor is dropped; unknown
-`from` ids are dropped; files outside the repository or not found are
-removed and more than 20 are cut; over-long text is shortened with `…`;
+The answer is repaired. Every repair that changes what the engine said adds
+exactly one warning: an unknown kind becomes `service`; an unknown form
+`card`; a panel without items `card`; items on a non-panel are dropped; a
+panel's empty items are dropped and more than 12 are cut; an unknown icon or
+style becomes the default; a component or view id is cleaned to letters,
+digits, `-` and `_`, an empty one becomes `component-<n>` or `view-<n>`, an
+invalid one is replaced and a duplicate is renamed `<id>-2` (one warning per
+id); a second copy of a view is ignored; an empty label becomes the id, an
+empty description `No description yet.`, and an empty view title, caption
+title or drawing title the stored one; a `place` beyond ±20 is clamped and one
+that is not two integers is dropped; a `step` that is not a positive integer
+is dropped; a dangling `parent` or `detail` is cleared; parent loops and
+over-deep nesting move to top level; an invalid lane, a taken spine order or a
+bad anchor is dropped; unknown `from` ids are dropped; empty file paths, files
+outside the repository or not found are removed and more than 20 are cut;
+over-long text is shortened with `…`; components over 60 in a view are cut,
+the last ones first, never one the run may not change (one warning per view);
 connections to missing components, self-connections and second connections on
-a pair are dropped; a reverse connection merges into the first as two-way;
-unknown `relayout` ids and anything outside the run's scope are ignored. A
-view with no components fails the run.
+a pair are dropped; a reverse connection merges into the first as two-way; an
+`at` on a new group is ignored; unknown `relayout` ids and anything outside
+the run's scope (components, connections, views, and in a `parts` scope the
+view's title and caption and the drawing's title) are ignored. A view with no
+components fails the run.
+
+Normalisation is silent, because it changes nothing the engine said: runs of
+whitespace in text become one space and text and ids are trimmed (an id that
+differs only by surrounding spaces still matches its references); in file
+paths `\` becomes `/`, a leading `./` goes and a path listed twice is kept
+once; an empty icon becomes null; an absent `place`, `step` or `at` is null.
 
 Positions: a kept component keeps its position unless it has an `at` (more
 than 1 px from its current top-left; snapped to the 8 px grid) or is in
@@ -390,9 +407,10 @@ as items) or cards, `zone` becomes `parent`, `spine`/`anchor`/`side` become
 `lane`, `from` keeps only existing component ids (one warning per dropped
 id). A part's description is its first represented component's, else its
 sub-line, else its label; its files are the union of the represented
-components' (at most 20). Ids are unique across the file (invalid ids
-sanitised, collisions suffixed `-2`, one warning each); connection ids are
-`<from>-<to>`. A reverse pair becomes one two-way connection (keeping the
+components' (at most 20; more are cut with one warning). Ids are unique
+across the file: an invalid id is sanitised with one warning; an id taken
+elsewhere in the file is suffixed `-2` without one, since the intent's ids only
+tie the intent together; connection ids are `<from>-<to>`. A reverse pair becomes one two-way connection (keeping the
 first label, else the second, and the earlier step), a same-direction
 duplicate is dropped, steps are renumbered 1, 2, 3 … — one warning each. The
 post is titled `LinkedIn` (`<source title> · LinkedIn` for a source other than

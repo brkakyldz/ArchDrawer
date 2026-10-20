@@ -8,8 +8,10 @@ split between the facts and a channel, the warnings it can carry, how it is
 normalised, measured and laid out, and what an engine answers when it changes
 a drawing. Why the file is shaped this way: ADR 0003 and ADR 0006.
 
-Implemented by: `src/core/model.ts` (shape, validation, warnings),
-`src/core/channels.ts` (joining a channel view, splitting an edit, `outdated`),
+Implemented by: `src/core/file3.ts` (the `@3` shape, validation, defaults),
+`src/core/channels.ts` (joining a channel view, splitting an edit, `outdated`,
+warnings, normalisation), `src/core/convert.ts` (reading `@2`),
+`src/core/model.ts` (the view shape and the `@2` rules),
 `src/core/normalize.ts`, `src/core/geometry.ts`, `src/core/layout.ts`,
 `src/core/repair.ts` (engine answers), `src/core/intent.ts` (post answers),
 `src/core/simplify.ts`, `src/core/migrate.ts`, `src/server/files.ts`.

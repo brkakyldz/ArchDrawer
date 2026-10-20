@@ -31,7 +31,7 @@ Ids are the requirement ids of the product spec.
 | H35 | reach a detail view from the views menu, the part that holds it, the breadcrumb and a link, without editing the drawing |
 | H36 | pin explanations beside the canvas and keep editing controls reachable in a narrow header |
 | H38 | warn about text the image shortens and count it in the layout report beside the readability check |
-| H39 | keep keyboard focus inside sharing and call a drawing too wide to read too small, in the report and the meter alike |
+| H39 | share the view as it is, keep keyboard focus inside sharing and call a drawing too wide to read too small, in the report and the meter alike |
 | H40 | rename from the callout, choose pictured forms and follow tool hints without accidental edits |
 | H41 | open an example from an empty library and recover a registered file that became invalid |
 | H44 | accept lane hints in a session file, place what has no position by its place hint and leave positioned parts where they are |
@@ -77,7 +77,7 @@ Ids are the requirement ids of the product spec.
 | NAV-4 | — | To build. |
 | PRES-1 – PRES-3 | — | To build. |
 | SHARE-1 | H15, H23, H28, H38, H63, H85, H87 | PNG and SVG at twice the size, copy, light and dark, all four sizes, no product mark, real text, the same image from preview, download, HTTP and the command. |
-| SHARE-2 | H39 | The modal keeps focus, closes back to its button, and carries preview, report and meter, and downloads. Limit: that Simplify and Share one part have left is not asserted. |
+| SHARE-2 | H39 | The modal keeps focus, closes back to its button, and carries preview, report and meter, and downloads. None of `preset-simple`, `preset-detailed`, `share-part`, `fix-simplify`, `fix-part` is present for any of the four destinations, in the advanced options, or beside a `warn` meter, and the suggestion names neither Simplify nor sharing one part. Limit: the starting toggles per format are pinned in H28 and H63 only through the `show-*` checkboxes. |
 | SHARE-3 | — | See *Not covered*. |
 | SAFE-1 | H25, H29 | Text typed into an instruction is data, and model names that look like options or shell words are refused. |
 | SAFE-2 | — | See *Not covered*. |

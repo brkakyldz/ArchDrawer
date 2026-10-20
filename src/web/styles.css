@@ -316,17 +316,15 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .meter b i { width: 8px; height: 8px; border-radius: 50%; background: var(--k-service); }
 .meter b i[data-level="ok"] { background: var(--soft); }
 .meter b i[data-level="warn"] { background: var(--k-gate); }
-/* The bottom row (ui-v2 share-actions): how readable it is, the fix, then the downloads. */
+/* The bottom row (ui-v2 share-actions): how readable it is, then the downloads. */
 .share > .actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--surface); }
 .share > .actions .meter { flex: 1; min-width: 0; padding: 7px 12px; }
 .share > .actions .meter b { font-size: 13.5px; }
 .share > .actions .btn { height: 36px; flex: none; }
-.share > .actions .fixes { display: flex; gap: 6px; flex: none; }
 .layout-report { font-size: 12px; line-height: 1.45; color: var(--muted); font-variant-numeric: tabular-nums; }
 .layout-report ul { margin: 4px 0 0; padding-left: 16px; color: var(--ink); }
 .share > .actions .layout-report { flex: 2 1 320px; min-width: 0; }
 .ai-panel .layout-report { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
-.share > .actions .fixes .btn { border-color: color-mix(in srgb, var(--k-gate) 45%, var(--line-2)); }
 .li-flow { padding: 12px; border-radius: 10px; border: 1px solid var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--surface); display: grid; gap: 10px; }
 .li-flow h3 { margin: 0; }
 .li-flow .hint { margin: 0; font-size: 12.5px; line-height: 1.45; }

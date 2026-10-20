@@ -544,7 +544,7 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
       )}
       {toastMsg && <div className="toast" data-testid="toast" role="status">{toastMsg}</div>}
       {sharing && (
-        <ShareDialog doc={doc} view={view} selected={sel.nodes} runner={runner} engine={engine?.id ?? null} engineLabel={engine ? engineName(engine) : null} model={model}
+        <ShareDialog doc={doc} view={view} runner={runner} engine={engine?.id ?? null} engineLabel={engine ? engineName(engine) : null} model={model}
           apply={apply} goView={goView} onClose={() => setSharing(false)} toast={toast} />
       )}
     </div>

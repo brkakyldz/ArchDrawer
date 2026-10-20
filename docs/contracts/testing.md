@@ -47,27 +47,46 @@ check) and register them with `POST /api/files` or `archdrawer open
 
 ```json
 {
-  "schema": "archdraw/diagram@2",
+  "schema": "archdraw/diagram@3",
   "title": "Sample Shop",
-  "views": [
-    {
-      "id": "overview",
-      "title": "Overview",
-      "caption": { "title": "How an order flows through Sample Shop", "lede": "" },
-      "nodes": [
-        { "id": "web", "label": "Web app", "kind": "client", "form": "card", "icon": null, "sub": "React", "items": [], "description": "The shop's pages.", "files": [], "parent": null, "detail": null, "place": { "row": 0, "col": 0 } },
-        { "id": "api", "label": "Order API", "kind": "api", "form": "panel", "icon": null, "sub": "", "items": ["Validate order", "Create order"], "description": "Takes orders.", "files": [], "parent": null, "detail": null, "place": { "row": 0, "col": 1 } },
-        { "id": "db", "label": "Orders DB", "kind": "data", "form": "card", "icon": null, "sub": "Postgres", "items": [], "description": "Keeps orders.", "files": [], "parent": null, "detail": null, "place": { "row": 1, "col": 1 } }
-      ],
-      "edges": [
-        { "from": "web", "to": "api", "label": "POST /orders", "style": "call", "both": true, "step": 1 },
-        { "from": "api", "to": "db", "label": "", "style": "call", "both": false, "step": 2 }
-      ],
-      "texts": []
+  "facts": {
+    "components": [
+      { "id": "web", "label": "Web app", "kind": "client", "sub": "React", "description": "The shop's pages.", "files": [], "items": [] },
+      { "id": "api", "label": "Order API", "kind": "api", "sub": "", "description": "Takes orders.", "files": [], "items": ["Validate order", "Create order"] },
+      { "id": "db", "label": "Orders DB", "kind": "data", "sub": "Postgres", "description": "Keeps orders.", "files": [], "items": [] }
+    ],
+    "relations": [
+      { "id": "r1", "from": "web", "to": "api", "label": "POST /orders", "style": "call", "both": true },
+      { "id": "r2", "from": "api", "to": "db", "label": "", "style": "call", "both": false }
+    ]
+  },
+  "channels": {
+    "overview": {
+      "views": [
+        {
+          "id": "overview",
+          "title": "Overview",
+          "caption": { "title": "How an order flows through Sample Shop", "lede": "" },
+          "nodes": [
+            { "id": "web", "facts": ["web"], "form": "card", "icon": null, "parent": null, "detail": null, "place": { "row": 0, "col": 0 } },
+            { "id": "api", "facts": ["api"], "form": "panel", "icon": null, "parent": null, "detail": null, "place": { "row": 0, "col": 1 } },
+            { "id": "db", "facts": ["db"], "form": "card", "icon": null, "parent": null, "detail": null, "place": { "row": 1, "col": 1 } }
+          ],
+          "edges": [
+            { "from": "web", "to": "api", "relations": ["r1"], "step": 1 },
+            { "from": "api", "to": "db", "relations": ["r2"], "step": 2 }
+          ]
+        }
+      ]
     }
-  ]
+  }
 }
 ```
+
+The same drawing as an `archdraw/diagram@2` file (one `views` list at the top
+level, each component carrying its content) is still accepted: it is
+converted when read and written back as `@3` (drawing contract, *Reading
+`archdraw/diagram@2`*).
 
 ## The fixture engine
 
@@ -105,7 +124,10 @@ adds its own lines (`Checking the drawing`, `Saved`, …).
 ### Refine
 
 The first line of the instruction, markers removed, applied to the run's view
-(labels match exactly, case-insensitively):
+(labels match the drawn labels exactly, case-insensitively); the answer is
+written back as the drawing contract's *Writing the answer back* says, so
+`add` adds a fact, `rename` and `hold` edit the part's fact, and `remove`
+deletes facts in the overview and only the part elsewhere:
 
 - `add <Label>` — a new `service` card `<Label>` (a trailing ` component`
   removed), id the label lower-cased with runs of other characters → `-`
@@ -131,16 +153,17 @@ The overview's components and connections move into a new view
 out again); the overview is left with one group `System map` (id
 `system-map`; both ids get `-2`, `-3` … when taken), kind `service`,
 description `The whole system; open it for its parts.`, `detail` the new view,
-lane `{"spine": 0}`, the union of the moved components' files, and no
-connections. Other views, texts and requests are kept. Coverage passes; the
+lane `{"spine": 0}`, no facts (so its label, kind and description are its
+own and it has no files), and no connections. No fact changes. Other views, texts and requests are kept. Coverage passes; the
 one-zone overview then misses its targets (a warning, not a failure). When the
 overview already is a single group with an existing detail view, nothing
 changes.
 
 ### Post
 
-The same story intent every time, each part's `from` set to the source view's
-component at the same index (`[]` when there is none):
+The same story intent every time, each part's `facts` set to the facts of
+the overview's first view's part at the same index when that part shows
+exactly one (`[]` otherwise, or when there is none):
 
 ```json
 {
@@ -148,12 +171,12 @@ component at the same index (`[]` when there is none):
   "lede": "A request enters the app, is checked, and produces a result.",
   "zones": [{ "id": "runtime", "label": "App runtime" }],
   "parts": [
-    { "id": "request", "label": "Request", "sub": "start the work", "kind": "client", "chips": [], "zone": null, "spine": 0, "anchor": null, "side": null, "from": [] },
-    { "id": "intake", "label": "Request intake", "sub": "check the request", "kind": "api", "chips": ["Validate input", "Bind the scope"], "zone": null, "spine": 1, "anchor": null, "side": null, "from": [] },
-    { "id": "loop", "label": "Work loop", "sub": "choose the next action", "kind": "llm", "chips": ["Propose action", "Read tool result"], "zone": "runtime", "spine": 2, "anchor": null, "side": null, "from": [] },
-    { "id": "result", "label": "Result", "sub": "deliver the outcome", "kind": "service", "chips": [], "zone": null, "spine": 3, "anchor": null, "side": null, "from": [] },
-    { "id": "facts", "label": "Stored facts", "sub": "keep the current state", "kind": "data", "chips": [], "zone": "runtime", "spine": null, "anchor": "loop", "side": "below", "from": [] },
-    { "id": "approval", "label": "Approval", "sub": "review the action", "kind": "actor", "chips": [], "zone": null, "spine": null, "anchor": "result", "side": "above", "from": [] }
+    { "id": "request", "label": "Request", "sub": "start the work", "kind": "client", "chips": [], "zone": null, "spine": 0, "anchor": null, "side": null, "facts": [] },
+    { "id": "intake", "label": "Request intake", "sub": "check the request", "kind": "api", "chips": ["Validate input", "Bind the scope"], "zone": null, "spine": 1, "anchor": null, "side": null, "facts": [] },
+    { "id": "loop", "label": "Work loop", "sub": "choose the next action", "kind": "llm", "chips": ["Propose action", "Read tool result"], "zone": "runtime", "spine": 2, "anchor": null, "side": null, "facts": [] },
+    { "id": "result", "label": "Result", "sub": "deliver the outcome", "kind": "service", "chips": [], "zone": null, "spine": 3, "anchor": null, "side": null, "facts": [] },
+    { "id": "facts", "label": "Stored facts", "sub": "keep the current state", "kind": "data", "chips": [], "zone": "runtime", "spine": null, "anchor": "loop", "side": "below", "facts": [] },
+    { "id": "approval", "label": "Approval", "sub": "review the action", "kind": "actor", "chips": [], "zone": null, "spine": null, "anchor": "result", "side": "above", "facts": [] }
   ],
   "edges": [
     { "from": "request", "to": "intake", "label": "", "style": "call", "step": 1 },

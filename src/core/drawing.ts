@@ -42,13 +42,14 @@ export function applyDrawing(doc: Document3, next: DiagramDocument, o: ApplyOpti
     if (!r.ok) return r;
     cur = r.doc;
   }
-  if (!same(post, oldPost) || (post && next.showSteps !== before.showSteps)) {
+  // The steps switch belongs to the overview here (the current channel), never to the post as well.
+  if (!same(post, oldPost)) {
     const known = new Set(cur.facts.components.map((c) => c.id));
     const views: DiagramView[] = post ? [{
       ...post, postOf: null,
       nodes: post.nodes.map((n) => ({ ...n, facts: n.facts ?? (n.from ?? []).filter((f) => known.has(f)) })),
     }] : [];
-    const r = applyChannel(cur, "linkedin", { views, showSteps: post ? next.showSteps : false }, o);
+    const r = applyChannel(cur, "linkedin", { views, ...(post ? {} : { showSteps: false }) }, o);
     if (!r.ok) return r;
     cur = r.doc;
   }

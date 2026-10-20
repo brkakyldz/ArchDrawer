@@ -1,8 +1,27 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { drawing, component, workspace, openDrawing, readDrawing, previewSVG, svgInfo, baseURL } from './helpers';
 import { previewTextSizes, checkReadability } from './helpers';
 
-test('H64 [LAYOUT-3, QUAL-2] distinguish readable names from readable detail and report the level the measured sizes give', async ({ page, request }) => {
+// SHARE-3 helpers (kept in this file: helpers.ts is not edited). The `readability` line is the sentence alone: the
+// details toggle and the details are cut out of a copy first, because the contract does not say whether they sit inside it.
+const README_WHERE = 'in a GitHub README';
+const SUGGESTIONS = ['hiding what each part holds would help', 'the LinkedIn version would help', 'a larger format would help'];
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+async function readabilitySentence(page: Page) {
+  return (await page.getByTestId('share-dialog').getByTestId('readability').evaluate(el => {
+    const copy = el.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll('[data-testid="readability-details-toggle"],[data-testid="readability-details"]').forEach(n => n.remove());
+    return copy.textContent ?? '';
+  })).replace(/\s+/g, ' ').trim();
+}
+function sentencePattern(level: string, where: string, suggestions: string[]) {
+  const tail = `(?:; (?:${suggestions.map(escape).join('|')}))?\\.`;
+  if (level === 'good') return new RegExp(`^The text is readable ${escape(where)} as it is\\.$`);
+  if (level === 'ok') return new RegExp(`^The text is too small to read ${escape(where)} until the image is opened${tail}$`);
+  return new RegExp(`^The text will be too small to read ${escape(where)}, even when the image is opened${tail}$`);
+}
+
+test('H64 [LAYOUT-3, QUAL-2, SHARE-3] distinguish readable names from readable detail and report the level the measured sizes give, in the contracted sentence', async ({ page, request }) => {
   const doc = drawing('Readability levels');
   doc.views[0].nodes = [component('start', { label: 'Start', x: 0, y: 0 }), component('finish', { label: 'Finish', x: 1400, y: 0 })];
   doc.views[0].edges = [];
@@ -73,5 +92,19 @@ test('H64 [LAYOUT-3, QUAL-2] distinguish readable names from readable detail and
     else { expect(actual.namesInPlace).toBeGreaterThanOrEqual(9); expect(actual.inPlace).toBeLessThan(6.5); }
     if (target.region === 'names-low' || target.region === 'detail-low') expect(actual.opened).toBeGreaterThanOrEqual(8);
     if (target.region === 'warn') expect(actual.opened).toBeLessThan(8);
+    // SHARE-3: the meter says the computed level in its contracted sentence (README wording, no digit); the pixel sizes sit behind Details.
+    await expect.poll(async () => {
+      const line = await readabilitySentence(page);
+      return { region: target.region, level: actual.level, line, ok: sentencePattern(actual.level!, README_WHERE, SUGGESTIONS).test(line) && !/\d/.test(line) };
+    }).toMatchObject({ ok: true });
+    if (actual.level === 'good') expect(await readabilitySentence(page)).toBe('The text is readable in a GitHub README as it is.');
+    const toggle = page.getByTestId('readability-details-toggle'), details = page.getByTestId('readability-details');
+    if (await toggle.getAttribute('aria-expanded') === 'true') await toggle.click();
+    await expect(details).toBeHidden();
+    await toggle.click(); await expect(toggle).toHaveAttribute('aria-expanded', 'true'); await expect(details).toBeVisible();
+    const shown = (await details.innerText()).match(/Names (\d+\.\d) px and text (\d+\.\d) px .+, (\d+\.\d) px opened\./);
+    expect(shown, 'the details give names, text and opened sizes with one decimal').not.toBeNull();
+    expect(Math.abs(Number(shown![3]) - actual.opened)).toBeLessThan(0.06);
+    await toggle.click(); await expect(details).toBeHidden();
   }
 });

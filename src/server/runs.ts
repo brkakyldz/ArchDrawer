@@ -162,7 +162,8 @@ export class RunManager {
   }
 
   private async execute(req: StartRun, signal: AbortSignal, progress: (m: string) => void): Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; view: string }> {
-    const root = req.base.source?.path;
+    // The root the store checks this drawing's files against, so a repair and a save never disagree.
+    const root = this.store.rootOf(req.base.id);
     if (!root) throw new EngineError("This drawing has no repository folder to read");
     if (req.kind === "post") return this.post(req, root, signal, progress);
     // A simplification may change the overview and the detail it links to, nothing else (api contract).

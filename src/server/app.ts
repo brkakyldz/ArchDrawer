@@ -5,7 +5,7 @@ import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { renderMermaid } from "../core/export/mermaid";
 import { DEFAULT_SHARE, FORMAT_IDS, renderShare, type FormatId } from "../core/export/share";
-import { LIMITS, THEMES, type Theme } from "../core/model";
+import { isRepoRelative, LIMITS, THEMES, type Theme } from "../core/model";
 import type { RunScope } from "../core/repair";
 import { APP_ROOT } from "./config";
 import type { Config } from "./config";
@@ -191,6 +191,17 @@ export function createApp(deps: AppDeps): Hono {
     const saved = store.put(id, { ...doc, requests: [...doc.requests, request] }, { announce: true });
     if (!saved?.ok) return err(c, 409, "The drawing could not be saved");
     return c.json({ id: request.id }, 201);
+  });
+
+  // Which of a component's paths are not in the drawing's repository: the editor marks them (diagram contract rule 10).
+  app.post("/api/diagrams/:id/check-files", async (c) => {
+    const id = c.req.param("id");
+    if (!store.exists(id)) return err(c, 404, "Diagram not found");
+    const files = ((await readJson(c)) as { files?: unknown } | undefined)?.files;
+    if (!Array.isArray(files) || files.length > LIMITS.files || files.some((f) => typeof f !== "string" || !isRepoRelative(f))) {
+      return err(c, 400, `files must be at most ${LIMITS.files} repository-relative paths`);
+    }
+    return c.json({ missing: store.missingFiles(id, files as string[]) });
   });
 
   app.post("/api/runs", async (c) => {

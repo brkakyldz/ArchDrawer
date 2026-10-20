@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { validateDocument } from "../core/model";
@@ -101,20 +101,46 @@ describe("file-backed store", () => {
     expect(store.put(doc.id, { ...before, title: "Editor" }, { base: before.updatedAt })).toEqual({ ok: false, conflict: true, updatedAt: "2099-01-01T00:00:00.000Z" });
   });
 
-  it("refuses a save naming a file that is not in the repository, so the drawing still opens after a restart", () => {
+  it("keeps saving and opening a drawing whose file was deleted from the repository, and names the missing file", () => {
     const store = new Store(tempDir());
-    const { file } = shopRepo();
+    const { root, file } = shopRepo({ "src/api.ts": "// api\n" });
     const doc = store.register(file);
-    const withFiles = (files: string[]) => ({ ...doc, views: doc.views.map((v, i) => (i ? v : { ...v, nodes: v.nodes.map((n, j) => (j ? n : { ...n, files })) })) });
-    const bad = store.put(doc.id, withFiles(["src/missing.ts"]), { base: doc.updatedAt });
-    expect(bad).toMatchObject({ ok: false, conflict: false });
-    expect((bad as { error: string }).error).toMatch(/src\/missing\.ts.*does not exist/);
-    const good = store.put(doc.id, withFiles(["web/index.html"]), { base: doc.updatedAt });
-    expect(good).toMatchObject({ ok: true });
-    // A fresh process (no hash known) checks the file against the repository, as `open` does.
-    const reopened = new Store(store.dataDir).read(doc.id);
-    expect(reopened).toMatchObject({ ok: true });
-    expect((reopened as { doc: typeof doc }).doc.views[0].nodes[0].files).toEqual(["web/index.html"]);
+    const withFiles = (d: typeof doc, files: string[]) => ({ ...d, views: d.views.map((v, i) => (i ? v : { ...v, nodes: v.nodes.map((n, j) => (j ? n : { ...n, files })) })) });
+    const saved = store.put(doc.id, withFiles(doc, ["src/api.ts", "web/index.html"]), { base: doc.updatedAt });
+    expect(saved).toMatchObject({ ok: true });
+    expect(store.missingFiles(doc.id, ["src/api.ts", "web/index.html"])).toEqual([]);
+    // The file goes away after the drawing was saved; the next edit still saves.
+    rmSync(join(root, "src/api.ts"));
+    const cur = store.get(doc.id)!;
+    const again = store.put(doc.id, { ...cur, title: "Edited after the delete" }, { base: cur.updatedAt });
+    expect(again).toMatchObject({ ok: true });
+    expect(store.get(doc.id)!.views[0].nodes[0].files).toEqual(["src/api.ts", "web/index.html"]);
+    expect(store.missingFiles(doc.id, ["src/api.ts", "web/index.html"])).toEqual(["src/api.ts"]);
+    // A fresh process (no hash known) still opens it, and so does registering it again.
+    const reopened = new Store(store.dataDir);
+    expect(reopened.read(doc.id)).toMatchObject({ ok: true, doc: { title: "Edited after the delete" } });
+    expect(reopened.register(file).id).toBe(doc.id);
+    // A path that never existed saves too, and is named as missing.
+    const later = store.get(doc.id)!;
+    expect(store.put(doc.id, withFiles(later, ["src/never.ts"]), { base: later.updatedAt })).toMatchObject({ ok: true });
+    expect(store.missingFiles(doc.id, ["src/never.ts"])).toEqual(["src/never.ts"]);
+  });
+
+  it("checks files against one repository root: the drawing's source is the store's root", () => {
+    const store = new Store(tempDir());
+    const { root, file } = shopRepo();
+    const doc = store.register(file);
+    expect(store.rootOf(doc.id)).toBe(root);
+    // A save naming another folder as its source gets the drawing's repository back.
+    expect(store.put(doc.id, { ...doc, source: { kind: "local", path: tempDir() } }, { base: doc.updatedAt })).toMatchObject({ ok: true });
+    expect(store.get(doc.id)!.source).toEqual({ kind: "local", path: root });
+    // An imported document keeps its own source; without a local one nothing is named as missing.
+    const imp = store.import({ ...shopFile(), source: { kind: "local", path: root } }) as { id: string };
+    expect(store.rootOf(imp.id)).toBe(root);
+    expect(store.missingFiles(imp.id, ["web/index.html", "src/nowhere.ts"])).toEqual(["src/nowhere.ts"]);
+    const bare = store.import({ ...shopFile(), source: null }) as { id: string };
+    expect(store.rootOf(bare.id)).toBeNull();
+    expect(store.missingFiles(bare.id, ["src/nowhere.ts"])).toEqual([]);
   });
 
   it("imports v1 and v2 documents under new ids and forgets or deletes", () => {

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { makeApp, PORT, shopFile, shopRepo } from "./testkit";
+import { makeApp, PORT, shopFile, shopFile2, shopRepo } from "./testkit";
 
 const json = async (r: Response) => ({ status: r.status, body: await r.json() });
 
@@ -37,10 +37,10 @@ describe("drawings over HTTP", () => {
     const list = (await json(await req("/api/diagrams"))).body.diagrams;
     expect(list).toEqual([{ id, title: "Sample Shop", path: file, updatedAt: expect.any(String) }]);
     const doc = (await json(await req(`/api/diagrams/${id}`))).body;
-    doc.views[0].nodes[0].label = "Storefront";
+    doc.facts.components[0].label = "Storefront";
     const put = await json(await req(`/api/diagrams/${id}`, { method: "PUT", json: doc, headers: { "If-Unmodified-Since-Version": doc.updatedAt } }));
     expect(put).toMatchObject({ status: 200, body: { ok: true } });
-    expect(JSON.parse(readFileSync(file, "utf8")).views[0].nodes[0].label).toBe("Storefront");
+    expect(JSON.parse(readFileSync(file, "utf8")).facts.components[0].label).toBe("Storefront");
     // The same base again is stale now.
     const stale = await json(await req(`/api/diagrams/${id}`, { method: "PUT", json: doc, headers: { "If-Unmodified-Since-Version": doc.updatedAt } }));
     expect(stale).toEqual({ status: 409, body: { error: expect.any(String), updatedAt: put.body.updatedAt } });
@@ -50,7 +50,7 @@ describe("drawings over HTTP", () => {
   it("answers 400 with every error for an invalid file and 404 for unknown ids", async () => {
     const { req } = makeApp();
     const { file } = shopRepo();
-    const f = shopFile() as { views: { edges: { style: string }[] }[] };
+    const f = shopFile2() as { views: { edges: { style: string }[] }[] };
     f.views[0].edges[0].style = "wave";
     writeFileSync(file, JSON.stringify(f));
     const r = await json(await req("/api/files", { method: "POST", json: { path: file } }));
@@ -86,7 +86,7 @@ describe("drawings over HTTP", () => {
     const { req, id, file } = await opened();
     const r = await json(await req(`/api/diagrams/${id}/requests`, { method: "POST", json: { view: "overview", text: "Add a cache" } }));
     expect(r).toEqual({ status: 201, body: { id: "q1" } });
-    expect(JSON.parse(readFileSync(file, "utf8")).requests).toEqual([{ id: "q1", text: "Add a cache", view: "overview", at: expect.any(String) }]);
+    expect(JSON.parse(readFileSync(file, "utf8")).requests).toEqual([{ id: "q1", text: "Add a cache", channel: "overview", view: "overview", at: expect.any(String) }]);
     expect((await req(`/api/diagrams/${id}/requests`, { method: "POST", json: { view: "overview", text: "  " } })).status).toBe(400);
     expect((await req(`/api/diagrams/${id}/requests`, { method: "POST", json: { view: "nope", text: "x" } })).status).toBe(400);
   });

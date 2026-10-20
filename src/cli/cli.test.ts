@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createServer } from "node:http";
 import { BUILD, loadConfig, VERSION } from "../server/config";
-import { shopFile, shopRepo, tempDir } from "../server/testkit";
+import { shopFile2, shopRepo, tempDir } from "../server/testkit";
 import { current, runCli } from "./main";
 
 async function cli(...argv: string[]) {
@@ -17,13 +17,13 @@ describe("archdrawer validate", () => {
     const { file } = shopRepo();
     const before = readFileSync(file, "utf8");
     // The shop's overview has no zones: one overview-target warning, still valid.
-    expect(await cli("validate", file)).toMatchObject({ code: 0, out: [expect.stringMatching(/^WARN  views\[0\]: the overview has 0 zones/), "valid with 1 warning(s)"] });
+    expect(await cli("validate", file)).toMatchObject({ code: 0, out: [expect.stringMatching(/^WARN  channels\.overview\.views\[0\]: the overview has 0 zones/), "valid with 1 warning(s)"] });
     expect(readFileSync(file, "utf8")).toBe(before);
   });
 
   it("lists every violation with its path and what is allowed, then the count", async () => {
     const { file } = shopRepo();
-    const f = shopFile() as { views: { nodes: Record<string, unknown>[]; edges: Record<string, unknown>[] }[] };
+    const f = shopFile2() as { views: { nodes: Record<string, unknown>[]; edges: Record<string, unknown>[] }[] };
     f.views[0].nodes[0].kind = "database";
     f.views[0].nodes[1].files = ["src/missing.ts"];
     f.views[0].edges[1].to = "ghost";
@@ -72,18 +72,18 @@ describe("archdrawer svg", () => {
 
   it("draws a file whose part names a path missing from the repository, with a warning; validate still refuses it", async () => {
     const { file } = shopRepo();
-    const f = shopFile() as { views: { nodes: Record<string, unknown>[] }[] };
+    const f = shopFile2() as { views: { nodes: Record<string, unknown>[] }[] };
     f.views[0].nodes[1].files = ["src/gone.ts"];
     writeFileSync(file, JSON.stringify(f));
     const r = await cli("svg", file, "--out", join(tempDir(), "x.svg"));
     expect(r.code).toBe(0);
-    expect(r.out[0]).toBe('WARN  views[0].nodes[1].files[0]: "src/gone.ts" does not exist in the repository');
+    expect(r.out[0]).toBe('WARN  facts.components[1].files[0]: "src/gone.ts" does not exist in the repository');
     expect(await cli("validate", file)).toMatchObject({ code: 1, out: ['ERROR views[0].nodes[1].files[0]: "src/gone.ts" does not exist in the repository', "1 error(s)"] });
   });
 });
 
 describe("archdrawer migrate, usage", () => {
-  it("rewrites a v1 file as v2 and leaves a v2 file alone", async () => {
+  it("rewrites a v1 file as v3 through v2 and leaves a v3 file alone", async () => {
     const dir = tempDir();
     const f = join(dir, "old.json");
     writeFileSync(f, JSON.stringify({
@@ -91,9 +91,9 @@ describe("archdrawer migrate, usage", () => {
       nodes: [{ id: "a", label: "A", kind: "ui", tech: "", description: "A.", group: null, files: [], x: 0, y: 0 }], groups: [], edges: [], notes: [],
     }));
     const r = await cli("migrate", f);
-    expect(r.out).toEqual(['Component "a": kind ui became client', "migrated"]);
-    expect(JSON.parse(readFileSync(f, "utf8")).schema).toBe("archdraw/diagram@2");
-    expect((await cli("migrate", f)).out).toEqual(["already archdraw/diagram@2"]);
+    expect(r.out).toEqual(['Component "a": kind ui became client', "Converted from archdraw/diagram@2", "migrated"]);
+    expect(JSON.parse(readFileSync(f, "utf8")).schema).toBe("archdraw/diagram@3");
+    expect((await cli("migrate", f)).out).toEqual(["already archdraw/diagram@3"]);
     expect((await cli("validate", f)).code).toBe(0);
   });
 

@@ -6,7 +6,7 @@ import { layoutReport } from "./report";
 import { startSwitches } from "./export/share";
 
 const shop = (): DiagramDocument => {
-  const d = fillDefaults(JSON.parse(readFileSync("examples/shop.archdraw.json", "utf8")), { id: "d_test000001" });
+  const d = fillDefaults(JSON.parse(readFileSync("tests/fixtures/shop.archdraw.json", "utf8")), { id: "d_test000001" });
   assignEdgeIds(d);
   const v = validateDocument({ ...d, views: d.views.map((x) => ({ ...x, nodes: x.nodes.map((n, i) => ({ ...n, x: n.x ?? i * 300, y: n.y ?? 0 })) })) });
   if (!v.ok) throw new Error(v.error);

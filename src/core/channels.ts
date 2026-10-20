@@ -110,13 +110,23 @@ export const OVERVIEW_FULL = "The overview is full: make room there first";
  * channel*), then mark `outdated` on every other channel. Parts and connections are matched by
  * id; a part's fields are compared with what it drew before.
  */
-export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelState): ApplyResult {
+export interface ApplyOptions {
+  /**
+   * The change may not touch the facts (a post or a simplify run): every text it changes becomes
+   * the part's or connection's own, a new part or connection belongs to the channel only, and a
+   * deletion deletes no fact.
+   */
+  keepFacts?: boolean;
+}
+
+export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelState, o: ApplyOptions = {}): ApplyResult {
   const before = joinChannel(doc, channel);
   const comps = new Map(doc.facts.components.map((c) => [c.id, structuredClone(c)]));
   const rels = new Map(doc.facts.relations.map((r) => [r.id, structuredClone(r)]));
   const order = { comps: doc.facts.components.map((c) => c.id), rels: doc.facts.relations.map((r) => r.id) };
   const factIds = new Set<string>([...comps.keys(), ...rels.keys()]);
   const overview = channel === "overview";
+  const keep = o.keepFacts === true;
 
   const oldParts = new Map<string, Part>(), oldConns = new Map<string, Connection>();
   for (const v of doc.channels[channel].views) {
@@ -132,7 +142,7 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
   const single = (p: Part) => (p.facts.length === 1 ? comps.get(p.facts[0]) ?? null : null);
   const writeText = (p: Part, f: TextField, value: string) => {
     const fact = single(p);
-    if (isSet(p[f]) || !fact) (p as unknown as Record<string, unknown>)[f] = value;
+    if (keep || isSet(p[f]) || !fact) (p as unknown as Record<string, unknown>)[f] = value;
     else if (!overview && (f === "label" || f === "sub")) p[f] = value;
     else (fact as unknown as Record<string, unknown>)[f] = value;
   };
@@ -169,10 +179,14 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
     return { form: n.form, icon: n.icon, parent: n.parent, detail: n.detail, place: n.place, lane: n.lane ?? null, x: n.x, y: n.y };
   }
 
+  // A new part names the facts it shows in `facts` (or, from the run pipeline, `from`); one that
+  // names none is new content and adds a fact, unless `facts: []` says it belongs to this channel
+  // only, or the change may not touch the facts.
   function newPart(n: DiagramNode): Part {
-    const shown = [...new Set((n.facts ?? []).filter((f) => comps.has(f)))];
+    const named = n.facts ?? (n.from?.length ? n.from : undefined);
+    const shown = [...new Set((named ?? []).filter((f) => comps.has(f)))];
     const p: Part = { id: n.id, facts: shown, form: n.form, icon: n.icon, parent: n.parent, detail: n.detail, place: n.place, lane: n.lane ?? null, x: n.x, y: n.y };
-    if (shown.length === 0) {
+    if (named === undefined && !keep) {
       p.facts = [addFact(n)];
       return p;
     }
@@ -184,7 +198,7 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
 
   function items(p: Part, drawn: DiagramNode, n: DiagramNode) {
     if (n.form !== "panel") { delete p.items; return; }
-    const fact = single(p);
+    const fact = keep ? null : single(p);
     const X = [...n.items];
     if (drawn.form === "panel") {
       if (same(X, drawn.items)) return;
@@ -199,7 +213,7 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
   }
 
   function files(p: Part, drawn: DiagramNode, n: DiagramNode) {
-    if (same(drawn.files, n.files) || p.facts.length === 0) return;
+    if (keep || same(drawn.files, n.files) || p.facts.length === 0) return;
     const added = n.files.filter((f) => !drawn.files.includes(f));
     const removed = new Set(drawn.files.filter((f) => !n.files.includes(f)));
     for (const id of p.facts) {
@@ -216,7 +230,7 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
   const singleRel = (c: Connection) => (c.relations.length === 1 ? rels.get(c.relations[0]) ?? null : null);
   const writeEdge = (c: Connection, f: EdgeField, value: string | boolean) => {
     const rel = singleRel(c);
-    if (isSet(c[f]) || !rel) (c as unknown as Record<string, unknown>)[f] = value;
+    if (keep || isSet(c[f]) || !rel) (c as unknown as Record<string, unknown>)[f] = value;
     else if (!overview && (f === "label" || f === "both")) (c as unknown as Record<string, unknown>)[f] = value;
     else (rel as unknown as Record<string, unknown>)[f] = value;
   };
@@ -237,7 +251,7 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
         // text as its own and stops showing a relation it would contradict.
         const rel = singleRel(c);
         if (rel && !rel.both && !isSet(c.both)) {
-          if (overview) [rel.from, rel.to] = [rel.to, rel.from];
+          if (overview && !keep) [rel.from, rel.to] = [rel.to, rel.from];
           else { c.label = drawn.label; c.style = drawn.style; c.both = drawn.both; c.relations = []; }
         }
         c.from = e.from; c.to = e.to;
@@ -258,7 +272,7 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
       if (found) {
         c.relations = [found.id];
         if (found.from === fb && !found.both && !e.both) { c.from = e.to; c.to = e.from; }
-      } else {
+      } else if (!keep) {
         const id = nextRelationId(factIds);
         factIds.add(id);
         rels.set(id, { id, from: fa, to: fb, label: e.label, style: e.style, both: e.both });
@@ -276,7 +290,7 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
   // Deletions: in the overview a deleted part takes the facts no other overview part shows, and a
   // deleted connection the relations no other overview connection shows.
   const deletedFacts = new Set<string>(), deletedRels = new Set<string>();
-  if (overview) {
+  if (overview && !keep) {
     const shown = new Set<string>(), shownRels = new Set<string>();
     for (const v of views) { for (const p of v.nodes) p.facts.forEach((f) => shown.add(f)); for (const c of v.edges) c.relations.forEach((r) => shownRels.add(r)); }
     const keptParts = new Set(views.flatMap((v) => v.nodes.map((p) => p.id)));

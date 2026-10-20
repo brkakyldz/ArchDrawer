@@ -5,6 +5,9 @@ import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { renderMermaid } from "../core/export/mermaid";
 import { DEFAULT_SHARE, FORMAT_IDS, renderShare, type FormatId } from "../core/export/share";
+import { joinChannel } from "../core/channels";
+import { joinDrawing } from "../core/drawing";
+import { CHANNELS, channelOfView, isChannel, type ChannelId, type Document3 } from "../core/file3";
 import { isRepoRelative, LIMITS, THEMES, type Theme } from "../core/model";
 import type { RunScope } from "../core/repair";
 import { APP_ROOT } from "./config";
@@ -149,11 +152,24 @@ export function createApp(deps: AppDeps): Hono {
     });
   });
 
+  /** The channel and view an export or a request names (api contract): the overview and the channel's first view by default. */
+  const pick = (doc3: Document3, channelQ: string | undefined, viewQ: string | undefined): { channel: ChannelId; view: string } | string => {
+    if (channelQ && !isChannel(channelQ)) return `Unknown channel "${channelQ}"; use one of ${CHANNELS.join(", ")}`;
+    const channel: ChannelId = (channelQ as ChannelId | undefined) || "overview";
+    const views = doc3.channels[channel].views;
+    if (views.length === 0) return `The channel "${channel}" has no drawing`;
+    const view = viewQ || views[0].id;
+    if (!views.some((v) => v.id === view)) return `Unknown view "${view}"`;
+    return { channel, view };
+  };
+
   app.get("/api/diagrams/:id/export.svg", (c) => {
-    const { doc, res } = load(c, c.req.param("id"));
-    if (!doc) return res!;
-    const viewId = c.req.query("view") || doc.views[0].id;
-    if (!doc.views.some((v) => v.id === viewId)) return err(c, 400, `Unknown view "${viewId}"`);
+    const { doc: doc3, res } = load(c, c.req.param("id"));
+    if (!doc3) return res!;
+    const at = pick(doc3, c.req.query("channel"), c.req.query("view"));
+    if (typeof at === "string") return err(c, 400, at);
+    const doc = joinChannel(doc3, at.channel);
+    const viewId = at.view;
     const format = (c.req.query("format") || "linkedin") as FormatId;
     if (!FORMAT_IDS.includes(format)) return err(c, 400, `Unknown format "${format}"; use one of ${FORMAT_IDS.join(", ")}`);
     const q = c.req.query("theme");
@@ -167,10 +183,11 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   app.get("/api/diagrams/:id/export.mmd", (c) => {
-    const { doc, res } = load(c, c.req.param("id"));
-    if (!doc) return res!;
-    const view = doc.views.find((v) => v.id === (c.req.query("view") || doc.views[0].id));
-    if (!view) return err(c, 400, `Unknown view "${c.req.query("view")}"`);
+    const { doc: doc3, res } = load(c, c.req.param("id"));
+    if (!doc3) return res!;
+    const at = pick(doc3, c.req.query("channel"), c.req.query("view"));
+    if (typeof at === "string") return err(c, 400, at);
+    const view = joinChannel(doc3, at.channel).views.find((v) => v.id === at.view)!;
     return c.body(renderMermaid(view), 200, { "Content-Type": "text/plain; charset=utf-8" });
   });
 
@@ -178,22 +195,25 @@ export function createApp(deps: AppDeps): Hono {
     const id = c.req.param("id");
     const { doc, res } = load(c, id);
     if (!doc) return res!;
-    const body = (await readJson(c)) as { view?: unknown; text?: unknown } | undefined;
+    const body = (await readJson(c)) as { channel?: unknown; view?: unknown; text?: unknown } | undefined;
     const text = typeof body?.text === "string" ? body.text.trim() : "";
-    const view = typeof body?.view === "string" ? body.view : "";
+    const viewQ = typeof body?.view === "string" ? body.view : "";
     if (!text) return err(c, 400, "The instruction is empty");
     if (text.length > LIMITS.request) return err(c, 400, `The instruction is too long (${LIMITS.request} characters at most)`);
-    if (!doc.views.some((v) => v.id === view)) return err(c, 400, `Unknown view "${view}"`);
+    if (body?.channel !== undefined && typeof body.channel !== "string") return err(c, 400, "channel must be a channel name");
+    if (!viewQ) return err(c, 400, 'Unknown view ""');
+    const at = pick(doc, body?.channel as string | undefined, viewQ);
+    if (typeof at === "string") return err(c, 400, at);
     const used = new Set(doc.requests.map((r) => r.id));
     let n = doc.requests.length + 1;
     while (used.has(`q${n}`)) n++;
-    const request = { id: `q${n}`, text, view, at: nowIso() };
+    const request = { id: `q${n}`, text, channel: at.channel, view: at.view, at: nowIso() };
     const saved = store.put(id, { ...doc, requests: [...doc.requests, request] }, { announce: true });
     if (!saved?.ok) return err(c, 409, "The drawing could not be saved");
     return c.json({ id: request.id }, 201);
   });
 
-  // Which of a component's paths are not in the drawing's repository: the editor marks them (diagram contract rule 10).
+  // Which of a component's paths are not in the drawing's repository: the editor marks them (diagram contract rule 14).
   app.post("/api/diagrams/:id/check-files", async (c) => {
     const id = c.req.param("id");
     if (!store.exists(id)) return err(c, 404, "Diagram not found");
@@ -228,11 +248,18 @@ export function createApp(deps: AppDeps): Hono {
     const model = typeof b.model === "string" && b.model.trim() ? b.model.trim().slice(0, 100) : null;
     // A leading "-" would reach the engine's command line as an option.
     if (model !== null && (model.startsWith("-") || !/^[A-Za-z0-9._:\/@\[\]-]+$/.test(model))) return err(c, 400, `Invalid model name "${model}"`);
-    const { doc, res } = load(c, typeof b.diagramId === "string" ? b.diagramId : "");
-    if (!doc) return res!;
-    const view = typeof b.view === "string" ? b.view : "";
-    if (!doc.views.some((v) => v.id === view)) return err(c, 400, `Unknown view "${view}"`);
-    if (kind === "simplify" && view !== doc.views[0].id) return err(c, 400, `Only the overview is simplified: give the view "${doc.views[0].id}"`);
+    const { doc: stored, res } = load(c, typeof b.diagramId === "string" ? b.diagramId : "");
+    if (!stored) return res!;
+    if (b.channel !== undefined && !isChannel(b.channel)) return err(c, 400, `Unknown channel "${String(b.channel)}"; use one of ${CHANNELS.join(", ")}`);
+    if (kind === "post" && b.channel !== undefined && b.channel !== "linkedin") return err(c, 400, "A post is drawn in the linkedin channel");
+    // Until each channel has its own tab (#29, #30) a run reads the overview and the post as one view list.
+    const doc = joinDrawing(stored);
+    const first = stored.channels.overview.views[0].id;
+    const view = typeof b.view === "string" ? b.view : kind === "post" ? first : "";
+    const channel = (b.channel as ChannelId | undefined) ?? (kind === "post" ? "linkedin" : "overview");
+    if (kind !== "post" && stored.channels[channel].views.length === 0) return err(c, 400, `The channel "${channel}" has no drawing`);
+    if (!doc.views.some((v) => v.id === view) || (kind !== "post" && channelOfView(stored, view) !== channel)) return err(c, 400, `Unknown view "${view}"`);
+    if (kind === "simplify" && view !== first) return err(c, 400, `Only the overview is simplified: give the view "${first}"`);
     const scope = parseScope(b.scope, doc.views.find((v) => v.id === view)!.nodes.map((n) => n.id));
     if (typeof scope === "string") return err(c, 400, scope);
     let engine: Engine | undefined;
@@ -246,7 +273,7 @@ export function createApp(deps: AppDeps): Hono {
       if (!engine) return err(c, 400, "No engine is available: install and log in to Claude Code or Codex");
     }
     if (runs.runningOn(doc.id)) return err(c, 409, "An instruction is already running on this drawing");
-    const runId = runs.start({ engine, model, instruction, view, base: doc, scope: kind === "refine" ? scope : { kind: "view" }, format, kind });
+    const runId = runs.start({ engine, model, instruction, view, base: doc, stored, scope: kind === "refine" ? scope : { kind: "view" }, format, kind });
     return c.json({ runId }, 202);
   });
 

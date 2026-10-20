@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Changes } from "../../core/diff";
 import type { LayoutReport } from "../../core/report";
+import type { Document3 } from "../../core/file3";
 import type { DiagramDocument } from "../../core/model";
 import type { RunScope } from "../../core/repair";
 import { api, ApiError, type EngineInfo } from "../api";
@@ -49,6 +50,9 @@ export const engineName = (e: EngineInfo) => (e.test ? "Test engine (no AI)" : e
  * available; else the document's, if available and not the fixture; else the first available real
  * engine; else the fixture, when it is the only one offered.
  */
+/** The channel of a view of the drawn view list (`joinDrawing`): the post is the LinkedIn channel. */
+const channelOf = (d: DiagramDocument, view: string) => (d.views.find((v) => v.id === view)?.postOf ? "linkedin" : "overview");
+
 export function chooseEngine(engines: EngineInfo[], doc: Pick<DiagramDocument, "engine">, chosen = local(ENGINE_KEY)): EngineInfo | null {
   const ok = engines.filter((e) => e.available);
   return ok.find((e) => e.id === chosen) ?? ok.find((e) => e.id === doc.engine?.id && !e.test) ?? ok.find((e) => !e.test) ?? ok[0] ?? null;
@@ -66,7 +70,7 @@ interface Options {
   vid: string | null;
   settle: () => Promise<boolean>;
   /** A run succeeded: show the stored drawing (undo returns to the one before) and what changed. */
-  onUpdated: (doc: DiagramDocument, changes: Changes | null, req: RunRequest) => void;
+  onUpdated: (doc: Document3, changes: Changes | null, req: RunRequest) => void;
   /** An instruction was saved for the next session (no engine). */
   onSaved: () => void;
 }
@@ -98,7 +102,7 @@ export function useRunner({ doc, vid, settle, onUpdated, onSaved }: Options) {
     if (cancelEarly.current) { busy.current = false; setState({ ...IDLE, status: "cancelled", req, error: "Cancelled" }); return; }
     if (!req.engine) {
       try {
-        await api.request(d.id, v, instruction);
+        await api.request(d.id, channelOf(d, v), v, instruction);
         busy.current = false;
         setState({ ...IDLE, status: "saved", req });
         live.current.onSaved();
@@ -107,7 +111,7 @@ export function useRunner({ doc, vid, settle, onUpdated, onSaved }: Options) {
     }
     let id: string;
     try {
-      id = await api.startRun(d.id, v, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format });
+      id = await api.startRun(d.id, channelOf(d, v), v, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format });
     } catch (e) {
       fail(e instanceof ApiError ? e.message : "Could not start the instruction");
       return;

@@ -1,6 +1,6 @@
 ---
 name: archdrawer
-description: Draw the architecture of the current repository as an editable archdraw/diagram@2 file (docs/architecture.archdraw.json) and open it in the local archdrawer editor. Use when the user asks to draw, diagram, map or update the architecture of a codebase, or to apply instructions left in the drawing's requests.
+description: Draw the architecture of the current repository as an editable archdraw/diagram@3 file (docs/architecture.archdraw.json) and open it in the local archdrawer editor. Use when the user asks to draw, diagram, map or update the architecture of a codebase, or to apply instructions left in the drawing's requests.
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash(archdrawer *), Bash(node *)
 ---
 
@@ -54,20 +54,24 @@ not show.
 
 Write the file following **`rules.md` in this skill's folder** — read it now,
 in full; it is the same rule set the editor's instruction engine uses. It
-defines the format (`archdraw/diagram@2`), the depth required (held items,
+defines the format (`archdraw/diagram@3`), the depth required (held items,
 nested groups, side paths above and below the main path, two-way and async
 connections, descriptions and code paths, detail views) and what is not
 allowed (tuning numbers, repeated labels, a second reverse connection).
 
 ## 4. Updating an existing file
 
-Read the file first. Keep the `id` of every component that still exists (the
-user's positions hang on those ids; keep `x`/`y` you find), change what the
-code changed, remove what is gone, add what is new with a `place` hint. Keep
-`texts` (the user's own titles and remarks), `theme`, `showSteps` and the document `id`.
+Read the file first. Keep the `id` of every fact and part that still exists
+(the user's positions hang on those ids; keep `x`/`y` you find), change the
+facts the code changed, remove what is gone, add what is new as a fact and an
+overview part with a `place` hint. Keep the other channels as they are (the
+editor marks them for an update), `texts` (the user's own titles and
+remarks), `theme`, each channel's `showSteps` and the document `id`. An older
+file with `"schema": "archdraw/diagram@2"` (one `views` list) is still read;
+run `archdrawer migrate <file>` once to turn it into this format first.
 
 If the file has `requests` (instructions the user typed in the editor while no
-engine could run them), apply each one to the view it names, then set
+engine could run them), apply each one to the channel and view it names, then set
 `"requests": []`. Tell the user which requests you applied.
 
 ## 5. Check and fix until valid

@@ -3,6 +3,9 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CONVERTED_V2, readAnyFile } from "../../src/core/convert";
+import { joinDrawing } from "../../src/core/drawing";
+import type { Document3 } from "../../src/core/file3";
 import type { DiagramDocument } from "../../src/core/model";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -14,11 +17,23 @@ export async function token(request: APIRequestContext): Promise<string> {
   return t!;
 }
 
-/** The minimal example file (examples/shop.archdraw.json), optionally changed. */
+/**
+ * The shop drawing in the view shape of an `@2` file (tests/fixtures/shop.archdraw.json), optionally
+ * changed. `repoWith` writes it as `@3`.
+ */
 export function shop(change: (f: Record<string, any>) => void = () => {}): Record<string, any> {
-  const f = JSON.parse(readFileSync(join(root, "examples", "shop.archdraw.json"), "utf8"));
+  const f = JSON.parse(readFileSync(join(root, "tests", "fixtures", "shop.archdraw.json"), "utf8"));
   change(f);
   return f;
+}
+
+/** An `@2` file as the `@3` file it converts to, without the conversion warning; any other file as it is. */
+export function asV3(file: Record<string, unknown>): Record<string, unknown> {
+  if (file.schema !== "archdraw/diagram@2") return file;
+  const r = readAnyFile(file);
+  if (!r.ok || !r.file) return file;
+  const warnings = (r.file.warnings ?? []).filter((w) => w !== CONVERTED_V2);
+  return { ...r.file, warnings } as unknown as Record<string, unknown>;
 }
 
 /** A repository folder holding the drawing file; returns the file's path. */
@@ -29,7 +44,7 @@ export function repoWith(file: Record<string, unknown>): string {
     writeFileSync(join(dir, rel), body);
   }
   const path = join(dir, "architecture.archdraw.json");
-  writeFileSync(path, JSON.stringify(file, null, 2));
+  writeFileSync(path, JSON.stringify(asV3(file), null, 2));
   return path;
 }
 
@@ -45,7 +60,10 @@ export async function open(page: Page, file: Record<string, unknown> = shop()): 
   return { id, path };
 }
 
-export const onDisk = (path: string): DiagramDocument => JSON.parse(readFileSync(path, "utf8"));
+/** The stored file. */
+export const storedOnDisk = (path: string): Document3 => JSON.parse(readFileSync(path, "utf8"));
+/** The drawing in the file, as the editor draws it: the overview's views, then the LinkedIn post. */
+export const onDisk = (path: string): DiagramDocument => joinDrawing(storedOnDisk(path));
 
 /** Wait until the file satisfies `ok` and the editor says Saved. */
 export async function savedWhen(page: Page, path: string, ok: (d: DiagramDocument) => boolean): Promise<DiagramDocument> {

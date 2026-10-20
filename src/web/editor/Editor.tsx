@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { applyDrawing, joinDrawing } from "../../core/drawing";
+import type { Document3 } from "../../core/file3";
 import { layoutRects, routeEdges, viewBounds } from "../../core/geometry";
 import { isPostView, LIMITS, overviewMiss, TEXT_SIZE, viewById, type DiagramDocument, type DiagramView, type Form, type Kind } from "../../core/model";
 import { overviewSuggestion, SIMPLIFY_INSTRUCTION } from "../../core/simplify";
@@ -22,7 +24,7 @@ import type { Ctl, Editing, Selection, Tool } from "./types";
 import { NOTHING } from "./types";
 import { chooseEngine, ENGINE_KEY, engineName, modelKey, rememberedModel, useRunner, type RunRequest } from "./runner";
 import { useAutosave } from "./useAutosave";
-import { useDocHistory } from "./useDocHistory";
+import { useDocHistory, type ApplyOptions } from "./useDocHistory";
 import { FIT, fitView, reveal, zoomAt, zoomPercent, type Viewport } from "./viewport";
 
 const TOOLS: { id: Tool; icon: string; label: string; key: string }[] = [
@@ -58,11 +60,27 @@ function useNarrow() {
 }
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 
+/**
+ * An edit of the drawn view list, split back into the stored document's facts and channels
+ * (diagram contract, Edits: facts or channel). A refused edit leaves the document as it was.
+ */
+function splitEdit(d: Document3, fn: (d: DiagramDocument) => DiagramDocument, toast: (m: string) => void): Document3 {
+  const before = joinDrawing(d);
+  const next = fn(before);
+  if (next === before) return d;
+  const r = applyDrawing(d, next);
+  if (!r.ok) { toast(r.error); return d; }
+  return r.doc;
+}
+
 /** `/d/<id>`: the editor (ui contract). */
 export function Editor({ id, view: wantedView }: { id: string; view: string | null }) {
-  const hist = useDocHistory();
-  const doc = hist.doc;
-  const save = useAutosave(doc);
+  // The history holds the stored @3 document; the editor draws and edits the overview and the post as
+  // one view list (`joinDrawing`), and every edit is split back into facts and channels.
+  const hist = useDocHistory<Document3>();
+  const stored = hist.doc;
+  const doc = useMemo(() => (stored ? joinDrawing(stored) : null), [stored]);
+  const save = useAutosave(stored);
   const [missing, setMissing] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadRound, setLoadRound] = useState(0);
@@ -109,7 +127,7 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
   }, []);
 
   /* ---------- load, outside changes ---------- */
-  const adopt = useCallback((d: DiagramDocument, message: string | null, fresh = false) => {
+  const adopt = useCallback((d: Document3, message: string | null, fresh = false) => {
     save.markSaved(d);
     if (fresh) hist.reset(d); else hist.apply(d);
     if (message) toast(message);
@@ -142,10 +160,10 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
   }, []);
   const runner = useRunner({
     doc, vid: vid ?? doc?.views[0].id ?? null, settle,
-    onUpdated: (d: DiagramDocument, c: Changes | null, req: RunRequest) => {
+    onUpdated: (d: Document3, c: Changes | null, req: RunRequest) => {
       // One undo step: the stored result and the edit made after it (a re-arrangement) together.
       save.markSaved(d);
-      hist.apply(req.after ? req.after(d) : d);
+      hist.apply(req.after ? splitEdit(d, req.after, toast) : d);
       toast(c ? `The drawing was updated: ${summarize(c)}` : "The drawing was updated");
       mark(c);
       if (req.after && req.view === vid) pendingFit.current = { view: req.view! };
@@ -266,9 +284,9 @@ export function Editor({ id, view: wantedView }: { id: string; view: string | nu
   // A run pauses edits (api contract); an edit saved meanwhile would fail the run's version check and its
   // result would be thrown away. The run's own result goes through `hist.apply`.
   const histApply = hist.apply;
-  const apply = useCallback<typeof histApply>((next, opts) => {
+  const apply = useCallback((next: DiagramDocument | ((d: DiagramDocument) => DiagramDocument), opts?: ApplyOptions) => {
     if (running.current) { toast(PAUSED); return; }
-    histApply(next, opts);
+    histApply((d) => splitEdit(d, typeof next === "function" ? next : () => next, toast), opts);
   }, [histApply, toast]);
   const undo = () => { if (running.current) toast(PAUSED); else hist.undo(); };
   const redo = () => { if (running.current) toast(PAUSED); else hist.redo(); };

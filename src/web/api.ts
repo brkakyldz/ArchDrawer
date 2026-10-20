@@ -1,5 +1,5 @@
 import type { Changes } from "../core/diff";
-import type { DiagramDocument } from "../core/model";
+import type { Document3 } from "../core/file3";
 import type { RunScope } from "../core/repair";
 
 export interface EngineModel { id: string; label: string }
@@ -45,9 +45,9 @@ export const api = {
   health: () => call<Health>("GET", "/api/health"),
   engines: () => call<{ engines: EngineInfo[] }>("GET", "/api/engines").then((r) => r.engines),
   list: () => call<{ diagrams: DiagramSummary[] }>("GET", "/api/diagrams").then((r) => r.diagrams),
-  get: (id: string) => call<DiagramDocument>("GET", `/api/diagrams/${encodeURIComponent(id)}`),
+  get: (id: string) => call<Document3>("GET", `/api/diagrams/${encodeURIComponent(id)}`),
   /** Save; `base` is the `updatedAt` the edit started from (409 when the file moved on). */
-  save: (doc: DiagramDocument, base: string | null) =>
+  save: (doc: Document3, base: string | null) =>
     call<{ ok: true; updatedAt: string }>("PUT", `/api/diagrams/${encodeURIComponent(doc.id)}`, doc, base ? { "If-Unmodified-Since-Version": base } : {}),
   /** The paths among `files` that are not in the drawing's repository. */
   checkFiles: (id: string, files: string[]) =>
@@ -55,10 +55,10 @@ export const api = {
   import: (doc: unknown) => call<{ id: string }>("POST", "/api/diagrams", doc).then((r) => r.id),
   example: () => call<{ id: string }>("POST", "/api/example").then((r) => r.id),
   forget: (id: string) => call<void>("DELETE", `/api/diagrams/${encodeURIComponent(id)}`),
-  request: (id: string, view: string, text: string) => call<{ id: string }>("POST", `/api/diagrams/${encodeURIComponent(id)}/requests`, { view, text }),
-  startRun: (diagramId: string, view: string, instruction: string, o: RunStart) =>
+  request: (id: string, channel: string, view: string, text: string) => call<{ id: string }>("POST", `/api/diagrams/${encodeURIComponent(id)}/requests`, { channel, view, text }),
+  startRun: (diagramId: string, channel: string, view: string, instruction: string, o: RunStart) =>
     call<{ runId: string }>("POST", "/api/runs", {
-      diagramId, view, instruction, engine: o.engine, model: o.model, scope: o.scope, ...(o.kind ? { kind: o.kind } : {}), ...(o.format ? { format: o.format } : {}),
+      diagramId, ...(o.kind === "post" ? {} : { channel }), view, instruction, engine: o.engine, model: o.model, scope: o.scope, ...(o.kind ? { kind: o.kind } : {}), ...(o.format ? { format: o.format } : {}),
     }).then((r) => r.runId),
   run: (id: string) => call<RunRecord>("GET", `/api/runs/${id}`),
   cancelRun: (id: string) => call<{ ok: true }>("POST", `/api/runs/${id}/cancel`),

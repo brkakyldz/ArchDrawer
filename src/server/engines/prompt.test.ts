@@ -13,7 +13,11 @@ describe("one rule set for the skill and the engine", () => {
     expect(skill).toMatch(/`rules\.md` in this skill's folder/);
     const prompt = instructionPrompt({ instruction: "add a cache", folderName: "shop", view: "overview", base: { title: "Shop" }, scope: { kind: "all" }, parts: [] });
     expect(prompt).toContain(drawingRules());
-    expect(drawingRules()).toBe(readFileSync(join(skillDir, "rules.md"), "utf8"));
+    // Everything but the file section, which describes the file a session writes, not an engine's answer.
+    const file = readFileSync(join(skillDir, "rules.md"), "utf8").replace(/\r\n/g, "\n");
+    expect(file).toContain("\n## The file\n");
+    expect(drawingRules()).toBe(file.slice(0, file.indexOf("\n## The file\n")).trimEnd() + "\n");
+    expect(drawingRules()).not.toContain('"schema"');
   });
 
   it("the rules ask for depth and forbid tuning numbers, repeated labels and reverse connections", () => {
@@ -22,7 +26,7 @@ describe("one rule set for the skill and the engine", () => {
     expect(r).toMatch(/No tuning numbers/);
     expect(r).toMatch(/repeat no label/);
     expect(r).toMatch(/never draw a second reverse\s+connection/);
-    expect(r).toContain("archdraw/diagram@2");
+    expect(r).toContain("archdraw/diagram@3");
   });
 
   it("the prompt keeps the instruction and the drawing as data, inside their own tags", () => {
@@ -66,7 +70,7 @@ describe("the skill", () => {
     const v = skill.indexOf("archdrawer validate"), o = skill.indexOf("archdrawer open docs/");
     expect(v).toBeGreaterThan(0);
     expect(o).toBeGreaterThan(v);
-    expect(skill).toMatch(/Keep the `id` of every component that still exists/);
+    expect(skill).toMatch(/Keep the `id` of every fact and part that still exists/);
     expect(skill).toContain('"requests": []');
   });
 

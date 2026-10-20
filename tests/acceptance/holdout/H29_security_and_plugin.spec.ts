@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { networkInterfaces } from 'node:os';
-import { drawing, workspace, openDrawing, readDrawing, writeJSON, baseURL, token, root, startRun, finishRun } from './helpers';
+import { drawing, workspace, openDrawing, readDocument, readDrawing, writeJSON, baseURL, token, root, startRun, finishRun, project } from './helpers';
 
 test('H29 [SAFE-1, SAFE-3, SAFE-4, START-1] use a local drawing while forged writes are refused, and find the plugin manifests and launcher in place', async ({ page, request }) => {
   const doc = drawing('Safe local shop'); doc.views[0].nodes[0].label = '<b>Web app</b>';
@@ -21,7 +21,7 @@ test('H29 [SAFE-1, SAFE-3, SAFE-4, START-1] use a local drawing while forged wri
   expect(serverInfo.token).toBe(opened.token);
   if (process.platform !== 'win32') expect((await stat(join(process.env.ARCHDRAW_HOLDOUT_DATA!, 'server.json'))).mode & 0o777).toBe(0o600);
   const unregistered = join(dir, 'forged-registration.json'); await writeJSON(unregistered, drawing('Forged new file')); const originalUnregistered = await readFile(unregistered, 'utf8');
-  const alternate = await readDrawing(file); alternate.title = 'Forged replacement';
+  const alternate = await readDocument(file); alternate.title = 'Forged replacement';
   const attempts = [
     { method: 'POST', path: '/api/files', data: { path: unregistered } },
     { method: 'POST', path: '/api/diagrams', data: drawing('Forged import') },
@@ -29,7 +29,7 @@ test('H29 [SAFE-1, SAFE-3, SAFE-4, START-1] use a local drawing while forged wri
     { method: 'DELETE', path: `/api/diagrams/${opened.id}`, data: undefined },
     { method: 'POST', path: '/api/runs', data: { diagramId: opened.id, view: 'overview', instruction: 'add Forged', engine: 'fixture', model: null } },
     { method: 'POST', path: `/api/runs/nonexistent/cancel`, data: undefined },
-    { method: 'POST', path: `/api/diagrams/${opened.id}/requests`, data: { view: 'overview', text: 'Forged request' } },
+    { method: 'POST', path: `/api/diagrams/${opened.id}/requests`, data: { channel: 'overview', view: 'overview', text: 'Forged request' } },
     { method: 'POST', path: '/api/shutdown', data: undefined },
   ];
   for (const auth of [undefined, 'wrong-process-token']) for (const attempt of attempts) {
@@ -62,7 +62,9 @@ test('H29 [SAFE-1, SAFE-3, SAFE-4, START-1] use a local drawing while forged wri
   const marker = join(dir, 'never-created.txt');
   const instruction = `keep the drawing; node -e "require('fs').writeFileSync('${marker.replace(/\\/g, '/')}', 'bad')"`;
   const runId = await startRun(request, opened.id, opened.token, instruction); await finishRun(request, runId, 'succeeded');
-  expect(await stat(marker).then(() => true, () => false)).toBe(false); expect((await readDrawing(file)).views).toEqual((JSON.parse(initial)).views);
+  expect(await stat(marker).then(() => true, () => false)).toBe(false);
+  expect((await readDrawing(file)).views).toEqual(project(JSON.parse(initial)).views); // "keep the drawing" changed nothing drawn.
+  expect((await readDrawing(file)).views[0].nodes[0]).toMatchObject({ label: '<b>Web app</b>', description: doc.views[0].nodes[0].description });
   expect(outbound).toEqual([]); // The observed browser journey must make no external request.
 
   // The plugin is the way in: its manifests and launcher are shipped with the product.

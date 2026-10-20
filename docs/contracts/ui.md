@@ -300,7 +300,7 @@ trimmed (`diagram` when empty).
 
 Suggestion: none at `good`; with held items shown,
 `Hide what each part holds`; else on a LinkedIn or Square format and not on a
-`-linkedin` view, `Use the LinkedIn version`; else with a group or selection,
+post, `Use the LinkedIn version`; else with a group or selection,
 `Share one part on its own`; else `Pick a larger format`.
 
 ### The LinkedIn flow
@@ -332,9 +332,13 @@ opened on a post; otherwise the view itself in the post format.
   for that orientation without writing anything; `arrange-feed` commits it.
 
 **Without an engine**, `linkedin-prepare` adds the view's post as one
-undoable edit (id `<v>-linkedin`; if a view with that id exists it is shown
-instead), titled `LinkedIn` (`<view title> · LinkedIn` for a view other than
-the first), caption copied, `postOf` the source:
+undoable edit, found and named as an engine's post is (diagram contract,
+Posts): if a view's `postOf` is the source, that post is shown instead;
+otherwise the new post's id is `<v>-linkedin` when free, else
+`<v>-2-linkedin`, `-3-linkedin`, … A view whose id merely ends in
+`-linkedin` is not a post and is left alone. The post is titled `LinkedIn`
+(`<view title> · LinkedIn` for a view other than the first), caption copied,
+`postOf` the source:
 
 - groups fold into one part each (members not drawn); texts are left out;
   connections inside one group disappear; two connections between the same

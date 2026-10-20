@@ -1,5 +1,5 @@
 import { layoutRects, measureNode, measureText, postOf, type EdgeRoute, type Rect } from "../geometry";
-import { isLinkedInView, isPostView, KIND_INFO, type DiagramDocument, type DiagramNode, type DiagramView, type Kind, type Theme } from "../model";
+import { isPostView, KIND_INFO, type DiagramDocument, type DiagramNode, type DiagramView, type Kind, type Theme } from "../model";
 import { textWidth, wrapText } from "../text";
 import { FONT_SANS, PALETTES, type Palette } from "../theme";
 import { baseline, drawView, esc } from "./svg";
@@ -203,7 +203,7 @@ export function readabilityOf(sizes: { names: number[]; all: number[] }, f: Form
   const level = sizes.all.length && names.inPlace >= 9 && inPlace >= 6.5 ? "good" : opened >= 8 ? "ok" : "warn";
   const head = { good: "Readable in place", ok: "Readable when opened", warn: "Too small to read" }[level];
   const hint = suggestionFor(level, {
-    items: s.items, format: f.id, linkedInVersion: isLinkedInView(s.whole.id),
+    items: s.items, format: f.id, linkedInVersion: !!s.whole.postOf,
     part: s.whole.nodes.some((n) => n.form === "group") || (s.selected ?? 0) > 0,
   });
   return { level, inPlace, opened, names, text: `${head}. Names ${names.inPlace.toFixed(1)} px and text ${inPlace.toFixed(1)} px in ${f.where}, ${opened.toFixed(1)} px opened.${hint ? ` ${hint}.` : ""}` };

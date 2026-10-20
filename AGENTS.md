@@ -66,8 +66,10 @@ copy a user's CLI credentials.
    validation, geometry and exports.
 5. A part's size is a function of its content (`measureNode`); CSS never
    decides it. Editor and SVG export draw from the same numbers.
-6. Every repair of engine output adds exactly one warning; nothing is fixed
-   silently.
+6. Every repair that changes what the engine said adds exactly one warning.
+   Normalisation that changes nothing it said stays silent: whitespace, path
+   form, a path listed twice, the internal id of a post part
+   (`docs/contracts/diagram.md`).
 7. The fixture engine goes through the same pipeline as the real ones; only
    the agent call is replaced. It is offered only when `ARCHDRAW_ENGINES`
    names it.

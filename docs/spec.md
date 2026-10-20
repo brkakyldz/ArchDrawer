@@ -152,7 +152,7 @@ and its files, and a guided tour for learning a repository (ADR 0001).
   a large full-size preview, a plain-language readability check, download and
   copy. It does not simplify or rearrange; "Simplify" and "Share one part"
   leave the share screen.
-- **SHARE-3** (To change) A readability problem is stated in one plain
+- **SHARE-3** (Today) A readability problem is stated in one plain
   sentence ("the text will not be readable on a phone"), never as raw
   measurements.
 

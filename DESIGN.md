@@ -437,7 +437,7 @@ A 16px-rounded modal (up to 1180 by 720) split into a preview well (surface-2) a
 
 **Built:** Download PNG, Download SVG and Copy image produce the real image; the ask box runs the instruction through a headless Claude Code or Codex when one is available and otherwise saves it in the file's `requests` for the next session.
 
-**Readability meter.** Reads the smallest text actually in the image (a held item at 12.5px, else a component name at 13.5px) at the size it is seen where it lands and at full size: "Readable in place" at 9px or more seen, "Readable when opened" at 8px or more opened, else "Too small to read".
+**Readability meter.** Reads the smallest text actually in the image (a held item at 12.5px, else a component name at 13.5px) at the size it is seen where it lands and at full size, and says the result in one plain sentence for the destination ("The text will be too small to read in the LinkedIn feed, even when the image is opened"), with a level dot; the pixel sizes sit behind a small Details toggle.
 
 ### Figure-style caption (export)
 The exported image is the drawing on canvas colour with no chrome and no product mark. Its caption belongs to it like a figure's: the title (and optional lede) plus a colour key of the kinds present, each a glowing kind dot and label. Caption and key try an empty corner of the drawing first, together as one block, then in two corners, at 36 / 31 / 26% widths; when no corner is free they share a full-width strip under the drawing above a firm hairline, title left, key right, and the drawing refits above it.

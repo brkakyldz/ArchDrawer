@@ -85,10 +85,31 @@ describe("share image", () => {
   it("reports readability honestly: a large drawing in the feed is too small, a small one is readable", () => {
     const big = renderShare(hotel(), hotel().views[0].id, { ...DEFAULT_SHARE, theme: "light", format: "linkedin" });
     expect(big.readability.level).toBe("warn");
-    expect(big.readability.text).toMatch(/^Too small to read\./);
+    expect(big.readability.text).toBe("The text will be too small to read in the LinkedIn feed, even when the image is opened; hiding what each part holds would help.");
+    expect(big.readability.detail).toMatch(/^Names \d+\.\d px and text \d+\.\d px in the LinkedIn feed, \d+\.\d px opened\.$/);
     const small = renderShare(shop(), "overview", { ...DEFAULT_SHARE, theme: "light", format: "slide" });
     expect(small.readability.level).toBe("good");
     expect(small.readability.inPlace).toBeGreaterThanOrEqual(9);
+    expect(small.readability.text).toBe("The text is readable on a projected slide as it is.");
+  });
+
+  it("says readability in one plain sentence per destination, with the numbers apart", () => {
+    const whole = { id: "v", postOf: null } as DiagramView;
+    const say = (px: number, format: keyof typeof FORMATS, o: { items?: boolean; whole?: DiagramView } = {}) =>
+      readabilityOf({ names: [px], all: [px] }, FORMATS[format], { items: false, whole, ...o });
+    // ok: readable once opened (8 px or more in the image), too small where it lands.
+    expect(say(10, "readme").level).toBe("ok");
+    expect(say(10, "readme").text).toBe("The text is too small to read in a GitHub README until the image is opened; a larger format would help.");
+    expect(say(10, "square").text).toBe("The text is too small to read in a feed until the image is opened; the LinkedIn version would help.");
+    expect(say(4, "slide", { items: true }).text).toBe("The text will be too small to read on a projected slide, even when the image is opened; hiding what each part holds would help.");
+    expect(say(20, "slide").text).toBe("The text is readable on a projected slide as it is.");
+    for (const f of FORMAT_IDS) {
+      const r = say(4, f);
+      expect(r.text).not.toMatch(/\d/);
+      expect(r.text.split(/[.;] /)).toHaveLength(r.text.includes(";") ? 2 : 1);
+      expect(r.detail).toContain(`${(4 * FORMATS[f].seen / FORMATS[f].w).toFixed(1)} px ${FORMATS[f].where}, 4.0 px opened.`);
+    }
+    expect(readabilityOf({ names: [], all: [] }, FORMATS.readme, { items: false, whole })).toMatchObject({ level: "warn", text: "The image has no text to read." });
   });
 
   it("embeds fonts when given", () => {
@@ -203,9 +224,9 @@ describe("LinkedIn version", () => {
   it("suggests one change that has not been made yet", () => {
     const s = (o: Partial<Parameters<typeof suggestionFor>[1]>, level: "ok" | "warn" | "good" = "warn") =>
       suggestionFor(level, { items: false, format: "readme", linkedInVersion: false, ...o });
-    expect(s({ items: true })).toBe("Hide what each part holds");
-    expect(s({ format: "feed" })).toBe("Use the LinkedIn version");
-    expect(s({ format: "feed", linkedInVersion: true })).toBe("Pick a larger format");
+    expect(s({ items: true })).toBe("hiding what each part holds would help");
+    expect(s({ format: "feed" })).toBe("the LinkedIn version would help");
+    expect(s({ format: "feed", linkedInVersion: true })).toBe("a larger format would help");
     expect(s({ items: true }, "good")).toBeNull();
   });
 
@@ -271,8 +292,8 @@ describe("LinkedIn version", () => {
   it("suggests the LinkedIn version on an ordinary -linkedin view and not on a post", () => {
     const tiny = { names: [4], all: [4] };
     const plain = { ...grouped(), id: "main-linkedin", postOf: null };
-    expect(readabilityOf(tiny, FORMATS.feed, { items: false, whole: plain }).text).toContain("Use the LinkedIn version");
-    expect(readabilityOf(tiny, FORMATS.feed, { items: false, whole: { ...plain, id: "story", postOf: "main" } }).text).not.toContain("Use the LinkedIn version");
+    expect(readabilityOf(tiny, FORMATS.feed, { items: false, whole: plain }).text).toContain("the LinkedIn version would help");
+    expect(readabilityOf(tiny, FORMATS.feed, { items: false, whole: { ...plain, id: "story", postOf: "main" } }).text).not.toContain("the LinkedIn version");
   });
 
   it("re-arranges a LinkedIn view without changing the forms the user chose", () => {

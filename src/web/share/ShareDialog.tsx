@@ -121,6 +121,7 @@ export function ShareDialog({ doc, view, runner, engine, engineLabel, model, app
   const [theme, setTheme] = useState<Theme>(doc.theme);
   const [show, setShow] = useState<Show>(() => startFor(format, onVersion));
   const [advanced, setAdvanced] = useState(false);
+  const [details, setDetails] = useState(false);
   const [busy, setBusy] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const well = useRef<HTMLDivElement>(null);
@@ -219,9 +220,7 @@ export function ShareDialog({ doc, view, runner, engine, engineLabel, model, app
     void runner.start({ instruction: REWRITE, engine, model: model || null, scope: { kind: "view" }, view: pv.id, origin: "share", kind: "post", format: postFmt });
   };
 
-  /* ---------- readability ---------- */
   const r = img.readability;
-  const level = { good: "Readable in place", ok: "Readable when opened", warn: "Too small to read" }[r.level];
 
   return (
     <div className="share-back" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -338,9 +337,13 @@ export function ShareDialog({ doc, view, runner, engine, engineLabel, model, app
 
         </div>
         <div className="actions" data-testid="share-actions">
+          {/* One plain sentence for the destination; the numbers behind it on request (SHARE-3). */}
           <div className="meter" data-testid="readability" data-level={r.level}>
-            <b><i data-level={r.level} />{level}</b>
-            {r.text.replace(/^[^.]*\.\s*/, "")}
+            <p className="say"><i data-level={r.level} />{r.text}</p>
+            <button className="disclose" data-testid="readability-details-toggle" aria-expanded={details} onClick={() => setDetails(!details)}>
+              <Icon name={details ? "down" : "send"} size={12} /> Details
+            </button>
+            {details && <p className="detail" data-testid="readability-details">{r.detail}</p>}
           </div>
           <LayoutReportLine report={report} nameOf={nameOf} />
           <button className="btn primary dl" data-testid="download-png" disabled={busy} onClick={() => void act("png")}><Icon name="download" size={16} /> Download PNG</button>

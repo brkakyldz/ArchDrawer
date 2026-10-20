@@ -286,7 +286,7 @@ part (SHARE-2).
 | `share-theme-light`, `share-theme-dark` | the image theme (default the drawing's) |
 | `share-advanced-toggle` | `Advanced options` (`aria-expanded`); shows `share-advanced`: `format-linkedin` (`Landscape LinkedIn post`, 1620×1080) and checkboxes `show-title`, `show-lede`, `show-items`, `show-steps`, `show-labels`, `show-legend`, `show-texts`. Starting toggles (reset when the format changes): on a post, or with `format-feed`, title, description, held items, numbered path, labels and texts on, colour key off; Square: title, description, numbered path and texts on, held items, labels and colour key off; otherwise title, held items, numbered path, labels, colour key and texts on, description off |
 | `share-actions` | always visible: `readability`, `layout-report`, `download-png`, `download-svg`, `copy-image` |
-| `readability` | `data-level` `good`/`ok`/`warn`; `Readable in place` / `Readable when opened` / `Too small to read`, then `Names <a> px and text <b> px in <where>, <c> px opened.` and one suggestion (below) |
+| `readability` | `data-level` `good`/`ok`/`warn`; one plain sentence for the chosen destination with at most one suggestion, and no numbers (Readability, below); `readability-details-toggle` (`Details`, `aria-expanded`, closed when the dialog opens) shows `readability-details`: `Names <a> px and text <b> px <where>, <c> px opened.` |
 | `share-clipped` | when component text is shortened with `…`: `Shortened in this image:` and `share-clipped-item` per text (`<label>: <full text>`) |
 | `download-png` | `<slug>-<view>-<format>.png`, at twice the image size |
 | `download-svg` | the same name with `.svg`; fonts embedded |
@@ -297,8 +297,9 @@ part (SHARE-2).
 trimmed (`diagram` when empty).
 
 Suggestion: none at `good`; with held items shown,
-`Hide what each part holds`; else on a LinkedIn or Square format and not on a
-post, `Use the LinkedIn version`; else `Pick a larger format`.
+`hiding what each part holds would help`; else on a LinkedIn or Square format
+and not on a post, `the LinkedIn version would help`; else
+`a larger format would help`.
 
 ### The LinkedIn flow
 
@@ -401,4 +402,18 @@ component and group names alone. With `seen` the width the image is shown at
 (552 px for both LinkedIn formats and square, 880 README, 1280 slide),
 `inPlace = opened × seen / imageWidth`. Level `good` when names' `inPlace ≥ 9`
 and all text's `inPlace ≥ 6.5`; else `ok` when `opened ≥ 8`; else `warn`.
-Numbers show with one decimal.
+
+The `readability` line says the level in one plain sentence (SHARE-3), with
+`<where>` the destination — `in the LinkedIn feed` (both LinkedIn formats),
+`in a GitHub README`, `on a projected slide`, `in a feed` (square) — and the
+suggestion, when there is one, after a semicolon:
+
+| Level | Sentence |
+|---|---|
+| `good` | `The text is readable <where> as it is.` |
+| `ok` | `The text is too small to read <where> until the image is opened[; <suggestion>].` |
+| `warn` | `The text will be too small to read <where>, even when the image is opened[; <suggestion>].` |
+| no text drawn (`warn`) | `The image has no text to read.` |
+
+The sentence holds no numbers; `readability-details` holds them, with one
+decimal.

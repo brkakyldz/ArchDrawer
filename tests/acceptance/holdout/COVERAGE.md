@@ -31,12 +31,12 @@ Ids are the requirement ids of the product spec.
 | H35 | reach a detail view from the views menu, the part that holds it, the breadcrumb and a link; search lights matches and dims the rest while typing, steps with Enter and Shift+Enter (wrap, current = the one selected part, view moves only for an off-screen match), lists and opens a match in another view, ends with Escape, and never edits the drawing file |
 | H36 | pin explanations beside the canvas and keep editing controls reachable in a narrow header |
 | H38 | warn about text the image shortens and count it in the layout report beside the readability check |
-| H39 | share the view as it is, keep keyboard focus inside sharing and call a drawing too wide to read too small, in the report and the meter alike |
+| H39 | share the view as it is, keep keyboard focus inside sharing and call a drawing too wide to read too small in one plain sentence, in the report and the meter alike |
 | H40 | rename from the callout, choose pictured forms and follow tool hints without accidental edits |
 | H41 | open an example from an empty library and recover a registered file that became invalid |
 | H44 | accept lane hints in a session file, place what has no position by its place hint and leave positioned parts where they are |
 | H63 | share a full ordinary view for three destinations with a wrapped caption and explicit clipping warning |
-| H64 | distinguish readable names from readable detail and report the level the measured sizes give |
+| H64 | distinguish readable names from readable detail and report the level the measured sizes give, in the contracted sentence |
 | H84 | open a session file without positions: no part overlaps another and no connection runs through a part it does not join or a group name |
 | H85 | a sub-line the image shortens is drawn, listed and counted; after the user shortens it nothing is cut |
 | H86 | ask for no change on a drawing with fixed positions: nothing moves and the layout report counts what the image draws |
@@ -78,7 +78,7 @@ Ids are the requirement ids of the product spec.
 | PRES-1 – PRES-3 | — | To build. |
 | SHARE-1 | H15, H23, H28, H38, H63, H85, H87 | PNG and SVG at twice the size, copy, light and dark, all four sizes, no product mark, real text, the same image from preview, download, HTTP and the command. |
 | SHARE-2 | H39 | The modal keeps focus, closes back to its button, and carries preview, report and meter, and downloads. None of `preset-simple`, `preset-detailed`, `share-part`, `fix-simplify`, `fix-part` is present for any of the four destinations, in the advanced options, or beside a `warn` meter, and the suggestion names neither Simplify nor sharing one part. Limit: the starting toggles per format are pinned in H28 and H63 only through the `show-*` checkboxes. |
-| SHARE-3 | — | See *Not covered*. |
+| SHARE-3 | H39, H64 | The `readability` line is the contracted one-sentence wording for its level and destination, with no digit: for LinkedIn, README, slide and square on a drawing far too wide to read, with the first suggestion pinned when held items are shown (H39), and for `good`, `ok` and `warn` at README from the level the measured sizes give (H64). The pixel sizes appear only behind `readability-details-toggle`, closed when the dialog opens (H39, H64). Limit: the `ok` sentence is reached only where H64 reaches `ok`; the no-text sentence and the suggestions for LinkedIn and Square formats are not pinned (any contracted suggestion is accepted outside the held-items case). |
 | SAFE-1 | H25, H29 | Text typed into an instruction is data, and model names that look like options or shell words are refused. |
 | SAFE-2 | — | See *Not covered*. |
 | SAFE-3 | H29 | Foreign host and origin, missing or wrong token, loopback only. |
@@ -104,9 +104,6 @@ AI-5, NAV-2, NAV-4, PRES-1 to PRES-3, QUAL-1, QUAL-3.
   observable.
 - SAFE-5: the suite runs on one operating system and one Node; no surface
   names the platform differences.
-- SHARE-3: today's meter prints raw measurements; the one-sentence wording the
-  requirement asks for is in no contract yet. The suite pins only the readability
-  level, so it passes before and after the change.
 - STORY-6: what the model decides to draw and where it places it has no
   contract surface the fixture engine can exercise.
 

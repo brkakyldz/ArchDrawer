@@ -44,7 +44,7 @@ process.stdin.on("end", () => {
   }
   ${kind === "claude"
     ? `console.log(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "", structured_output: ${JSON.stringify(draft)} }));`
-    : `const o = args[args.indexOf("-o") + 1]; fs.writeFileSync(o, ${JSON.stringify(JSON.stringify(draft))});`}
+    : `if (args.includes("-o")) fs.writeFileSync(args[args.indexOf("-o") + 1], ${JSON.stringify(JSON.stringify(draft))});`}
 });`;
   const bin = join(dir, `${kind}.js`);
   writeFileSync(bin, src);

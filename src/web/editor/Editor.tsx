@@ -212,7 +212,8 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     doc, channel: stored ? drawnChannel(stored, chan) : "overview", vid: vid ?? doc?.views[0].id ?? null, settle,
     // Starting another run accepts the preview first; a typed instruction leaves `ai-input` as the run
     // starts, and comes back to it if the run fails.
-    onStart: (req: RunRequest) => { endPreview("accepted"); if (req.typed) setAiText(""); },
+    // Only while the input still holds that instruction: text corrected after a failure stays.
+    onStart: (req: RunRequest) => { endPreview("accepted"); if (req.typed) setAiText((t) => (t.trim() === req.instruction.trim() ? "" : t)); },
     onEnded: (req: RunRequest) => { if (req.typed) setAiText((t) => t || req.instruction); },
     onUpdated: ({ key, stored: d, changes: c, req, route, view: at }: Done): Outcome => {
       // One undo step: the stored result and the edit made after it (a re-arrangement) together.

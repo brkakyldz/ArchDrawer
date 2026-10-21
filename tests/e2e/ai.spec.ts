@@ -179,3 +179,23 @@ test("Draw it and Redraw it send readCode false, Design the post does not", asyn
   // Draw it, Design the post, Redraw it: only Design the post may read the code.
   expect(sent.map((readCode) => readCode === false)).toEqual([true, false, true]);
 });
+
+// Try again sends the request where it was first sent, even after the user went to another channel.
+test("Try again on another channel sends the same request to the channel and view it was sent from", async ({ page }) => {
+  await open(page);
+  await page.getByTestId("ai-button").click();
+  const bodies: Record<string, unknown>[] = [];
+  page.on("request", (r) => { if (r.url().endsWith("/api/runs") && r.method() === "POST") bodies.push(r.postDataJSON()); });
+  await page.getByTestId("ai-input").fill("rename Web app to Shop [fixture:fail]");
+  await page.getByTestId("ai-send").click();
+  await expect(page.getByTestId("ai-error")).toContainText("Fixture failure requested");
+  await page.getByTestId("channel-tab-readme").click();
+  await expect(page.getByTestId("channel-empty")).toBeVisible();
+  await page.getByTestId("ai-retry").click();
+  await expect(page.getByTestId("ai-turn")).toHaveCount(2);
+  await expect(page.getByTestId("ai-turn").last()).toHaveAttribute("data-state", "failed");
+  expect(bodies).toHaveLength(2);
+  expect(bodies[1]).toEqual(bodies[0]);
+  expect(bodies[0]).toMatchObject({ channel: "overview", view: "overview" });
+  await expect(page.getByTestId("ai-turn").last().getByTestId("ai-turn-where")).toHaveText("Overview · This view");
+});

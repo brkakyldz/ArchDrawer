@@ -32,6 +32,8 @@ export interface RunRequest {
   readCode?: boolean;
   /** A revise's image: the view's share PNG in base64 (ui contract, ai-look-again). */
   image?: string;
+  /** Set at the first start, with `channel` and `view`: Try again sends the same request on the same channel and view. */
+  frozen?: { postView: string | null };
 }
 
 export interface RunState {
@@ -158,14 +160,19 @@ export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSav
 
   const patch = useCallback((key: number, p: Partial<Turn>) => setTurns((ts) => ts.map((t) => (t.key === key ? { ...t, ...p } : t))), []);
 
-  const start = useCallback(async (req: RunRequest) => {
+  const start = useCallback(async (asked: RunRequest) => {
     const { doc: d } = live.current;
     // A simplification works on the overview, whichever channel the canvas shows (api contract, Run kinds).
-    const channel: ChannelId = req.kind === "simplify" ? "overview" : req.kind === "post" ? "linkedin" : req.channel ?? live.current.channel;
-    const v = req.view ?? live.current.vid;
-    const instruction = req.instruction.trim();
-    if (!d || !v || (!instruction && req.kind !== "post" && req.kind !== "story" && req.kind !== "revise")) return;
+    const channel: ChannelId = asked.kind === "simplify" ? "overview" : asked.kind === "post" ? "linkedin" : asked.channel ?? live.current.channel;
+    const v = asked.view ?? live.current.vid;
+    const instruction = asked.instruction.trim();
+    if (!d || !v || (!instruction && asked.kind !== "post" && asked.kind !== "story" && asked.kind !== "revise")) return;
     if (busy.current) return;
+    // The channel and view are fixed when a request is first sent, so Try again sends it where it was sent,
+    // whichever channel the editor shows then. The canvas shows the overview behind a LinkedIn channel
+    // with no view: then a post names none.
+    const req: RunRequest = asked.frozen ? asked
+      : { ...asked, channel, view: v, frozen: { postView: asked.kind === "post" && live.current.channel === "linkedin" ? d.views[0]?.id ?? null : null } };
     busy.current = true;
     cancelEarly.current = false;
     live.current.onStart?.(req);
@@ -182,7 +189,7 @@ export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSav
       patch(key, { state: status, error, lines: [] });
       live.current.onEnded?.(req);
     };
-    const fail = (error: string) => end("failed", error);
+    const fail = (error: string, id: string | null = null) => end("failed", error, id);
     if (!(await settle())) { fail("Your last edit is not saved yet; the instruction was not sent"); return; }
     if (cancelEarly.current) { end("cancelled", "Cancelled"); return; }
     if (!req.engine) {
@@ -198,8 +205,7 @@ export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSav
     let id: string;
     try {
       // A post or a story draws a channel's one view: the server designs it from the overview.
-      // The canvas shows the overview behind a LinkedIn channel with no view: then the post names none.
-      const sent = req.kind === "post" ? (live.current.channel === "linkedin" ? d.views[0]?.id ?? null : null) : req.kind === "story" ? null : v;
+      const sent = req.kind === "post" ? req.frozen!.postView : req.kind === "story" ? null : v;
       id = await api.startRun(d.id, channel, sent, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format, readCode: req.readCode, image: req.image });
     } catch (e) {
       fail(e instanceof ApiError ? e.message : "Could not start the instruction");
@@ -229,7 +235,7 @@ export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSav
           setState({ ...IDLE, status: "succeeded", req, id, changes, layoutReport, view: r.view ?? null, route });
           const outcome = live.current.onUpdated({ key, stored, changes, req, route, channel: r.channel ?? channel, view: r.view ?? v });
           patch(key, { state: outcome, lines: [], changes, layoutReport, route });
-        } catch (e) { fail((e as Error).message); }
+        } catch (e) { fail((e as Error).message, id); }
       } else if (r.status === "cancelled") end("cancelled", "Cancelled", id);
       else end("failed", r.error ?? "The instruction failed", id);
     });
@@ -240,7 +246,7 @@ export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSav
       source.current = null;
       // Nothing may change the drawing behind the editor's back once the run cannot be followed.
       void api.cancelRun(id).catch(() => {});
-      fail("Lost the connection to the instruction, so it was stopped");
+      fail("Lost the connection to the instruction, so it was stopped", id);
     };
   }, [settle, patch]);
 

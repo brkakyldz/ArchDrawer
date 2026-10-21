@@ -358,13 +358,15 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
   if (channel !== "presentation") {
     if (intent.steps.length) warnings.push("Ignored the steps: only a presentation has steps");
   } else intent.steps.forEach((s, i) => {
-    const parts: string[] = [];
+    const parts: string[] = [], wrong: string[] = [];
     for (const p of s.parts) {
       const mapped = partOf.get(p);
-      if (!mapped) warnings.push(`Step ${i + 1}: dropped "${p}", which is no part`);
+      if (!mapped) wrong.push(p);
       else if (!parts.includes(mapped)) parts.push(mapped);
     }
+    // A step none of whose parts exist is dropped: that is the one repair, with one warning.
     if (!parts.length) { warnings.push(`Step ${i + 1} names no part and was dropped`); return; }
+    for (const p of wrong) warnings.push(`Step ${i + 1}: dropped "${p}", which is no part`);
     steps.push({ id: `s${steps.length + 1}`, parts, text: s.text, note: s.note });
   });
 

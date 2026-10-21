@@ -80,6 +80,8 @@ interface Props {
   doc: DiagramDocument;
   /** The view the editor shows, the one the dialog packages. */
   view: DiagramView;
+  /** The channel the view belongs to: its own format opens first (README, slide). */
+  channel?: string;
   onClose: () => void;
   toast: (m: string) => void;
 }
@@ -89,11 +91,11 @@ interface Props {
  * line beside the download. It packages the current channel's view as it is; drawing the LinkedIn
  * post happens on its channel. Modal: focus stays inside it.
  */
-export function ShareDialog({ doc, view, onClose, toast }: Props) {
+export function ShareDialog({ doc, view, channel, onClose, toast }: Props) {
   // A view with a post style is the LinkedIn channel's (`joinDrawing`).
   const stored = doc.views.find((v) => v.id === view.id) ?? view;
   const onVersion = !!stored.postOf;
-  const [format, setFormat] = useState<FormatId>(onVersion ? "feed" : "readme");
+  const [format, setFormat] = useState<FormatId>(onVersion ? "feed" : channel === "presentation" ? "slide" : "readme");
   const postFormat = format === "feed" || format === "linkedin";
   // Portrait and wide place the same lanes; the other orientation is only previewed (ui contract).
   const pv = useMemo(() => (onVersion && postFormat ? orient(stored, format === "feed") : stored), [stored, onVersion, postFormat, format]);

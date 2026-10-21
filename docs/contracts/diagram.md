@@ -747,7 +747,7 @@ does.
 | overview | The complete map: every fact shown or held. Merged parts where many facts are alike. Zones as the system's real boundaries. Held mechanisms and limits where they explain a part. No count target, within the 60 parts a view holds | Every fact drawn (below) |
 | linkedin | One image for a phone: about 8–12 parts. A title of at most 9 words and one plain sentence. No held items or limits, no tuning numbers | The post targets below. A non-empty `held`, `limits` or `steps` is dropped, one warning each |
 | readme | A detailed drawing that renders on GitHub. One-line sub-lines. Held mechanisms only on the few parts whose mechanism matters. Limits where they explain a guarantee | — |
-| presentation | One drawing and 3–8 ordered steps that tell it. Each step highlights the parts it is about, says it on screen in one short sentence, and gives the speaker one to three sentences | Each step's parts exist. A wrong one is dropped, and a step left with none, one warning each |
+| presentation | One drawing and 3–8 ordered steps that tell it. Each step highlights the parts it is about, says it on screen in one short sentence, and gives the speaker one to three sentences | Each step's parts exist. A wrong one is dropped with one warning; a step none of whose parts exist is dropped instead, with one warning |
 
 A non-empty `steps` outside the presentation is ignored, with one warning.
 

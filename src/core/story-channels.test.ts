@@ -126,13 +126,13 @@ describe("a story as a channel's view (intentToChannel)", () => {
     expect(r.doc.channels.linkedin.views[0].nodes.every((p) => !p.held && !p.limits)).toBe(true);
   });
 
-  it("gives the presentation its steps: a wrong part is dropped, and a step left with none, one warning each", () => {
+  it("gives the presentation its steps: a wrong part is dropped with one warning; a step with no real part is dropped with one", () => {
     const i = intent({ zones: [], parts: [sp("app", { spine: 0, from: ["app"] }), sp("agent", { spine: 1, from: ["agent"] })], edges: [], steps: [
       { parts: ["app"], text: "It starts", note: "Say why." }, { parts: ["agent", "ghost-part"], text: "Then the agent", note: "" }, { parts: ["ghost-part"], text: "Nothing", note: "" },
     ] });
     const r = intentToChannel(agent(), i, { portrait: false, channel: "presentation" });
     expect(r.doc.channels.presentation.steps).toEqual([{ id: "s1", parts: ["app"], text: "It starts", note: "Say why." }, { id: "s2", parts: ["agent"], text: "Then the agent", note: "" }]);
-    expect(r.warnings).toEqual(['Step 2: dropped "ghost-part", which is no part', 'Step 3: dropped "ghost-part", which is no part', "Step 3 names no part and was dropped"]);
+    expect(r.warnings).toEqual(['Step 2: dropped "ghost-part", which is no part', "Step 3 names no part and was dropped"]);
     expect(r.doc.channels.presentation.views[0].title).toBe("Presentation");
   });
 

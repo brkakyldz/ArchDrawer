@@ -59,7 +59,7 @@ test("the ask box says what changed, and a cancelled run gives the instruction b
   const { path } = await open(page);
   await page.getByTestId("ask-input").fill("add Cache component");
   await page.getByTestId("ask-send").click();
-  await expect(page.getByTestId("toast")).toHaveText("The drawing was updated: 1 part added · 1 connection added");
+  await expect(page.getByTestId("toast")).toHaveText("The drawing was updated: 1 part added · 1 connection added. Changed the facts: every channel that shows them shows it");
   await expect(page.getByTestId("ask-status")).toHaveCount(0);
   const text = JSON.stringify((await savedWhen(page, path, (d) => d.views[0].nodes.some((n) => n.id === "cache"))).views);
 

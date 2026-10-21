@@ -218,10 +218,13 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     onUpdated: ({ key, stored: d, changes: c, req, route, view: at }: Done): Outcome => {
       // One undo step: the stored result and the edit made after it (a re-arrangement) together.
       save.markSaved(d);
-      hist.apply(req.after ? splitEdit(d, channelOfView(d, req.view ?? "") ?? chanRef.current, req.after, toast) : d);
+      // A result that changes nothing shows no preview and leaves no undo step that does nothing
+      // (ui contract, Preview, Accept and Undo): it only replaces what the editor holds with the file.
+      const unchanged = !c || summarize(c) === "Nothing changed";
+      hist.apply(req.after ? splitEdit(d, channelOfView(d, req.view ?? "") ?? chanRef.current, req.after, toast) : d, unchanged && !req.after ? { record: false } : undefined);
       if (req.after && req.view === vid) pendingFit.current = { view: req.view! };
       // A result that changes nothing shows no preview (ui contract, Preview, Accept and Undo).
-      if (c && summarize(c) === "Nothing changed") return "unchanged";
+      if (unchanged) return "unchanged";
       setChanged(new Set(c ? touched(c) : []));
       startPreview({ key, changes: c, route });
       goTo.current = at;
@@ -619,7 +622,12 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const redoEl = <button className="tb hist" data-testid="tool-redo" aria-label="Redo" disabled={!hist.canRedo || runner.state.status === "running" || !!preview} onClick={redo}><Icon name="redo" /><span className="tip">Redo<kbd>Ctrl ⇧ Z</kbd></span></button>;
   const themeEl = (
     <button className="btn icon-btn" data-testid="tool-theme" aria-label="Switch theme" aria-pressed={doc.theme === "dark"}
-      onClick={() => { const theme = doc.theme === "dark" ? "light" : "dark"; localStorage.setItem("archdraw-theme", theme); apply((d) => ({ ...d, theme })); }}>
+      onClick={() => {
+        // A refused edit leaves the remembered theme as it is too.
+        const no = refusal();
+        if (no) { toast(no); return; }
+        const theme = doc.theme === "dark" ? "light" : "dark"; localStorage.setItem("archdraw-theme", theme); apply((d) => ({ ...d, theme }));
+      }}>
       <Icon name={doc.theme === "dark" ? "sun" : "moon"} />
     </button>
   );

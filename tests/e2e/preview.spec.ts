@@ -48,3 +48,13 @@ test("an Undo whose save is refused for a stale token says so in save-status, ne
   // The file still holds the result: nothing claimed the Undo was written.
   expect(storedOnDisk(path).facts.components.some((c) => c.id === "cache")).toBe(true);
 });
+
+test("a run that changes nothing leaves no undo step", async ({ page }) => {
+  await open(page);
+  await page.getByTestId("ai-button").click();
+  await page.getByTestId("ai-input").fill("leave it alone");
+  await page.getByTestId("ai-send").click();
+  await expect(page.getByTestId("ai-summary")).toHaveText("Nothing changed", { timeout: 30_000 });
+  await expect(page.getByTestId("ai-preview")).toHaveCount(0);
+  await expect(page.getByTestId("tool-undo")).toBeDisabled();
+});

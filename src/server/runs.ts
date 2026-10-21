@@ -278,7 +278,7 @@ export class RunManager {
         image: look.image,
         task: {
           kind: "revise" as const, schema: DRAFT_JSON_SCHEMA, tools: "image" as const, data: { channel: "overview" },
-          prompt: reviseOverviewPrompt({ file: look.image.file, report: look.report, instruction: req.instruction, folderName: basename(root), view: req.view, base, facts: req.stored.facts }),
+          prompt: reviseOverviewPrompt({ file: look.image.file, report: look.report, instruction: req.instruction, folderName: basename(root), view: req.view, base, facts: req.stored.facts, attached: req.engine.id === "codex" }),
         },
       } : {}),
     });
@@ -343,7 +343,7 @@ export class RunManager {
     const draft = documentToDraft(req.base);
     const current = req.stored.channels[channel].views.length ? documentToDraft(joinChannel(req.stored, channel)) : null;
     const prompt = look
-      ? reviseStoryPrompt({ file: look.image.file, report: look.report, instruction: req.instruction, channel, folderName: basename(root), view: source, base: current ? { overview: draft, current } : draft, facts: req.stored.facts, format: format as "feed" | "linkedin" })
+      ? reviseStoryPrompt({ file: look.image.file, report: look.report, instruction: req.instruction, channel, attached: req.engine.id === "codex", folderName: basename(root), view: source, base: current ? { overview: draft, current } : draft, facts: req.stored.facts, format: format as "feed" | "linkedin" })
       : channel === "linkedin"
       ? postPrompt({ folderName: basename(root), view: source, base: draft, facts: req.stored.facts, format: format as "feed" | "linkedin", instruction: req.instruction, readCode })
       : storyPrompt({ channel, folderName: basename(root), view: source, base: current ? { overview: draft, current } : draft, facts: req.stored.facts, instruction: req.instruction, readCode });

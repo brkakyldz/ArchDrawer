@@ -7,7 +7,6 @@ import { BUILD } from "./config";
 import { claudeModels } from "./engines/claude";
 import { codexModels } from "./engines/codex";
 import { fixtureAnswer, FixtureEngine, fixtureRoute } from "./engines/fixture";
-import { SUGGESTIONS } from "../web/editor/suggestions";
 import type { Engine, EngineInfo, EngineRunRequest } from "./engines/types";
 import { makeApp, shopRepo } from "./testkit";
 
@@ -148,7 +147,14 @@ describe("health and the example", () => {
 
 describe("the fixture routes the suggestions as the testing contract says (AI-4)", () => {
   it("hears Shorter for LinkedIn, Fewer details and Fewer steps as a story, and Show the loop as the facts", () => {
-    const route = Object.fromEntries(Object.values(SUGGESTIONS).flat().filter((s) => s.kind === "refine").map((s) => [s.id, fixtureRoute(s.instruction)]));
+    // The suggestions' instructions, as the ui contract (Suggestions) words them.
+    const SUGGESTED: Record<string, string> = {
+      loop: "Show the loop: draw the agent's loop and the checks around it as parts with numbered connections",
+      shorter: "Make it shorter for LinkedIn: fewer parts and shorter names",
+      "fewer-details": "Show fewer details: hold mechanisms only where the story is about them",
+      "fewer-steps": "Use fewer steps: merge steps that say the same thing",
+    };
+    const route = Object.fromEntries(Object.entries(SUGGESTED).map(([id, text]) => [id, fixtureRoute(text)]));
     expect(route).toEqual({ loop: "facts", shorter: "story", "fewer-details": "story", "fewer-steps": "story" });
   });
   it("still hears the story marker anywhere, and anything else as the facts", () => {

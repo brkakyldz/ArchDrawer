@@ -11,7 +11,7 @@ import { makeApp, makeFolder, shopFile2, shopRepo, tempDir } from "../testkit";
 import { ClaudeEngine } from "./claude";
 import { CodexEngine } from "./codex";
 import { fixtureNudge } from "./fixture";
-import { decodeImage, MAX_IMAGE_BYTES, PNG_SIGNATURE, reviseRoot, sweepReviseFolders, writeReviseImage } from "./revise";
+import { decodeImage, isRunning, MAX_IMAGE_BYTES, PNG_SIGNATURE, reviseRoot, sweepReviseFolders, writeReviseImage } from "./revise";
 import { EngineError, type Engine, type EngineInfo, type EngineRunRequest } from "./types";
 
 // The second look (LAYOUT-4; api contract, The second look). Held-out H143 and H144 check the request,
@@ -258,26 +258,109 @@ describe("a starting server removes a dead server's images, never a live one's",
     } finally { live.kill(); }
   });
 
+  it("a pid that is no process's is never running", () => {
+    expect(isRunning(0)).toBe(false);
+    expect(isRunning(-1)).toBe(false);
+    expect(isRunning(Number(deadPid()))).toBe(false);
+    expect(isRunning(process.pid)).toBe(true);
+  });
+
   it("the server sweeps once its port is bound", async () => {
     const live = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
     const data = tempDir("archdraw-data-");
     const dirs = leftovers(data, { dead: deadPid(), live: String(live.pid) });
-    const port = await new Promise<number>((res) => { const s = createServer(); s.listen(0, "127.0.0.1", () => { const p = (s.address() as { port: number }).port; s.close(() => res(p)); }); });
-    const server = spawn(process.execPath, ["--import", "tsx", join(APP_ROOT, "src", "server", "main.ts")], {
-      cwd: APP_ROOT, stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, PORT: String(port), ARCHDRAW_DATA_DIR: data, ARCHDRAW_ENGINES: "", ARCHDRAW_NO_OPEN: "1" },
-    });
+    const server = startServer(data, await freePort());
     try {
-      let out = "";
-      server.stdout.on("data", (d) => (out += d));
-      server.stderr.on("data", (d) => (out += d));
-      for (let i = 0; i < 300 && !out.includes("listening on"); i++) await wait(50);
-      expect(out).toContain("listening on");
+      for (let i = 0; i < 300 && !server.out().includes("listening on"); i++) await wait(50);
+      expect(server.out()).toContain("listening on");
       expect(existsSync(dirs.dead)).toBe(false);
       expect(existsSync(dirs.live)).toBe(true);
     } finally {
-      server.kill();
+      server.child.kill();
       live.kill();
     }
+  });
+
+  it("a server that cannot bind its port sweeps nothing", async () => {
+    const data = tempDir("archdraw-data-");
+    const dirs = leftovers(data, { dead: deadPid() });
+    // Another process holds the port: this server stops before it is bound.
+    const holder = createServer();
+    const port = await new Promise<number>((res) => holder.listen(0, "127.0.0.1", () => res((holder.address() as { port: number }).port)));
+    try {
+      const server = startServer(data, port);
+      const code = await new Promise<number | null>((res) => server.child.on("exit", res));
+      expect(code).toBe(1);
+      expect(server.out()).toContain(`Port ${port} is in use`);
+      expect(existsSync(dirs.dead)).toBe(true);
+    } finally {
+      await new Promise((r) => holder.close(r));
+    }
+  });
+});
+
+const freePort = () => new Promise<number>((res) => { const s = createServer(); s.listen(0, "127.0.0.1", () => { const p = (s.address() as { port: number }).port; s.close(() => res(p)); }); });
+
+/** The real server (`src/server/main.ts`) on a data directory and port, with no engine; its output so far. */
+function startServer(data: string, port: number) {
+  const child = spawn(process.execPath, ["--import", "tsx", join(APP_ROOT, "src", "server", "main.ts")], {
+    cwd: APP_ROOT, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, PORT: String(port), ARCHDRAW_DATA_DIR: data, ARCHDRAW_ENGINES: "", ARCHDRAW_NO_OPEN: "1" },
+  });
+  let out = "";
+  child.stdout.on("data", (d) => (out += d));
+  child.stderr.on("data", (d) => (out += d));
+  return { child, out: () => out };
+}
+
+describe("review F168-F170", () => {
+  it("an image on a draw run is refused before the draw's own checks", async () => {
+    const t = makeApp();
+    const r = await t.req("/api/runs", { method: "POST", json: { kind: "draw", scan: "s_nothere", focus: { kind: "whole" }, channel: "readme", engine: "fixture", model: null, image: TINY_PNG } });
+    expect(r.status).toBe(400);
+    expect(await r.json()).toEqual({ error: "An image is for a revise" });
+  });
+
+  it("an image that cannot be written leaves no folder behind", () => {
+    const data = tempDir("archdraw-data-");
+    // Not bytes: the write fails after the folder was made.
+    expect(() => writeReviseImage(data, 7 as unknown as Buffer)).toThrow();
+    expect(readdirSafe(reviseRoot(data))).toEqual([]);
+  });
+
+  it("a revise whose image cannot be saved answers 500 with a sentence and starts nothing", async () => {
+    const t = makeApp();
+    const { file } = shopRepo();
+    const id = ((await (await t.req("/api/files", { method: "POST", json: { path: file } })).json()) as { id: string }).id;
+    // A file where the revise folder should be: the image cannot be written.
+    writeFileSync(reviseRoot(t.dataDir), "in the way");
+    const r = await t.req("/api/runs", { method: "POST", json: { diagramId: id, kind: "revise", view: "overview", image: TINY_PNG, engine: "fixture", model: null } });
+    expect(r.status).toBe(500);
+    expect(((await r.json()) as { error: string }).error).toMatch(/^The drawing's image could not be saved for the engine: /);
+    expect(t.runs.runningOn(id)).toBeNull();
+  });
+
+  it("Claude Code is told to read the image with its Read tool; Codex, which gets it attached, to read no file", async () => {
+    const prompts: Record<string, string> = {};
+    class Recorder implements Engine {
+      readonly label: string;
+      constructor(readonly id: string) { this.label = id; }
+      async detect(): Promise<EngineInfo> { return { id: this.id, label: this.label, available: true, version: "1", detail: "", test: false, models: [] }; }
+      async run(req: EngineRunRequest): Promise<unknown> { prompts[this.id] = req.task?.prompt ?? ""; return fixtureNudge(req.base, req.view); }
+    }
+    const t = makeApp({ engines: [new Recorder("claude"), new Recorder("codex")] });
+    const { file } = shopRepo();
+    const id = ((await (await t.req("/api/files", { method: "POST", json: { path: file } })).json()) as { id: string }).id;
+    for (const engine of ["claude", "codex"]) {
+      const r = await t.req("/api/runs", { method: "POST", json: { diagramId: id, kind: "revise", view: "overview", image: TINY_PNG, engine, model: null } });
+      const { runId } = (await r.json()) as { runId: string };
+      expect((await t.runs.wait(runId))?.status).toBe("succeeded");
+    }
+    expect(prompts.claude).toContain("with your Read tool");
+    // The path on its own line, then the sentence with no stray space before it.
+    expect(prompts.claude).toMatch(/view\.png\r?\nThat image is the only file you may read/);
+    expect(prompts.codex).not.toMatch(/Read tool/);
+    expect(prompts.codex).toContain("The image attached to this message");
+    expect(prompts.codex).toContain("Read, list or search no file.");
   });
 });

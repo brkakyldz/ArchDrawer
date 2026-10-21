@@ -376,7 +376,8 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: hist.checkpoint,
     sel, setSel, callout, setCallout, tool, setTool, editing, setEditing, textSize, picker, setPicker,
     toast, goView, changed, pinned, setPinned, found, channel: stored ? drawnChannel(stored, chan) : "overview",
-    step: chan === "presentation" && curStep ? new Set(doc.steps?.find((s) => s.id === curStep)?.parts ?? []) : null,
+    // A step that is gone (undone, removed) lights nothing and dims nothing.
+    step: ((cur) => (chan === "presentation" && cur ? new Set(cur.parts) : null))(doc.steps?.find((s) => s.id === curStep)),
     changePart: (nid) => { setSel({ ...NOTHING, nodes: [nid] }); openAi("", "selection"); },
   } : null;
 

@@ -99,13 +99,24 @@ archdrawer open docs/architecture.archdraw.json
   the code behind them. Groups and connections show how the system fits
   together; detail views open a part's internals one level down.
 - **A local editor.** Move, rename and add parts and connections. Undo and
-  redo changes, search across all views, and autosave to the drawing file.
+  redo changes, search across all views with matches highlighted on the
+  canvas, and autosave to the drawing file. A breadcrumb shows where you are
+  in the detail views.
+- **Shared facts, one drawing per channel.** The file keeps the facts about
+  your system once, plus a drawing for each channel: the overview and the
+  LinkedIn post today, README and presentation next. Moving a box stays in its
+  channel; correcting what a part does updates the facts and every channel
+  that shows it, and a tab whose drawing may be out of date is marked
+  “needs update”.
+- **A LinkedIn post from the same facts.** The LinkedIn tab draws one image
+  for a phone screen. Your engine tells the story from the facts already read,
+  without reading the code again; with no engine, a simple version is laid
+  out by code. Redraw it, or keep it, when the facts change.
 - **AI changes with a scope.** Type an instruction, choose Claude Code or
   Codex and a model, then target the current view, selected parts or the
-  whole drawing.
+  whole channel.
 - **Images ready to share.** Four presets, light and dark themes, PNG, SVG
-  and clipboard copy. An AI-designed LinkedIn post version helps tell the
-  story of the drawing.
+  and clipboard copy, sized for the channel you are on.
 
 ## Made for where you share it
 
@@ -119,8 +130,8 @@ archdrawer open docs/architecture.archdraw.json
 | Square | 1080 × 1080 |
 
 Choose a light or dark image, export as PNG or SVG, or copy it to your
-clipboard. You can also share selected parts on their own. A readability
-check flags problems before you download.
+clipboard. Share packages the drawing of the channel you are on; a
+readability check flags problems before you download.
 
 The illustrations in this README explain the workflow; they are not editor
 screenshots.
@@ -163,27 +174,23 @@ A quick scan will suggest **3–5 focuses backed by real files**, such as a
 request's path through the system, an agent loop or the whole architecture.
 You will also be able to write your own focus.
 
-| Planned channel | What it is being designed for |
+| Channel | What it is designed for |
 | --- | --- |
-| LinkedIn | One image that reads at a glance on a phone. |
-| README | A drawing that lives in the repository and renders well on GitHub. |
-| Presentation | A step-by-step walkthrough with highlights, on-screen notes and speaker notes; full-screen presenting and PDF/PNG slides. The same walkthrough can guide someone through an unfamiliar repository. |
+| LinkedIn (available) | One image that reads at a glance on a phone. |
+| README (planned) | A drawing that lives in the repository and renders well on GitHub. |
+| Presentation (planned) | A step-by-step walkthrough with highlights, on-screen notes and speaker notes; full-screen presenting and PDF/PNG slides. The same walkthrough can guide someone through an unfamiliar repository. |
 
 The planned pipeline separates a quick scan, a focused code read, facts
 linked to source files, a story for each channel and layout in code.
 Correctness is checked on the shared facts once, so switching channels can
-be fast and every channel agrees on what the system does.
+be fast and every channel agrees on what the system does. The shared facts
+and the per-channel drawings already exist; the scan and the focused read are
+next. An optional “look again” pass will let the AI inspect the rendered
+image and improve readability.
 
-Visual edits, such as moving a box, will stay in their channel. Content
-corrections will update the shared facts and appear in every channel, with
-everything kept in one repository file. An optional “look again” pass will
-let the AI inspect the rendered image and improve readability.
-
-Planned interface work includes Overview, LinkedIn, README and Presentation
-tabs; breadcrumbs for detail views; distinct shapes for selected part types;
-useful item lists per channel; one AI change panel with a preview before
-keeping changes; search highlights on the canvas; a simpler share screen;
-and a new logo.
+Planned interface work includes distinct shapes for selected part types,
+useful item lists per channel, one AI change panel with a preview before
+keeping changes, and a new logo.
 
 The first target repositories are **AI agent projects, backend/API services
 and full-stack web apps**. Hosted accounts, API-key engines, real-time
@@ -196,7 +203,8 @@ the current scope.
 | --- | --- |
 | `archdrawer validate <file>` | Check the drawing and list errors and warnings. |
 | `archdrawer open <file>` | Validate, tidy and open a drawing in the local editor. |
-| `archdrawer svg <file> --format readme --out architecture.svg` | Export an SVG without opening the editor. |
+| `archdrawer svg <file> --format readme --out architecture.svg` | Export an SVG without opening the editor; `--channel linkedin` exports the LinkedIn drawing. |
+| `archdrawer migrate <file>` | Rewrite a drawing in an older format as the current one. |
 | `archdrawer status` / `archdrawer stop` | Check or stop the local editor server. |
 
 The editor uses `http://127.0.0.1:4317` by default.

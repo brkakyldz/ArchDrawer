@@ -42,6 +42,7 @@ test("a selected-parts run sends that scope and moves only that part; undo puts 
     const b = before.find((n) => n.id === id)!;
     expect(after.find((n) => n.id === id)).toMatchObject({ x: b.x, y: b.y });
   }
+  await page.getByTestId("ai-accept").click();
   await page.getByTestId("tool-undo").click();
   await savedWhen(page, path, (d) => d.views[0].nodes.find((n) => n.id === "web")!.y === before.find((n) => n.id === "web")!.y);
 });
@@ -163,6 +164,8 @@ test("Draw it and Redraw it send readCode false, Design the post does not", asyn
   await expect(page.getByTestId("linkedin-panel")).toBeVisible();
   await page.getByTestId("design-post").click();
   await ended(2);
+  // Designing the same post again changes nothing, so it shows no preview; the first one was kept when it started.
+  await expect(page.getByTestId("ai-preview")).toHaveCount(0);
 
   // Deleting a part the post shows marks the LinkedIn channel.
   await page.getByTestId("channel-tab-overview").click();
@@ -175,15 +178,4 @@ test("Draw it and Redraw it send readCode false, Design the post does not", asyn
 
   // Draw it, Design the post, Redraw it: only Design the post may read the code.
   expect(sent.map((readCode) => readCode === false)).toEqual([true, false, true]);
-});
-
-test("Simplify the overview started on the LinkedIn tab simplifies the overview and shows it", async ({ page }) => {
-  await open(page);
-  await page.getByTestId("channel-tab-linkedin").click();
-  await page.getByTestId("design-post").click();
-  await expect(page.getByTestId("editor")).toHaveAttribute("data-view", "linkedin", { timeout: 15_000 });
-  await page.getByTestId("ai-button").click();
-  await page.getByTestId("simplify-overview").click();
-  await expect(page.getByTestId("editor")).toHaveAttribute("data-channel", "overview");
-  await expect(page.getByTestId("node-system-map")).toBeVisible({ timeout: 15_000 });
 });

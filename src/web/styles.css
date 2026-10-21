@@ -261,7 +261,7 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .ai-panel .turn-result.err { color: var(--k-llm); }
 .ai-panel .turn.undone .turn-text, .ai-panel .turn.failed .turn-text, .ai-panel .turn.cancelled .turn-text { color: var(--muted); }
 
-/* A run's changes stay lit for a moment (ui-v2, data-changed). */
+/* A run's changes stay lit while its result is in preview (ui contract, data-changed). */
 .nd.changed .body { stroke: var(--accent); stroke-width: 2.5; }
 @media (prefers-reduced-motion: no-preference) { .nd.changed { animation: changed 1.2s ease-out 2; } }
 @keyframes changed { 50% { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 70%, transparent)); } }
@@ -506,3 +506,7 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .li-panel .hint { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--soft); }
 .li-panel .btn.wide { grid-column: 1 / -1; justify-content: center; }
 .bar > .nav-row { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; min-width: 0; margin-top: -2px; }
+/* An AI result in preview (ui contract, Preview, Accept and Undo): over the stage until the user chooses. */
+.ai-preview { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 14; display: flex; align-items: center; gap: 10px; max-width: min(640px, calc(100% - 200px)); padding: 7px 8px 7px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line-2)); background: var(--surface); box-shadow: var(--shadow), 0 16px 36px -22px rgba(16, 24, 40, .4); font-size: 13px; color: var(--ink); }
+.ai-preview span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .ai-preview { max-width: calc(100% - 24px); bottom: 12px; } }

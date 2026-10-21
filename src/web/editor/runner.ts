@@ -107,6 +107,8 @@ export function rememberedModel(e: EngineInfo | null): string {
 export type Outcome = Extract<TurnState, "preview" | "accepted" | "unchanged">;
 
 export interface Done {
+  /** The run's turn in the conversation. */
+  key: number;
   stored: Document3;
   changes: Changes | null;
   req: RunRequest;
@@ -223,7 +225,7 @@ export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSav
           busy.current = false;
           const changes = r.changes ?? null, layoutReport = r.layoutReport ?? null;
           setState({ ...IDLE, status: "succeeded", req, id, changes, layoutReport, view: r.view ?? null, route });
-          const outcome = live.current.onUpdated({ stored, changes, req, route, channel: r.channel ?? channel, view: r.view ?? v });
+          const outcome = live.current.onUpdated({ key, stored, changes, req, route, channel: r.channel ?? channel, view: r.view ?? v });
           patch(key, { state: outcome, lines: [], changes, layoutReport, route });
         } catch (e) { fail((e as Error).message); }
       } else if (r.status === "cancelled") end("cancelled", "Cancelled", id);

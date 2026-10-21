@@ -5,7 +5,7 @@ import { channelOfView, isChannel, type ChannelId, type Document3, type Step } f
 import { layoutRects, routeEdges, viewBounds } from "../../core/geometry";
 import { LIMITS, TEXT_SIZE, viewById, type DiagramDocument, type DiagramView, type Form, type Kind } from "../../core/model";
 import { PALETTES } from "../../core/theme";
-import { summarize, touched, type Changes } from "../../core/diff";
+import { NO_CHANGES, summarize, touched, type Changes } from "../../core/diff";
 import { api, ApiError, type EngineInfo } from "../api";
 import { navigate } from "../App";
 import { Icon } from "../ui/Icon";
@@ -25,7 +25,7 @@ import { EdgeCallout, InlineInput, Picker, TextEditor, TextToolbar, Warnings } f
 import { ShareDialog } from "../share/ShareDialog";
 import type { Ctl, Editing, Selection, Tool } from "./types";
 import { NOTHING } from "./types";
-import { chooseEngine, ENGINE_KEY, engineName, modelKey, rememberedModel, ROUTE_SENTENCE, useRunner, type Done, type Outcome, type RunRequest } from "./runner";
+import { chooseEngine, ENGINE_KEY, engineName, modelKey, rememberedModel, ROUTE_SENTENCE, useRunner, type Done, type Outcome, type Route, type RunRequest, type TurnState } from "./runner";
 import { useAutosave } from "./useAutosave";
 import { useDocHistory, type ApplyOptions } from "./useDocHistory";
 import { FIT, fitView, reveal, zoomAt, zoomPercent, type Viewport } from "./viewport";
@@ -48,6 +48,9 @@ declare const __ARCHDRAW_BUILD__: string;
 /** The callout is pinned to the side for every component until unpinned (ui contract, callout-pin). */
 const PIN_KEY = "archdraw-callout-pinned";
 const PAUSED = "Edits are paused while the instruction runs";
+const IN_PREVIEW = "Accept or undo the AI's change first";
+/** A run's result shown until the user accepts or undoes it: its turn, what it changed and which way it went. */
+interface Preview { key: number; changes: Changes | null; route: Route | null }
 
 /** Below 900 px the header keeps only the tools; the rest moves into `header-menu` (ui contract). */
 function useNarrow() {
@@ -145,7 +148,6 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const narrow = useNarrow();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuEl = useRef<HTMLDivElement>(null);
-  const changedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const docRef = useRef(doc);
   docRef.current = doc;
@@ -159,12 +161,31 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     toastTimer.current = setTimeout(() => setToastMsg(null), 2600);
   }, []);
 
+  /* ---------- a run's result in preview (ui contract, Preview, Accept and Undo) ---------- */
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const previewRef = useRef<Preview | null>(null);
+  const settleTurn = useRef<(key: number, s: TurnState) => void>(() => {});
+  /** The view a run's result is in: the editor goes there once, when its preview starts. */
+  const goTo = useRef<string | null>(null);
+  const startPreview = (p: Preview) => { previewRef.current = p; setPreview(p); };
+  /** The user chose, or the preview ended by itself (a new run, an outside change): accepted means kept. */
+  const endPreview = useCallback((how: "accepted" | "undone") => {
+    const p = previewRef.current;
+    if (!p) return;
+    previewRef.current = null;
+    setPreview(null);
+    setChanged(new Set());
+    settleTurn.current(p.key, how);
+  }, []);
+
   /* ---------- load, outside changes ---------- */
   const adopt = useCallback((d: Document3, message: string | null, fresh = false) => {
+    // The file changed outside the editor: the preview ends as accepted (the file holds the result).
+    if (!fresh) endPreview("accepted");
     save.markSaved(d);
     if (fresh) hist.reset(d); else hist.apply(d);
     if (message) toast(message);
-  }, [hist, save, toast]);
+  }, [hist, save, toast, endPreview]);
 
   /** Resolves true once every edit is in the file (before an instruction runs on it). */
   const settle = useCallback(async () => {
@@ -186,28 +207,27 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     try { localStorage.setItem(modelKey(engine.id), m); } catch { /* private mode */ }
     setModels((x) => ({ ...x, [engine.id]: m }));
   };
-  const mark = useCallback((c: Changes | null) => {
-    if (changedTimer.current) clearTimeout(changedTimer.current);
-    setChanged(new Set(c ? touched(c) : []));
-    changedTimer.current = setTimeout(() => setChanged(new Set()), 3000);
-  }, []);
   const runner = useRunner({
     doc, channel: stored ? drawnChannel(stored, chan) : "overview", vid: vid ?? doc?.views[0].id ?? null, settle,
-    // A typed instruction leaves `ai-input` as the run starts, and comes back to it if the run fails.
-    onStart: (req: RunRequest) => { if (req.typed) setAiText(""); },
+    // Starting another run accepts the preview first; a typed instruction leaves `ai-input` as the run
+    // starts, and comes back to it if the run fails.
+    onStart: (req: RunRequest) => { endPreview("accepted"); if (req.typed) setAiText(""); },
     onEnded: (req: RunRequest) => { if (req.typed) setAiText((t) => t || req.instruction); },
-    onUpdated: ({ stored: d, changes: c, req, route }: Done): Outcome => {
+    onUpdated: ({ key, stored: d, changes: c, req, route, view: at }: Done): Outcome => {
       // One undo step: the stored result and the edit made after it (a re-arrangement) together.
       save.markSaved(d);
       hist.apply(req.after ? splitEdit(d, channelOfView(d, req.view ?? "") ?? chanRef.current, req.after, toast) : d);
-      const said = c ? `The drawing was updated: ${summarize(c)}` : "The drawing was updated";
-      toast(route ? `${said}. ${ROUTE_SENTENCE[route]}` : said);
-      mark(c);
       if (req.after && req.view === vid) pendingFit.current = { view: req.view! };
-      return c && !touched(c).length && !c.removed.length && !c.edgesAdded.length && !c.edgesRemoved.length && !c.edgesChanged.length ? "unchanged" : "accepted";
+      // A result that changes nothing shows no preview (ui contract, Preview, Accept and Undo).
+      if (c && summarize(c) === "Nothing changed") return "unchanged";
+      setChanged(new Set(c ? touched(c) : []));
+      startPreview({ key, changes: c, route });
+      goTo.current = at;
+      return "preview";
     },
     onSaved: () => { if (doc) api.get(doc.id).then((d) => adopt(d, null), () => {}); },
   });
+  settleTurn.current = runner.settleTurn;
   // A run's own write is announced before the run ends; the run hands its result over itself.
   const running = useRef(false);
   running.current = runner.state.status === "running";
@@ -333,14 +353,25 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     if (!viewById(doc, vid)) goView(doc.views[0].id);
   }, [doc, stored, vid, chan, goView]);
 
+  // When a preview starts, the editor goes once to the run's channel and view (ui contract).
+  useEffect(() => {
+    const v = goTo.current;
+    if (!v || !stored || !channelOfView(stored, v)) return;
+    goTo.current = null;
+    if (v !== vid) goView(v);
+  }, [stored, vid, goView]);
+
   // A run pauses edits (api contract); an edit saved meanwhile would fail the run's version check and its
   // result would be thrown away. The run's own result goes through `hist.apply`.
   const histApply = hist.apply;
+  /** Why an edit is refused now: a run is going, or its result is in preview; null when edits are free. */
+  const refusal = () => (running.current ? PAUSED : previewRef.current ? IN_PREVIEW : null);
   const apply = useCallback((next: DiagramDocument | ((d: DiagramDocument) => DiagramDocument), opts?: ApplyOptions) => {
-    if (running.current) { toast(PAUSED); return; }
+    const no = refusal();
+    if (no) { toast(no); return; }
     const c = chanRef.current;
     histApply((d) => splitEdit(d, c, typeof next === "function" ? next : () => next, toast), opts);
-  }, [histApply, toast]);
+  }, [histApply, toast]); // eslint-disable-line react-hooks/exhaustive-deps
   /** A tab: the channel's first view, or its own stage when it has no drawing (not an edit). */
   const goChannel = useCallback((c: ChannelId) => {
     const d = storedRef.current;
@@ -353,12 +384,14 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   }, [goView]);
   /** "Keep as it is": the channel's marks go, as one undoable edit (diagram contract, outdated). */
   const keep = () => {
-    if (running.current) { toast(PAUSED); return; }
+    const no = refusal();
+    if (no) { toast(no); return; }
     histApply((d) => clearOutdated(d, chan));
   };
   /** The simple LinkedIn version, drawn by code from the overview (ui contract, The LinkedIn flow): one undoable edit. */
   const prepare = () => {
-    if (running.current) { toast(PAUSED); return; }
+    const no = refusal();
+    if (no) { toast(no); return; }
     const c = chanRef.current;
     histApply((d) => {
       const r = c === "readme" || c === "presentation" ? prepareChannel(d, c) : prepareLinkedIn(d);
@@ -374,13 +407,15 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     const label = stored?.channels[c].views.length ? "Redraw it" : "Draw it";
     void runner.start({ instruction: "", label, engine: engine.id, model: model || null, scope: { kind: "view" }, origin: "story", kind: "story", channel: c, readCode: false });
   };
-  const undo = () => { if (running.current) toast(PAUSED); else hist.undo(); };
-  const redo = () => { if (running.current) toast(PAUSED); else hist.redo(); };
+  const undo = () => { const no = refusal(); if (no) toast(no); else hist.undo(); };
+  const redo = () => { const no = refusal(); if (no) toast(no); else hist.redo(); };
+  /** `ai-undo`: back to the drawing before the run, the same step as the ordinary undo; the autosave writes it. */
+  const undoRun = () => { if (!previewRef.current) return; hist.undo(); endPreview("undone"); };
 
   const openAi = (scope: ScopeChoice = "view") => setAi({ scope, at: Date.now() });
   // On the overview only, one line when it misses its targets; nothing changes by itself.
   const ctl: Ctl | null = doc && view ? {
-    doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: hist.checkpoint,
+    doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: () => { if (!refusal()) hist.checkpoint(); },
     sel, setSel, callout, setCallout, tool, setTool, editing, setEditing, textSize, picker, setPicker,
     toast, goView, changed, pinned, setPinned, found, channel: stored ? drawnChannel(stored, chan) : "overview",
     // A step that is gone (undone, removed) lights nothing and dims nothing.
@@ -550,7 +585,8 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const stepsOn = stored.channels[chan].showSteps;
   const toggleSteps = () => {
     if (chan === "overview") { apply((d) => ({ ...d, showSteps: !d.showSteps })); return; }
-    if (running.current) { toast(PAUSED); return; }
+    const no = refusal();
+    if (no) { toast(no); return; }
     histApply((d) => ({ ...d, channels: { ...d.channels, [chan]: { ...d.channels[chan], showSteps: !d.channels[chan].showSteps } } }));
   };
   const tabsEl = <ChannelTabs stored={stored} current={chan} onPick={goChannel} />;
@@ -569,8 +605,8 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       })}
     </nav>
   );
-  const undoEl = <button className="tb hist" data-testid="tool-undo" aria-label="Undo" disabled={!hist.canUndo || runner.state.status === "running"} onClick={undo}><Icon name="undo" /><span className="tip">Undo<kbd>Ctrl Z</kbd></span></button>;
-  const redoEl = <button className="tb hist" data-testid="tool-redo" aria-label="Redo" disabled={!hist.canRedo || runner.state.status === "running"} onClick={redo}><Icon name="redo" /><span className="tip">Redo<kbd>Ctrl ⇧ Z</kbd></span></button>;
+  const undoEl = <button className="tb hist" data-testid="tool-undo" aria-label="Undo" disabled={!hist.canUndo || runner.state.status === "running" || !!preview} onClick={undo}><Icon name="undo" /><span className="tip">Undo<kbd>Ctrl Z</kbd></span></button>;
+  const redoEl = <button className="tb hist" data-testid="tool-redo" aria-label="Redo" disabled={!hist.canRedo || runner.state.status === "running" || !!preview} onClick={redo}><Icon name="redo" /><span className="tip">Redo<kbd>Ctrl ⇧ Z</kbd></span></button>;
   const themeEl = (
     <button className="btn icon-btn" data-testid="tool-theme" aria-label="Switch theme" aria-pressed={doc.theme === "dark"}
       onClick={() => { const theme = doc.theme === "dark" ? "light" : "dark"; localStorage.setItem("archdraw-theme", theme); apply((d) => ({ ...d, theme })); }}>
@@ -679,6 +715,13 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
           <button className="tb" data-testid="zoom-fit" aria-label="Fit to screen" onClick={() => fitTo()}><Icon name="fit" /></button>
         </div>
         </>}
+        {preview && (
+          <div className="ai-preview" data-testid="ai-preview" role="status" onPointerDown={(e) => e.stopPropagation()}>
+            <span>The drawing was updated: {summarize(preview.changes ?? NO_CHANGES)}{preview.route ? `. ${ROUTE_SENTENCE[preview.route]}` : ""}</span>
+            <button className="btn small primary" data-testid="ai-accept" onClick={() => endPreview("accepted")}>Accept</button>
+            <button className="btn small" data-testid="ai-undo" onClick={undoRun}>Undo</button>
+          </div>
+        )}
       </main>
       {side && (
         <div className="side-col">

@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { drawing, workspace, isolatedDrawing, readDrawing, cli } from './helpers';
 
-test('H41 [START-5, FILE-1, LOOK-1] open an example from an empty library and recover a registered file that became invalid', async ({ page, request }) => {
+test('H41 [START-4, START-5, FILE-1, LOOK-1] open an example from an empty library and recover a registered file that became invalid', async ({ page, request }) => {
   const { file } = await workspace('recovery', drawing('Recovery shop')), server = await isolatedDrawing(page, request, file);
   try {
     const healthResponse = await request.get(`${server.base}/api/health`); expect(healthResponse.status()).toBe(200);
@@ -20,7 +20,10 @@ test('H41 [START-5, FILE-1, LOOK-1] open an example from an empty library and re
     const confirmation = page.waitForEvent('dialog'); const forgetting = page.getByTestId('library-forget').click(); const prompt = await confirmation;
     expect(prompt.message()).toMatch(/file.*stay|stays.*file|remain.*(?:disk|where)/i); await prompt.accept(); await forgetting; await expect(row).toHaveCount(0);
     expect(await readFile(file, 'utf8')).toBe(goodBytes);
-    await expect(page.getByTestId('start-help')).toBeVisible(); await expect(page.getByTestId('library-example')).toHaveText('Open the example drawing');
+    // From 0.3 the empty library shows the folder start instead of the old help, and the example stays beside it.
+    await expect(page.getByTestId('start')).toBeVisible(); await expect(page.getByTestId('start-folder')).toBeVisible(); await expect(page.getByTestId('start-scan')).toBeVisible();
+    await expect(page.getByTestId('start-help')).toHaveCount(0); await expect(page.getByTestId('start-no-engine')).toHaveCount(0); // an engine is there: the test engine
+    await expect(page.getByTestId('library-example')).toHaveText('Open the example drawing');
     for (const headers of [{}, { 'X-Archdraw-Token': 'wrong-process-token' }]) {
       expect((await request.post(`${server.base}/api/example`, { headers })).status()).toBe(403);
       expect((await (await request.get(`${server.base}/api/diagrams`)).json()).diagrams).toHaveLength(0);

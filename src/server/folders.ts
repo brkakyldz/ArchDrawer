@@ -95,7 +95,8 @@ export async function listFolder(f: Folder, inGit: boolean): Promise<{ listing: 
     if (out !== null) all = out.split("\0").filter(Boolean).map((p) => p.replace(/\\/g, "/")).filter((p) => isPlainFile(join(f.root, p)) && inside(dirname(p)));
   }
   if (!all) all = walk(f.root, f.folder);
-  all = [...new Set(all)].sort();
+  // A drawing file describes the project; it is no input to read (api contract, Inputs).
+  all = [...new Set(all)].filter((p) => !p.toLowerCase().endsWith(".archdraw.json")).sort();
   return { listing: all.slice(0, SCAN_BUDGET.listing), more: Math.max(0, all.length - SCAN_BUDGET.listing) };
 }
 

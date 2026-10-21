@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { joinChannel, normalizeFile3 } from "./channels";
+import { applyChannel, joinChannel, normalizeFile3 } from "./channels";
 import { validateDocument3, validateFile3, type Document3, type File3 } from "./file3";
 import { intentToChannel, StoryError, storyRows, type StoryIntent, type StoryPart } from "./intent";
 import { answerToDocument, documentToDraft } from "./repair";
@@ -166,5 +166,25 @@ describe("a refine keeps the rows a part may draw", () => {
     expect(kept.views[0].nodes.find((n) => n.id === "agent")).toMatchObject({ items: ["Propose a tool", "Check the call", "Stops after 12 turns"], heldIds: ["propose", "check"], limitIds: ["turns"] });
     draft.views[0].nodes.find((n) => n.id === "store")!.held = ["check"];
     expect(answerToDocument(draft, { base, now: NOW, engine: null, rows: storyRows(d) }).warnings).toEqual(['Component "store": dropped "check" from what it holds: no mechanism within its facts']);
+  });
+
+  it("an answer that echoes the agent untouched keeps every mechanism; one that stops holding one deletes it with a warning", () => {
+    const d = agent();
+    const base = joinChannel(d, "overview");
+    for (const n of base.views[0].nodes) n.from = [...(n.facts ?? [])];
+    const run = (change: (a: Record<string, unknown>) => void) => {
+      const draft = documentToDraft(base) as { views: { nodes: Record<string, unknown>[] }[] };
+      change(draft.views[0].nodes.find((n) => n.id === "agent")!);
+      const answered = answerToDocument(draft, { base, now: NOW, engine: null, rows: storyRows(d), facts: d.facts.components.map((c) => c.id) });
+      const r = applyChannel(d, "overview", { views: answered.views, warnings: answered.warnings }, { answer: true });
+      if (!r.ok) throw new Error(r.error);
+      expect(validateDocument3(r.doc).ok).toBe(true);
+      return r.doc;
+    };
+    const same = run(() => {});
+    expect([same.facts.components.map((c) => c.id), same.warnings]).toEqual([["app", "agent", "propose", "check", "store"], []]);
+    const fewer = run((a) => { a.held = ["propose"]; });
+    expect(fewer.facts.components.map((c) => c.id)).toEqual(["app", "agent", "propose", "store"]);
+    expect(fewer.warnings).toEqual(['View "overview": "agent" no longer holds "check"; the mechanism and its limits were deleted']);
   });
 });

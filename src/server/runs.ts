@@ -218,7 +218,7 @@ export class RunManager {
     // channel, and the other channels are marked (diagram contract, Writing the answer back). Simplify
     // changes the overview's appearance only.
     const channel = req.channel ?? "overview";
-    const split = applyChannel(req.stored, channel, { views: doc.views, title: doc.title, engine: doc.engine, warnings: doc.warnings }, { keepFacts: simplify });
+    const split = applyChannel(req.stored, channel, { views: doc.views, title: doc.title, engine: doc.engine, warnings: doc.warnings }, { keepFacts: simplify, answer: true });
     if (!split.ok) throw new EngineError(split.error);
     if (simplify) {
       // After repair and before the save: a fact no part shows fails the run, nothing is saved.

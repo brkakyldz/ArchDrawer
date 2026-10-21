@@ -1,12 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FORMATS, renderShare, startSwitches, type FormatId, type ShareOptions, type ShareSwitches } from "../../core/export/share";
 import { slugify, type DiagramDocument, type DiagramView, type Theme } from "../../core/model";
-import { hasLanes, placePost } from "../editor/LinkedIn";
 import { Icon } from "../ui/Icon";
 import { LayoutReportLine } from "../ui/LayoutReport";
 import { reportOf } from "../../core/report";
-import sansUrl from "../fonts/Geist-Variable.woff2?url";
-import monoUrl from "../fonts/GeistMono-Variable.woff2?url";
+import { fonts, orient, toPng } from "./image";
 
 /** `Where will you share it?` (ui contract, Share); the landscape LinkedIn post sits under Advanced. */
 const WHERE: { id: FormatId; label: string }[] = [
@@ -27,42 +25,6 @@ const SHOW: { key: keyof Show; label: string }[] = [
 ];
 /** The toggles a choice starts with: Detailed for README, Slide and the landscape post, Simple for Square. */
 const startFor = startSwitches;
-
-const place = placePost;
-const samePlaces = (a: DiagramView, b: DiagramView) => a.nodes.every((n, i) => n.x === b.nodes[i]?.x && n.y === b.nodes[i]?.y);
-/** The post as the chosen orientation shows it: re-placed only when it sits as the other one does (edits by hand stay). */
-function orient(v: DiagramView, portrait: boolean): DiagramView {
-  if (!hasLanes(v)) return v;
-  const want = place(v, portrait);
-  return !samePlaces(v, want) && samePlaces(v, place(v, !portrait)) ? want : v;
-}
-
-let fontCache: Promise<{ sans: string; mono: string }> | null = null;
-const b64 = async (url: string) => {
-  const buf = new Uint8Array(await (await fetch(url)).arrayBuffer());
-  let s = "";
-  for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-  return btoa(s);
-};
-/** Geist and Geist Mono as base64, embedded only in downloads so they render the same anywhere. */
-const fonts = () => (fontCache ??= Promise.all([b64(sansUrl), b64(monoUrl)]).then(([sans, mono]) => ({ sans, mono })));
-
-async function toPng(svg: string, w: number, h: number): Promise<Blob> {
-  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
-  try {
-    const img = new Image();
-    img.decoding = "async";
-    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error("The image could not be drawn")); img.src = url; });
-    const c = document.createElement("canvas");
-    c.width = w * 2; c.height = h * 2;
-    const g = c.getContext("2d")!;
-    g.scale(2, 2);
-    g.drawImage(img, 0, 0, w, h);
-    return await new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("PNG encoding failed"))), "image/png"));
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
 
 function download(blob: Blob, name: string) {
   const a = document.createElement("a");

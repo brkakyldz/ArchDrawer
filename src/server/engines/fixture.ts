@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import { EngineError, type Engine, type EngineInfo, type EngineRunRequest } from "./types";
 import type { DiagramView } from "../../core/model";
+import { PNG_SIGNATURE } from "./revise";
 
 export const FIXTURE_STEPS = ["Reading the drawing", "Reading the code", "Updating the drawing"] as const;
 export const FIXTURE_MODELS = [{ id: "fixture-fast", label: "Fast (test)" }, { id: "fixture-careful", label: "Careful (test)" }];
@@ -67,10 +69,41 @@ export function fixtureAnswer(base: unknown, viewId: string, instruction: string
   return strip(draft);
 }
 
+/** Whether a file exists and starts with the PNG signature. */
+function isPng(file: string | undefined): boolean {
+  if (!file) return false;
+  try { return readFileSync(file).subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE); } catch { return false; }
+}
+
+/**
+ * The second look on the overview (testing contract, Revise): the view as it is, but its first top-level
+ * component that is not a group moves 40 px right of where it is. A view with none changes nothing.
+ */
+export function fixtureNudge(base: unknown, viewId: string): Draft {
+  const draft = structuredClone(base) as Draft;
+  for (const v of draft.views) {
+    v.relayout = [];
+    for (const n of v.nodes) n.at = null;
+  }
+  const view = draft.views.find((v) => v.id === viewId) ?? draft.views[0];
+  const first = view?.nodes.find((n) => !n.parent && n.form !== "group");
+  if (first?.box) first.at = { x: first.box.x + 40, y: first.box.y };
+  return strip(draft);
+}
+
 /** The answer carries no `box` (diagram contract, The instruction engine's answer). */
 function strip(d: Draft): Draft {
   for (const v of d.views) for (const n of v.nodes) delete n.box;
   return d;
+}
+
+/** The suggestions whose instruction the fixture hears as a story (testing contract, Routing; ui contract, Suggestions). */
+export const STORY_SUGGESTIONS = ["Make it shorter for LinkedIn", "Show fewer details", "Use fewer steps"] as const;
+
+/** The fixture's answer to a refine's routing question: the story marker or a story suggestion, else the facts. */
+export function fixtureRoute(instruction: string): "facts" | "story" {
+  const text = instruction.trim();
+  return instruction.includes("[fixture:story]") || STORY_SUGGESTIONS.some((s) => text.startsWith(s)) ? "story" : "facts";
 }
 
 const SCAN_STEPS = ["Reading the inputs", "Writing the card"];
@@ -186,9 +219,11 @@ export class FixtureEngine implements Engine {
   async run(req: EngineRunRequest): Promise<unknown> {
     // A draw's markers come from the folder's name and the typed focus (testing contract, Draw).
     // The routing question (testing contract, Routing): answered at once, from the marker alone.
-    if (req.task?.kind === "route") return { route: req.instruction.includes("[fixture:story]") ? "story" : "facts" };
+    if (req.task?.kind === "route") return { route: fixtureRoute(req.instruction) };
     const stage = req.task?.data?.draw;
     if (stage) return this.drawCall(req, stage, (m) => req.instruction.includes(m) || req.folderName.includes(m));
+    // A second look first checks that it has an image to look at (testing contract, Revise).
+    if (req.task?.kind === "revise" && !isPng(req.image?.file)) throw new EngineError("Fixture: no image to look at");
     if (req.instruction.includes("[fixture:slow]")) {
       for (let i = 1; i <= 30; i++) {
         await sleep(2000, req.signal);
@@ -204,6 +239,12 @@ export class FixtureEngine implements Engine {
     await sleep(this.stepMs, req.signal);
     if (req.instruction.includes("[fixture:fail]")) throw new EngineError("Fixture failure requested");
     if (req.task?.kind === "scan") return fixtureScan(req.folderName, req.task.data ?? {});
+    if (req.task?.kind === "revise") {
+      const channel = req.task.data?.channel;
+      if (channel === "linkedin") return fixturePost(req.base, req.view, req.instruction);
+      if ((channel === "readme" || channel === "presentation") && req.task.data?.overview) return fixtureStory(req.task.data.overview, channel === "presentation");
+      return fixtureNudge(req.base, req.view);
+    }
     if (req.task?.kind === "post") return fixturePost(req.base, req.view, req.instruction);
     if (req.task?.kind === "story" && req.task.data?.overview) return fixtureStory(req.task.data.overview, req.task.data.channel === "presentation");
     if (req.simplify) return fixtureSimplify(req.base, req.instruction);

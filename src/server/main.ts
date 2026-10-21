@@ -12,6 +12,7 @@ import { Store } from "./store";
 import { ClaudeEngine } from "./engines/claude";
 import { CodexEngine } from "./engines/codex";
 import { FixtureEngine } from "./engines/fixture";
+import { sweepReviseFolders } from "./engines/revise";
 import type { Engine } from "./engines/types";
 
 const config = loadConfig();
@@ -60,6 +61,8 @@ server.listen(config.port, "127.0.0.1", () => {
   const url = `http://127.0.0.1:${config.port}`;
   writeAtomic(infoFile, JSON.stringify({ port: config.port, pid: process.pid, token, version: config.version, build: config.build }, null, 2) + "\n", 0o600);
   store.watch();
+  // Once the port is ours: the images a killed server's second looks left behind go; a live server's stay.
+  sweepReviseFolders(config.dataDir);
   console.log(`archdrawer listening on ${url}`);
   console.log(`Data: ${config.dataDir} · engines: ${[...engines.keys()].join(", ") || "none"}`);
 });

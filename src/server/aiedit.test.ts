@@ -6,7 +6,8 @@ import type { DiagramDocument } from "../core/model";
 import { BUILD } from "./config";
 import { claudeModels } from "./engines/claude";
 import { codexModels } from "./engines/codex";
-import { fixtureAnswer, FixtureEngine } from "./engines/fixture";
+import { fixtureAnswer, FixtureEngine, fixtureRoute } from "./engines/fixture";
+import { SUGGESTIONS } from "../web/editor/suggestions";
 import type { Engine, EngineInfo, EngineRunRequest } from "./engines/types";
 import { makeApp, shopRepo } from "./testkit";
 
@@ -142,5 +143,17 @@ describe("health and the example", () => {
     const b = (await (await req("/api/example", { method: "POST" })).json()) as { id: string };
     expect(b.id).not.toBe(id);
     expect((await req("/api/example", { method: "POST", token: null })).status).toBe(403);
+  });
+});
+
+describe("the fixture routes the suggestions as the testing contract says (AI-4)", () => {
+  it("hears Shorter for LinkedIn, Fewer details and Fewer steps as a story, and Show the loop as the facts", () => {
+    const route = Object.fromEntries(Object.values(SUGGESTIONS).flat().filter((s) => s.kind === "refine").map((s) => [s.id, fixtureRoute(s.instruction)]));
+    expect(route).toEqual({ loop: "facts", shorter: "story", "fewer-details": "story", "fewer-steps": "story" });
+  });
+  it("still hears the story marker anywhere, and anything else as the facts", () => {
+    expect(fixtureRoute("move Web app right of API [fixture:story]")).toBe("story");
+    expect(fixtureRoute("Please make it shorter for LinkedIn")).toBe("facts");
+    expect(fixtureRoute("add Cache")).toBe("facts");
   });
 });

@@ -5,8 +5,7 @@ import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { renderMermaid } from "../core/export/mermaid";
 import { DEFAULT_SHARE, FORMAT_IDS, renderShare, type FormatId } from "../core/export/share";
-import { joinChannel } from "../core/channels";
-import type { DiagramDocument } from "../core/model";
+import { draftOf, joinChannel } from "../core/channels";
 import { CHANNELS, channelOfView, isChannel, type ChannelId, type Document3 } from "../core/file3";
 import { isRepoRelative, LIMITS, THEMES, type Theme } from "../core/model";
 import type { RunScope } from "../core/repair";
@@ -42,16 +41,6 @@ export function envelopeError(port: number, host: string | undefined, origin: st
   if (!hosts.includes((host ?? "").toLowerCase())) return "Forbidden host";
   if (origin !== undefined && !hosts.some((h) => `http://${h}` === origin.toLowerCase())) return "Forbidden origin";
   return null;
-}
-
-/**
- * What a refine or simplify run's engine reads (diagram contract, Engine answers): the run's channel
- * as drawn, each part naming the facts it shows in `from`, so a merged part the engine answers points
- * to facts.
- */
-function draftOf(stored: Document3, channel: ChannelId): DiagramDocument {
-  const d = joinChannel(stored, channel);
-  return { ...d, views: d.views.map((v) => ({ ...v, nodes: v.nodes.map((n) => ({ ...n, from: [...(n.facts ?? [])] })) })) };
 }
 
 /** The HTTP surface of docs/contracts/api.md, as a Hono app (testable with app.request). */

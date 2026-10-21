@@ -9,7 +9,7 @@ import { makeFolder, shopFile2, tempDir } from "../testkit";
 import { ClaudeEngine, ClaudeStreamParser, extractJson } from "./claude";
 import { CodexEngine, CodexEventParser, describeCommand } from "./codex";
 import { engineEnv, resolveCommand, shimTarget } from "./process";
-import { postPrompt, readPrompt, RULES_FILE, scanPrompt } from "./prompt";
+import { postPrompt, readPrompt, ROUTE_SCHEMA, routePrompt, RULES_FILE, scanPrompt } from "./prompt";
 import { READ_SCHEMA } from "../../core/read";
 import { SCAN_SCHEMA } from "../../core/scan";
 
@@ -322,6 +322,55 @@ describe("a story from the facts alone (STORY-1)", () => {
     expect(log.args[log.args.indexOf("--sandbox") + 1]).toBe("read-only");
     expect(log.stdin).toContain("<facts>");
     expect(log.stdin).toContain("Do not read, list or search any file");
+  });
+});
+
+describe("a refine's routing (AI-5)", () => {
+  const route = () => ({ kind: "route" as const, schema: ROUTE_SCHEMA, tools: "none" as const, prompt: routePrompt({ channel: "readme", instruction: "Make it shorter" }) });
+  const toolFree = (args: string[]) => {
+    expect(args[args.indexOf("--tools") + 1]).toBe("");
+    expect(args).not.toContain("--allowedTools");
+    expect(args.join(" ")).not.toMatch(/Read|Grep|Glob|Edit|Write|Bash|bypassPermissions|dangerously/);
+    expect(args[args.indexOf("--permission-mode") + 1]).toBe("dontAsk");
+  };
+
+  it("Claude Code asks the routing question with no tool at all and the route schema", async () => {
+    const fake = fakeCli("claude", "ok");
+    const engine = new ClaudeEngine({ ...process.env, ARCHDRAW_CLAUDE_BIN: fake.bin });
+    await engine.detect();
+    await engine.run({ ...request(makeFolder({}), []), task: route() });
+    const log = JSON.parse(readFileSync(fake.log, "utf8"));
+    toolFree(log.args);
+    expect(JSON.parse(log.args[log.args.indexOf("--json-schema") + 1])).toEqual(ROUTE_SCHEMA);
+    expect(log.stdin).toContain("Make it shorter");
+    expect(log.stdin).toContain("the README drawing");
+  });
+
+  it("the story route on the overview runs Claude Code with no tool and asks it to read no file", async () => {
+    const fake = fakeCli("claude", "ok");
+    const engine = new ClaudeEngine({ ...process.env, ARCHDRAW_CLAUDE_BIN: fake.bin });
+    await engine.detect();
+    await engine.run({ ...request(makeFolder({}), []), appearance: true });
+    const log = JSON.parse(readFileSync(fake.log, "utf8"));
+    toolFree(log.args);
+    expect(JSON.parse(log.args[log.args.indexOf("--json-schema") + 1])).toEqual(DRAFT_JSON_SCHEMA);
+    expect(log.stdin).toContain("you have no tools and must not read the repository");
+    expect(log.stdin).not.toContain("read-only tools");
+    expect(log.stdin).toContain("the group they sit in (a group the view already has, or none)");
+  });
+
+  it("Codex, which has no tool-free mode, stays read-only for both and is told to read nothing", async () => {
+    const fake = fakeCli("codex", "ok");
+    const engine = new CodexEngine({ ...process.env, ARCHDRAW_CODEX_BIN: fake.bin });
+    await engine.detect();
+    await engine.run({ ...request(makeFolder({}), []), appearance: true });
+    const log = JSON.parse(readFileSync(fake.log, "utf8"));
+    expect(log.args[log.args.indexOf("--sandbox") + 1]).toBe("read-only");
+    expect(log.stdin).toContain("you have no tools and must not read the repository");
+    await engine.run({ ...request(makeFolder({}), []), task: route() });
+    const asked = JSON.parse(readFileSync(fake.log, "utf8"));
+    expect(asked.args[asked.args.indexOf("--sandbox") + 1]).toBe("read-only");
+    expect(asked.stdin).toContain("Do not read, list or search any file");
   });
 });
 

@@ -1,12 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";
-import { applyChannel, joinChannel } from "../core/channels";
+import { appearanceOnly } from "../core/appearance";
+import { applyChannel, draftOf, joinChannel } from "../core/channels";
 import { channelOfView, validateDocument3, type ChannelId, type Document3 } from "../core/file3";
 import { isPostView, validateDocument, type DiagramDocument } from "../core/model";
 import { startSwitches, type FormatId } from "../core/export/share";
 import { layoutReport, type LayoutReport } from "../core/report";
 import { channelViewId, intentToChannel, parseIntent, STORY_SCHEMA, StoryError, storyRows } from "../core/intent";
-import { postPrompt, storyPrompt } from "./engines/prompt";
+import { postPrompt, ROUTE_SCHEMA, routePrompt, storyPrompt } from "./engines/prompt";
 import { diffDocuments, type Changes } from "../core/diff";
 import { CoverageError, keepUnrelatedViews, missingFacts, SIMPLIFY_INSTRUCTION } from "../core/simplify";
 import { answerToDocument, documentToDraft, EmptyDiagramError, type RunScope } from "../core/repair";
@@ -24,7 +25,7 @@ export type DrawStage = "read" | "overview" | "channel";
 export type StoryChannel = Exclude<ChannelId, "overview">;
 export type RunEvent =
   | { type: "progress"; message: string; stage: DrawStage | null }
-  | { type: "done"; status: Exclude<RunStatus, "running">; diagramId: string | null; error: string | null; changes: Changes | null; channel: ChannelId; view: string; layoutReport: LayoutReport | null; route: "facts" | "story" | null; path: string | null };
+  | { type: "done"; status: Exclude<RunStatus, "running">; diagramId: string | null; error: string | null; changes: Changes | null; channel: ChannelId; view: string; layoutReport: LayoutReport | null; route: Route | null; path: string | null };
 
 export interface RunRecord {
   id: string;
@@ -45,7 +46,7 @@ export interface RunRecord {
   /** The saved result's layout report (api contract, Layout report), once it has succeeded. */
   layoutReport: LayoutReport | null;
   /** Which way a refine went (api contract, Routing); null for other kinds. */
-  route: "facts" | "story" | null;
+  route: Route | null;
   /** The drawing file a `draw` run wrote, once it has succeeded. */
   path: string | null;
 }
@@ -59,6 +60,9 @@ interface Run extends RunRecord {
   /** The drawing this run works on. */
   target: string;
 }
+
+/** Which way a refine went (api contract, Routing). */
+export type Route = "facts" | "story";
 
 export interface StartRun {
   engine: Engine;
@@ -143,7 +147,7 @@ export class RunManager {
     const story = storyChannelOf(req);
     return this.launch(
       { kind: req.kind ?? "refine", channel: story ?? channelOfView(req.stored, req.view) ?? "overview", view: story ? channelViewId(req.stored, story) : req.view, engine: req.engine.id, model: req.model, target: req.base.id },
-      (signal, progress) => this.execute(req, signal, (m) => progress(m)),
+      (signal, progress, run) => this.execute(req, signal, (m) => progress(m), (route) => (run.route = route)),
     );
   }
 
@@ -215,7 +219,7 @@ export class RunManager {
     return id;
   }
 
-  private async execute(req: StartRun, signal: AbortSignal, progress: (m: string) => void): Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string }> {
+  private async execute(req: StartRun, signal: AbortSignal, progress: (m: string) => void, routed: (route: Route) => void): Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string }> {
     // The root the store checks this drawing's files against, so a repair and a save never disagree.
     const root = this.store.rootOf(req.base.id);
     if (!root) throw new EngineError("This drawing has no repository folder to read");
@@ -227,16 +231,32 @@ export class RunManager {
     // The fixed instruction, augmented by what the user adds (the panel sends the fixed one itself).
     const extra = req.instruction.trim().startsWith(SIMPLIFY_INSTRUCTION) ? req.instruction.trim().slice(SIMPLIFY_INSTRUCTION.length).replace(/^[.\s]+/, "") : req.instruction.trim();
     const instruction = simplify ? (extra ? `${SIMPLIFY_INSTRUCTION}. ${extra}` : SIMPLIFY_INSTRUCTION) : req.instruction;
+    // A refine is routed first (api contract, Routing); a parts scope always changes the facts.
+    let appearance = false;
+    if ((req.kind ?? "refine") === "refine") {
+      const route: Route = scope.kind === "parts" ? "facts" : await this.route(req, root, signal, progress);
+      if (signal.aborted) throw new EngineError("Cancelled");
+      routed(route);
+      progress(route === "facts" ? "Changing the facts" : "Redrawing this channel from the facts");
+      const channel = req.channel ?? "overview";
+      // Outside the overview the story route is the channel's story run, told from the facts with no code.
+      if (route === "story" && channel !== "overview") {
+        return this.story({ ...req, kind: "story", readCode: false, base: draftOf(req.stored, "overview") }, channel, root, signal, progress);
+      }
+      appearance = route === "story";
+    }
     const inView = req.base.views.find((v) => v.id === req.view)?.nodes ?? [];
     const parts = scope.kind === "parts" ? scope.ids.map((id) => inView.find((n) => n.id === id)?.label ?? id) : [];
     const answer = await req.engine.run({
       cwd: root, folderName: basename(root), instruction, view: req.view, model: req.model, scope, parts,
-      base: documentToDraft(req.base), signal, timeoutMs: this.opts.timeoutMs, progress, simplify,
+      base: documentToDraft(req.base), signal, timeoutMs: this.opts.timeoutMs, progress, simplify, appearance,
     });
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the drawing");
     let doc = answerToDocument(answer, { base: req.base, now: nowIso(), engine: { id: req.engine.id, model: req.model }, fileExists: repoFileChecker(root), scope, view: req.view, facts: req.stored.facts.components.map((c) => c.id), rows: storyRows(req.stored) });
     if (simplify) doc = keepUnrelatedViews(req.base, doc).doc;
+    // The story route on the overview changes how it looks only; each content change is ignored with a warning.
+    if (appearance) doc = appearanceOnly(req.base, doc).doc;
     // Never replace a readable drawing with one the store would refuse to read back.
     // The view shape is checked on its own: a LinkedIn view's `postOf` (its post style) names no view of its channel.
     const checked = validateDocument({ ...doc, views: doc.views.map((v) => ({ ...v, postOf: null })) });
@@ -267,6 +287,16 @@ export class RunManager {
     const view = doc.views.find((v) => v.id === req.view) ?? doc.views[0];
     const report = layoutReport(doc, view.id, { ...startSwitches(format, isPostView(view)), format, theme: doc.theme });
     return { diagramId: req.base.id, changes: diffDocuments(req.base, doc, scope.kind === "all" ? undefined : [req.view]), layoutReport: report, channel, view: req.view };
+  }
+
+  /** The routing question (api contract, Routing): asked with no tools; anything but "story" is the facts. */
+  private async route(req: StartRun, root: string, signal: AbortSignal, progress: (m: string) => void): Promise<Route> {
+    const answer = await req.engine.run({
+      cwd: root, folderName: basename(root), instruction: req.instruction, view: req.view, model: req.model, scope: { kind: "view" }, parts: [],
+      base: null, signal, timeoutMs: this.opts.timeoutMs, progress,
+      task: { kind: "route", schema: ROUTE_SCHEMA, tools: "none", prompt: routePrompt({ channel: req.channel ?? "overview", instruction: req.instruction }) },
+    });
+    return (answer as { route?: unknown } | null)?.route === "story" ? "story" : "facts";
   }
 
   /**

@@ -185,6 +185,8 @@ export class FixtureEngine implements Engine {
 
   async run(req: EngineRunRequest): Promise<unknown> {
     // A draw's markers come from the folder's name and the typed focus (testing contract, Draw).
+    // The routing question (testing contract, Routing): answered at once, from the marker alone.
+    if (req.task?.kind === "route") return { route: req.instruction.includes("[fixture:story]") ? "story" : "facts" };
     const stage = req.task?.data?.draw;
     if (stage) return this.drawCall(req, stage, (m) => req.instruction.includes(m) || req.folderName.includes(m));
     if (req.instruction.includes("[fixture:slow]")) {

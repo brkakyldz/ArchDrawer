@@ -5,7 +5,7 @@ import { SIMPLIFY_INSTRUCTION } from "../../core/simplify";
 import type { EngineInfo } from "../api";
 import { Icon } from "../ui/Icon";
 import { LayoutReportLine } from "../ui/LayoutReport";
-import { engineName, type Runner } from "./runner";
+import { engineName, ROUTE_SENTENCE, type Runner } from "./runner";
 
 export type ScopeChoice = "view" | "selection" | "all";
 
@@ -138,6 +138,7 @@ export function AiPanel({ runner, engines, engine, model, onEngine, onModel, sel
             {summarize(c)}
           </div>
         )}
+        {c && state.route && <div className="result route" data-testid="ai-route" data-route={state.route}>{ROUTE_SENTENCE[state.route]}</div>}
         {mine && state.status === "succeeded" && state.layoutReport && <LayoutReportLine report={state.layoutReport} nameOf={nameOf} />}
         {mine && state.status === "saved" && <div className="result" data-testid="ai-saved">{SAVED}</div>}
       </div>

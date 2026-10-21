@@ -10,7 +10,11 @@ test('H24 [AI-1, FILE-1, LAYOUT-1] apply and repair an instruction, undo it, can
   const started = await responsePromise; expect(started.status()).toBe(202); const runId = (await started.json()).runId;
   await expect(page.getByTestId('ai-progress')).toBeVisible();
   const success = await finishRun(request, runId, 'succeeded');
-  for (const message of ['Reading the drawing', 'Reading the code', 'Updating the drawing']) expect(success.progress.filter((line: string) => line === message)).toHaveLength(1);
+  // From 0.3 a refine first asks its routing question, which is a call of its own: the lines of the refine are there in order, whether or not the question reports any of its own.
+  const lines = (success.progress as string[]).filter(line => ['Reading the drawing', 'Reading the code', 'Updating the drawing'].includes(line));
+  for (const message of ['Reading the drawing', 'Reading the code', 'Updating the drawing']) expect(lines.filter(line => line === message).length).toBeGreaterThanOrEqual(1);
+  expect(lines.slice(-3)).toEqual(['Reading the drawing', 'Reading the code', 'Updating the drawing']);
+  expect(success.progress).toContain('Changing the facts');
   await expect(page.getByTestId('node-cache')).toBeVisible(); await saved(page);
   // The renamed copy and the dropped connection: one warning each (a copy that also points to a fact its original shows may add its own).
   let changed = await readDrawing(file); expect(changed.warnings!.length).toBeGreaterThanOrEqual(2);

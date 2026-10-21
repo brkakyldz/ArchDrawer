@@ -39,9 +39,18 @@ export interface RunState {
   layoutReport: LayoutReport | null;
   /** The view the run's result is in (a post run's actual post id). */
   view: string | null;
+  /** Which way a succeeded refine went (api contract, Routing); null for other kinds. */
+  route: Route | null;
 }
 
-const IDLE: RunState = { status: "idle", req: null, id: null, lines: [], error: null, changes: null, layoutReport: null, view: null };
+export type Route = "facts" | "story";
+/** What `ai-route` and the ask box's toast say about a refine's route (ui contract, AI panel). */
+export const ROUTE_SENTENCE: Record<Route, string> = {
+  facts: "Changed the facts: every channel that shows them shows it",
+  story: "Redrew this channel from the facts, without reading the code",
+};
+
+const IDLE: RunState = { status: "idle", req: null, id: null, lines: [], error: null, changes: null, layoutReport: null, view: null, route: null };
 export const ENGINE_KEY = "archdraw-engine";
 export const modelKey = (engine: string) => `archdraw-model:${engine}`;
 const local = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
@@ -74,7 +83,7 @@ interface Options {
   vid: string | null;
   settle: () => Promise<boolean>;
   /** A run succeeded: show the stored drawing (undo returns to the one before) and what changed. */
-  onUpdated: (doc: Document3, changes: Changes | null, req: RunRequest) => void;
+  onUpdated: (doc: Document3, changes: Changes | null, req: RunRequest, route: Route | null) => void;
   /** An instruction was saved for the next session (no engine). */
   onSaved: () => void;
 }
@@ -136,13 +145,14 @@ export function useRunner({ doc, channel, vid, settle, onUpdated, onSaved }: Opt
     es.addEventListener("done", async (ev) => {
       es.close();
       source.current = null;
-      const r = JSON.parse((ev as MessageEvent).data) as { status: string; error: string | null; changes?: Changes | null; layoutReport?: LayoutReport | null; view?: string };
+      const r = JSON.parse((ev as MessageEvent).data) as { status: string; error: string | null; changes?: Changes | null; layoutReport?: LayoutReport | null; view?: string; route?: Route | null };
+      const route = r.route === "facts" || r.route === "story" ? r.route : null;
       if (r.status === "succeeded") {
         try {
           const stored = await api.get(d.id);
           busy.current = false;
-          setState({ ...IDLE, status: "succeeded", req, id, changes: r.changes ?? null, layoutReport: r.layoutReport ?? null, view: r.view ?? null });
-          live.current.onUpdated(stored, r.changes ?? null, req);
+          setState({ ...IDLE, status: "succeeded", req, id, changes: r.changes ?? null, layoutReport: r.layoutReport ?? null, view: r.view ?? null, route });
+          live.current.onUpdated(stored, r.changes ?? null, req, route);
         } catch (e) { fail((e as Error).message); }
       } else if (r.status === "cancelled") { busy.current = false; setState({ ...IDLE, status: "cancelled", req, id, error: "Cancelled" }); }
       else fail(r.error ?? "The instruction failed");

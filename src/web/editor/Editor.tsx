@@ -26,7 +26,7 @@ import { EdgeCallout, InlineInput, Picker, TextEditor, TextToolbar, Warnings } f
 import { ShareDialog } from "../share/ShareDialog";
 import type { Ctl, Editing, Selection, Tool } from "./types";
 import { NOTHING } from "./types";
-import { chooseEngine, ENGINE_KEY, engineName, modelKey, rememberedModel, useRunner, type RunRequest } from "./runner";
+import { chooseEngine, ENGINE_KEY, engineName, modelKey, rememberedModel, ROUTE_SENTENCE, useRunner, type Route, type RunRequest } from "./runner";
 import { useAutosave } from "./useAutosave";
 import { useDocHistory, type ApplyOptions } from "./useDocHistory";
 import { FIT, fitView, reveal, zoomAt, zoomPercent, type Viewport } from "./viewport";
@@ -192,11 +192,12 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   }, []);
   const runner = useRunner({
     doc, channel: stored ? drawnChannel(stored, chan) : "overview", vid: vid ?? doc?.views[0].id ?? null, settle,
-    onUpdated: (d: Document3, c: Changes | null, req: RunRequest) => {
+    onUpdated: (d: Document3, c: Changes | null, req: RunRequest, route: Route | null) => {
       // One undo step: the stored result and the edit made after it (a re-arrangement) together.
       save.markSaved(d);
       hist.apply(req.after ? splitEdit(d, channelOfView(d, req.view ?? "") ?? chanRef.current, req.after, toast) : d);
-      toast(c ? `The drawing was updated: ${summarize(c)}` : "The drawing was updated");
+      const said = c ? `The drawing was updated: ${summarize(c)}` : "The drawing was updated";
+      toast(route ? `${said}. ${ROUTE_SENTENCE[route]}` : said);
       mark(c);
       if (req.after && req.view === vid) pendingFit.current = { view: req.view! };
     },

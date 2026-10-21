@@ -39,12 +39,17 @@ export interface EngineRunRequest {
    * `tools` is `"none"` (a story from the facts alone; api contract, Engines).
    */
   task?: {
-    kind: "post" | "story" | "scan" | "read"; schema: object; prompt: string; tools?: "read" | "none";
+    kind: "post" | "story" | "scan" | "read" | "route"; schema: object; prompt: string; tools?: "read" | "none";
     /** What the fixture builds its answer from (the listing, a story's channel, a draw's title); real engines ignore it. */
     data?: { listing?: string[]; entries?: string[]; channel?: string; overview?: DiagramView; title?: string; draw?: "read" | "overview" | "channel" };
   };
   /** A simplify run (api contract): the overview becomes a map, and its prompt says what may change. */
   simplify?: boolean;
+  /**
+   * The story route of a refine on the overview (api contract, Routing): the prompt asks for appearance
+   * only, and the engine runs with no tools where it can.
+   */
+  appearance?: boolean;
 }
 
 export class EngineError extends Error {}

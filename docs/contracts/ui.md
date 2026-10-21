@@ -349,7 +349,7 @@ Beside the stage, not modal: the canvas stays usable.
 | `ai-progress` | while a run is going: `ai-progress-line` per message (last 12) and `ai-cancel` |
 | `ai-error` | after a failed or cancelled run: the error and `ai-retry` (same request); `ai-input` keeps the instruction |
 | `ai-summary` | after success: e.g. `1 part added · 2 connections changed · 3 parts moved` (zeros left out; `Nothing changed`), with `data-added`, `data-removed`, `data-changed`, `data-moved`, `data-edges-added`, `data-edges-removed`, `data-edges-changed` |
-| `ai-route` | after a refine succeeded: which way the instruction went (api contract, Routing), `data-route` `facts` or `story`: `Changed the facts: every channel that shows them shows it` or `Redrew this channel from the facts, without reading the code`. The ask box's toast adds the same sentence |
+| `ai-route` | after a refine succeeded: which way the instruction went (api contract, Routing), `data-route` `facts` or `story`: `Changed the facts: every channel that shows them shows it` or `Redrew this channel from the facts, without reading the code`. It goes when another run starts, and a run of another kind shows none. The ask box's toast adds the same sentence |
 | `layout-report` | after success, the run's report (below) |
 | `ai-saved` | without an engine, after saving the request: the `ask-saved` text |
 | `simplify-overview` | `Simplify the overview`: goes to the overview channel's first view, fills `ai-input` with `Simplify the overview: keep every component in a detail view or a merged part` and starts a `simplify` run on the first view with scope view; disabled during a run; without an engine saves the request for the first view |

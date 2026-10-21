@@ -323,7 +323,7 @@ name `Ask AI`) opens and closes it.
 | `ai-model` | `<select>`: `""` `Default`, then the engine's models; each engine remembers its own choice in the browser |
 | `ai-engine-note` | `<label> reads the repository (read-only) and changes the drawing`; for the test engine `Test engine (no AI): it understands only add, remove, rename, hold, move and align, gives a canned post, a canned simplification and a canned second look, and changes nothing else`; without engine `No engine is available: the instruction is saved in the file for your next archdrawer session` |
 | `ai-scope-view`, `ai-scope-selection`, `ai-scope-all` | radios `This view`, `Selected parts (<n>)`, `The whole channel`; default view; selection disabled (and falls back to view) without a selected component |
-| `ai-send` | disabled while `ai-input` is empty or a run is going |
+| `ai-send` | disabled while `ai-input` is empty, while a run is going, and on a channel with no view (`ai-button` still opens the panel there; the suggestions and `ai-look-again` are disabled too) |
 | `ai-look-again` | `Look at the drawing again` (LAYOUT-4): renders the current view as the share image in the channel's default format with its starting switches (*Share*), at 1×, as PNG, and starts a `revise` run for the current channel and view with that image (api contract, *The second look*). Disabled during a run, on a channel with no view and without an engine |
 
 Sending first waits until every edit is saved (else fails with
@@ -404,7 +404,7 @@ preview. A failed save of an Undo shows in `save-status`, never `Saved`.
 `ai-suggestions` shows the current channel's buttons (AI-4). Each starts a
 run as `ai-send` would, with its instruction, the scope `This view` and the
 chosen engine and model, and leaves `ai-input` as it is. A preview is
-accepted first; every suggestion is disabled during a run. Without an engine
+accepted first; every suggestion is disabled during a run and on a channel with no view. Without an engine
 each saves its instruction as a request.
 
 | Channel | Test id | Label | Run |

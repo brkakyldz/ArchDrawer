@@ -70,7 +70,7 @@ test('H127 [STORY-4, FILE-3, EDIT-1, NAV-2] editing the text, note, parts and or
   expect([...(await stepsOf(file))[2].parts].sort()).toEqual(['app', 'store']);
   await page.getByTestId('step-parts').getByRole('checkbox', { name: 'App' }).uncheck();
   await persistedDoc(file, d => d.channels.presentation!.steps![2].parts.join() === 'store');
-  await page.getByTestId('step-parts').getByRole('checkbox', { name: 'Store' }).uncheck(); // the last one: refused
+  await page.getByTestId('step-parts').getByRole('checkbox', { name: 'Store' }).click(); // the last one: refused, so the box stays checked
   await expect(page.getByTestId('toast')).toHaveText('A step highlights at least one part');
   await expect(page.getByTestId('step-parts').getByRole('checkbox', { name: 'Store' })).toBeChecked();
   expect((await stepsOf(file))[2].parts).toEqual(['store']);

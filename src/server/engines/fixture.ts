@@ -72,6 +72,30 @@ function strip(d: Draft): Draft {
   return d;
 }
 
+const SCAN_STEPS = ["Reading the inputs", "Writing the card"];
+const MARKERS = /\s*\[fixture:[a-z:]+\]\s*/g;
+
+/**
+ * The fixed scan answer (testing contract, Scan): a card named after the folder, and four options
+ * from the listing, the last naming a file that does not exist (so the check leaves it out).
+ */
+export function fixtureScan(folderName: string, data: { listing?: string[]; entries?: string[] }) {
+  const files = data.listing ?? [];
+  const pick = (...i: number[]) => [...new Set(i.map((k) => files[k]).filter((f): f is string => !!f))];
+  return {
+    card: {
+      name: folderName.replace(MARKERS, " ").trim() || folderName, sentence: "A project scanned by the test engine.", type: "agent",
+      languages: ["TypeScript"], entryPoints: (data.entries ?? []).slice(0, 2),
+    },
+    options: [
+      { kind: "flow", title: "How a request moves through the project", sentence: "Follows one request from the entry point to the store.", files: pick(0, 1) },
+      { kind: "mechanism", title: "The agent loop", sentence: "How the agent proposes and runs a tool.", files: files[2] ? pick(2) : pick(0) },
+      { kind: "overview", title: "The whole architecture", sentence: "Every part and how they connect.", files: pick(0) },
+      { kind: "flow", title: "A path that is not there", sentence: "Backed by a file that does not exist.", files: ["fixture/missing-file.ts"] },
+    ],
+  };
+}
+
 /** The deterministic stand-in engine of docs/contracts/testing.md. */
 export class FixtureEngine implements Engine {
   readonly id = "fixture";
@@ -90,13 +114,14 @@ export class FixtureEngine implements Engine {
       }
     }
     if (req.model) req.progress(`Using model ${req.model}`);
-    for (const step of FIXTURE_STEPS) {
+    for (const step of req.task?.kind === "scan" ? SCAN_STEPS : FIXTURE_STEPS) {
       await sleep(this.stepMs, req.signal);
       req.progress(step);
     }
     // One step after the last message too, so each line is on screen for a step (testing contract, Progress).
     await sleep(this.stepMs, req.signal);
     if (req.instruction.includes("[fixture:fail]")) throw new EngineError("Fixture failure requested");
+    if (req.task?.kind === "scan") return fixtureScan(req.folderName, req.task.data ?? {});
     if (req.task?.kind === "post") return fixturePost(req.base, req.view, req.instruction);
     if (req.simplify) return fixtureSimplify(req.base, req.instruction);
     return fixtureAnswer(req.base, req.view, req.instruction);

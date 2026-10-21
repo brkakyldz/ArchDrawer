@@ -37,7 +37,11 @@ export interface EngineRunRequest {
    * prompt. The engine runs with the same read-only flags, or with no tools at all where it can when
    * `tools` is `"none"` (a story from the facts alone; api contract, Engines).
    */
-  task?: { kind: "post"; schema: object; prompt: string; tools?: "read" | "none" };
+  task?: {
+    kind: "post" | "scan"; schema: object; prompt: string; tools?: "read" | "none";
+    /** What the fixture builds its answer from (the scan's listing and entry points); real engines ignore it. */
+    data?: { listing?: string[]; entries?: string[] };
+  };
   /** A simplify run (api contract): the overview becomes a map, and its prompt says what may change. */
   simplify?: boolean;
 }

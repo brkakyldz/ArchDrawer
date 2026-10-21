@@ -329,6 +329,8 @@ export function createApp(deps: AppDeps): Hono {
     const KINDS = ["refine", "story", "post", "simplify", "revise", "draw"];
     if (b.kind !== undefined && !(typeof b.kind === "string" && KINDS.includes(b.kind))) return err(c, 400, `Unknown run kind ${typeof b.kind === "string" ? b.kind : JSON.stringify(b.kind)}: use refine, story, post, simplify, revise or draw`);
     const kind = (b.kind as "refine" | "story" | "post" | "simplify" | "revise" | "draw" | undefined) ?? "refine";
+    // An image is for a revise only, a draw's included (api contract, Runs).
+    if (kind === "draw" && b.image !== undefined) return err(c, 400, "An image is for a revise");
     if (kind === "draw") return startDraw(c, b);
     // A story or post: a channel's one view; a post is a story on LinkedIn (api contract, Run kinds).
     const story = kind === "story" || kind === "post";
@@ -390,7 +392,9 @@ export function createApp(deps: AppDeps): Hono {
     }
     if (runs.runningOn(doc.id)) return err(c, 409, "An instruction is already running on this drawing");
     // The image goes into a folder of the server's own, removed when the run ends (api contract, The second look).
-    const written = image ? writeReviseImage(config.dataDir, image) : undefined;
+    let written: ReturnType<typeof writeReviseImage> | undefined;
+    try { written = image ? writeReviseImage(config.dataDir, image) : undefined; }
+    catch (e) { return err(c, 500, `The drawing's image could not be saved for the engine: ${(e as Error).message}`); }
     const runId = runs.start({ engine, model, instruction, view, base: doc, stored, channel, scope: kind === "refine" ? scope : { kind: "view" }, format, kind, readCode: b.readCode as boolean | undefined, image: written });
     return c.json({ runId }, 202);
   });

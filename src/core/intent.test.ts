@@ -106,6 +106,17 @@ describe("story intent → post view", () => {
     }
   });
 
+  it("names the channel in a failure, and keeps the first 12 rows of a part with more chips", () => {
+    const ghost = small({ edges: [{ from: "web", to: "ghost", label: "", style: "call", step: 1 }] });
+    expect(() => intentToDocument(shop(), "overview", ghost, { portrait: true })).toThrow(/^The engine's LinkedIn post cannot be drawn: /);
+    expect(() => intentToDocument(shop(), "overview", ghost, { portrait: false, channel: "readme" })).toThrow(/^The engine's README drawing cannot be drawn: /);
+    const chips = Array.from({ length: 13 }, (_, i) => `Chip ${i + 1}`);
+    const i = small({ parts: [part("web", { spine: 0, from: ["web"] }), part("api", { spine: 1, chips, from: ["api"] }), part("db", { anchor: "api", side: "below", from: ["db"] })] });
+    const { doc, view, warnings } = intentToDocument(shop(), "overview", i, { portrait: true });
+    expect(doc.views.find((v) => v.id === view)!.nodes.find((n) => n.label === "api")!.items).toEqual(chips.slice(0, 12));
+    expect(warnings.filter((w) => w.includes("rows"))).toEqual(['Kept the first 12 rows of "api"']);
+  });
+
   it("checks the answer against the schema exactly, with no takeaway", () => {
     const raw = JSON.parse(readFileSync("tests/fixtures/story/reference.json", "utf8"));
     expect(() => parseIntent({ ...raw, takeaway: "x" })).toThrow(/unknown property "takeaway"/);

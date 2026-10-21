@@ -149,6 +149,8 @@ export interface StoryOptions {
   rows?: StoryRows;
 }
 const VIEW_TITLES: Record<ChannelId, string> = { overview: "Overview", linkedin: "LinkedIn", readme: "README", presentation: "Presentation" };
+/** A channel's name in an error the user reads (diagram contract, Problems and the repair turn). */
+const CHANNEL_NAMES: Record<ChannelId, string> = { overview: "overview", linkedin: "LinkedIn post", readme: "README drawing", presentation: "presentation" };
 
 /**
  * Turn an intent into a channel's view (or, without `ids`, the source's post): the only changed
@@ -161,9 +163,10 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
   const src = doc.views.find((v) => v.id === source);
   if (!src) throw new StoryError(`There is no view "${source}" to design a post for`);
   if (src.postOf) throw new StoryError(`"${source}" is a post; design from its source "${src.postOf}"`);
-  if (!intent.parts.length) throw new StoryError("The engine's post has no parts");
+  const name = CHANNEL_NAMES[channel];
+  if (!intent.parts.length) throw new StoryError(`The engine's ${name} has no parts`);
   const warnings: string[] = [];
-  const fail = (what: string): never => { throw new StoryError(`The engine's post cannot be drawn: ${what}`); };
+  const fail = (what: string): never => { throw new StoryError(`The engine's ${name} cannot be drawn: ${what}`); };
 
   // Relations (diagram contract, Relations and conversion): code does not guess a story.
   const zoneIds = new Set<string>(), partIds = new Set<string>();
@@ -220,14 +223,13 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
   }
   const holders = new Set(intent.parts.filter((p) => p.inside !== null).map((p) => p.inside!));
   // Hard limits fail the run: code never shortens the engine's text.
-  const hard = (text: string, limit: number, what: string) => { if (text.length > limit) fail(`${what} is ${text.length} characters, over the file's ${limit}; ask for a shorter post`); };
+  const hard = (text: string, limit: number, what: string) => { if (text.length > limit) fail(`${what} is ${text.length} characters, over the ${limit} it may hold`); };
   hard(intent.title, LIMITS.captionTitle, "the title");
   hard(intent.lede, LIMITS.lede, "the description");
   for (const z of intent.zones) hard(z.label, LIMITS.label, `zone ${q(z.id)}'s label`);
   for (const p of intent.parts) {
     hard(p.label, LIMITS.label, `part ${q(p.id)}'s label`);
     hard(p.sub, LIMITS.sub, `part ${q(p.id)}'s sub-line`);
-    if (!holders.has(p.id) && p.chips.length > LIMITS.items) fail(`part ${q(p.id)} has ${p.chips.length} chips, over the file's ${LIMITS.items}`);
     p.chips.forEach((c) => hard(c, LIMITS.item, `a chip of ${q(p.id)}`));
   }
   for (const e of intent.edges) hard(e.label, LIMITS.edgeLabel, `the label of ${e.from} → ${e.to}`);
@@ -240,7 +242,7 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
       hard(s.note, FACT3_LIMITS.stepNote, `the note of step ${i + 1}`);
     });
   }
-  if (!intent.title.trim()) fail("the post has no title");
+  if (!intent.title.trim()) fail("it has no title");
 
   // Editorial targets of a post: kept whole, one warning each (the layout report lists them too).
   if (post) {

@@ -39,7 +39,7 @@ describe("story runs", () => {
     expect(r).toMatchObject({ status: "succeeded", channel: "presentation", view: "presentation" });
     const doc = read();
     expect(doc.channels.presentation.steps.map((s: { id: string; text: string }) => [s.id, s.text])).toEqual([["s1", "Step 1: Web app"], ["s2", "Step 2: Order API"], ["s3", "Step 3: Orders DB"]]);
-    expect(doc.warnings).toContain('Step 4: dropped "ghost-part", which is no part');
+    expect(doc.warnings.filter((w: string) => w.startsWith("Step 4"))).toEqual(["Step 4 names no part and was dropped"]);
     expect((r as { layoutReport: { format: string } }).layoutReport.format).toBe("slide");
   });
 

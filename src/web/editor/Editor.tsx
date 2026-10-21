@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { applyChannel, clearOutdated, joinChannel } from "../../core/channels";
 import { prepareLinkedIn } from "../../core/export/feed";
-import { channelOfView, isChannel, type ChannelId, type Document3 } from "../../core/file3";
+import { channelOfView, isChannel, type ChannelId, type Document3, type Step } from "../../core/file3";
 import { layoutRects, routeEdges, viewBounds } from "../../core/geometry";
 import { LIMITS, TEXT_SIZE, viewById, type DiagramDocument, type DiagramView, type Form, type Kind } from "../../core/model";
 import { PALETTES } from "../../core/theme";
@@ -15,6 +15,7 @@ import { AskBox } from "./AskBox";
 import { Search, type Found, type Hit } from "./Find";
 import { ViewsMenu } from "./Views";
 import { ChannelStart, ChannelTabs, EmptyStage, OutdatedBanner } from "./Channels";
+import { StepsPanel } from "./Steps";
 import { drawFromFacts, LinkedInPanel, LinkedInStart, RunLine } from "./LinkedIn";
 import { prepareChannel } from "../../core/simple";
 import { LoadError } from "./LoadError";
@@ -125,6 +126,8 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const [picker, setPicker] = useState<Ctl["picker"]>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  /** The presentation step being looked at (not an edit). */
+  const [curStep, setCurStep] = useState<string | null>(null);
   const stageEl = useRef<HTMLElement>(null);
   const [engines, setEngines] = useState<EngineInfo[] | null>(null);
   const [chosen, setChosen] = useState<string | null>(() => { try { return localStorage.getItem(ENGINE_KEY); } catch { return null; } });
@@ -373,6 +376,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: hist.checkpoint,
     sel, setSel, callout, setCallout, tool, setTool, editing, setEditing, textSize, picker, setPicker,
     toast, goView, changed, pinned, setPinned, found, channel: stored ? drawnChannel(stored, chan) : "overview",
+    step: chan === "presentation" && curStep ? new Set(doc.steps?.find((s) => s.id === curStep)?.parts ?? []) : null,
     changePart: (nid) => { setSel({ ...NOTHING, nodes: [nid] }); openAi("", "selection"); },
   } : null;
 
@@ -406,7 +410,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
         if (c.picker) { c.setPicker(null); return; }
         if (typing(e.target)) return;
         if (searchingRef.current) { setSearching(false); return; }
-        c.setSel(NOTHING); c.setCallout(null); c.setTool("select");
+        c.setSel(NOTHING); c.setCallout(null); c.setTool("select"); setCurStep(null);
         return;
       }
       if (!typing(e.target) && !sharing && (e.key === "/" || (mod && e.key.toLowerCase() === "k"))) { e.preventDefault(); openSearch(); return; }
@@ -574,7 +578,10 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const docked = pinned && callout ? <Callout key={`d-${callout}`} ctl={ctl} id={callout} docked /> : null;
   const post = chan === "linkedin" && !blank && view.postOf ? view : null;
   const engineProps = { runner, engine: engine?.id ?? null, engineLabel: engine ? engineName(engine) : null, model };
-  const side = !!docked || !!(ai && engines) || !!post;
+  const presenting = chan === "presentation" && !blank;
+  const side = !!docked || !!(ai && engines) || !!post || presenting;
+  /** A step edit: the presentation channel's steps only, one undo step per field while typing. */
+  const editSteps = (fn: (s: Step[]) => Step[], coalesce?: string) => apply((d) => ({ ...d, steps: fn(d.steps ?? []) }), coalesce ? { coalesce } : undefined);
   // Stepping selects the match and moves the view only when the match is off screen (ui contract, search).
   const step = (id: string) => { setSel({ ...NOTHING, nodes: [id] }); setCallout(null); setEditing(null); setVp((v) => revealIn(view, id, v)); };
   const openHit = (h: Hit) => goView(h.view, undefined, h.id);
@@ -669,6 +676,8 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       {side && (
         <div className="side-col">
           {docked}
+          {presenting && <StepsPanel steps={doc.steps ?? []} view={view} current={doc.steps?.some((s) => s.id === curStep) ? curStep : null}
+            onPick={setCurStep} edit={editSteps} selected={sel.nodes} toast={toast} />}
           {post && <LinkedInPanel {...engineProps} view={post} apply={apply} />}
           {ai && engines && (
             <AiPanel runner={runner} engines={engines} engine={engine} model={model} onEngine={pickEngine} onModel={pickModel}
@@ -680,7 +689,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       )}
       {toastMsg && <div className="toast" data-testid="toast" role="status">{toastMsg}</div>}
       {sharing && (
-        <ShareDialog doc={doc} view={view} onClose={() => setSharing(false)} toast={toast} />
+        <ShareDialog doc={doc} view={view} channel={chan} onClose={() => setSharing(false)} toast={toast} />
       )}
     </div>
   );

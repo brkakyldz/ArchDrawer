@@ -48,6 +48,8 @@ export interface Ctl {
   goView: (vid: string, next?: DiagramDocument, focus?: string) => void;
   /** The channel the canvas draws; only the overview holds more than one view (rule 5). */
   channel: ChannelId;
+  /** The parts the current presentation step lights (everything else dims), or null. */
+  step: Set<string> | null;
   /** "Change this part": open the AI panel with this component selected as the scope. */
   changePart: (id: string) => void;
   /** Components a run just added, changed or moved (marked for about 3 s). */

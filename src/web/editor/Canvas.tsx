@@ -10,9 +10,9 @@ import { detailAt, toWorld, zoomAt } from "./viewport";
 
 /* ---------- pieces of the drawing: the same markup as every export (invariant 5) ---------- */
 
-const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, changed, open = false, post, match }: { node: DiagramNode; rect: Rect; P: Palette; selected: boolean; dim: boolean; changed: boolean; open?: boolean; post: boolean; match?: "true" | "current" }) {
+const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, changed, open = false, post, match, on = false }: { node: DiagramNode; rect: Rect; P: Palette; selected: boolean; dim: boolean; changed: boolean; open?: boolean; post: boolean; match?: "true" | "current"; on?: boolean }) {
   return (
-    <g className={`nd${dim ? " dim" : ""}${changed ? " changed" : ""}${open ? " open" : ""}`} data-changed={changed ? "true" : undefined} data-dim={dim ? "true" : undefined} data-match={match} data-testid={`node-${node.id}`} data-node-id={node.id} data-kind={node.kind} data-form={node.form}
+    <g className={`nd${dim ? " dim" : ""}${changed ? " changed" : ""}${open ? " open" : ""}`} data-changed={changed ? "true" : undefined} data-dim={dim ? "true" : undefined} data-match={match} data-step={on ? "on" : undefined} data-testid={`node-${node.id}`} data-node-id={node.id} data-kind={node.kind} data-form={node.form}
       data-parent={node.parent ?? ""} data-selected={String(selected)} style={{ ["--hover-k" as string]: P.kinds[node.kind] }}
       dangerouslySetInnerHTML={{ __html: nodeMarkup(node, rect, P, { testIds: true, post }) }} />
   );
@@ -285,8 +285,10 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   // While searching, the matches stay lit and everything else dims (ui contract, search); otherwise an open callout decides.
   const found = ctl.found;
   const matchOf = (id: string) => (!found?.ids.has(id) ? undefined : found.current === id ? "current" : "true");
-  const dimNode = (id: string) => (found ? !found.ids.has(id) : !!lit && !lit.has(id));
-  const dimEdge = (e: DiagramEdge) => (steps && e.step === null) || (found ? !(found.ids.has(e.from) && found.ids.has(e.to))
+  // A presentation step lights its parts the way search does, never changing a part's size.
+  const step = found ? null : ctl.step;
+  const dimNode = (id: string) => (found ? !found.ids.has(id) : step ? !step.has(id) : !!lit && !lit.has(id));
+  const dimEdge = (e: DiagramEdge) => (steps && e.step === null) || (step ? !(step.has(e.from) && step.has(e.to)) : found ? !(found.ids.has(e.from) && found.ids.has(e.to))
     : !!lit && !(lit.has(e.from) && lit.has(e.to) && (e.from === ctl.callout || e.to === ctl.callout || descendants(view, ctl.callout!).has(e.from))));
   const hovered = hover && rects.get(hover) && ctl.tool !== "pan" && !live ? hover : null;
   const k = vp.k;
@@ -314,12 +316,12 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
       <svg className="world" aria-label={view.title}>
         <defs dangerouslySetInnerHTML={{ __html: defs }} />
         <g transform={`translate(${vp.x} ${vp.y}) scale(${k})`}>
-          {groups.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} />)}
+          {groups.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} />)}
           {view.edges.map((e) => {
             const r = routes.get(e.id);
             return r ? <EdgeShape key={e.id} edge={e} route={r} P={P} from={kindOf.get(e.from)!} to={kindOf.get(e.to)!} selected={selEdges.has(e.id)} dim={dimEdge(e)} flow={steps && e.step !== null} open={touchesOpen(e)} /> : null;
           })}
-          {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} />)}
+          {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} />)}
           {view.edges.map((e) => {
             const r = routes.get(e.id);
             if (!r) return null;

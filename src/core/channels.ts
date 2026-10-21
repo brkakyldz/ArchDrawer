@@ -213,17 +213,44 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
   // A node that names no row ids (an answer that echoed the rows as items) still draws the drawn
   // part's held rows it begins with and its limit rows it ends with.
   function withRowIds(n: DiagramNode, drawn: DiagramNode): DiagramNode {
-    if (n.form !== "panel" || n.heldIds !== undefined || n.limitIds !== undefined) return n;
-    const dr = rowsOf(drawn);
-    // As many rows as it drew: the same rows in the same places, a changed text an edit of that row.
-    if (drawn.form === "panel" && n.items.length === drawn.items.length && (dr.held.length || dr.limits.length)) {
-      return { ...n, ...(dr.held.length ? { heldIds: [...dr.held] } : {}), ...(dr.limits.length ? { limitIds: [...dr.limits] } : {}) };
+    if (n.form !== "panel" || (n.heldIds !== undefined && n.limitIds !== undefined)) return n;
+    const dr = drawn.form === "panel" ? rowsOf(drawn) : rowsOf({ ...drawn, items: [] });
+    // Rows the node names by id keep their places: held ones first, limit ones last.
+    const givenHeld = n.heldIds, givenLimits = n.limitIds;
+    const headN = givenHeld?.length ?? 0, tailN = givenLimits?.length ?? 0;
+    const rest = n.items.slice(headN, n.items.length - tailN);
+    const wantHeld = givenHeld === undefined ? dr.held.map((id, k) => ({ id, text: dr.mech[k] })) : [];
+    const wantLimits = givenLimits === undefined ? dr.limits.map((id, k) => ({ id, text: dr.texts[k] })) : [];
+    if (!wantHeld.length && !wantLimits.length) return n;
+    // 1. A drawn row whose exact text is among the rows keeps its id there; a reordering only reorders.
+    const kindAt: ("held" | "limit" | "item" | null)[] = rest.map(() => null);
+    const idAt: (string | null)[] = rest.map(() => null);
+    const claim = (want: { id: string; text: string }[], kind: "held" | "limit") => want.filter((w) => {
+      const at = rest.findIndex((t, k) => kindAt[k] === null && t === w.text);
+      if (at < 0) return true;
+      kindAt[at] = kind; idAt[at] = w.id;
+      return false;
+    });
+    const looseHeld = claim(wantHeld, "held"), looseLimits = claim(wantLimits, "limit");
+    const ownItems = dr.items.filter((t) => { const at = rest.findIndex((x, k) => kindAt[k] === null && x === t); if (at < 0) return true; kindAt[at] = "item"; return false; });
+    // 2. The rows left over, as many as the drawn rows left over: the same rows in the same order, a
+    //    changed text an edit of that mechanism or limit. Otherwise the left-over rows are items.
+    const free = rest.map((_, k) => k).filter((k) => kindAt[k] === null);
+    if ((looseHeld.length || looseLimits.length) && free.length === looseHeld.length + ownItems.length + looseLimits.length) {
+      free.forEach((k, m) => {
+        if (m < looseHeld.length) { kindAt[k] = "held"; idAt[k] = looseHeld[m].id; }
+        else if (m >= looseHeld.length + ownItems.length) { kindAt[k] = "limit"; idAt[k] = looseLimits[m - looseHeld.length - ownItems.length].id; }
+        else kindAt[k] = "item";
+      });
     }
-    const held = dr.mech.length && same(n.items.slice(0, dr.mech.length), dr.mech) ? dr.held : [];
-    const rest = n.items.length - held.length;
-    const limits = dr.texts.length && rest >= dr.texts.length && same(n.items.slice(n.items.length - dr.texts.length), dr.texts) ? dr.limits : [];
-    if (!held.length && !limits.length) return n;
-    return { ...n, ...(held.length ? { heldIds: [...held] } : {}), ...(limits.length ? { limitIds: [...limits] } : {}) };
+    const pick = (kind: "held" | "limit" | "item") => rest.map((t, k) => ({ t, id: idAt[k], kind: kindAt[k] ?? "item" })).filter((r) => r.kind === kind);
+    const held = pick("held"), limits = pick("limit"), items = pick("item");
+    const heldIds = givenHeld ?? held.map((r) => r.id!), limitIds = givenLimits ?? limits.map((r) => r.id!);
+    return {
+      ...n,
+      items: [...n.items.slice(0, headN), ...held.map((r) => r.t), ...items.map((r) => r.t), ...limits.map((r) => r.t), ...n.items.slice(n.items.length - tailN)],
+      ...(heldIds.length ? { heldIds } : { heldIds: undefined }), ...(limitIds.length ? { limitIds } : { limitIds: undefined }),
+    };
   }
   // Renaming a held row renames the mechanism, a limit row's text edits the limit: in every channel.
   function rowEdits(nr: ReturnType<typeof rowsOf>, dr: ReturnType<typeof rowsOf>) {

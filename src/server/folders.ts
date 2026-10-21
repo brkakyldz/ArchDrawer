@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { closeSync, existsSync, lstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { SCAN_BUDGET, SKIP_DIRS } from "../core/scan";
-import { repoFileChecker } from "./files";
+import { holdsGit, repoFileChecker } from "./files";
 
 /**
  * A folder typed on the home screen (api contract, *Folders*): its checks, its repository root,
@@ -28,7 +28,7 @@ export function checkFolder(raw: unknown): Folder | { error: string } {
 /** The nearest ancestor of the folder, the folder included, that holds `.git`; else the folder. */
 export function rootOfFolder(folder: string): string {
   for (let dir = folder; ; dir = dirname(dir)) {
-    if (existsSync(join(dir, ".git"))) return dir;
+    if (holdsGit(dir)) return dir;
     if (dirname(dir) === dir) return folder;
   }
 }
@@ -65,7 +65,7 @@ export function git(cwd: string, args: string[], maxBuffer = 16 * 1024 * 1024): 
  * belongs to a repository above the root (a damaged one, or a worktree file) is not the root's.
  */
 export async function headCommit(root: string): Promise<string | null> {
-  if (!existsSync(join(root, ".git"))) return null;
+  if (!holdsGit(root)) return null;
   const top = (await git(root, ["rev-parse", "--show-toplevel"]))?.trim();
   if (!top || !samePlace(top, root)) return null;
   const out = await git(root, ["rev-parse", "HEAD"]);
@@ -128,7 +128,7 @@ function folderInside(root: string): (rel: string) => boolean {
     if (ok === undefined) {
       const r = real(join(root, rel));
       const out = base && r ? relative(base, r) : "..";
-      ok = !out.startsWith("..") && !isAbsolute(out);
+      ok = out !== ".." && !out.startsWith(`..${sep}`) && !isAbsolute(out);
       seen.set(rel, ok);
     }
     return ok;

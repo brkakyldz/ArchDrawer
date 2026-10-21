@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { existsSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { channelWarnings, normalizeFile3 } from "../core/channels";
 import { readAnyFile } from "../core/convert";
 import { fillDefaults3, type Document3, type File3 } from "../core/file3";
@@ -12,13 +12,55 @@ import { isV1 } from "../core/migrate";
  * and atomic writes.
  */
 
-/** The nearest ancestor of the file's folder that holds `.git`, else the file's own folder. */
+/**
+ * The nearest ancestor of the file's folder that holds `.git`. With none, the file's own folder,
+ * except for a file in `docs` whose `source` is that folder's parent, as a `draw` run writes a
+ * drawing of a folder outside git (diagram contract rule 14): then that parent.
+ */
 export function repoRootOf(file: string): string {
   const start = dirname(resolve(file));
+  // A draw's file in `docs` names that folder's parent as its source: a `.git` inside docs (a docs
+  // submodule) does not make docs the root.
+  const parent = dirname(start);
+  if (samePath(basename(start), "docs") && parent !== start && holdsGitOrPlain(parent)) {
+    try {
+      const source = (JSON.parse(readFileSync(file, "utf8").replace(/^﻿/, "")) as { source?: { path?: unknown } }).source?.path;
+      if (typeof source === "string" && samePath(source, parent)) return parent;
+    } catch { /* not readable: the walk below */ }
+  }
   for (let dir = start; ; dir = dirname(dir)) {
-    if (existsSync(resolve(dir, ".git"))) return dir;
+    if (holdsGit(dir)) return dir;
     if (dirname(dir) === dir) return start;
   }
+}
+
+/** The parent a draw roots its file at: a repository's root, or a folder outside git. */
+const holdsGitOrPlain = (dir: string) => {
+  for (let d = dir; ; d = dirname(d)) {
+    if (holdsGit(d)) return d === dir;
+    if (dirname(d) === d) return true;
+  }
+};
+
+const samePath = (a: string, b: string) => {
+  const x = resolve(a), y = resolve(b);
+  return process.platform === "win32" || process.platform === "darwin" ? x.toLowerCase() === y.toLowerCase() : x === y;
+};
+
+/**
+ * Whether a folder holds a repository's `.git` (api contract, Folders): a folder with a `HEAD` file,
+ * or a file naming its git folder (`gitdir: …`, a worktree or submodule). An empty or stray `.git`
+ * is none, so it never widens a repository root to the folders above it.
+ */
+export function holdsGit(dir: string): boolean {
+  const g = resolve(dir, ".git");
+  try {
+    const st = statSync(g);
+    if (st.isDirectory()) return statSync(resolve(g, "HEAD")).isFile();
+    if (!st.isFile()) return false;
+    const m = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(g, "utf8").slice(0, 4096));
+    return !!m && statSync(resolve(dir, m[1])).isDirectory();
+  } catch { return false; }
 }
 
 /** True when a repository-relative path exists inside the root, symlinks resolved. */

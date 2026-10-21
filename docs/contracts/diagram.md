@@ -301,8 +301,13 @@ with 400 and the first violation. Invalid files are never repaired.
     later never locks a drawing. The server registers and saves such a file
     without a warning; `check-files` names its missing paths (api contract)
     and the editor marks them (ui contract, `callout-files`). The repository root
-    is the nearest ancestor of the file's folder holding `.git`, else the
-    file's folder; a registered drawing's `source` is always that root.
+    is the nearest ancestor of the file's folder holding `.git` (as the api
+    contract's *Folders* counts one), else the file's folder. A file in a
+    folder named `docs` (any case where the disk ignores case) whose `source`
+    is that folder's parent, as a `draw` run writes it, is rooted at that
+    parent when the parent is a repository's root or lies outside git, even
+    when `docs` holds a `.git` of its own. A registered drawing's
+    `source` is always that root.
 15. At most 60 parts per view.
 16. Every component fact is shown or held by at least one part of the
     overview channel.
@@ -408,9 +413,11 @@ parts, text and note), and any of a part's or connection's own texts.
   limits: removing its last held row, or turning its panel into another form,
   deletes it. When an engine's answer does it, each deletion adds one warning:
   `View "<view>": "<part>" no longer holds "<m>"; the mechanism and its limits
-  were deleted`. An answer that names no row ids but draws as many rows as the
-  part had keeps them in place, so a changed row text edits that mechanism or
-  limit.
+  were deleted`. An answer that names no held or no limit ids keeps each drawn
+  held or limit row whose exact text it repeats, wherever the row now is (a
+  reordering only reorders them). When the rows it has left over are as many
+  as the drawn rows left over, they are taken in order, so a changed text edits
+  that mechanism or limit; any other row is an item of the part.
 - **Steps.** Deleting a part of the presentation view removes it from every
   step that names it; a step left with no part is removed, one warning each
   (`Step "<id>" had no part left and was removed`).
@@ -651,8 +658,10 @@ is the same:
 - an empty label becomes the id, an empty description `No description yet.`;
 - over-long text is shortened with `…`;
 - more than 120 components or 60 limits are cut, the last first;
-- a `within` that names no component, the fact itself, or a fact that has its
-  own `within` is cleared;
+- a `within` that names no component or the fact itself is cleared; then a
+  `within` naming a fact that still has its own `within` is cleared;
+- an evidence entry whose `lines` are neither null nor two whole numbers is
+  dropped: `<fact>: dropped the evidence <file>: its lines are not [from, to]`;
 - a relation joining a fact to itself or to an unknown id is dropped, a second
   relation on a pair is dropped, and a reverse pair becomes one two-way
   relation.
@@ -735,7 +744,7 @@ does.
 
 | Channel | Brief | Code checks |
 |---|---|---|
-| overview | The complete map: every fact shown or held. Merged parts where many facts are alike. Zones as the system's real boundaries. Held mechanisms and limits where they explain a part. No count caps | Every fact drawn (below) |
+| overview | The complete map: every fact shown or held. Merged parts where many facts are alike. Zones as the system's real boundaries. Held mechanisms and limits where they explain a part. No count target, within the 60 parts a view holds | Every fact drawn (below) |
 | linkedin | One image for a phone: about 8–12 parts. A title of at most 9 words and one plain sentence. No held items or limits, no tuning numbers | The post targets below. A non-empty `held`, `limits` or `steps` is dropped, one warning each |
 | readme | A detailed drawing that renders on GitHub. One-line sub-lines. Held mechanisms only on the few parts whose mechanism matters. Limits where they explain a guarantee | — |
 | presentation | One drawing and 3–8 ordered steps that tell it. Each step highlights the parts it is about, says it on screen in one short sentence, and gives the speaker one to three sentences | Each step's parts exist. A wrong one is dropped, and a step left with none, one warning each |
@@ -806,6 +815,10 @@ out, one warning each:
 - A component fact it neither shows nor holds is added as a card of its own
   at a free spot. It goes inside the zone or holder of the part it has the
   most relations with: `Added "<id>", which the overview left out`.
+- When those cards would take the view past 60 parts (rule 15), the facts that
+  do not fit are drawn in one part, `more-components` (`More components`),
+  with one warning: `Drew the <n> facts the overview left out beyond its 60
+  parts in one part "<id>"`.
 - A relation between two parts that each show one fact, which no connection
   shows, is added as a connection.
 

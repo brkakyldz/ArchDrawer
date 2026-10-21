@@ -13,13 +13,17 @@ import { answerToDocument, documentToDraft, EmptyDiagramError, type RunScope } f
 import { repoFileChecker } from "./files";
 import { nowIso, type Store } from "./store";
 import { EngineError, type Engine } from "./engines/types";
+import { ReadAnswerError } from "../core/read";
+import { DrawError, runDraw, type DrawRequest } from "./draw";
 
 export type RunStatus = "running" | "succeeded" | "failed" | "cancelled";
-export type RunKind = "refine" | "story" | "post" | "simplify";
+export type RunKind = "refine" | "story" | "post" | "simplify" | "draw";
+/** The stage of a `draw` run (api contract, The draw run); null on other kinds. */
+export type DrawStage = "read" | "overview" | "channel";
 /** The channels a story is drawn in (a post is a story on LinkedIn). */
 export type StoryChannel = Exclude<ChannelId, "overview">;
 export type RunEvent =
-  | { type: "progress"; message: string }
+  | { type: "progress"; message: string; stage: DrawStage | null }
   | { type: "done"; status: Exclude<RunStatus, "running">; diagramId: string | null; error: string | null; changes: Changes | null; channel: ChannelId; view: string; layoutReport: LayoutReport | null; route: "facts" | "story" | null; path: string | null };
 
 export interface RunRecord {
@@ -136,14 +140,36 @@ export class RunManager {
   }
 
   start(req: StartRun): string {
+    const story = storyChannelOf(req);
+    return this.launch(
+      { kind: req.kind ?? "refine", channel: story ?? channelOfView(req.stored, req.view) ?? "overview", view: story ? channelViewId(req.stored, story) : req.view, engine: req.engine.id, model: req.model, target: req.base.id },
+      (signal, progress) => this.execute(req, signal, (m) => progress(m)),
+    );
+  }
+
+  /** The running draw of a folder, if any (one at a time per folder). */
+  drawingOn(folderKey: string): string | null {
+    return this.runningOn(`folder:${folderKey}`);
+  }
+
+  /** Start a `draw` run (api contract, The draw run): a new drawing file from a scanned folder. */
+  startDraw(req: DrawRequest): string {
+    return this.launch(
+      { kind: "draw", channel: req.channel, view: req.channel, engine: req.engine.id, model: req.model, target: `folder:${req.folderKey}` },
+      (signal, progress, run) => runDraw(req, { store: this.store, timeoutMs: this.opts.timeoutMs, signal, progress, wrote: (path) => (run.path = path) }),
+    );
+  }
+
+  private launch(
+    init: Pick<RunRecord, "kind" | "channel" | "view" | "engine" | "model"> & { target: string },
+    exec: (signal: AbortSignal, progress: (m: string, stage?: DrawStage | null) => void, run: Run) => Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string }>,
+  ): string {
     const id = `r_${randomBytes(6).toString("hex")}`;
     let resolveFinished!: () => void;
     const run: Run = {
-      id, kind: req.kind ?? "refine",
-      channel: storyChannelOf(req) ?? channelOfView(req.stored, req.view) ?? "overview",
-      view: storyChannelOf(req) ? channelViewId(req.stored, storyChannelOf(req)!) : req.view,
-      status: "running", progress: [], diagramId: null, error: null, engine: req.engine.id, model: req.model,
-      changes: null, layoutReport: null, route: null, path: null, target: req.base.id,
+      id, kind: init.kind, channel: init.channel, view: init.view,
+      status: "running", progress: [], diagramId: null, error: null, engine: init.engine, model: init.model,
+      changes: null, layoutReport: null, route: null, path: null, target: init.target,
       events: [], listeners: new Set(), abort: new AbortController(),
       finished: new Promise((r) => (resolveFinished = r)), timedOut: false,
     };
@@ -154,13 +180,15 @@ export class RunManager {
       run.events.push(e);
       for (const l of run.listeners) l(e);
     };
-    const progress = (message: string) => {
+    const progress = (message: string, stage: DrawStage | null = null) => {
       if (run.status !== "running") return;
       run.progress.push(message);
-      emit({ type: "progress", message });
+      emit({ type: "progress", message, stage });
     };
     const end = (status: Exclude<RunStatus, "running">, diagramId: string | null, error: string | null, changes: Changes | null = null, report: LayoutReport | null = null) => {
       clearTimeout(deadline);
+      // A path is the file a run wrote: only a succeeded draw has one (api contract, Run record).
+      if (status !== "succeeded") run.path = null;
       run.status = status;
       run.diagramId = diagramId;
       run.error = error;
@@ -170,13 +198,13 @@ export class RunManager {
       run.listeners.clear();
       resolveFinished();
     };
-    void this.execute(req, run.abort.signal, progress).then(
+    void exec(run.abort.signal, progress, run).then(
       // The report names the channel it measured (api contract, Layout report).
       (r) => { run.channel = r.channel; run.view = r.view; end("succeeded", r.diagramId, null, r.changes, { ...r.layoutReport, channel: r.channel }); },
       (err: unknown) => {
         if (run.timedOut) return end("failed", null, `Timed out after ${Math.round(this.opts.timeoutMs / 60_000) || 1} min — try a narrower instruction`);
         if (run.abort.signal.aborted) return end("cancelled", null, null);
-        const known = err instanceof EngineError || err instanceof EmptyDiagramError || err instanceof StoryError || err instanceof CoverageError;
+        const known = err instanceof EngineError || err instanceof EmptyDiagramError || err instanceof StoryError || err instanceof CoverageError || err instanceof ReadAnswerError || err instanceof DrawError;
         // A product bug: its stack goes to the server log (server.log of a detached server).
         if (!known) console.error(`Run ${id} failed unexpectedly:`, err);
         end("failed", null, known ? (err as Error).message : `Unexpected error: ${(err as Error)?.message ?? String(err)}`);

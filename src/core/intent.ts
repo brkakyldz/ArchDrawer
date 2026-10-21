@@ -388,10 +388,97 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
 /**
  * A story answer as a channel's one view (diagram contract, Story answers): its parts point to the
  * facts the intent names, replacing what the channel held (and, for the presentation, its steps).
- * The facts and every other channel stay; the channel's `outdated` is emptied.
+ * The facts and every other channel stay; the channel's `outdated` is emptied. The overview is drawn
+ * this way only for a first drawing, and code then draws every fact it left out (*Every fact drawn*).
  */
-export function intentToChannel(stored: Document3, intent: StoryIntent, o: { portrait: boolean; channel?: Exclude<ChannelId, "overview"> }): { doc: Document3; view: string; warnings: string[] } {
+export function intentToChannel(stored: Document3, intent: StoryIntent, o: { portrait: boolean; channel?: ChannelId }): { doc: Document3; view: string; warnings: string[] } {
   const channel = o.channel ?? "linkedin";
+  if (channel !== "overview") return storyChannel(stored, intent, o.portrait, channel);
+  const first = storyChannel(stored, intent, o.portrait, channel, false);
+  const fill = leftOut(first.doc, intent);
+  if (!fill.added.length) return checkedStory(stored, first.doc, first.view);
+  return storyChannel(stored, fill.intent, o.portrait, channel, true, fill.added);
+}
+
+/**
+ * What the overview story left out (diagram contract, Every fact drawn): each component fact no part
+ * shows or holds becomes a part of its own, beside the part it has the most relations with and in that
+ * part's zone or holder; each relation between two parts that show one fact each, which no connection
+ * shows, becomes a connection. One warning each.
+ */
+function leftOut(drawn: Document3, intent: StoryIntent): { intent: StoryIntent; added: string[] } {
+  const view = drawn.channels.overview.views[0];
+  const shown = new Set(view.nodes.flatMap((p) => [...p.facts, ...(p.held ?? [])]));
+  const rels = drawn.facts.relations;
+  const next: StoryIntent = structuredClone(intent);
+  const added: string[] = [];
+  // The intent part that shows a fact (or holds it), by the converted view's parts.
+  const partOf = new Map<string, StoryPart>();
+  for (const p of view.nodes) {
+    const ip = next.parts.find((x) => x.id === p.id);
+    if (ip) for (const f of [...p.facts, ...(p.held ?? [])]) partOf.set(f, ip);
+  }
+  const taken = new Set(next.parts.map((p) => p.id));
+  // A view holds at most 60 parts (rule 15): what does not fit is drawn in one part, with one warning.
+  const missing = drawn.facts.components.filter((c) => !shown.has(c.id));
+  const room = LIMITS.nodesPerView - view.nodes.length;
+  if (missing.length > room && missing.length) {
+    const fits = Math.max(0, room - 1);
+    const rest = missing.slice(fits);
+    const top = next.parts.find((p) => p.inside === null && p.spine !== null);
+    const id = freeIdAmong(taken, "more-components");
+    taken.add(id);
+    next.parts.push({
+      id, label: "More components", sub: `${rest.length} the overview left out`, kind: "service", chips: [], from: rest.map((c) => c.id), held: [], limits: [],
+      zone: null, inside: null, spine: top ? null : nextSpine(next, null), anchor: top?.id ?? null, side: top ? "below" : null,
+    });
+    for (const c of rest) { shown.add(c.id); partOf.set(c.id, next.parts.at(-1)!); }
+    added.push(`Drew the ${rest.length} facts the overview left out beyond its ${LIMITS.nodesPerView} parts in one part "${id}"`);
+  }
+  for (const c of drawn.facts.components) {
+    if (shown.has(c.id)) continue;
+    // The part it has the most relations with; the first such part on a tie.
+    const counts = new Map<StoryPart, number>();
+    for (const r of rels) {
+      const other = r.from === c.id ? r.to : r.to === c.id ? r.from : null;
+      const p = other === null ? undefined : partOf.get(other);
+      if (p) counts.set(p, (counts.get(p) ?? 0) + 1);
+    }
+    const best = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
+    const top = next.parts.find((p) => p.inside === null && p.spine !== null);
+    const near = best ?? top;
+    const anchor = near ? (near.spine !== null ? near : next.parts.find((p) => p.id === near.anchor)) : undefined;
+    const id = freeIdAmong(taken, c.id);
+    taken.add(id);
+    const part: StoryPart = {
+      id, label: c.label, sub: c.sub, kind: c.kind, chips: [], from: [c.id], held: [], limits: [],
+      zone: best && best.inside === null ? best.zone : null, inside: best ? best.inside : null,
+      spine: anchor ? null : nextSpine(next, best ? best.inside : null), anchor: anchor?.id ?? null,
+      side: anchor ? (near !== anchor && near?.side ? near.side : "below") : null,
+    };
+    next.parts.push(part);
+    partOf.set(c.id, part);
+    added.push(`Added "${c.id}", which the overview left out`);
+  }
+  // Connections: a relation between two one-fact parts that no connection shows.
+  const shownRels = new Set(view.edges.flatMap((e) => e.relations));
+  const single = (f: string) => { const p = partOf.get(f); return p && p.from.length === 1 && p.from[0] === f ? p : undefined; };
+  for (const r of rels) {
+    if (shownRels.has(r.id)) continue;
+    const a = single(r.from), b = single(r.to);
+    if (!a || !b || a === b) continue;
+    if (next.edges.some((e) => (e.from === a.id && e.to === b.id) || (e.from === b.id && e.to === a.id))) continue;
+    next.edges.push({ from: a.id, to: b.id, label: r.label, style: r.style, step: null });
+    added.push(`Added the connection ${r.from} → ${r.to}, which the overview left out`);
+  }
+  return { intent: next, added };
+}
+
+/** The next free spine order among the parts of one level. */
+const nextSpine = (intent: StoryIntent, inside: string | null) =>
+  Math.max(-1, ...intent.parts.filter((p) => p.inside === inside && p.spine !== null).map((p) => p.spine!)) + 1;
+
+function storyChannel(stored: Document3, intent: StoryIntent, portrait: boolean, channel: ChannelId, check = true, added: string[] = []): { doc: Document3; view: string; warnings: string[] } {
   // The source: one node per component fact, so a part takes its files and description from the facts.
   const comps = stored.facts.components;
   const source: DiagramView = {
@@ -400,17 +487,21 @@ export function intentToChannel(stored: Document3, intent: StoryIntent, o: { por
   };
   const base = { ...joinChannel(stored, "overview"), views: [source], warnings: [] };
   const rows = storyRows(stored);
-  const view = channelViewId(stored, channel);
-  const r = intentToDocument(base, source.id, intent, { portrait: o.portrait, ids: { view }, channel, rows });
+  const view = channel === "overview" ? stored.channels.overview.views[0]?.id ?? "overview" : channelViewId(stored, channel);
+  const r = intentToDocument(base, source.id, intent, { portrait, ids: { view }, channel, rows });
   const drawn = r.doc.views.find((v) => v.id === r.view)!;
   const cleared: Document3 = { ...stored, channels: { ...stored.channels, [channel]: { ...stored.channels[channel], views: [], ...(channel === "presentation" ? { steps: [] } : {}) } } };
   const split = applyChannel(cleared, channel, {
     views: [{ ...drawn, postOf: null, nodes: drawn.nodes.map((n) => ({ ...n, facts: [...(n.from ?? [])] })) }],
-    warnings: [...stored.warnings, ...r.warnings],
+    warnings: [...stored.warnings, ...r.warnings, ...added],
     ...(channel === "presentation" ? { steps: r.steps } : {}),
   }, { keepFacts: true });
   if (!split.ok) throw new StoryError(split.error);
   const doc = clearOutdated(split.doc, channel);
+  return check ? checkedStory(stored, doc, view) : { doc, view, warnings: [] };
+}
+
+function checkedStory(stored: Document3, doc: Document3, view: string): { doc: Document3; view: string; warnings: string[] } {
   const checked = validateDocument3(doc);
   if (!checked.ok) throw new StoryError(`The engine's story could not become a valid drawing: ${checked.error}`);
   return { doc: checked.doc, view, warnings: doc.warnings.slice(stored.warnings.length) };

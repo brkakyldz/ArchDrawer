@@ -118,6 +118,61 @@ export function fixtureStory(view: DiagramView, presentation: boolean) {
   };
 }
 
+/**
+ * The fixed read (testing contract, Draw): an agent project whose files are the listing's first (A)
+ * and second (B); `ghost` points to a file that does not exist, so the evidence check drops it and
+ * what depends on it.
+ */
+export function fixtureRead(listing: readonly string[]) {
+  const A = listing[0] ?? "fixture/empty.ts", B = listing[1] ?? A;
+  const ev = (file: string, lines: [number, number] | null = null) => [{ file, lines }];
+  const comp = (id: string, kind: string, label: string, within: string | null, evidence: { file: string; lines: [number, number] | null }[]) =>
+    ({ id, label, kind, sub: "", description: `${label} as the test engine read it.`, within, evidence });
+  const rel = (from: string, to: string, label = "", style = "call") => ({ from, to, label, style, both: false, evidence: ev([from, to].some((x) => x === "app" || x === "store" || x === "ghost") ? A : B) });
+  return {
+    components: [
+      comp("app", "service", "App", null, ev(A)),
+      comp("agent", "llm", "Agent", null, ev(B, [1, 1])),
+      comp("model-call", "llm", "Model call", "agent", ev(B, [1, 1])),
+      comp("tool-proposal", "service", "Tool proposal", "agent", ev(B, [1, 1])),
+      comp("tool-check", "gate", "Tool check", "agent", ev(B, [1, 1])),
+      comp("tool-run", "worker", "Tool execution", "agent", ev(B, [1, 1])),
+      comp("tool-result", "service", "Tool result", "agent", ev(B, [1, 1])),
+      comp("store", "data", "Store", null, ev(A)),
+      comp("ghost", "external", "Ghost service", null, ev("fixture/ghost.ts")),
+    ],
+    relations: [
+      rel("app", "agent", "asks"),
+      rel("model-call", "tool-proposal"), rel("tool-proposal", "tool-check"), rel("tool-check", "tool-run"), rel("tool-run", "tool-result"),
+      rel("tool-result", "model-call", "", "async"),
+      rel("agent", "store", "keeps state"),
+      rel("app", "ghost"),
+    ],
+    limits: [
+      { id: "turn-limit", on: "agent", text: "Stops after 12 turns", evidence: ev(B, [1, 1]) },
+      { id: "ghost-limit", on: "ghost", text: "Answers within 2 s", evidence: ev(B, [1, 1]) },
+    ],
+  };
+}
+
+/** The fixed overview story of a draw (testing contract, Draw); `[fixture:partial]` leaves out `store`. */
+export function fixtureOverview(title: string, partial: boolean) {
+  const part = (id: string, extra: object) => ({ id, label: "", sub: "", kind: "service", chips: [], zone: null, inside: null, spine: null, anchor: null, side: null, facts: [id], held: [], limits: [], ...extra });
+  return {
+    title, lede: "Drawn by the test engine.", zones: [{ id: "runtime", label: "Agent runtime" }],
+    parts: [
+      part("app", { label: "App", spine: 0 }),
+      part("agent", { label: "Agent", kind: "llm", spine: 1, zone: "runtime", held: ["model-call", "tool-proposal", "tool-check", "tool-run", "tool-result"], limits: ["turn-limit"] }),
+      ...(partial ? [] : [part("store", { label: "Store", kind: "data", zone: "runtime", anchor: "agent", side: "below" })]),
+    ],
+    edges: [
+      { from: "app", to: "agent", label: "asks", style: "call", step: 1 },
+      ...(partial ? [] : [{ from: "agent", to: "store", label: "", style: "call", step: null }]),
+    ],
+    steps: [],
+  };
+}
+
 /** The deterministic stand-in engine of docs/contracts/testing.md. */
 export class FixtureEngine implements Engine {
   readonly id = "fixture";
@@ -129,6 +184,9 @@ export class FixtureEngine implements Engine {
   }
 
   async run(req: EngineRunRequest): Promise<unknown> {
+    // A draw's markers come from the folder's name and the typed focus (testing contract, Draw).
+    const stage = req.task?.data?.draw;
+    if (stage) return this.drawCall(req, stage, (m) => req.instruction.includes(m) || req.folderName.includes(m));
     if (req.instruction.includes("[fixture:slow]")) {
       for (let i = 1; i <= 30; i++) {
         await sleep(2000, req.signal);
@@ -148,6 +206,28 @@ export class FixtureEngine implements Engine {
     if (req.task?.kind === "story" && req.task.data?.overview) return fixtureStory(req.task.data.overview, req.task.data.channel === "presentation");
     if (req.simplify) return fixtureSimplify(req.base, req.instruction);
     return fixtureAnswer(req.base, req.view, req.instruction);
+  }
+
+  /** One of a draw's three calls: the read, the overview or the channel. */
+  private async drawCall(req: EngineRunRequest, stage: "read" | "overview" | "channel", marked: (m: string) => boolean): Promise<unknown> {
+    if (stage === "read" && marked("[fixture:slow]")) {
+      for (let i = 1; i <= 30; i++) {
+        await sleep(2000, req.signal);
+        req.progress(`Working ${i}/30`);
+      }
+    }
+    if (req.model) req.progress(`Using model ${req.model}`);
+    for (const step of FIXTURE_STEPS) {
+      await sleep(this.stepMs, req.signal);
+      req.progress(step);
+    }
+    await sleep(this.stepMs, req.signal);
+    if (marked(stage === "read" ? "[fixture:fail]" : `[fixture:fail:${stage}]`)) throw new EngineError("Fixture failure requested");
+    const data = req.task?.data ?? {};
+    if (stage === "read") return fixtureRead(data.listing ?? []);
+    if (stage === "overview") return fixtureOverview(data.title ?? req.folderName, marked("[fixture:partial]"));
+    if (req.task?.kind === "post") return fixturePost(req.base, req.view, req.instruction);
+    return fixtureStory(data.overview!, data.channel === "presentation");
   }
 }
 

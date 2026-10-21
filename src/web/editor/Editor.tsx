@@ -365,7 +365,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     const c = chanRef.current;
     if (c !== "readme" && c !== "presentation") return;
     if (!engine) { prepare(); return; }
-    void runner.start({ instruction: "", engine: engine.id, model: model || null, scope: { kind: "view" }, origin: "panel", kind: "story", channel: c, readCode: false });
+    void runner.start({ instruction: "", engine: engine.id, model: model || null, scope: { kind: "view" }, origin: "story", kind: "story", channel: c, readCode: false });
   };
   const undo = () => { if (running.current) toast(PAUSED); else hist.undo(); };
   const redo = () => { if (running.current) toast(PAUSED); else hist.redo(); };
@@ -530,8 +530,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   if (loadError) return <LoadError message={loadError} busy={loading} onRetry={() => { setLoadError(null); setLoading(true); setLoadRound((r) => r + 1); }} />;
   if (!doc || !stored || !view || !ctl) return <div className="app" />;
 
-  // Until the editor edits each channel on its own (#50, #52, #53), README and presentation keep
-  // their empty stage even when the file holds a view for them.
+  // A channel with no view shows its stage instead of the canvas (ui contract, channel-empty).
   const blank = stored.channels[chan].views.length === 0;
   const story = chan === "readme" || chan === "presentation";
   const outdated = blank ? 0 : stored.channels[chan].outdated.length;
@@ -655,6 +654,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
         <Canvas ctl={ctl} steps={stepsOn} onDouble={onDouble} />
         {outdated > 0 && <OutdatedBanner count={outdated} onKeep={keep} busy={runner.state.status === "running"}
           onRedraw={chan === "linkedin" ? () => drawFromFacts(engineProps, prepare) : story ? drawStory : undefined} />}
+        {story && !blank && <div className="story-run"><RunLine runner={runner} /></div>}
         {HINTS[tool] && <div className="tool-hint" data-testid="tool-hint" role="status">{HINTS[tool]}</div>}
         <div className="overlay">
           {callout && !editing && !pinned && <Callout key={callout} ctl={ctl} id={callout} />}

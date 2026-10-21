@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { checkScan, namedEntries, pickInputs, SCAN_BUDGET, SCAN_SCHEMA, ScanAnswerError, scanText, type FocusOption, type RepoCard } from "../core/scan";
+import { checkScan, namedEntries, pickInputs, SCAN_BUDGET, SCAN_SCHEMA, ScanAnswerError, scanText, type FocusOption, type RepoCard, type ScanInput } from "../core/scan";
 import { scanPrompt } from "./engines/prompt";
 import { EngineError, type Engine } from "./engines/types";
 import { repoFileChecker, writeAtomic } from "./files";
@@ -39,6 +39,8 @@ interface Cached { card: RepoCard; options: FocusOption[]; warnings: string[] }
 
 export class ScanManager {
   private readonly scans = new Map<string, Scan>();
+  /** Folders whose scan is being set up (before its record exists): one scan per folder at a time. */
+  private readonly starting = new Set<string>();
   private readonly dir: string;
 
   constructor(dataDir: string, private readonly opts: { timeoutMs: number }) {
@@ -58,9 +60,10 @@ export class ScanManager {
     return s && s.status === "succeeded" ? { ...this.get(id)!, rel: s.rel } : null;
   }
 
-  /** Whether a scan of this folder is running (one at a time per folder). */
+  /** Whether a scan of this folder is running or being started (one at a time per folder). */
   runningOn(f: Folder): boolean {
     const key = `${f.root}\0${f.rel}`;
+    if (this.starting.has(key)) return true;
     for (const s of this.scans.values()) if (s.key === key && s.status === "running") return true;
     return false;
   }
@@ -94,8 +97,18 @@ export class ScanManager {
     return join(this.dir, `${createHash("sha256").update(`${f.root}\0${f.rel}\0${commit}`).digest("hex")}.json`);
   }
 
-  /** Start a scan; a cached one is created already succeeded and starts no engine. */
-  async start(f: Folder, engine: Engine, model: string | null, refresh: boolean): Promise<string> {
+  /**
+   * Start a scan; a cached one is created already succeeded and starts no engine. Null when a scan
+   * of the folder is already running: the folder is reserved before anything is awaited.
+   */
+  async start(f: Folder, engine: Engine, model: string | null, refresh: boolean): Promise<string | null> {
+    if (this.runningOn(f)) return null;
+    const reserved = `${f.root}\0${f.rel}`;
+    this.starting.add(reserved);
+    try { return await this.begin(f, engine, model, refresh); } finally { this.starting.delete(reserved); }
+  }
+
+  private async begin(f: Folder, engine: Engine, model: string | null, refresh: boolean): Promise<string> {
     const id = `s_${randomBytes(6).toString("hex")}`;
     const commit = await headCommit(f.root);
     let resolveFinished!: () => void;
@@ -124,6 +137,8 @@ export class ScanManager {
     if (cacheFile && !refresh && existsSync(cacheFile)) {
       try {
         const hit = JSON.parse(readFileSync(cacheFile, "utf8")) as Cached;
+        // An entry of another shape (a corrupted file, an older format) is scanned again.
+        if (!hit || typeof hit !== "object" || !hit.card || typeof hit.card.name !== "string" || !Array.isArray(hit.options) || !Array.isArray(hit.warnings)) throw new Error("not a scan");
         scan.cached = true;
         progress(`Scanned before at ${commit!.slice(0, 7)}`);
         end("succeeded", null, hit);
@@ -153,16 +168,16 @@ export class ScanManager {
     progress("Gathering the repository");
     const commit = await headCommit(f.root);
     const { listing, more } = await listFolder(f, commit !== null);
-    const read = (p: string, max: number) => { const text = readPart(f.root, p, max); return text === null ? null : { path: p, text }; };
+    const read = (p: string, max: number): ScanInput | null => { const r = readPart(f.root, p, max); return r ? { path: p, text: r.text, length: r.length } : null; };
     const first = pickInputs(listing, f.rel);
-    const depTexts = first.deps.map((p) => read(p, SCAN_BUDGET.dep)).filter((x): x is { path: string; text: string } => !!x);
+    const depTexts = first.deps.map((p) => read(p, SCAN_BUDGET.dep)).filter((x): x is ScanInput => !!x);
     const named = depTexts.flatMap((d) => namedEntries(d.path, d.text));
     const { readme, entries } = pickInputs(listing, f.rel, named);
     const material = {
       listing, more,
       readme: readme ? read(readme, SCAN_BUDGET.readme) : null,
       deps: depTexts,
-      entries: entries.map((p) => read(p, SCAN_BUDGET.entry)).filter((x): x is { path: string; text: string } => !!x),
+      entries: entries.map((p) => read(p, SCAN_BUDGET.entry)).filter((x): x is ScanInput => !!x),
     };
     const folderName = basename(f.folder);
     if (signal.aborted) throw new EngineError("Cancelled");

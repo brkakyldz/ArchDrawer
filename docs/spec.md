@@ -60,6 +60,7 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 
 - **STORY-1** (To build) The user chooses a channel after the focus — LinkedIn,
   README or presentation — and can switch channel without a new deep read.
+  The LinkedIn channel does this today; README and presentation come in 0.3.
 - **STORY-2** (To build) LinkedIn: one image, about 8–12 parts, a title and one
   plain sentence, no held items, readable on a phone.
 - **STORY-3** (To build) README: a detailed drawing; one-line descriptions;
@@ -97,9 +98,9 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 
 - **FILE-1** (Today) A drawing is one JSON file in the user's repository; the
   editor saves into it and follows outside changes to it.
-- **FILE-2** (To build) The file holds the facts list and one drawing per
+- **FILE-2** (Today) The file holds the facts list and one drawing per
   channel (ADR 0003).
-- **FILE-3** (To build) Appearance edits change only their channel; content
+- **FILE-3** (Today) Appearance edits change only their channel; content
   edits change the facts and mark the other channels "needs update".
 - **EDIT-1** (Today) Move, resize by content, rename in place, add parts by
   kind and form, connect by dragging, free text, undo and redo across views.
@@ -126,7 +127,7 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 
 - **NAV-1** (Today) A part can open a detail view of its inside; detail views
   nest.
-- **NAV-2** (To build) Tabs show the channels (overview, LinkedIn, README,
+- **NAV-2** (Today) Tabs show the channels (overview, LinkedIn, README,
   presentation) with a "needs update" mark; a breadcrumb shows the path into
   detail views.
 - **NAV-3** (Today) Search highlights matching parts on the canvas as the
@@ -148,7 +149,7 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **SHARE-1** (Today) Export as PNG and SVG, copy as an image, light or dark,
   sized for LinkedIn (1080 × 1350), README (1600 × 900), slide (1920 × 1080)
   and square (1080 × 1080).
-- **SHARE-2** (To change) Share only packages what is ready: channel, theme,
+- **SHARE-2** (Today) Share only packages what is ready: channel, theme,
   a large full-size preview, a plain-language readability check, download and
   copy. It does not simplify or rearrange; "Simplify" and "Share one part"
   leave the share screen.

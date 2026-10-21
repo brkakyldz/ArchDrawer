@@ -147,8 +147,9 @@ server's.
   --exclude-standard -- <folder>`, run in the root as an argument array.
   Otherwise the folder is walked, skipping `.git`, `node_modules`, `dist`,
   `build`, `out`, `target`, `vendor`, `coverage`, `.next`, `.venv`, `venv`
-  and `__pycache__`. It holds at most 2000 paths, relative to the root, in
-  sorted order. A longer listing ends `… <n> more`.
+  and `__pycache__`. Either way it leaves out archdrawer's own drawing files
+  (`*.archdraw.json`): they describe the project, they are not its code. It
+  holds at most 2000 paths, relative to the root, in sorted order. A longer listing ends `… <n> more`.
 - **README:** the folder's first `README.md`, `README.rst`, `README.txt` or
   `README` (any case).
 - **Dependency files:** `package.json`, `pyproject.toml`, `requirements*.txt`,

@@ -31,13 +31,29 @@ type Focus = { kind: "option"; option: string } | { kind: "whole" } | { kind: "t
 interface Scan { id: string; folder: string; card: RepoCard; options: FocusOption[]; cached: boolean; commit: string | null }
 interface Draw { status: "running" | "failed"; stage: Stage | null; line: string; error: string | null; runId: string | null }
 
-/** Follow a scan's or a run's event stream until it is done. */
-function follow(url: string, onProgress: (data: { message: string; stage?: Stage | null }) => void): Promise<{ status: string; error: string | null; diagramId?: string | null }> {
+const UNREACHABLE = "Could not reach the archdrawer server";
+type End = { status: string; error: string | null; diagramId?: string | null };
+
+/**
+ * Follow a scan's or a run's event stream until it is done. When the stream drops, its record is
+ * read instead until it has finished; three failed reads in a row mean the server is gone.
+ */
+function follow(url: string, record: () => Promise<End>, onProgress: (data: { message: string; stage?: Stage | null }) => void, live: Set<() => void>): Promise<End> {
   return new Promise((done) => {
+    let over = false, timer: ReturnType<typeof setTimeout> | null = null;
     const es = new EventSource(url);
+    const stop = () => { over = true; es.close(); if (timer) clearTimeout(timer); live.delete(stop); };
+    live.add(stop);
+    const finish = (e: End) => { if (!over) { stop(); done(e); } };
     es.addEventListener("progress", (ev) => onProgress(JSON.parse((ev as MessageEvent).data)));
-    es.addEventListener("done", (ev) => { es.close(); done(JSON.parse((ev as MessageEvent).data)); });
-    es.onerror = () => { if (es.readyState === EventSource.CLOSED) done({ status: "failed", error: "The progress stream was refused" }); };
+    es.addEventListener("done", (ev) => finish(JSON.parse((ev as MessageEvent).data)));
+    let misses = 0;
+    const poll = () => {
+      if (over) return;
+      record().then((r) => { misses = 0; if (r.status !== "running") finish(r); else timer = setTimeout(poll, 1000); },
+        () => { if (++misses >= 3) finish({ status: "failed", error: UNREACHABLE }); else timer = setTimeout(poll, 1000); });
+    };
+    es.onerror = () => { if (over) return; es.close(); if (!timer) poll(); };
   });
 }
 
@@ -56,11 +72,15 @@ export function Start({ list, onExample, exampleBusy }: { list: DiagramSummary[]
   const [draw, setDraw] = useState<Draw | null>(null);
   const textEl = useRef<HTMLInputElement>(null);
   const lastDraw = useRef<Parameters<typeof api.startDraw>[0] | null>(null);
+  // Open streams, closed when the screen goes; a draw that ends after that opens nothing.
+  const live = useRef(new Set<() => void>());
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; for (const stop of [...live.current]) stop(); }, []);
 
-  useEffect(() => { api.engines().then(setEngines, () => setEngines([])); }, []);
+  useEffect(() => { api.engines().then(setEngines, (e: Error) => { setEngines([]); setError(e.message || UNREACHABLE); }); }, []);
   const engine = engines ? chooseEngine(engines, { engine: null }, chosen) : null;
   const model = engine ? models[engine.id] ?? rememberedModel(engine) : "";
-  const noEngine = engines !== null && !engine;
+  const noEngine = engines !== null && !engine && error !== UNREACHABLE;
   const busy = scanning !== null || draw?.status === "running";
   const roots = [...new Set((list ?? []).map((d) => d.root).filter((r): r is string => !!r))];
 
@@ -74,7 +94,8 @@ export function Start({ list, onExample, exampleBusy }: { list: DiagramSummary[]
   /** Scan: the folder is checked first; one that holds a drawing is offered before anything is scanned. */
   const onScan = async () => {
     if (!engine || busy) return;
-    setError(null); setExisting(null); setDraw(null);
+    // A new folder: the earlier card and choices go, so Draw it never draws the previous folder.
+    setError(null); setExisting(null); setDraw(null); setScan(null); setFocus(null); setChannel(null);
     let check;
     try { check = await api.checkFolder(folder); } catch (e) { setError(folderSentence((e as Error).message)); return; }
     if (check.drawing) { setExisting({ drawing: check.drawing, folder: check.folder }); return; }
@@ -88,7 +109,8 @@ export function Start({ list, onExample, exampleBusy }: { list: DiagramSummary[]
     let id: string;
     try { id = await api.startScan(path, { engine: engine.id, model: model || null, refresh }); } catch (e) { setScanning(null); setError(folderSentence((e as Error).message)); return; }
     setScanning({ id, line: "Starting" });
-    const end = await follow(`/api/scans/${id}/events`, (p) => setScanning((s) => (s ? { ...s, line: p.message } : s)));
+    const end = await follow(`/api/scans/${id}/events`, () => api.scan(id), (p) => setScanning((s) => (s ? { ...s, line: p.message } : s)), live.current);
+    if (!mounted.current) return;
     setScanning(null);
     if (end.status !== "succeeded") { setError(end.status === "cancelled" ? "Cancelled" : end.error ?? "The scan failed"); return; }
     let r: ScanRecord;
@@ -112,7 +134,8 @@ export function Start({ list, onExample, exampleBusy }: { list: DiagramSummary[]
     let runId: string;
     try { runId = await api.startDraw(body); } catch (e) { setDraw({ status: "failed", stage: null, line: "", error: e instanceof ApiError ? e.message : "Could not start the drawing", runId: null }); return; }
     setDraw((d) => (d ? { ...d, runId } : d));
-    const end = await follow(`/api/runs/${runId}/events`, (p) => setDraw((d) => (d ? { ...d, line: p.message, stage: p.stage ?? d.stage } : d)));
+    const end = await follow(`/api/runs/${runId}/events`, () => api.run(runId), (p) => setDraw((d) => (d ? { ...d, line: p.message, stage: p.stage ?? d.stage } : d)), live.current);
+    if (!mounted.current) return;
     if (end.status === "succeeded" && end.diagramId) { navigate(`/d/${end.diagramId}?channel=${body.channel}`); return; }
     setDraw({ status: "failed", stage: null, line: "", error: end.status === "cancelled" ? "Cancelled" : end.error ?? "The drawing failed", runId: null });
   };
@@ -178,7 +201,7 @@ export function Start({ list, onExample, exampleBusy }: { list: DiagramSummary[]
       {scanning && (
         <div className="start-progress" data-testid="scan-progress" role="status">
           <span>{scanning.line}</span>
-          <button className="btn small" data-testid="scan-cancel" disabled={!scanning.id} onClick={() => scanning.id && void api.cancelScan(scanning.id).catch(() => {})}>Cancel</button>
+          <button className="btn small" data-testid="scan-cancel" disabled={!scanning.id} onClick={() => scanning.id && void api.cancelScan(scanning.id).catch((e: Error) => setError(e.message))}>Cancel</button>
         </div>
       )}
       {scan && (
@@ -245,7 +268,7 @@ export function Start({ list, onExample, exampleBusy }: { list: DiagramSummary[]
             ))}
           </ol>
           <span data-testid="draw-line">{draw.line}</span>
-          <button className="btn small" data-testid="draw-cancel" disabled={!draw.runId} onClick={() => draw.runId && void api.cancelRun(draw.runId).catch(() => {})}>Cancel</button>
+          <button className="btn small" data-testid="draw-cancel" disabled={!draw.runId} onClick={() => draw.runId && void api.cancelRun(draw.runId).catch((e: Error) => setError(e.message))}>Cancel</button>
         </div>
       )}
       {draw?.status === "failed" && (

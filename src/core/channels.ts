@@ -705,7 +705,7 @@ export function clearOutdated(doc: Document3, channel: ChannelId): Document3 {
 }
 
 
-/** The depth checks on every channel view (contract, Warnings); Flat and No held items skip LinkedIn. */
+/** The depth checks on every channel view (contract, Warnings); Flat skips LinkedIn. */
 export function channelWarnings(doc: Document3): string[] {
   return CHANNELS.flatMap((c) => depthWarnings({ views: joinChannel(doc, c).views }, { prefix: `channels.${c}.views`, share: c === "linkedin" }));
 }

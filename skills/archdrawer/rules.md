@@ -95,7 +95,7 @@ Merge small helpers into what they serve; leave out tests and build scripts.
   "title": "Hotel Operations Agent",
   "facts": {
     "components": [
-      { "id": "runtime", "label": "Agent runtime", "kind": "llm", "sub": "OpenAI Agents SDK", "description": "Runs the agent loop for every guest request.",
+      { "id": "runtime", "label": "Agent runtime", "kind": "llm", "sub": "runs the agent loop", "description": "Runs the agent loop for every guest request.",
         "files": ["src/agent/"], "items": [] },
       { "id": "llm", "label": "LLM", "kind": "llm", "sub": "picks the next step", "description": "Chooses the next step from the conversation so far.",
         "files": [], "items": [] },

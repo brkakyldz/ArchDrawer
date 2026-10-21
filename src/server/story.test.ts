@@ -56,7 +56,7 @@ describe("story runs", () => {
     expect((await refused({ kind: "story", channel: "linkedin", format: "readme" })).body.error).toBe('Invalid format "readme"; use one of feed, linkedin');
     expect((await refused({ kind: "story", channel: "readme", format: "square" })).body.error).toBe('Invalid format "square"; use one of readme');
     expect((await refused({ kind: "story", channel: "presentation", format: "readme" })).body.error).toBe('Invalid format "readme"; use one of slide');
-    expect((await refused({ kind: "draw" })).body.error).toBe("The draw run is not available yet");
+    expect((await refused({ kind: "draw" })).body.error).toBe("Scan the folder first: that scan is unknown or did not succeed");
     expect((await refused({ kind: "refine", instruction: "x", view: "overview", readCode: true })).body.error).toBe("readCode is for a story");
     expect((await refused({ kind: "poster" })).body.error).toBe("Unknown run kind poster: use refine, story, post, simplify or draw");
   });

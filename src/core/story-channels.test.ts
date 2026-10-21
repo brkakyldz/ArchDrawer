@@ -153,6 +153,30 @@ describe("a story as a channel's view (intentToChannel)", () => {
   });
 });
 
+describe("a first overview drawn from a story (Every fact drawn)", () => {
+  it("adds each fact the story left out beside the part it relates to most, and the relations between one-fact parts", () => {
+    const d = agent();
+    const first: Document3 = { ...d, channels: { ...d.channels, overview: { ...d.channels.overview, views: [] } } };
+    // The story draws the app and the agent holding its loop, in a zone; it leaves out the store, and connects nothing.
+    d.facts.relations.push({ id: "r2", from: "agent", to: "store", label: "keeps", style: "call", both: false });
+    const i = intent({ edges: [], parts: [
+      sp("app", { spine: 0, from: ["app"] }),
+      sp("agent", { spine: 1, zone: "run", from: ["agent"], held: ["propose", "check"], limits: ["turns"] }),
+    ] });
+    const r = intentToChannel({ ...first, facts: d.facts }, i, { portrait: false, channel: "overview" });
+    expect(validateDocument3(r.doc).ok).toBe(true);
+    const v = r.doc.channels.overview.views[0];
+    expect(v.id).toBe("overview");
+    expect(v.nodes.find((p) => p.id === "store")).toMatchObject({ facts: ["store"], form: "card", parent: "zone-run", lane: { anchor: "agent", side: "below" } });
+    expect(v.edges.map((e) => e.relations)).toEqual([["r1"], ["r2"]]);
+    expect(r.warnings).toEqual([
+      'Added "store", which the overview left out',
+      "Added the connection app → agent, which the overview left out",
+      "Added the connection agent → store, which the overview left out",
+    ]);
+  });
+});
+
 describe("a refine keeps the rows a part may draw", () => {
   it("sends held and limit rows as ids and writes them back; one it may not draw is dropped with a warning", () => {
     const d = agent();

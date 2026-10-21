@@ -119,7 +119,10 @@ export class ScanManager {
       finished: new Promise((r) => (resolveFinished = r)), key: `${f.root}\0${f.rel}`, rel: f.rel,
     };
     this.scans.set(id, scan);
-    void scan.finished.then(() => setTimeout(() => this.scans.delete(id), 3_600_000).unref());
+    // The latest finished scan of a folder is kept for a draw; an earlier one goes (api contract, Lifecycle).
+    void scan.finished.then(() => {
+      for (const [other, s] of this.scans) if (other !== id && s.key === scan.key && s.status !== "running") this.scans.delete(other);
+    });
     const emit = (e: ScanEvent) => { scan.events.push(e); for (const l of scan.listeners) l(e); };
     const progress = (message: string) => { if (scan.status !== "running") return; scan.progress.push(message); emit({ type: "progress", message }); };
     const end = (status: Exclude<ScanStatus, "running">, error: string | null, r: Cached | null = null) => {

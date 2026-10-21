@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { channelWarnings, normalizeFile3 } from "../core/channels";
 import { readAnyFile } from "../core/convert";
 import { fillDefaults3, type Document3, type File3 } from "../core/file3";
@@ -12,14 +12,30 @@ import { isV1 } from "../core/migrate";
  * and atomic writes.
  */
 
-/** The nearest ancestor of the file's folder that holds `.git`, else the file's own folder. */
+/**
+ * The nearest ancestor of the file's folder that holds `.git`. With none, the file's own folder,
+ * except for a file in `docs` whose `source` is that folder's parent, as a `draw` run writes a
+ * drawing of a folder outside git (diagram contract rule 14): then that parent.
+ */
 export function repoRootOf(file: string): string {
   const start = dirname(resolve(file));
   for (let dir = start; ; dir = dirname(dir)) {
     if (existsSync(resolve(dir, ".git"))) return dir;
-    if (dirname(dir) === dir) return start;
+    if (dirname(dir) === dir) break;
   }
+  const parent = dirname(start);
+  if (basename(start) !== "docs" || parent === start) return start;
+  try {
+    const source = (JSON.parse(readFileSync(file, "utf8").replace(/^﻿/, "")) as { source?: { path?: unknown } }).source?.path;
+    if (typeof source === "string" && samePath(source, parent)) return parent;
+  } catch { /* not readable: the file's folder */ }
+  return start;
 }
+
+const samePath = (a: string, b: string) => {
+  const x = resolve(a), y = resolve(b);
+  return process.platform === "win32" ? x.toLowerCase() === y.toLowerCase() : x === y;
+};
 
 /** True when a repository-relative path exists inside the root, symlinks resolved. */
 export function repoFileChecker(root: string): (rel: string) => boolean {

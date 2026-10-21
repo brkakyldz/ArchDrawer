@@ -211,8 +211,10 @@ home screen always offers them (SCAN-3).
 
 **Lifecycle.** As a run's: `running`, `succeeded`, `failed` or `cancelled`,
 the same timeout, and cancel kills the engine's process tree. A failed or
-cancelled scan caches nothing. A finished scan is kept while the server runs,
-so a `draw` can follow it at any time; its cache entry stays.
+cancelled scan caches nothing. The latest finished scan of each folder is kept
+while the server runs, so a `draw` can follow it at any time; an earlier one
+of the same folder is forgotten when a newer one finishes. Its cache entry
+stays.
 
 **Scan record** (`GET /api/scans/:scanId`):
 `{"id", "status", "progress", "folder", "root", "commit", "cached", "card",
@@ -226,8 +228,7 @@ before at <short commit>`.
 ## The draw run
 
 `POST /api/runs` with `kind: "draw"` starts a first drawing (STORY-1,
-READ-1–3). It takes no `diagramId`. (Until it is built, a draw is refused
-with 400 `The draw run is not available yet`.)
+READ-1–3). It takes no `diagramId`:
 
 ```jsonc
 { "kind": "draw",
@@ -285,7 +286,10 @@ or the first free `architecture-<n>.archdraw.json` (n = 2, 3, … 99) when that
 name is taken. The `docs` folder is created when missing. The app never
 overwrites an existing file: the document is written to a temporary file in
 `docs`, and the name is claimed by linking that file to it, which fails when
-the name exists, even one that appeared a moment before. When the file cannot
+the name exists, even one that appeared a moment before. Where links are not
+supported (FAT, exFAT, some network shares) the name is claimed by creating
+it exclusively and writing the document into it. The temporary file is
+removed in every outcome. When the file cannot
 be written (`docs` is not a folder, the folder is read-only, every name is
 taken) the run fails with `Could not write the drawing in <folder>/docs:
 <reason>`. The file is then registered as `POST /api/files` would register

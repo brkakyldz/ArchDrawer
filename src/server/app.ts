@@ -16,6 +16,7 @@ import { FileError, nowIso, type Store } from "./store";
 import type { RunManager } from "./runs";
 import type { ScanManager } from "./scans";
 import { checkFolder, headCommit } from "./folders";
+import type { DrawFocus } from "./engines/prompt";
 import type { Engine, EngineInfo } from "./engines/types";
 
 export interface AppDeps {
@@ -301,6 +302,36 @@ export function createApp(deps: AppDeps): Hono {
     return engine ? { engine, model } : "No engine is available: install and log in to Claude Code or Codex";
   };
 
+  /** A `draw` run (api contract, The draw run): its checks in their order, then one draw per folder. */
+  const startDraw = async (c: Context, b: Record<string, unknown>) => {
+    const scan = typeof b.scan === "string" ? scans.succeeded(b.scan) : null;
+    if (!scan) return err(c, 400, "Scan the folder first: that scan is unknown or did not succeed");
+    // The folder may have gone since the scan.
+    const f = checkFolder(scan.folder);
+    if ("error" in f) return err(c, 400, f.error);
+    const focus = b.focus as Record<string, unknown> | undefined;
+    const fk = focus && typeof focus === "object" && !Array.isArray(focus) ? focus.kind : undefined;
+    if (fk !== "option" && fk !== "whole" && fk !== "typed") return err(c, 400, 'Unknown focus: use {"kind": "option" | "whole" | "typed"}');
+    let drawFocus: DrawFocus;
+    if (fk === "option") {
+      const option = (scan.options ?? []).find((o) => o.id === focus!.option);
+      if (!option) return err(c, 400, `Unknown focus option "${String(focus!.option)}"`);
+      drawFocus = { kind: "option", option };
+    } else if (fk === "typed") {
+      const text = typeof focus!.text === "string" ? focus!.text.trim() : "";
+      if (!text) return err(c, 400, "Say what to focus on: the focus is empty");
+      if (text.length > 300) return err(c, 400, "The focus is too long (300 characters at most)");
+      drawFocus = { kind: "typed", text };
+    } else drawFocus = { kind: "whole" };
+    if (b.channel !== "linkedin" && b.channel !== "readme" && b.channel !== "presentation") return err(c, 400, "Choose the channel: linkedin, readme or presentation");
+    const picked = await pickEngine(b);
+    if (typeof picked === "string") return err(c, 400, picked);
+    const folderKey = `${f.root}\0${f.rel}`;
+    if (runs.drawingOn(folderKey)) return err(c, 409, "A drawing of this folder is already being made");
+    const runId = runs.startDraw({ engine: picked.engine, model: picked.model, folder: f, folderKey, card: scan.card!, focus: drawFocus, channel: b.channel });
+    return c.json({ runId }, 202);
+  };
+
   app.post("/api/runs", async (c) => {
     const body = await readJson(c);
     if (!body || typeof body !== "object") return err(c, 400, "Body must be a JSON object");
@@ -308,7 +339,7 @@ export function createApp(deps: AppDeps): Hono {
     const KINDS = ["refine", "story", "post", "simplify", "draw"];
     if (b.kind !== undefined && !(typeof b.kind === "string" && KINDS.includes(b.kind))) return err(c, 400, `Unknown run kind ${typeof b.kind === "string" ? b.kind : JSON.stringify(b.kind)}: use refine, story, post, simplify or draw`);
     const kind = (b.kind as "refine" | "story" | "post" | "simplify" | "draw" | undefined) ?? "refine";
-    if (kind === "draw") return err(c, 400, "The draw run is not available yet");
+    if (kind === "draw") return startDraw(c, b);
     // A story or post: a channel's one view; a post is a story on LinkedIn (api contract, Run kinds).
     const story = kind === "story" || kind === "post";
     const onLinkedIn = kind === "post" || (kind === "story" && b.channel === "linkedin");
@@ -388,7 +419,7 @@ export function createApp(deps: AppDeps): Hono {
         let chain = Promise.resolve();
         let unsub: (() => void) | null = null;
         unsub = runs.subscribe(id, (e) => {
-          const data = e.type === "progress" ? { message: e.message, stage: null } : { status: e.status, diagramId: e.diagramId, error: e.error, changes: e.changes, channel: e.channel, view: e.view, layoutReport: e.layoutReport, route: e.route, path: e.path };
+          const data = e.type === "progress" ? { message: e.message, stage: e.stage } : { status: e.status, diagramId: e.diagramId, error: e.error, changes: e.changes, channel: e.channel, view: e.view, layoutReport: e.layoutReport, route: e.route, path: e.path };
           chain = chain.then(() => stream.writeSSE({ event: e.type, data: JSON.stringify(data) })).catch(() => {});
           if (e.type === "done") void chain.then(() => { unsub?.(); done(); });
         });

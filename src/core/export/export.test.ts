@@ -66,7 +66,15 @@ describe("shapes by kind (LOOK-2)", () => {
     nodes.push(node("panel-llm", "llm", "panel", { place: { row: 2, col: 0 } }), node("group-data", "data", "group", { place: { row: 2, col: 2 } }), node("inner-gate", "gate", "compact", { parent: "group-data" }));
     return { id, title: "T", caption: { title: "T", lede: "" }, postOf: null, nodes, edges: [], texts: [] };
   };
-  const shapes = (svg: string) => Object.fromEntries([...svg.matchAll(/data-node-id="([^"]+)"[^>]*>(?:<rect class="box"[^>]*>)?(?:<clipPath[^]*?<\/clipPath>)?(?:<rect(?! class="body")[^>]*>)*<(?:rect|path) class="body" data-shape="([a-z]+)"/g)].map((m) => [m[1], m[2]]));
+  /** Each part's outline: the one element with class `body` in its `g[data-node-id]`, whatever the order of its markup. */
+  const bodies = (svg: string) => new Map(svg.split('<g data-node-id="').slice(1).map((chunk) => {
+    const id = chunk.slice(0, chunk.indexOf('"'));
+    const els = [...chunk.matchAll(/<(?:rect|path)\b[^>]*>/g)].map((m) => m[0]).filter((el) => /\sclass="body"/.test(el));
+    expect(els, `${id}: one body`).toHaveLength(1);
+    return [id, els[0]] as const;
+  }));
+  const attr = (el: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(el)?.[1];
+  const shapes = (svg: string) => Object.fromEntries([...bodies(svg)].map(([id, el]) => [id, attr(el, "data-shape")]));
   const expected: Record<string, string> = {
     ...Object.fromEntries(SHAPED.flatMap(([k, s]) => [[`card-${k}`, s], [`compact-${k}`, s]])),
     "panel-llm": "card", "group-data": "group", "inner-gate": "check",
@@ -96,9 +104,9 @@ describe("shapes by kind (LOOK-2)", () => {
         const r = d.rects.get(x.id)!;
         expect(r, `${id} ${x.id}: the box of a plain part`).toEqual(plain.get(x.id));
         expect(firstRect(d.body, x.id), `${id} ${x.id}: first rect`).toEqual({ w: r.w, h: r.h });
-        const body = new RegExp(`data-node-id="${x.id}"[^]*?class="body" data-shape="[a-z]+" d="([^"]+)"`).exec(d.body);
-        if (!body || !["agent", "person", "store", "external", "check"].includes(expected[x.id])) continue;
-        const e = extent(body[1]);
+        const outline = attr(bodies(d.body).get(x.id)!, "d");
+        if (!outline || !["agent", "person", "store", "external", "check"].includes(expected[x.id])) continue;
+        const e = extent(outline);
         expect(e.x0, `${id} ${x.id} left`).toBeGreaterThanOrEqual(r.x - 0.01); expect(e.x1, `${id} ${x.id} right`).toBeLessThanOrEqual(r.x + r.w + 0.01);
         expect(e.y0, `${id} ${x.id} top`).toBeGreaterThanOrEqual(r.y - 0.01); expect(e.y1, `${id} ${x.id} bottom`).toBeLessThanOrEqual(r.y + r.h + 0.01);
       }
@@ -107,7 +115,7 @@ describe("shapes by kind (LOOK-2)", () => {
 
   it("strokes a shaped outline with round joins, so a browser measures it as it measures a rect", () => {
     const body = drawView(view(), PALETTES.light).body;
-    const paths = [...body.matchAll(/<path class="(?:body|shape-mark)"[^>]*>/g)].map((m) => m[0]);
+    const paths = [...body.matchAll(/<path\b[^>]*>/g)].map((m) => m[0]).filter((el) => /\sclass="(?:body|shape-mark)"/.test(el));
     expect(paths.length).toBeGreaterThan(0);
     for (const p of paths) expect(p).toContain('stroke-linejoin="round"');
   });

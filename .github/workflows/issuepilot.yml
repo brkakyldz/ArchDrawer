@@ -18,7 +18,9 @@ permissions: {}
 
 jobs:
   issuepilot:
-    uses: brkakyldz/IssuePilot/.github/workflows/issuepilot.yml@v1
+    # Pinned to a commit, not the movable v1 tag: this job holds the Claude token and may write issues.
+    # cf06c3f is what v1 named on 2026-10-21; move it by hand after reading the new version.
+    uses: brkakyldz/IssuePilot/.github/workflows/issuepilot.yml@cf06c3f29a824f72f19d432fe79a92bf38948168
     # The ceiling for IssuePilot's two jobs: the investigating job only ever gets
     # read access; the separate publishing job, which runs no AI, writes the comment.
     permissions:

@@ -51,6 +51,18 @@ describe("the read's repair", () => {
     expect(repairRead({ components: [comp("c0")], relations: [], limits: lims }).facts.limits).toHaveLength(READ_LIMITS.limits);
   });
 
+  it("clears a within in two passes, whatever the answer's order", () => {
+    const r = repairRead({ components: [comp("a", { within: "b" }), comp("b", { within: "ghost" })], relations: [], limits: [] });
+    expect(r.facts.components.map((c) => [c.id, c.within ?? null])).toEqual([["a", "b"], ["b", null]]);
+    expect(r.warnings).toEqual(['Component "b": cleared its within "ghost": no such component']);
+  });
+
+  it("drops an evidence entry whose lines are not a pair of whole numbers, with one warning", () => {
+    const r = repairRead({ components: [comp("a", { evidence: [{ file: "src/a.ts", lines: [1] }, { file: "src/b.ts", lines: [1.5, 2] }, { file: "src/c.ts", lines: [3, 4] }] })], relations: [], limits: [] });
+    expect(r.facts.components[0].evidence).toEqual([{ file: "src/c.ts", lines: [3, 4] }]);
+    expect(r.warnings).toEqual(["a: dropped the evidence src/a.ts: its lines are not [from, to]", "a: dropped the evidence src/b.ts: its lines are not [from, to]"]);
+  });
+
   it("refuses an answer that is not a facts answer at all", () => {
     expect(() => repairRead("no facts")).toThrow(ReadAnswerError);
     expect(() => repairRead({ relations: [] })).toThrow(/no components list/);

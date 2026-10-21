@@ -177,6 +177,22 @@ describe("a first overview drawn from a story (Every fact drawn)", () => {
   });
 });
 
+describe("an overview over the part limit", () => {
+  it("draws the facts it left out beyond 60 parts in one part, with one warning, and stays valid", () => {
+    const d = agent();
+    const extra = Array.from({ length: 70 }, (_, k) => ({ id: `svc-${k}`, label: `Service ${k}`, kind: "service" as const, sub: "", description: "A service.", files: [], items: [] }));
+    const facts = { ...d.facts, components: [...d.facts.components, ...extra] };
+    const first: Document3 = { ...d, facts, channels: { ...d.channels, overview: { ...d.channels.overview, views: [] } } };
+    const r = intentToChannel(first, intent({ zones: [], edges: [], parts: [sp("app", { spine: 0, from: ["app"] }), sp("agent", { spine: 1, from: ["agent"], held: ["propose", "check"] }), sp("store", { spine: 2, from: ["store"] })] }), { portrait: false, channel: "overview" });
+    expect(validateDocument3(r.doc).ok).toBe(true);
+    const v = r.doc.channels.overview.views[0];
+    expect(v.nodes).toHaveLength(60);
+    const more = v.nodes.find((p) => p.id === "more-components")!;
+    expect(more.facts).toHaveLength(70 - 56);
+    expect(r.warnings.filter((w) => w.startsWith("Drew the"))).toEqual(['Drew the 14 facts the overview left out beyond its 60 parts in one part "more-components"']);
+  });
+});
+
 describe("a refine keeps the rows a part may draw", () => {
   it("sends held and limit rows as ids and writes them back; one it may not draw is dropped with a warning", () => {
     const d = agent();

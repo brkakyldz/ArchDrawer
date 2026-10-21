@@ -419,6 +419,22 @@ function leftOut(drawn: Document3, intent: StoryIntent): { intent: StoryIntent; 
     if (ip) for (const f of [...p.facts, ...(p.held ?? [])]) partOf.set(f, ip);
   }
   const taken = new Set(next.parts.map((p) => p.id));
+  // A view holds at most 60 parts (rule 15): what does not fit is drawn in one part, with one warning.
+  const missing = drawn.facts.components.filter((c) => !shown.has(c.id));
+  const room = LIMITS.nodesPerView - view.nodes.length;
+  if (missing.length > room && missing.length) {
+    const fits = Math.max(0, room - 1);
+    const rest = missing.slice(fits);
+    const top = next.parts.find((p) => p.inside === null && p.spine !== null);
+    const id = freeIdAmong(taken, "more-components");
+    taken.add(id);
+    next.parts.push({
+      id, label: "More components", sub: `${rest.length} the overview left out`, kind: "service", chips: [], from: rest.map((c) => c.id), held: [], limits: [],
+      zone: null, inside: null, spine: top ? null : nextSpine(next, null), anchor: top?.id ?? null, side: top ? "below" : null,
+    });
+    for (const c of rest) { shown.add(c.id); partOf.set(c.id, next.parts.at(-1)!); }
+    added.push(`Drew the ${rest.length} facts the overview left out beyond its ${LIMITS.nodesPerView} parts in one part "${id}"`);
+  }
   for (const c of drawn.facts.components) {
     if (shown.has(c.id)) continue;
     // The part it has the most relations with; the first such part on a tie.

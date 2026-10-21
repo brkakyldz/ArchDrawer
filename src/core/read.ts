@@ -76,11 +76,13 @@ export function repairRead(raw: unknown): { facts: EvidenceFacts; warnings: stri
     return c;
   };
   const evidence = (v: unknown, owner: string): Evidence[] => {
-    const out: Evidence[] = arr(v).filter(isObj).map((e) => {
+    const out: Evidence[] = [];
+    for (const e of arr(v).filter(isObj)) {
       const l = e.lines;
-      const lines = Array.isArray(l) && l.length === 2 && l.every((x) => Number.isInteger(x)) ? [l[0] as number, l[1] as number] as [number, number] : null;
-      return { file: str(e.file), lines };
-    });
+      if (l === null || l === undefined) { out.push({ file: str(e.file), lines: null }); continue; }
+      if (Array.isArray(l) && l.length === 2 && l.every((x) => Number.isInteger(x))) { out.push({ file: str(e.file), lines: [l[0] as number, l[1] as number] }); continue; }
+      warnings.push(`${owner}: dropped the evidence ${str(e.file)}: its lines are not [from, to]`);
+    }
     if (out.length > FACT3_LIMITS.evidence) { warnings.push(`Kept the first ${FACT3_LIMITS.evidence} evidence entries of "${owner}"`); out.length = FACT3_LIMITS.evidence; }
     return out;
   };
@@ -108,16 +110,22 @@ export function repairRead(raw: unknown): { facts: EvidenceFacts; warnings: stri
   });
   const known = new Set(comps.map((c) => c.id));
   const resolveId = (said: string) => idOf.get(said.trim()) ?? (known.has(said.trim()) ? said.trim() : null);
-  // `within`: a component that is not itself a mechanism.
-  const saidWithin = new Map(comps.map((c) => [c.id, c.within]));
+  // `within`: a component that is not itself a mechanism. First the ones that name nothing or
+  // themselves go, then a within naming a component that is still a mechanism.
+  const said = new Map(comps.map((c) => [c.id, c.within]));
   for (const c of comps) {
     if (c.within === null) continue;
     const w = resolveId(c.within);
-    const outer = w === null ? undefined : saidWithin.get(w);
-    if (w === null || w === c.id || (outer !== null && outer !== undefined)) {
-      warnings.push(`Component "${c.id}": cleared its within "${c.within}": ${w === null ? "no such component" : w === c.id ? "itself" : "a mechanism itself"}`);
+    if (w === null || w === c.id) {
+      warnings.push(`Component "${c.id}": cleared its within "${c.within}": ${w === null ? "no such component" : "itself"}`);
       c.within = null;
     } else c.within = w;
+  }
+  const isMechanism = new Set(comps.filter((c) => c.within !== null).map((c) => c.id));
+  for (const c of comps) {
+    if (c.within === null || !isMechanism.has(c.within)) continue;
+    warnings.push(`Component "${c.id}": cleared its within "${said.get(c.id)}": a mechanism itself`);
+    c.within = null;
   }
 
   // Relations: real ends, one per pair, a reverse pair joined into one two-way relation.

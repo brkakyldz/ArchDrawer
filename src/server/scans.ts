@@ -121,6 +121,7 @@ export class ScanManager {
     this.scans.set(id, scan);
     // The latest finished scan of a folder is kept for a draw; an earlier one goes (api contract, Lifecycle).
     void scan.finished.then(() => {
+      if (scan.status !== "succeeded") return;
       for (const [other, s] of this.scans) if (other !== id && s.key === scan.key && s.status !== "running") this.scans.delete(other);
     });
     const emit = (e: ScanEvent) => { scan.events.push(e); for (const l of scan.listeners) l(e); };

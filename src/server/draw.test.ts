@@ -1,9 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { validateDocument3 } from "../core/file3";
 import { DrawError, writeNewDrawing } from "./draw";
+import { repoRootOf } from "./files";
+import { FixtureEngine } from "./engines/fixture";
+import { EngineError, type Engine } from "./engines/types";
 import { makeApp, makeFolder } from "./testkit";
 
 // The draw run (api contract, The draw run): what the held-out scenarios H117–H120 do not observe —
@@ -105,6 +108,16 @@ describe("the draw run", () => {
     };
     const first = await scan(false), second = await scan(true);
     expect([t.scans.get(first), t.scans.get(second)?.status]).toEqual([null, "succeeded"]);
+    // A refresh that fails leaves the scan a draw can follow.
+    const fixture = new FixtureEngine(1);
+    let calls = 0;
+    const flaky: Engine = { id: "fixture", label: "Fixture (test)", detect: () => fixture.detect(), run: async (r) => { if (calls++) throw new EngineError("down"); return fixture.run(r); } };
+    const f = makeApp({ engines: [flaky] });
+    const ok = await json(await f.req("/api/scans", { method: "POST", json: { folder: dir, refresh: true } }));
+    await f.scans.wait(ok.body.scanId);
+    const failed = await json(await f.req("/api/scans", { method: "POST", json: { folder: dir, refresh: true } }));
+    await f.scans.wait(failed.body.scanId);
+    expect([f.scans.get(ok.body.scanId)?.status, f.scans.get(failed.body.scanId)?.status]).toEqual(["succeeded", "failed"]);
   });
 
   it("refuses a second draw of a folder while one runs", async () => {
@@ -127,6 +140,20 @@ describe("writing a new drawing", () => {
     expect(writeNewDrawing(dir, "{}\n")).toBe(join(dir, "docs", "architecture-3.archdraw.json"));
     expect(readFileSync(join(dir, "docs", "architecture.archdraw.json"), "utf8")).toBe("not a drawing\n");
     expect(readdirSync(join(dir, "docs")).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("never writes through a docs that is a link (a junction or a symlink) to somewhere else", () => {
+    const elsewhere = makeFolder({});
+    const dir = makeFolder({});
+    symlinkSync(elsewhere, join(dir, "docs"), "junction");
+    expect(() => writeNewDrawing(dir, "{}\n")).toThrow(new DrawError(`Could not write the drawing in ${join(dir, "docs")}: docs is a link, not a folder of this project`));
+    expect(readdirSync(elsewhere)).toEqual([]);
+  });
+
+  it("roots a drawing in docs at its folder even when docs holds its own .git", () => {
+    const dir = makeFolder({ ".git/HEAD": "ref: refs/heads/main\n", "docs/.git": "gitdir: ../.git\n" });
+    const file = writeNewDrawing(dir, JSON.stringify({ source: { kind: "local", path: dir } }));
+    expect(repoRootOf(file)).toBe(dir);
   });
 
   it("fails with the contracted sentence when docs is a file or every name is taken", () => {

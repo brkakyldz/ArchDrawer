@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { constants, copyFileSync, linkSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { constants, copyFileSync, linkSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, join, relative } from "node:path";
 import { joinChannel } from "../core/channels";
 import { diffDocuments, type Changes } from "../core/diff";
 import { checkEvidence } from "../core/evidence";
@@ -150,7 +150,14 @@ export function writeNewDrawing(folder: string, text: string): string {
     return code === "EACCES" || code === "EPERM" || code === "EROFS" ? "the folder is read-only" : code === "ENOTDIR" || code === "EEXIST" ? "docs is not a folder" : (e as Error).message;
   };
   try { mkdirSync(docs, { recursive: true }); } catch (e) { fail(why(e)); }
-  try { if (!statSync(docs).isDirectory()) fail("docs is not a folder"); } catch (e) { if (e instanceof DrawError) throw e; fail(why(e)); }
+  // A docs that is a link (a symlink or a junction) could lead anywhere: the drawing is written only inside the folder.
+  try {
+    const st = lstatSync(docs);
+    if (st.isSymbolicLink()) fail("docs is a link, not a folder of this project");
+    if (!st.isDirectory()) fail("docs is not a folder");
+    const inside = relative(realpathSync.native(folder), realpathSync.native(docs));
+    if (inside !== "docs" && inside.toLowerCase() !== "docs") fail("docs leads out of the folder");
+  } catch (e) { if (e instanceof DrawError) throw e; fail(why(e)); }
   const tmp = join(docs, `.archdraw-${randomBytes(6).toString("hex")}.tmp`);
   try { writeFileSync(tmp, text, { flag: "wx" }); } catch (e) { fail(why(e)); }
   try {
@@ -159,8 +166,7 @@ export function writeNewDrawing(folder: string, text: string): string {
       try { linkSync(tmp, target); return target; } catch (e) {
         const code = (e as NodeJS.ErrnoException).code;
         if (code === "EEXIST") continue;
-        if (code !== "EPERM" && code !== "ENOTSUP" && code !== "EXDEV" && code !== "ENOSYS" && code !== "EINVAL") fail(why(e));
-        // No links here: claim the name by creating it exclusively.
+        // No links here (FAT, exFAT, some shares answer EPERM, ENOTSUP, EISDIR …): claim the name by creating it exclusively.
         try { copyFileSync(tmp, target, constants.COPYFILE_EXCL); return target; } catch (e2) {
           if ((e2 as NodeJS.ErrnoException).code === "EEXIST") continue;
           fail(why(e2));

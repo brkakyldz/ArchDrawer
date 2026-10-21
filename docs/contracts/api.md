@@ -234,8 +234,7 @@ before at <short commit>`.
 ## The draw run
 
 `POST /api/runs` with `kind: "draw"` starts a first drawing (STORY-1,
-READ-1–3). It takes no `diagramId`. (Until it is built, a draw is refused
-with 400 `The draw run is not available yet`.)
+READ-1–3). It takes no `diagramId`:
 
 ```jsonc
 { "kind": "draw",
@@ -301,7 +300,8 @@ the name exists, even one that appeared a moment before. Where links are not
 supported (FAT, exFAT, some network shares) the name is claimed by creating
 it exclusively and writing the document into it. The temporary file is
 removed in every outcome. When the file cannot
-be written (`docs` is not a folder, the folder is read-only, every name is
+be written (`docs` is not a folder, `docs` is a link (a symlink or a junction,
+which could lead out of the folder), the folder is read-only, every name is
 taken) the run fails with `Could not write the drawing in <folder>/docs:
 <reason>`. The file is then registered as `POST /api/files` would register
 it; when registering fails, the written file is removed and the run fails.

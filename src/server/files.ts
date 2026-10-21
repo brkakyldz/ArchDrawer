@@ -19,22 +19,32 @@ import { isV1 } from "../core/migrate";
  */
 export function repoRootOf(file: string): string {
   const start = dirname(resolve(file));
+  // A draw's file in `docs` names that folder's parent as its source: a `.git` inside docs (a docs
+  // submodule) does not make docs the root.
+  const parent = dirname(start);
+  if (samePath(basename(start), "docs") && parent !== start && holdsGitOrPlain(parent)) {
+    try {
+      const source = (JSON.parse(readFileSync(file, "utf8").replace(/^﻿/, "")) as { source?: { path?: unknown } }).source?.path;
+      if (typeof source === "string" && samePath(source, parent)) return parent;
+    } catch { /* not readable: the walk below */ }
+  }
   for (let dir = start; ; dir = dirname(dir)) {
     if (holdsGit(dir)) return dir;
-    if (dirname(dir) === dir) break;
+    if (dirname(dir) === dir) return start;
   }
-  const parent = dirname(start);
-  if (basename(start) !== "docs" || parent === start) return start;
-  try {
-    const source = (JSON.parse(readFileSync(file, "utf8").replace(/^﻿/, "")) as { source?: { path?: unknown } }).source?.path;
-    if (typeof source === "string" && samePath(source, parent)) return parent;
-  } catch { /* not readable: the file's folder */ }
-  return start;
 }
+
+/** The parent a draw roots its file at: a repository's root, or a folder outside git. */
+const holdsGitOrPlain = (dir: string) => {
+  for (let d = dir; ; d = dirname(d)) {
+    if (holdsGit(d)) return d === dir;
+    if (dirname(d) === d) return true;
+  }
+};
 
 const samePath = (a: string, b: string) => {
   const x = resolve(a), y = resolve(b);
-  return process.platform === "win32" ? x.toLowerCase() === y.toLowerCase() : x === y;
+  return process.platform === "win32" || process.platform === "darwin" ? x.toLowerCase() === y.toLowerCase() : x === y;
 };
 
 /**

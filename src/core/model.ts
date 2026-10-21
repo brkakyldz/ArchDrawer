@@ -412,7 +412,7 @@ export const isPostView = (v: { id?: string; postOf?: string | null }) => !!v.po
  * The depth checks: they never make a file invalid. The overview has no count targets (ADR 0007);
  * a tuning number is a warning on LinkedIn only, since elsewhere a limit may show one (STORY-5).
  */
-export function depthWarnings(file: Pick<DiagramFile, "views">, o: { prefix?: string; overview?: boolean; share?: boolean } = {}): string[] {
+export function depthWarnings(file: Pick<DiagramFile, "views">, o: { prefix?: string; share?: boolean } = {}): string[] {
   const out: string[] = [];
   file.views.forEach((v, vi) => {
     const P = `${o.prefix ?? "views"}[${vi}]`;

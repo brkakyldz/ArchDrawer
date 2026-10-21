@@ -61,9 +61,6 @@ export const STORY_SCHEMA = {
   },
 } as const;
 
-/** Properties an answer written before ADR 0007 may leave out (they default to null or []). */
-const LATER = new Set(["steps", "inside", "held", "limits"]);
-
 /** An answer that cannot become a post: the run fails before saving and the file is untouched. */
 export class StoryError extends Error {}
 
@@ -76,7 +73,7 @@ export function parseIntent(raw: unknown): StoryIntent {
   const exact = (o: unknown, where: string, keys: readonly string[]) => {
     if (!isObj(o)) fail(where, "must be an object");
     const r = o as Record<string, unknown>;
-    for (const k of keys) if (!(k in r) && !LATER.has(k)) fail(where, `is missing ${q(k)}`);
+    for (const k of keys) if (!(k in r)) fail(where, `is missing ${q(k)}`);
     for (const k of Object.keys(r)) if (!keys.includes(k)) fail(where, `has an unknown property ${q(k)}`);
     return r;
   };
@@ -105,9 +102,9 @@ export function parseIntent(raw: unknown): StoryIntent {
         side: side as StoryPart["side"],
         // The facts a part shows (diagram contract, Story answers).
         from: list(o.facts, `${w}.facts`).map((f, j) => str(f, `${w}.facts[${j}]`)),
-        inside: o.inside === undefined ? null : strOrNull(o.inside, `${w}.inside`),
-        held: (o.held === undefined ? [] : list(o.held, `${w}.held`)).map((f, j) => str(f, `${w}.held[${j}]`)),
-        limits: (o.limits === undefined ? [] : list(o.limits, `${w}.limits`)).map((f, j) => str(f, `${w}.limits[${j}]`)),
+        inside: strOrNull(o.inside, `${w}.inside`),
+        held: list(o.held, `${w}.held`).map((f, j) => str(f, `${w}.held[${j}]`)),
+        limits: list(o.limits, `${w}.limits`).map((f, j) => str(f, `${w}.limits[${j}]`)),
       };
     }),
     edges: list(r.edges, "edges").map((e, i) => {
@@ -116,7 +113,7 @@ export function parseIntent(raw: unknown): StoryIntent {
       if (style !== "call" && style !== "async" && style !== "dep") fail(`${w}.style`, "must be call, async or dep");
       return { from: str(o.from, `${w}.from`), to: str(o.to, `${w}.to`), label: str(o.label, `${w}.label`), style: style as EdgeStyle, step: intOrNull(o.step, `${w}.step`) };
     }),
-    steps: (r.steps === undefined ? [] : list(r.steps, "steps")).map((s, i) => {
+    steps: list(r.steps, "steps").map((s, i) => {
       const w = `steps[${i}]`, o = exact(s, w, STORY_SCHEMA.properties.steps.items.required);
       return { parts: list(o.parts, `${w}.parts`).map((p, j) => str(p, `${w}.parts[${j}]`)), text: str(o.text, `${w}.text`), note: str(o.note, `${w}.note`) };
     }),
@@ -186,7 +183,8 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
       seen.add(h.id);
       depth++;
     }
-    if (depth + (topOf(p).zone !== null ? 1 : 0) > LIMITS.depth) fail(`part ${q(p.id)} nests ${depth + 1} groups deep; at most ${LIMITS.depth}`);
+    const groups = depth + (topOf(p).zone !== null ? 1 : 0);
+    if (groups > LIMITS.depth) fail(`part ${q(p.id)} nests ${groups} groups deep; at most ${LIMITS.depth}`);
     if (p.zone !== null && p.zone !== topOf(p).zone) fail(`part ${q(p.id)} is inside ${q(p.inside)} but names another zone`);
   }
   const level = (p: StoryPart) => p.inside ?? "";
@@ -220,6 +218,7 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
     if (!partIds.has(e.from) || !partIds.has(e.to)) fail(`a connection ${e.from} → ${e.to} names something that is not a part`);
     if (e.from === e.to) fail(`a connection from ${q(e.from)} to itself`);
   }
+  const holders = new Set(intent.parts.filter((p) => p.inside !== null).map((p) => p.inside!));
   // Hard limits fail the run: code never shortens the engine's text.
   const hard = (text: string, limit: number, what: string) => { if (text.length > limit) fail(`${what} is ${text.length} characters, over the file's ${limit}; ask for a shorter post`); };
   hard(intent.title, LIMITS.captionTitle, "the title");
@@ -228,12 +227,19 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
   for (const p of intent.parts) {
     hard(p.label, LIMITS.label, `part ${q(p.id)}'s label`);
     hard(p.sub, LIMITS.sub, `part ${q(p.id)}'s sub-line`);
-    if (p.chips.length > LIMITS.items) fail(`part ${q(p.id)} has ${p.chips.length} chips, over the file's ${LIMITS.items}`);
+    if (!holders.has(p.id) && p.chips.length > LIMITS.items) fail(`part ${q(p.id)} has ${p.chips.length} chips, over the file's ${LIMITS.items}`);
     p.chips.forEach((c) => hard(c, LIMITS.item, `a chip of ${q(p.id)}`));
   }
   for (const e of intent.edges) hard(e.label, LIMITS.edgeLabel, `the label of ${e.from} → ${e.to}`);
-  if (intent.steps.length > FACT3_LIMITS.steps) fail(`the story has ${intent.steps.length} steps, over the file's ${FACT3_LIMITS.steps}`);
-  intent.steps.forEach((s, i) => { hard(s.text, FACT3_LIMITS.stepText, `the text of step ${i + 1}`); hard(s.note, FACT3_LIMITS.stepNote, `the note of step ${i + 1}`); });
+  // Steps outside the presentation are ignored (below), so only the presentation's are held to its limits.
+  if (channel === "presentation") {
+    if (intent.steps.length > FACT3_LIMITS.steps) fail(`the story has ${intent.steps.length} steps, over the file's ${FACT3_LIMITS.steps}`);
+    intent.steps.forEach((s, i) => {
+      if (!s.text.trim()) fail(`step ${i + 1} has no text`);
+      hard(s.text, FACT3_LIMITS.stepText, `the text of step ${i + 1}`);
+      hard(s.note, FACT3_LIMITS.stepNote, `the note of step ${i + 1}`);
+    });
+  }
   if (!intent.title.trim()) fail("the post has no title");
 
   // Editorial targets of a post: kept whole, one warning each (the layout report lists them too).
@@ -246,7 +252,7 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
     for (const p of intent.parts) {
       target(p.label, p.label.length, STORY_LIMITS.label, `The label of "${p.id}"`);
       target(p.sub, p.sub.length, STORY_LIMITS.sub, `The sub-line of "${p.id}"`);
-      for (const c of p.chips) target(c, c.length, STORY_LIMITS.chip, `A chip of "${p.id}"`);
+      if (!holders.has(p.id)) for (const c of p.chips) target(c, c.length, STORY_LIMITS.chip, `A chip of "${p.id}"`);
     }
   }
 
@@ -271,14 +277,20 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
   // facts they show, so a part of no fact is no component; else by their facts or their ids.
   const named = (n: DiagramNode) => (o.ids ? n.facts ?? [] : n.facts?.length ? n.facts : [n.id]);
   const sourceNodes = new Map(doc.views.flatMap((v) => v.nodes).flatMap((n) => named(n).map((f) => [f, n] as const)));
-  const holders = new Set(intent.parts.filter((p) => p.inside !== null).map((p) => p.inside!));
   const nodes: NodeInput[] = intent.zones.map((z) => ({
     id: zoneOf.get(z.id)!, label: z.label, kind: "service", form: "group", icon: null, sub: "", items: [],
     description: o.ids ? "A group of components." : z.label, files: [], parent: null, detail: null, place: null, lane: null, from: [],
   }));
+  // In a channel a fact is shown or held by one part (rule 6): a later part naming it again drops it.
+  const claimed = new Set<string>();
   for (const p of intent.parts) {
-    const from = [...new Set(p.from.filter((f) => sourceNodes.has(f)))];
+    let from = [...new Set(p.from.filter((f) => sourceNodes.has(f)))];
     for (const f of p.from) if (!sourceNodes.has(f)) warnings.push(`Dropped "${f}" from what "${p.id}" represents: no such component`);
+    if (o.ids) {
+      for (const f of from) if (claimed.has(f)) warnings.push(`View "${id}": "${partOf.get(p.id)}" no longer shows "${f}", which an earlier part shows`);
+      from = from.filter((f) => !claimed.has(f));
+      from.forEach((f) => claimed.add(f));
+    }
     const represented = from.map((f) => sourceNodes.get(f)!);
     const files = [...new Set(represented.flatMap((n) => n.files))];
     if (files.length > LIMITS.files) { warnings.push(`Kept the first ${LIMITS.files} of the ${files.length} files "${p.id}" represents`); files.length = LIMITS.files; }
@@ -290,13 +302,16 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
     } else {
       for (const m of [...new Set(p.held)]) {
         const w = o.rows?.mechanisms.get(m)?.within;
-        if (w && from.includes(w)) held.push(m); else warnings.push(`Dropped "${m}" from what "${p.id}" holds: no mechanism within its facts`);
+        if (!w || !from.includes(w)) warnings.push(`Dropped "${m}" from what "${p.id}" holds: no mechanism within its facts`);
+        else if (claimed.has(m)) warnings.push(`View "${id}": "${partOf.get(p.id)}" no longer holds "${m}", which an earlier part shows or holds`);
+        else { held.push(m); claimed.add(m); }
       }
       for (const l of [...new Set(p.limits)]) {
         const on = o.rows?.limits.get(l)?.on;
         if (on && (from.includes(on) || held.includes(on))) limits.push(l); else warnings.push(`Dropped "${l}" from the limits of "${p.id}": not on what it shows`);
       }
     }
+    if (holders.has(p.id) && p.chips.length) warnings.push(`"${p.id}" holds parts, so it draws no chips`);
     let chips = holders.has(p.id) ? [] : [...p.chips];
     if (held.length + chips.length + limits.length > LIMITS.items) {
       warnings.push(`Kept the first ${LIMITS.items} rows of "${p.id}"`);

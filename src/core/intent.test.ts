@@ -112,6 +112,10 @@ describe("story intent → post view", () => {
     expect(() => parseIntent({ ...raw, parts: [{ ...raw.parts[0], spine: 1.5 }] })).toThrow(/integer/);
     const { title: _t, ...noTitle } = raw;
     expect(() => parseIntent(noTitle)).toThrow(/missing "title"/);
+    const { steps: _s, ...noSteps } = raw;
+    expect(() => parseIntent(noSteps)).toThrow(/missing "steps"/);
+    const { held: _h, ...noHeld } = raw.parts[0];
+    expect(() => parseIntent({ ...raw, parts: [noHeld] })).toThrow(/parts\[0\] is missing "held"/);
   });
 });
 

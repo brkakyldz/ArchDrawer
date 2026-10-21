@@ -68,6 +68,45 @@ describe("a story as a channel's view (intentToChannel)", () => {
     expect(r.doc.channels.overview).toEqual(d.channels.overview);
   });
 
+  it("drops a fact an earlier part shows before checking what a part holds: one warning each, never a failed run", () => {
+    // `second` names the agent again: it no longer shows it, so it holds nothing within it and its limit goes.
+    const i = intent({ zones: [], edges: [], parts: [
+      sp("first", { spine: 0, from: ["agent"] }),
+      sp("second", { spine: 1, from: ["agent", "store"], held: ["propose"], limits: ["turns"] }),
+      sp("again", { spine: 2, from: ["app"], held: [] }),
+    ] });
+    const r = intentToChannel(agent(), i, { portrait: false, channel: "readme" });
+    expect(validateDocument3(r.doc).ok).toBe(true);
+    const second = r.doc.channels.readme.views[0].nodes.find((p) => p.id === "second")!;
+    expect([second.facts, second.form, second.held, second.limits]).toEqual([["store"], "card", undefined, undefined]);
+    expect(r.warnings).toEqual([
+      'View "readme": "second" no longer shows "agent", which an earlier part shows',
+      'Dropped "propose" from what "second" holds: no mechanism within its facts',
+      'Dropped "turns" from the limits of "second": not on what it shows',
+    ]);
+  });
+
+  it("a part holding a mechanism an earlier part holds draws no row for it", () => {
+    const i = intent({ zones: [], edges: [], parts: [
+      sp("first", { spine: 0, from: ["agent"], held: ["propose"] }),
+      sp("second", { spine: 1, from: ["app", "propose"] }),
+    ] });
+    const r = intentToChannel(agent(), i, { portrait: false, channel: "readme" });
+    expect(validateDocument3(r.doc).ok).toBe(true);
+    expect(r.doc.channels.readme.views[0].nodes.find((p) => p.id === "second")!.facts).toEqual(["app"]);
+    expect(r.warnings).toEqual(['View "readme": "second" no longer shows "propose", which an earlier part shows']);
+  });
+
+  it("a holder's chips are dropped with one warning, and its chip count does not fail the run", () => {
+    const i = intent();
+    i.parts[1] = sp("agent", { spine: 1, zone: "run", from: ["agent"], chips: Array.from({ length: 14 }, (_, k) => `Chip ${k}`) });
+    i.parts[4] = sp("store", { anchor: "agent", side: "below", zone: "run", from: ["store"] });
+    const r = intentToChannel(agent(), i, { portrait: false, channel: "readme" });
+    expect(validateDocument3(r.doc).ok).toBe(true);
+    expect(r.doc.channels.readme.views[0].nodes.find((p) => p.id === "agent")!.form).toBe("group");
+    expect(r.warnings).toEqual(['"agent" holds parts, so it draws no chips']);
+  });
+
   it("draws held mechanisms and limits as rows where the part shows their component", () => {
     const i = intent({ zones: [], parts: [sp("app", { spine: 0, from: ["app"] }), sp("agent", { spine: 1, from: ["agent"], held: ["propose", "check"], limits: ["turns"], chips: ["Retries"] }), sp("store", { spine: 2, from: ["store"] })], edges: [] });
     const r = intentToChannel(agent(), i, { portrait: false, channel: "readme" });
@@ -97,10 +136,17 @@ describe("a story as a channel's view (intentToChannel)", () => {
     expect(r.doc.channels.presentation.views[0].title).toBe("Presentation");
   });
 
+  it("fails a presentation step with no text; elsewhere steps are only ignored", () => {
+    const i = intent({ zones: [], parts: [sp("app", { spine: 0, from: ["app"] })], edges: [], steps: [{ parts: ["app"], text: "  ", note: "" }] });
+    expect(() => intentToChannel(agent(), i, { portrait: false, channel: "presentation" })).toThrow(/step 1 has no text/);
+    expect(intentToChannel(agent(), i, { portrait: false, channel: "readme" }).warnings).toEqual(["Ignored the steps: only a presentation has steps"]);
+  });
+
   it("fails a story whose parts loop inside each other, nest too deep or leave their holder's zone", () => {
     const bad = (parts: StoryPart[]) => () => intentToChannel(agent(), intent({ zones: [{ id: "run", label: "Runtime" }], parts, edges: [] }), { portrait: false, channel: "readme" });
     expect(bad([sp("a", { spine: 0, inside: "b" }), sp("b", { spine: 0, inside: "a" })])).toThrow(/inside itself/);
     expect(bad([sp("a", { spine: 0, zone: "run" }), sp("b", { spine: 0, inside: "a" }), sp("c", { spine: 0, inside: "b" }), sp("d", { spine: 0, inside: "c" })])).toThrow(/nests 4 groups deep/);
+    expect(bad([sp("a", { spine: 0 }), sp("b", { spine: 0, inside: "a" }), sp("c", { spine: 0, inside: "b" }), sp("d", { spine: 0, inside: "c" }), sp("e", { spine: 0, inside: "d" })])).toThrow(/"e" nests 4 groups deep/);
     expect(bad([sp("a", { spine: 0 }), sp("b", { spine: 0, inside: "a", zone: "run" })])).toThrow(/names another zone/);
     expect(bad([sp("a", { spine: 0 }), sp("b", { spine: 0, inside: "a" }), sp("c", { anchor: "a", side: "below", inside: "a" })])).toThrow(/spine part of its own level/);
     expect(bad([sp("a", { spine: 0 }), sp("b", { spine: 0, inside: "ghost" })])).toThrow(StoryError);

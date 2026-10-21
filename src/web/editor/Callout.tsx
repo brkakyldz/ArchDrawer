@@ -6,6 +6,7 @@ import {
 } from "../../core/model";
 import { api } from "../api";
 import { Icon } from "../ui/Icon";
+import { ROW_CAPS, rowOf as kindOf } from "./rows";
 import { FormThumb } from "./FormThumb";
 import { createInside, deleteNodes, setNode, type NodePatch } from "./ops";
 import type { Ctl } from "./types";
@@ -58,9 +59,10 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
 
   // A panel's rows: its held mechanisms first, its items, its limits last (diagram contract, What a
   // channel draws). Renaming a held or limit row edits that fact; removing one only stops showing it.
-  const heldN = node.heldIds?.length ?? 0, limitN = node.limitIds?.length ?? 0;
+  const limitN = node.limitIds?.length ?? 0;
   const firstLimit = node.items.length - limitN;
-  const rowOf = (i: number) => (i < heldN ? "held" : i >= firstLimit ? "limit" : "item");
+  const rowOf = (i: number) => kindOf(node, i);
+  const capOf = (i: number) => ROW_CAPS[rowOf(i)];
   const setItems = (items: string[]) => patch({ items });
   const removeRow = (i: number) => {
     const items = node.items.filter((_, j) => j !== i);
@@ -70,7 +72,7 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
   };
   const commitItem = (i: number, v: string) => {
     setEditItem(null);
-    const t = v.trim().slice(0, LIMITS.item);
+    const t = v.trim().slice(0, capOf(i));
     if (!t) return removeRow(i);
     const items = [...node.items];
     items[i] = t;
@@ -167,7 +169,7 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
               {node.items.map((t, i) => (
                 <li key={`${i}-${t}`} data-testid="callout-item" data-row={rowOf(i)}>
                   {editItem === i ? (
-                    <input type="text" autoFocus data-testid="callout-item-input" defaultValue={t} maxLength={LIMITS.item}
+                    <input type="text" autoFocus data-testid="callout-item-input" defaultValue={t} maxLength={capOf(i)}
                       ref={(el) => el?.select()}
                       onKeyDown={(e) => {
                         e.stopPropagation();

@@ -307,11 +307,12 @@ export function createApp(deps: AppDeps): Hono {
     const KINDS = ["refine", "story", "post", "simplify", "draw"];
     if (b.kind !== undefined && !(typeof b.kind === "string" && KINDS.includes(b.kind))) return err(c, 400, `Unknown run kind ${typeof b.kind === "string" ? b.kind : JSON.stringify(b.kind)}: use refine, story, post, simplify or draw`);
     const kind = (b.kind as "refine" | "story" | "post" | "simplify" | "draw" | undefined) ?? "refine";
-    if (kind === "draw") return err(c, 400, "Scan the folder first: that scan is unknown or did not succeed");
+    if (kind === "draw") return err(c, 400, "The draw run is not available yet");
     // A story or post: a channel's one view; a post is a story on LinkedIn (api contract, Run kinds).
     const story = kind === "story" || kind === "post";
     const onLinkedIn = kind === "post" || (kind === "story" && b.channel === "linkedin");
-    const formats: readonly string[] = onLinkedIn ? ["feed", "linkedin"] : FORMAT_IDS;
+    // A story is measured in its channel's own format (api contract, Run kinds).
+    const formats: readonly string[] = onLinkedIn ? ["feed", "linkedin"] : kind === "story" && b.channel === "readme" ? ["readme"] : kind === "story" && b.channel === "presentation" ? ["slide"] : FORMAT_IDS;
     if (b.format !== undefined && !(typeof b.format === "string" && formats.includes(b.format))) return err(c, 400, `Invalid format ${JSON.stringify(b.format)}; use one of ${formats.join(", ")}`);
     const format = (b.format as FormatId | undefined) ?? (onLinkedIn ? "feed" : kind === "story" && b.channel === "presentation" ? "slide" : "readme");
     // A report-driven revision round is not enabled yet: `revise: true` is refused.

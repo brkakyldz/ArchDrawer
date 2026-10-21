@@ -304,7 +304,8 @@ A failure, cancel or timeout at any stage writes and registers nothing.
 Checked in this order, all 400 before any engine starts:
 `Unknown run kind <k>: use refine, story, post, simplify or draw`;
 `Invalid format <f>; use one of …` (post, and story on LinkedIn: `feed` or
-`linkedin`; others any share format); `revise must be true or false`;
+`linkedin`; story on the README: `readme`; on the presentation: `slide`;
+others any share format); `revise must be true or false`;
 `revise: true` → `Layout revision is not enabled`; `readCode must be true or
 false`; `readCode` on a run other than a story or a post → `readCode is for a
 story`; a non-string instruction for story, post or simplify →

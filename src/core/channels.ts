@@ -183,11 +183,11 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
         // A part that no longer shows exactly one fact keeps what it drew as its own text (rule 7).
         if (p.facts.length !== 1) {
           for (const f of TEXT_FIELDS) if (!isSet(p[f])) (p as unknown as Record<string, unknown>)[f] = drawn[f];
-          if (drawn.form === "panel" && !isSet(p.items)) p.items = [...drawn.items];
+          if (drawn.form === "panel" && !isSet(p.items)) p.items = [...rowsOf(drawn).items];
         }
       }
       for (const f of TEXT_FIELDS) if (n[f] !== drawn[f]) writeText(p, f, n[f]);
-      const nr = rowsOf(n), dr = rowsOf(drawn);
+      const nr = rowsOf(withRowIds(n, drawn)), dr = rowsOf(drawn);
       rowEdits(nr, dr);
       setRows(p, nr);
       items(p, { ...drawn, items: dr.items }, { ...n, items: nr.items });
@@ -204,6 +204,17 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
     const held = n.form === "panel" ? n.heldIds ?? [] : [], limits = n.form === "panel" ? n.limitIds ?? [] : [];
     const k = Math.min(held.length, all.length), m = Math.min(limits.length, all.length - k);
     return { held: held.slice(0, k), mech: all.slice(0, k), items: all.slice(k, all.length - m), limits: limits.slice(limits.length - m), texts: all.slice(all.length - m) };
+  }
+  // A node that names no row ids (an answer that echoed the rows as items) still draws the drawn
+  // part's held rows it begins with and its limit rows it ends with.
+  function withRowIds(n: DiagramNode, drawn: DiagramNode): DiagramNode {
+    if (n.form !== "panel" || n.heldIds !== undefined || n.limitIds !== undefined) return n;
+    const dr = rowsOf(drawn);
+    const held = dr.mech.length && same(n.items.slice(0, dr.mech.length), dr.mech) ? dr.held : [];
+    const rest = n.items.length - held.length;
+    const limits = dr.texts.length && rest >= dr.texts.length && same(n.items.slice(n.items.length - dr.texts.length), dr.texts) ? dr.limits : [];
+    if (!held.length && !limits.length) return n;
+    return { ...n, ...(held.length ? { heldIds: [...held] } : {}), ...(limits.length ? { limitIds: [...limits] } : {}) };
   }
   // Renaming a held row renames the mechanism, a limit row's text edits the limit: in every channel.
   function rowEdits(nr: ReturnType<typeof rowsOf>, dr: ReturnType<typeof rowsOf>) {
@@ -292,13 +303,35 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
         if (!p.held.length) delete p.held;
         for (const f of heldTwice) repairs.push(`View "${v.id}": "${p.id}" no longer holds "${f}", which an earlier part shows or holds`);
       }
-      if (!twice.length) return;
+      if (!twice.length && !heldTwice.length) return;
       const n = v.nodes[i];
-      p.facts = p.facts.filter((f) => !twice.includes(f));
-      for (const f of twice) repairs.push(`View "${v.id}": "${p.id}" no longer shows "${f}", which an earlier part shows`);
-      if (p.facts.length === 0) {
+      if (twice.length) {
+        p.facts = p.facts.filter((f) => !twice.includes(f));
+        for (const f of twice) repairs.push(`View "${v.id}": "${p.id}" no longer shows "${f}", which an earlier part shows`);
+        // What it held within those facts goes with them (rule 22).
+        const lost = (p.held ?? []).filter((m) => !p.facts.includes(comps.get(m)?.within ?? ""));
+        if (lost.length) {
+          p.held = p.held!.filter((m) => !lost.includes(m));
+          if (!p.held.length) delete p.held;
+          for (const m of lost) repairs.push(`View "${v.id}": "${p.id}" no longer holds "${m}", which is within a fact it no longer shows`);
+        }
+      }
+      // A limit on what it no longer shows or holds goes too.
+      const offLimits = (p.limits ?? []).filter((l) => { const on = lims.get(l)?.on ?? ""; return !p.facts.includes(on) && !(p.held ?? []).includes(on); });
+      if (offLimits.length) {
+        p.limits = p.limits!.filter((l) => !offLimits.includes(l));
+        if (!p.limits.length) delete p.limits;
+        for (const l of offLimits) repairs.push(`View "${v.id}": "${p.id}" no longer shows the limit "${l}", which is on a fact it no longer shows`);
+      }
+      if (twice.length && p.facts.length === 0) {
         Object.assign(p, { label: n.label, kind: n.kind, sub: n.sub, description: n.description });
-        if (p.form === "panel") p.items = [...n.items];
+        if (p.form === "panel") p.items = [...rowsOf(n).items];
+      }
+      const ownItems = p.items ?? (p.facts.length === 1 ? comps.get(p.facts[0])?.items : undefined) ?? [];
+      if (p.form === "panel" && !p.held && !p.limits && !ownItems.length) {
+        p.form = "card";
+        delete p.items;
+        repairs.push(`View "${v.id}": "${p.id}" has no rows left and is drawn as a card`);
       }
     });
   });
@@ -375,6 +408,8 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
     const keptParts = new Set(views.flatMap((v) => v.nodes.map((p) => p.id)));
     const keptConns = new Set(views.flatMap((v) => v.edges.map((c) => c.id)));
     for (const [id, p] of oldParts) if (!keptParts.has(id)) for (const f of p.facts) if (!shown.has(f)) deletedFacts.add(f);
+    // A mechanism held before and held or shown by no overview part now is deleted (rule 16).
+    for (const p of oldParts.values()) for (const m of p.held ?? []) if (!shown.has(m)) deletedFacts.add(m);
     for (const [id, c] of oldConns) if (!keptConns.has(id)) for (const r of c.relations) if (!shownRels.has(r)) deletedRels.add(r);
   }
   // A deleted component takes its mechanisms and its limits with it (contract, Edits).
@@ -622,7 +657,7 @@ export function clearOutdated(doc: Document3, channel: ChannelId): Document3 {
 
 /** The depth checks on every channel view (contract, Warnings); Flat and No held items skip LinkedIn. */
 export function channelWarnings(doc: Document3): string[] {
-  return CHANNELS.flatMap((c) => depthWarnings({ views: joinChannel(doc, c).views }, { prefix: `channels.${c}.views`, overview: c === "overview", share: c === "linkedin" }));
+  return CHANNELS.flatMap((c) => depthWarnings({ views: joinChannel(doc, c).views }, { prefix: `channels.${c}.views`, share: c === "linkedin" }));
 }
 
 /**

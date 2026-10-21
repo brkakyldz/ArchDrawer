@@ -403,7 +403,10 @@ parts, text and note), and any of a part's or connection's own texts.
   the row renames the mechanism fact, in every channel, wherever the edit is
   made. A limit row's text edits the limit fact the same way. Removing a held
   row or a limit row only stops the part showing it (appearance); the fact
-  stays.
+  stays. In the overview, where every fact is shown or held (rule 16), a
+  mechanism that no overview part holds or shows any more is deleted with its
+  limits: removing its last held row, or turning its panel into another form,
+  deletes it.
 - **Steps.** Deleting a part of the presentation view removes it from every
   step that names it; a step left with no part is removed, one warning each
   (`Step "<id>" had no part left and was removed`).
@@ -661,7 +664,8 @@ this order:
    `1 ≤ from ≤ to ≤` the file's line count. One warning:
    `<fact>: dropped the evidence <file>[:<from>-<to>]: <reason>`, the reason
    being `not found`, `outside the repository` or `the file has <n> lines`.
-   A path listed twice in one fact is kept once, silently.
+   A path listed twice in one fact is kept once (its first supported
+   entry), silently, and a missing one is warned about once.
 2. A component, relation or limit fact left with no evidence is dropped:
    `Dropped "<id>": no evidence left`.
 3. What depended on a dropped component is dropped too: a relation to it, a
@@ -718,7 +722,8 @@ A step's parts are not a relation: a wrong one is dropped with a warning
 - labels 48, sub-lines 60;
 - at most 12 chips, each at most 44;
 - connection labels 40;
-- step texts 120, notes 1000, at most 20 steps.
+- in the presentation, step texts 120 and never empty, notes 1000, at most
+  20 steps.
 
 **Briefs and targets per channel.** Each story call has its own brief
 (`src/server/engines/prompt.ts`). The checks in the last column are what code
@@ -726,9 +731,9 @@ does.
 
 | Channel | Brief | Code checks |
 |---|---|---|
-| overview | The complete map: every fact shown or held. Merged parts where many facts are alike. Zones as the system's real boundaries. Held mechanisms and limits where they explain a part. No count caps | Every fact drawn (below); `steps` must be `[]` |
+| overview | The complete map: every fact shown or held. Merged parts where many facts are alike. Zones as the system's real boundaries. Held mechanisms and limits where they explain a part. No count caps | Every fact drawn (below) |
 | linkedin | One image for a phone: about 8–12 parts. A title of at most 9 words and one plain sentence. No held items or limits, no tuning numbers | The post targets below. A non-empty `held`, `limits` or `steps` is dropped, one warning each |
-| readme | A detailed drawing that renders on GitHub. One-line sub-lines. Held mechanisms only on the few parts whose mechanism matters. Limits where they explain a guarantee | `steps` must be `[]` |
+| readme | A detailed drawing that renders on GitHub. One-line sub-lines. Held mechanisms only on the few parts whose mechanism matters. Limits where they explain a guarantee | — |
 | presentation | One drawing and 3–8 ordered steps that tell it. Each step highlights the parts it is about, says it on screen in one short sentence, and gives the speaker one to three sentences | Each step's parts exist. A wrong one is dropped, and a step left with none, one warning each |
 
 A non-empty `steps` outside the presentation is ignored, with one warning.

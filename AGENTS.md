@@ -98,8 +98,8 @@ copy a user's CLI credentials.
   cancel test checks the child exits.
 - **Leftover image** — a revise run's folder with the drawing's PNG survives
   a failure, cancel, timeout or a killed server. The revise tests check the
-  folder is gone in every outcome and that start-up empties the revise
-  folder.
+  folder is gone in every outcome, and that start-up removes a dead
+  server's folders but not a live one's.
 - **Preview that never ends** — an AI result stays in preview after an
   outside change or a new run, so edits stay refused. Either ends it as
   accepted.

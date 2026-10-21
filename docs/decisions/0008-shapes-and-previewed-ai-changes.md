@@ -53,8 +53,9 @@ Exact shapes are in `docs/contracts/` (diagram, api, ui, testing).
   view's PNG, the same image the share dialog makes, and posts
   `{kind: "revise", image}`. The `revise` flag goes. The server checks that the
   image is a PNG of at most 4 MB and writes it into a folder of its own under
-  the data directory, which it removes after the run and empties at start-up,
-  so a killed server leaves no picture of the user's system behind. Claude Code gets `--tools Read
+  the data directory, which it removes after the run; a starting server
+  removes the folders of servers no longer running, so a killed server leaves
+  no picture of the user's system behind. Claude Code gets `--tools Read
   --allowedTools Read --add-dir <that folder>`, and the prompt names the file.
   Codex gets `-i <file>` with its read-only sandbox. The answer is one round,
   shaped like a refine's `story` route: it changes how the channel tells the

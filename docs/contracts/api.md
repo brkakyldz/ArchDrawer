@@ -407,13 +407,15 @@ takes the `facts` route. The run record and `done` carry `route`
 **The second look (revise).** The request's `view` is the one drawn in
 `image` (the share image of that view in the channel's default format, as the
 browser renders it). The server writes the decoded PNG to `view.png` in a new
-folder `<ARCHDRAW_DATA_DIR>/revise/<random>/`, created with a random name by
-the server alone and readable only by the user (`mkdtemp`, mode 0700 where the
+folder `<ARCHDRAW_DATA_DIR>/revise/<pid>-<random>/` (`<pid>` the server's
+process id), created by the server alone and readable only by the user (`mkdtemp`, mode 0700 where the
 system has modes). When the run ends — succeeded, failed, cancelled or timed
 out — the server removes the folder after the engine's process tree has
-exited (on Windows retrying while a file is still busy). At start-up the
-server empties `<ARCHDRAW_DATA_DIR>/revise/`, so an image left by a server
-that was killed does not stay. The prompt names that file, gives the layout report
+exited (on Windows retrying while a file is still busy). Once it has bound
+its port, a starting server removes every folder in
+`<ARCHDRAW_DATA_DIR>/revise/` whose `<pid>` is not a running process, so an
+image left by a killed server does not stay, while a live server's run on the
+same data folder keeps its own. The prompt names that file, gives the layout report
 of the view, the facts and, on a story channel, the current view, plus the
 optional instruction, and asks for one round of fixes to what the reader sees
 (overlaps, crossings, cut or small text, crowding, an unclear order). The
@@ -536,8 +538,8 @@ when those were set, `ANTHROPIC_BASE_URL`. The server never reads an API key.
 - `<ARCHDRAW_DATA_DIR>/files.json`: registered files, `[{"id", "path"}]`.
 - `<ARCHDRAW_DATA_DIR>/diagrams/<id>.json`: imported documents.
 - `<ARCHDRAW_DATA_DIR>/scans/<key>.json`: cached scans (*Scans*).
-- `<ARCHDRAW_DATA_DIR>/revise/`: a running revise's image (*The second
-  look*); emptied at start-up.
+- `<ARCHDRAW_DATA_DIR>/revise/<pid>-<random>/`: a running revise's image
+  (*The second look*); a dead server's folders are removed at start-up.
 - `<ARCHDRAW_DATA_DIR>/server.json` and `server.log` (cli contract).
 - Every write goes to a temporary file and is renamed into place; a `draw`
   run's new file is linked into place instead (*The draw run*), so it never

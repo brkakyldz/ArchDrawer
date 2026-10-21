@@ -89,6 +89,16 @@ export function joinView(doc: Document3, channel: ChannelId, view: View3): Diagr
 }
 
 /** The channel as a view-shaped document: what layout, the exports and the editor work on. */
+/**
+ * What a refine or simplify run's engine reads (diagram contract, Engine answers): the channel as
+ * drawn, each part naming the facts it shows in `from`, so a merged part the engine answers points
+ * to facts.
+ */
+export function draftOf(stored: Document3, channel: ChannelId): DiagramDocument {
+  const d = joinChannel(stored, channel);
+  return { ...d, views: d.views.map((v) => ({ ...v, nodes: v.nodes.map((n) => ({ ...n, from: [...(n.facts ?? [])] })) })) };
+}
+
 export function joinChannel(doc: Document3, channel: ChannelId): DiagramDocument {
   const ch = doc.channels[channel];
   return {

@@ -1,13 +1,25 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { FixtureEngine } from "./engines/fixture";
+import type { EngineRunRequest } from "./engines/types";
 import { makeApp, makeFolder, shopFile2 } from "./testkit";
 
 // Story runs on every channel but the overview (api contract, Run kinds; diagram contract, Story answers).
 
 const json = async (r: Response) => ({ status: r.status, body: await r.json() });
-async function opened() {
-  const t = makeApp();
+/** The fixture, recording what each call was asked: its task, tools and whether it may change appearance only. */
+class Recording extends FixtureEngine {
+  calls: { task: string | null; tools: string | null; appearance: boolean; prompt: string; base: unknown }[] = [];
+  constructor() { super(1); }
+  override run(req: EngineRunRequest): Promise<unknown> {
+    this.calls.push({ task: req.task?.kind ?? null, tools: req.task?.tools ?? null, appearance: !!req.appearance, prompt: req.task?.prompt ?? "", base: req.base });
+    return super.run(req);
+  }
+}
+
+async function opened(engine?: FixtureEngine) {
+  const t = makeApp(engine ? { engines: [engine] } : {});
   const root = makeFolder({ ".git/HEAD": "ref: refs/heads/main\n" });
   const file = join(root, "shop.archdraw.json");
   writeFileSync(file, JSON.stringify(shopFile2(), null, 2));
@@ -59,5 +71,42 @@ describe("story runs", () => {
     expect((await refused({ kind: "draw" })).body.error).toBe("Scan the folder first: that scan is unknown or did not succeed");
     expect((await refused({ kind: "refine", instruction: "x", view: "overview", readCode: true })).body.error).toBe("readCode is for a story");
     expect((await refused({ kind: "poster" })).body.error).toBe("Unknown run kind poster: use refine, story, post, simplify or draw");
+  });
+});
+
+describe("a refine is routed to the facts or the channel's story (AI-5)", () => {
+  it("asks one question with no tools and no drawing; a parts scope asks none", async () => {
+    const engine = new Recording();
+    const { run } = await opened(engine);
+    const viewed = await run({ channel: "overview", view: "overview", instruction: "add Cache component" });
+    expect(viewed).toMatchObject({ status: "succeeded", route: "facts" });
+    expect(engine.calls.map((c) => [c.task, c.tools, c.appearance])).toEqual([["route", "none", false], [null, null, false]]);
+    expect(engine.calls[0].base).toBeNull();
+    expect(engine.calls[0].prompt).toContain("add Cache component");
+    engine.calls = [];
+    const scoped = await run({ channel: "overview", view: "overview", instruction: "[fixture:story] add Mailer component", scope: { kind: "parts", ids: ["web"] } });
+    expect(scoped).toMatchObject({ status: "succeeded", route: "facts" });
+    expect(engine.calls.map((c) => c.task)).toEqual([null]);
+  });
+
+  it("the story route on the README is its story run, told to read no file; on the overview a refine with no tools", async () => {
+    const engine = new Recording();
+    const { run, read } = await opened(engine);
+    expect(await run({ kind: "story", channel: "readme" })).toMatchObject({ status: "succeeded", route: null });
+    const facts = read().facts;
+    engine.calls = [];
+    const story = await run({ channel: "readme", view: "readme", instruction: "[fixture:story] Simpler, please" });
+    expect(story).toMatchObject({ status: "succeeded", kind: "refine", channel: "readme", view: "readme", route: "story" });
+    expect((story as { progress: string[] }).progress).toContain("Redrawing this channel from the facts");
+    expect(engine.calls.map((c) => [c.task, c.tools])).toEqual([["route", "none"], ["story", "none"]]);
+    expect(engine.calls[1].prompt).toContain("Do not read, list or search any file");
+    expect(engine.calls[1].prompt).toContain("Simpler, please");
+    expect(read().facts).toEqual(facts);
+    engine.calls = [];
+    const moved = await run({ channel: "overview", view: "overview", instruction: "[fixture:story] rename Web app to Storefront" });
+    expect(moved).toMatchObject({ status: "succeeded", route: "story", changes: { changed: [] } });
+    expect(engine.calls.map((c) => [c.task, c.appearance])).toEqual([["route", false], [null, true]]);
+    expect(read().facts).toEqual(facts);
+    expect(read().warnings.at(-1)).toBe('Ignored the change to "Web app": redrawing from the facts changes no content');
   });
 });

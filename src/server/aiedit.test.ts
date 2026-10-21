@@ -87,7 +87,7 @@ describe("runs move components, respect the scope and report what changed", () =
     const { run, doc } = await setup();
     const { done } = await run("add Cache", { model: "fixture-fast" });
     expect(done).toMatchObject({ status: "succeeded", engine: "fixture", model: "fixture-fast" });
-    expect(done!.progress[0]).toBe("Using model fixture-fast");
+    expect(done!.progress.slice(0, 2)).toEqual(["Changing the facts", "Using model fixture-fast"]);
     expect(doc().engine).toEqual({ id: "fixture", model: "fixture-fast" });
     expect(done!.changes).toMatchObject({ added: ["cache"], removed: [], changed: [], moved: [], edgesAdded: [expect.any(String)] });
   });

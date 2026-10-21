@@ -34,7 +34,7 @@ describe("instruction-box runs", () => {
     expect(status).toBe(202);
     const done = await runs.wait(body.runId!);
     expect(done).toMatchObject({ status: "succeeded", diagramId: id, error: null });
-    expect(done!.progress).toEqual(["Reading the drawing", "Reading the code", "Updating the drawing", "Checking the drawing", "Saved"]);
+    expect(done!.progress).toEqual(["Changing the facts", "Reading the drawing", "Reading the code", "Updating the drawing", "Checking the drawing", "Saved"]);
     const after = doc();
     expect(validateDocument3(stored()).ok).toBe(true);
     const cache = after.views[0].nodes.find((n) => n.id === "cache")!;
@@ -114,7 +114,7 @@ describe("instruction-box runs", () => {
     const { body } = await run("add A");
     await runs.wait(body.runId!);
     const text = await (await req(`/api/runs/${body.runId}/events`)).text();
-    expect(text.match(/event: progress/g)).toHaveLength(5);
+    expect(text.match(/event: progress/g)).toHaveLength(6);
     expect(text.match(/event: done/g)).toHaveLength(1);
     expect(text).toContain('"status":"succeeded"');
   });
@@ -159,7 +159,8 @@ describe("instruction-box runs", () => {
     const stored = { ...t.store.get(doc.id)!, source: { kind: "local" as const, path: makeFolder({}) } };
     const done = await t.runs.wait(t.runs.start({ engine, model: null, instruction: "add Cache component", view: "overview", base: joinChannel(stored, "overview"), stored }));
     expect(done).toMatchObject({ status: "succeeded" });
-    expect(cwds).toEqual([root]);
+    // The routing question and the refine both run in the store's root.
+    expect(cwds).toEqual([root, root]);
     const after = t.store.get(doc.id)!;
     expect(after.facts.components.find((c) => c.id === "api")!.files).toEqual(["src/api.ts"]);
     expect(after.warnings).toEqual([]);

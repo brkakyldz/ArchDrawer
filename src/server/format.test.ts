@@ -112,7 +112,11 @@ class FakeReal implements Engine {
   readonly id = "claude"; readonly label = "Claude Code";
   drafts: unknown[] = [];
   async detect(): Promise<EngineInfo> { return { id: this.id, label: this.label, available: true, version: "1", detail: "", test: false, models: [] }; }
-  async run(req: EngineRunRequest): Promise<unknown> { this.drafts.push(req.base); return fixtureAnswer(req.base, req.view, req.instruction); }
+  async run(req: EngineRunRequest): Promise<unknown> {
+    if (req.task?.kind === "route") return { route: "facts" };
+    this.drafts.push(req.base);
+    return fixtureAnswer(req.base, req.view, req.instruction);
+  }
 }
 
 describe("an instruction changes the current channel (AI-1, FILE-3)", () => {

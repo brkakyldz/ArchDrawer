@@ -415,7 +415,10 @@ process tree. A finished run is forgotten after one hour.
 `layoutReport` and `path` (the drawing file a `draw` run wrote) are null until
 success.
 
-**Progress.** Engine lines (`Starting Claude Code`, `Reading <path>`,
+**Progress.** A refine starts with the routing question's engine lines, if
+any, then its route line (`Changing the facts` or `Redrawing this channel
+from the facts`, shown for every refine, a `parts` scope's included). Then
+engine lines (`Starting Claude Code`, `Reading <path>`,
 `Searching for “…”`, `Writing the diagram`, …), then `Checking the drawing`
 (story and post: `Checking the post`), then `Saved` or `Saved with <n>
 warning(s)`. A `draw` run's events carry `stage`: `read`, `overview` or

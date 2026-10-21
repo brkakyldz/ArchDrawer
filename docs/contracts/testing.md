@@ -321,7 +321,8 @@ These are the answers of a `story` run, a `draw` run's channel call, and the
 ### Routing
 
 A refine's routing question answers `story` when the instruction holds
-`[fixture:story]`, else `facts`.
+`[fixture:story]`, else `facts`. It answers at once and adds no progress line;
+no marker (`[fixture:slow]`, `[fixture:fail]`, …) acts on it.
 
 - **`facts` route:** the *Refine* answer.
 - **`story` route on LinkedIn, README or presentation:** the channel's

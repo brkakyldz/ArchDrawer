@@ -211,8 +211,8 @@ home screen always offers them (SCAN-3).
 
 **Lifecycle.** As a run's: `running`, `succeeded`, `failed` or `cancelled`,
 the same timeout, and cancel kills the engine's process tree. A failed or
-cancelled scan caches nothing. A finished scan is forgotten after one hour;
-its cache entry stays.
+cancelled scan caches nothing. A finished scan is kept while the server runs,
+so a `draw` can follow it at any time; its cache entry stays.
 
 **Scan record** (`GET /api/scans/:scanId`):
 `{"id", "status", "progress", "folder", "root", "commit", "cached", "card",
@@ -239,12 +239,14 @@ READ-1–3). It takes no `diagramId`:
 The checks run in this order, each a 400:
 
 1. `Scan the folder first: that scan is unknown or did not succeed`;
-2. `Unknown focus: use {"kind": "option" | "whole" | "typed"}`;
-3. `Unknown focus option "<id>"`;
-4. `Say what to focus on: the focus is empty`, or a typed text over 300 chars:
+2. the scan's folder, checked again as in *Folders* (it may have gone since
+   the scan);
+3. `Unknown focus: use {"kind": "option" | "whole" | "typed"}`;
+4. `Unknown focus option "<id>"`;
+5. `Say what to focus on: the focus is empty`, or a typed text over 300 chars:
    `The focus is too long (300 characters at most)`;
-5. `Choose the channel: linkedin, readme or presentation`;
-6. the model and the engine, as for any run.
+6. `Choose the channel: linkedin, readme or presentation`;
+7. the model and the engine, as for any run.
 
 A second `draw` run on a folder while one is running gets 409
 `A drawing of this folder is already being made`.
@@ -278,10 +280,15 @@ The run makes three engine calls in order, each under the timeout.
 - `warnings`: every repair warning, in stage order.
 
 It is validated, then written to `<folder>/docs/architecture.archdraw.json`,
-or the first free `architecture-<n>.archdraw.json` (n = 2, 3, …) when that
+or the first free `architecture-<n>.archdraw.json` (n = 2, 3, … 99) when that
 name is taken. The `docs` folder is created when missing. The app never
-overwrites an existing file. The file is then registered as
-`POST /api/files` would register it.
+overwrites an existing file: the document is written to a temporary file in
+`docs`, and the name is claimed by linking that file to it, which fails when
+the name exists, even one that appeared a moment before. When the file cannot
+be written (`docs` is not a folder, the folder is read-only, every name is
+taken) the run fails with `Could not write the drawing in <folder>/docs:
+<reason>`. The file is then registered as `POST /api/files` would register
+it; when registering fails, the written file is removed and the run fails.
 
 On success the run has:
 
@@ -479,4 +486,6 @@ when those were set, `ANTHROPIC_BASE_URL`. The server never reads an API key.
 - `<ARCHDRAW_DATA_DIR>/diagrams/<id>.json`: imported documents.
 - `<ARCHDRAW_DATA_DIR>/scans/<key>.json`: cached scans (*Scans*).
 - `<ARCHDRAW_DATA_DIR>/server.json` and `server.log` (cli contract).
-- Every write goes to a temporary file and is renamed into place.
+- Every write goes to a temporary file and is renamed into place; a `draw`
+  run's new file is linked into place instead (*The draw run*), so it never
+  replaces one.

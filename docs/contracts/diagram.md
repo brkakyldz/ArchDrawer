@@ -301,8 +301,11 @@ with 400 and the first violation. Invalid files are never repaired.
     later never locks a drawing. The server registers and saves such a file
     without a warning; `check-files` names its missing paths (api contract)
     and the editor marks them (ui contract, `callout-files`). The repository root
-    is the nearest ancestor of the file's folder holding `.git`, else the
-    file's folder; a registered drawing's `source` is always that root.
+    is the nearest ancestor of the file's folder holding `.git`. With none, it
+    is the file's folder, except for a file in a folder named `docs` whose
+    `source` is that folder's parent, as a `draw` run writes a drawing of a
+    folder outside git: then it is that parent. A registered drawing's
+    `source` is always that root.
 15. At most 60 parts per view.
 16. Every component fact is shown or held by at least one part of the
     overview channel.

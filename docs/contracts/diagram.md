@@ -816,8 +816,9 @@ out, one warning each:
   at a free spot. It goes inside the zone or holder of the part it has the
   most relations with: `Added "<id>", which the overview left out`.
 - When those cards would take the view past 60 parts (rule 15), the facts that
-  do not fit are drawn in one part, `more-components` (`More components`),
-  with one warning: `Drew the <n> facts the overview left out beyond its 60
+  do not fit are drawn in one part, `more-components` (`More components`); when
+  the story already drew 60 parts, in its last part that holds no parts. One
+  warning: `Drew the <n> facts the overview left out beyond its 60
   parts in one part "<id>"`.
 - A relation between two parts that each show one fact, which no connection
   shows, is added as a connection.

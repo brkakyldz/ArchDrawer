@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { normalizeFile3 } from "../../core/channels";
+import { applyChannel, joinChannel, normalizeFile3 } from "../../core/channels";
 import { readAnyFile } from "../../core/convert";
-import { applyDrawing, joinDrawing } from "../../core/drawing";
-import { validateDocument3, type Document3 } from "../../core/file3";
+import { validateDocument3, type ChannelId, type Document3 } from "../../core/file3";
 import { type DiagramDocument } from "../../core/model";
 import { node } from "../../core/testkit";
 import { addNode, createInside, deleteNodes, setNode } from "./ops";
@@ -29,9 +28,12 @@ function stored(): Document3 {
   return normalizeFile3(r.file!, { id: "d_split00001", now: NOW, source: null });
 }
 
-/** Apply one editor operation to the drawn view list and split it back, as the editor does. */
+/** Apply one editor operation on the channel whose view it changes, and split it back, as the editor does on that tab. */
 function edit(d: Document3, op: (j: DiagramDocument) => DiagramDocument): Document3 {
-  const r = applyDrawing(d, op(joinDrawing(d)));
+  const channels: ChannelId[] = ["overview", "linkedin"];
+  const c = channels.find((ch) => { const j = joinChannel(d, ch); return JSON.stringify(op(structuredClone(j))) !== JSON.stringify(j); });
+  if (!c) throw new Error("The operation changed no channel");
+  const r = applyChannel(d, c, op(joinChannel(d, c)));
   if (!r.ok) throw new Error(r.error);
   const v = validateDocument3(r.doc);
   if (!v.ok) throw new Error(v.errors.join("; "));
@@ -45,7 +47,7 @@ describe("editor edits split into facts and channels", () => {
     const d = edit(stored(), (j) => setNode(j, "post", "api-li", { form: "panel" }));
     expect(part(d, "api-li")).toMatchObject({ form: "panel" });
     expect(part(d, "api-li").items).toBeUndefined();
-    expect(joinDrawing(d).views[1].nodes.find((n) => n.id === "api-li")!.items).toEqual(["Check", "Store"]);
+    expect(joinChannel(d, "linkedin").views[0].nodes.find((n) => n.id === "api-li")!.items).toEqual(["Check", "Store"]);
     const card = edit(d, (j) => setNode(j, "overview", "api", { form: "card" }));
     expect(fact(card, "api").items).toEqual(["Check", "Store"]);
     // A part whose fact holds nothing gets `New item` in the fact.
@@ -66,7 +68,7 @@ describe("editor edits split into facts and channels", () => {
   it("a rename in the overview edits the fact; in the post it is the post's own name", () => {
     const o = edit(stored(), (j) => setNode(j, "overview", "api", { label: "Order API" }));
     expect(fact(o, "api").label).toBe("Order API");
-    expect(joinDrawing(o).views[1].nodes.find((n) => n.id === "api-li")!.label).toBe("Order API");
+    expect(joinChannel(o, "linkedin").views[0].nodes.find((n) => n.id === "api-li")!.label).toBe("Order API");
     const p = edit(stored(), (j) => setNode(j, "post", "api-li", { label: "API", description: "Takes the orders." }));
     expect(fact(p, "api")).toMatchObject({ label: "Api", description: "Takes the orders." });
     expect(part(p, "api-li").label).toBe("API");
@@ -75,7 +77,7 @@ describe("editor edits split into facts and channels", () => {
   it("files belong to the facts", () => {
     const d = edit(stored(), (j) => setNode(j, "post", "web-li", { files: ["web/index.html"] }));
     expect(fact(d, "web").files).toEqual(["web/index.html"]);
-    expect(joinDrawing(d).views[0].nodes.find((n) => n.id === "web")!.files).toEqual(["web/index.html"]);
+    expect(joinChannel(d, "overview").views[0].nodes.find((n) => n.id === "web")!.files).toEqual(["web/index.html"]);
   });
 
   it("deleting in the post leaves the fact; deleting in the overview deletes it and the post's part", () => {

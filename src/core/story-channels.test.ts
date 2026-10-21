@@ -191,6 +191,21 @@ describe("an overview over the part limit", () => {
     expect(more.facts).toHaveLength(70 - 56);
     expect(r.warnings.filter((w) => w.startsWith("Drew the"))).toEqual(['Drew the 14 facts the overview left out beyond its 60 parts in one part "more-components"']);
   });
+
+  it("puts what is left out into the last part when the story already drew 60 parts", () => {
+    const d = agent();
+    const extra = Array.from({ length: 58 }, (_, k) => ({ id: `svc-${k}`, label: `Service ${k}`, kind: "service" as const, sub: "", description: "A service.", files: [], items: [] }));
+    const facts = { ...d.facts, components: [...d.facts.components, ...extra] };
+    const first: Document3 = { ...d, facts, channels: { ...d.channels, overview: { ...d.channels.overview, views: [] } } };
+    // 60 parts: app, agent, and 58 services; the store is left out.
+    const parts = [sp("app", { spine: 0, from: ["app"] }), sp("agent", { spine: 1, from: ["agent"], held: ["propose", "check"] }), ...extra.map((c, k) => sp(c.id, { spine: k + 2, from: [c.id] }))];
+    const r = intentToChannel(first, intent({ zones: [], edges: [], parts }), { portrait: false, channel: "overview" });
+    expect(validateDocument3(r.doc).ok).toBe(true);
+    const v = r.doc.channels.overview.views[0];
+    expect(v.nodes).toHaveLength(60);
+    expect(v.nodes.find((p) => p.id === "svc-57")!.facts).toEqual(["svc-57", "store"]);
+    expect(r.warnings.filter((w) => w.startsWith("Drew the"))).toEqual(['Drew the 1 facts the overview left out beyond its 60 parts in one part "svc-57"']);
+  });
 });
 
 describe("a refine keeps the rows a part may draw", () => {

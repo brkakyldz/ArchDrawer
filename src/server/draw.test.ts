@@ -118,6 +118,10 @@ describe("the draw run", () => {
     const failed = await json(await f.req("/api/scans", { method: "POST", json: { folder: dir, refresh: true } }));
     await f.scans.wait(failed.body.scanId);
     expect([f.scans.get(ok.body.scanId)?.status, f.scans.get(failed.body.scanId)?.status]).toEqual(["succeeded", "failed"]);
+    // A later failure forgets the earlier failure, never the success.
+    const again = await json(await f.req("/api/scans", { method: "POST", json: { folder: dir, refresh: true } }));
+    await f.scans.wait(again.body.scanId);
+    expect([f.scans.get(ok.body.scanId)?.status, f.scans.get(failed.body.scanId), f.scans.get(again.body.scanId)?.status]).toEqual(["succeeded", null, "failed"]);
   });
 
   it("refuses a second draw of a folder while one runs", async () => {
@@ -154,6 +158,12 @@ describe("writing a new drawing", () => {
     const dir = makeFolder({ ".git/HEAD": "ref: refs/heads/main\n", "docs/.git": "gitdir: ../.git\n" });
     const file = writeNewDrawing(dir, JSON.stringify({ source: { kind: "local", path: dir } }));
     expect(repoRootOf(file)).toBe(dir);
+  });
+
+  it.skipIf(process.platform === "linux")("roots a drawing in an existing Docs folder at its parent, where the disk ignores case", () => {
+    const dir = makeFolder({ "Docs/readme.md": "x\n" });
+    writeNewDrawing(dir, JSON.stringify({ source: { kind: "local", path: dir } }));
+    expect(repoRootOf(join(dir, "Docs", "architecture.archdraw.json"))).toBe(dir);
   });
 
   it("fails with the contracted sentence when docs is a file or every name is taken", () => {

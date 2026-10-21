@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Changes } from "../../core/diff";
 import type { LayoutReport } from "../../core/report";
-import type { Document3 } from "../../core/file3";
+import type { ChannelId, Document3 } from "../../core/file3";
 import type { DiagramDocument } from "../../core/model";
 import type { RunScope } from "../../core/repair";
 import { api, ApiError, type EngineInfo } from "../api";
@@ -52,8 +52,6 @@ export const engineName = (e: EngineInfo) => (e.test ? "Test engine (no AI)" : e
  * available; else the document's, if available and not the fixture; else the first available real
  * engine; else the fixture, when it is the only one offered.
  */
-/** The channel of a view of the drawn view list (`joinDrawing`): the post is the LinkedIn channel. */
-const channelOf = (d: DiagramDocument, view: string) => (d.views.find((v) => v.id === view)?.postOf ? "linkedin" : "overview");
 
 export function chooseEngine(engines: EngineInfo[], doc: Pick<DiagramDocument, "engine">, chosen = local(ENGINE_KEY)): EngineInfo | null {
   const ok = engines.filter((e) => e.available);
@@ -68,7 +66,9 @@ export function rememberedModel(e: EngineInfo | null): string {
 }
 
 interface Options {
+  /** The drawing of the channel the canvas shows (`joinChannel`), and that channel. */
   doc: DiagramDocument | null;
+  channel: ChannelId;
   vid: string | null;
   settle: () => Promise<boolean>;
   /** A run succeeded: show the stored drawing (undo returns to the one before) and what changed. */
@@ -78,19 +78,21 @@ interface Options {
 }
 
 /** One instruction run at a time, shared by the ask box, the AI panel and the LinkedIn channel. */
-export function useRunner({ doc, vid, settle, onUpdated, onSaved }: Options) {
+export function useRunner({ doc, channel, vid, settle, onUpdated, onSaved }: Options) {
   const [state, setState] = useState<RunState>(IDLE);
   const source = useRef<EventSource | null>(null);
   /** True from the moment a start begins until its run ends: a second start is ignored, never a failure. */
   const busy = useRef(false);
   /** Cancel was pressed before the server gave the run an id. */
   const cancelEarly = useRef(false);
-  const live = useRef({ doc, vid, onUpdated, onSaved });
-  live.current = { doc, vid, onUpdated, onSaved };
+  const live = useRef({ doc, channel, vid, onUpdated, onSaved });
+  live.current = { doc, channel, vid, onUpdated, onSaved };
   useEffect(() => () => source.current?.close(), []);
 
   const start = useCallback(async (req: RunRequest) => {
     const { doc: d } = live.current;
+    // A simplification works on the overview, whichever channel the canvas shows (api contract, Run kinds).
+    const channel: ChannelId = req.kind === "simplify" ? "overview" : live.current.channel;
     const v = req.view ?? live.current.vid;
     const instruction = req.instruction.trim();
     if (!d || !v || (!instruction && req.kind !== "post")) return;
@@ -104,7 +106,7 @@ export function useRunner({ doc, vid, settle, onUpdated, onSaved }: Options) {
     if (cancelEarly.current) { busy.current = false; setState({ ...IDLE, status: "cancelled", req, error: "Cancelled" }); return; }
     if (!req.engine) {
       try {
-        await api.request(d.id, channelOf(d, v), v, instruction);
+        await api.request(d.id, channel, v, instruction);
         busy.current = false;
         setState({ ...IDLE, status: "saved", req });
         live.current.onSaved();
@@ -114,8 +116,8 @@ export function useRunner({ doc, vid, settle, onUpdated, onSaved }: Options) {
     let id: string;
     try {
       // A post names the LinkedIn channel's view when there is one; the server designs it from the overview.
-      const sent = req.kind === "post" ? d.views.find((x) => x.postOf)?.id ?? null : v;
-      id = await api.startRun(d.id, channelOf(d, v), sent, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format, readCode: req.readCode });
+      const sent = req.kind === "post" ? (channel === "linkedin" ? d.views[0]?.id ?? null : null) : v;
+      id = await api.startRun(d.id, channel, sent, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format, readCode: req.readCode });
     } catch (e) {
       fail(e instanceof ApiError ? e.message : "Could not start the instruction");
       return;

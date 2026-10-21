@@ -89,12 +89,26 @@ describe("scanning an untrusted repository", () => {
   });
 
   it("leaves archdrawer's own drawing files out of the listing", async () => {
-    const dir = repo({ "a.ts": "x\n", "docs/architecture.archdraw.json": "{}\n", "b.ts": "y\n" });
+    const dir = repo({ "a.ts": "x
+", "docs/architecture.archdraw.json": "{}
+", "b.ts": "y
+" });
     const { engine, seen } = recorder();
     const t = makeApp({ engines: [engine] });
     const r = await json(await t.req("/api/scans", { method: "POST", json: { folder: dir } }));
     await t.scans.wait(r.body.scanId);
     expect(seen[0].task!.data!.listing).toEqual(["a.ts", "b.ts"]);
+  });
+
+  it("lists a folder whose name starts with two dots: it is inside the root", async () => {
+    const dir = repo({ "a.ts": "x
+", "..odd/b.ts": "y
+" });
+    const { engine, seen } = recorder();
+    const t = makeApp({ engines: [engine] });
+    const r = await json(await t.req("/api/scans", { method: "POST", json: { folder: dir } }));
+    await t.scans.wait(r.body.scanId);
+    expect(seen[0].task!.data!.listing).toEqual(["..odd/b.ts", "a.ts"]);
   });
 
   it("does not call a folder in git when its .git is not a repository and one above it is", async () => {

@@ -369,6 +369,34 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .lib .row-menu .icon-btn { width: 30px; padding: 0; justify-content: center; font-size: 16px; line-height: 1; }
 .lib .row-menu .menu { position: absolute; right: 0; top: calc(100% + 4px); left: auto; min-width: 170px; z-index: 20; }
 .lib .help .btn { margin-top: 6px; }
+/* Starting a drawing from a folder (ui contract, Library). */
+.start { display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; margin-bottom: 20px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface); box-shadow: var(--shadow); }
+.start h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.start p { margin: 0; }
+.start code { font: 12.5px "Geist Mono", monospace; background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--ink); }
+.start-row { display: flex; gap: 8px; }
+.start-row input, .start input[type="text"] { flex: 1; height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: 13px "Geist Mono", monospace; }
+.start-engine { display: flex; gap: 12px; font-size: 12.5px; color: var(--muted); }
+.start-engine label { display: flex; align-items: center; gap: 6px; }
+.start-no-engine { display: flex; flex-direction: column; gap: 6px; color: var(--muted); }
+.start-error, .draw-error { color: var(--danger, #c62828); font-size: 13px; display: flex; align-items: center; gap: 10px; }
+.start-existing, .start-progress { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.start-progress.draw { flex-wrap: wrap; }
+.start-progress ol { display: flex; gap: 14px; list-style: none; margin: 0; padding: 0; width: 100%; }
+.lib .start-progress li { display: inline; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; font-size: 13px; }
+.start-progress li[data-state="waiting"] { color: var(--soft); }
+.start-progress li[data-state="running"] { color: var(--accent); font-weight: 600; }
+.start-progress li[data-state="done"] { color: var(--ink); }
+.scan-card { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); }
+.scan-card b { font-size: 14.5px; }
+.scan-card .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.start-choice { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; border: 0; }
+.start-choice legend { font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+.focus-option, .channel-option { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+.focus-option:has(input:checked), .channel-option:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: var(--accent-soft); }
+.focus-option > span { display: flex; flex-direction: column; gap: 2px; }
+.focus-option .files { display: flex; flex-direction: column; gap: 2px; }
+.start > .btn.primary[data-testid="draw-start"] { align-self: flex-start; }
 .menu .danger { color: var(--k-llm); }
 
 /* Load error: never a blank page. */
@@ -470,6 +498,8 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .channel-tab .mark { width: 7px; height: 7px; border-radius: 50%; background: var(--k-worker); box-shadow: 0 0 0 3px color-mix(in srgb, var(--k-worker) 20%, transparent); }
 .header-menu .channel-tabs { flex-wrap: wrap; }
 .channel-outdated { position: absolute; top: 14px; left: 14px; z-index: 12; display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); box-shadow: var(--shadow); font-size: 12.5px; color: var(--ink); }
+.story-run { position: absolute; top: 58px; left: 14px; z-index: 12; max-width: 420px; }
+.story-run:empty { display: none; }
 .channel-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 15px; }
 .channel-empty .box { display: grid; gap: 12px; justify-items: stretch; width: min(360px, calc(100% - 32px)); }
 .channel-empty .box > p { margin: 0; padding: 18px 24px; border: 1px dashed var(--line-2); border-radius: 12px; background: var(--surface); text-align: center; }

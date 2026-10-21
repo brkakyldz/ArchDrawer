@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { freeIdAmong, FACT3_LIMITS, type Step } from "../../core/file3";
 import type { DiagramDocument, DiagramView } from "../../core/model";
 
@@ -36,10 +36,13 @@ export function StepsPanel({ steps, view, current, onPick, edit, selected, toast
   const set = (patch: Partial<Step>, key?: string) => step && edit((all) => all.map((s) => (s.id === step.id ? { ...s, ...patch } : s)), key);
   const add = () => {
     if (steps.length >= FACT3_LIMITS.steps) { toast(`A presentation has at most ${FACT3_LIMITS.steps} steps`); return; }
-    const own = new Set(view.nodes.map((n) => n.id));
+    // A step lights parts, never groups: the ones selected, else the current step's, else the first.
+    const own = new Set(parts.map((n) => n.id));
     const chosen = selected.filter((id) => own.has(id));
+    const lit = chosen.length ? chosen : step ? [...step.parts] : parts.slice(0, 1).map((n) => n.id);
+    if (!lit.length) { toast("A step highlights at least one part"); return; }
     const id = freeIdAmong(new Set(steps.map((s) => s.id)), `s${steps.length + 1}`);
-    const added: Step = { id, parts: chosen.length ? chosen : step ? [...step.parts] : parts.slice(0, 1).map((n) => n.id), text: "New step", note: "" };
+    const added: Step = { id, parts: lit, text: "New step", note: "" };
     edit((all) => { const i = all.findIndex((s) => s.id === current); const out = [...all]; out.splice(i >= 0 ? i + 1 : out.length, 0, added); return out; });
     onPick(id);
   };
@@ -92,7 +95,7 @@ export function StepsPanel({ steps, view, current, onPick, edit, selected, toast
       {step && (
         <div className="step-edit">
           <label><span>On screen</span>
-            <input type="text" data-testid="step-text" maxLength={FACT3_LIMITS.stepText} value={step.text} onChange={(e) => set({ text: e.target.value }, `step-text:${step.id}`)} />
+            <StepText key={step.id} value={step.text} onCommit={(text) => set({ text }, `step-text:${step.id}`)} />
           </label>
           <label><span>Speaker note</span>
             <textarea data-testid="step-note" maxLength={FACT3_LIMITS.stepNote} rows={4} value={step.note} onChange={(e) => set({ note: e.target.value }, `step-note:${step.id}`)} />
@@ -111,6 +114,22 @@ export function StepsPanel({ steps, view, current, onPick, edit, selected, toast
         </div>
       )}
     </aside>
+  );
+}
+
+/**
+ * A step's on-screen text: what is typed shows as typed, and only a non-empty, trimmed text is saved
+ * (a step's text is never empty); leaving the field shows the saved text again.
+ */
+function StepText({ value, onCommit }: { value: string; onCommit: (text: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  // The text this field last saved: any other value (an undo, a run) is shown at once, even while typing.
+  const mine = useRef(value);
+  useEffect(() => { if (value !== mine.current) { mine.current = value; setDraft(value); } }, [value]);
+  return (
+    <input type="text" data-testid="step-text" maxLength={FACT3_LIMITS.stepText} value={draft}
+      onBlur={() => setDraft(value)}
+      onChange={(e) => { setDraft(e.target.value); const t = e.target.value.trim(); if (t && t !== value) { mine.current = t; onCommit(t); } }} />
   );
 }
 

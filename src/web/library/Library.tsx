@@ -3,13 +3,14 @@ import { api, ApiError, type DiagramSummary } from "../api";
 import { navigate } from "../App";
 import { Icon } from "../ui/Icon";
 import { Logo } from "../ui/Logo";
+import { Start } from "./Start";
 
 const when = (iso: string) => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 };
 
-/** `/`: the drawings this server has opened, and import (ui contract, Library). */
+/** `/`: start a drawing from a folder, the drawings this server has opened, and import (ui contract, Library). */
 export function Library() {
   const [list, setList] = useState<DiagramSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,17 +74,7 @@ export function Library() {
           </div>
         </div>
         {error && <p className="form-error" data-testid="form-error" role="alert">{error}</p>}
-        {list && list.length === 0 && (
-          <div className="help" data-testid="start-help">
-            <h2>Start a drawing from your coding agent</h2>
-            <p>In Claude Code or Codex, with the archdrawer plugin installed, ask in your repository:</p>
-            <p><code>/archdrawer:archdrawer</code> — or just “draw the architecture of this repo”.</p>
-            <p>The session reads the code, writes the drawing file and opens it here. You can also open a file yourself with <code>archdrawer open &lt;file&gt;</code>.</p>
-            <button className="btn primary" data-testid="library-example" disabled={busy} onClick={() => void example()}>
-              <Icon name="open" size={16} /> Open the example drawing
-            </button>
-          </div>
-        )}
+        <Start list={list} onExample={() => void example()} exampleBusy={busy} />
         {list && list.length > 0 && (
           <ul data-testid="library">
             {list.map((d) => (

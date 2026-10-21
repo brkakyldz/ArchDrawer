@@ -7,7 +7,7 @@ import { validateDocument3, type Document3, type File3 } from "../core/file3";
 import { DOC_ID_RE, newDocumentId } from "../core/model";
 import { checkFile, docText, hashOf, normaliseFile, repoFileChecker, repoRootOf, writeAtomic } from "./files";
 
-export interface DiagramSummary { id: string; title: string; path: string | null; updatedAt: string }
+export interface DiagramSummary { id: string; title: string; path: string | null; root: string | null; updatedAt: string }
 export type ReadResult = { ok: true; doc: Document3 } | { ok: false; error: string; errors: string[] };
 export type PutResult = { ok: true; updatedAt: string } | { ok: false; conflict: true; updatedAt: string | null } | { ok: false; conflict: false; error: string; errors: string[] };
 
@@ -224,8 +224,9 @@ export class Store extends EventEmitter {
     const out: DiagramSummary[] = [];
     const add = (id: string, path: string | null) => {
       const r = this.read(id);
-      if (r?.ok) out.push({ id, title: r.doc.title, path, updatedAt: r.doc.updatedAt });
-      else if (r && path) out.push({ id, title: basename(path), path, updatedAt: new Date(statSync(path).mtimeMs).toISOString() });
+      const root = path ? repoRootOf(path) : null;
+      if (r?.ok) out.push({ id, title: r.doc.title, path, root, updatedAt: r.doc.updatedAt });
+      else if (r && path) out.push({ id, title: basename(path), path, root, updatedAt: new Date(statSync(path).mtimeMs).toISOString() });
     };
     for (const [id, path] of this.files) if (existsSync(path)) add(id, path);
     for (const name of readdirSync(this.importsDir)) if (name.endsWith(".json")) add(name.slice(0, -5), null);

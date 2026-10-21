@@ -7,7 +7,7 @@ import type { RunScope } from "../../core/repair";
 import { api, ApiError, type EngineInfo } from "../api";
 
 /** Where a run was started: each place shows its own error and summary; every place shows a run going. */
-export type RunOrigin = "ask" | "panel" | "linkedin";
+export type RunOrigin = "ask" | "panel" | "linkedin" | "story";
 
 export interface RunRequest {
   instruction: string;

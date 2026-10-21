@@ -184,6 +184,6 @@ describe("the LinkedIn channel drawn from the facts (STORY-1)", () => {
     await t.runs.wait(again.body.runId);
     expect(engine.asked[1].task!.tools).toBe("read");
     expect((await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, kind: "post", engine: "claude", readCode: "no" } }))).body.error).toBe("readCode must be true or false");
-    expect((await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, view: "overview", instruction: "x", engine: "claude", readCode: false } }))).body.error).toBe("readCode is for a post");
+    expect((await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, view: "overview", instruction: "x", engine: "claude", readCode: false } }))).body.error).toBe("readCode is for a story");
   });
 });

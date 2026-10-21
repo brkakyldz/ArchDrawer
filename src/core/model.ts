@@ -408,25 +408,14 @@ export const isLinkedInView = (viewId: string) => viewId.endsWith(LINKEDIN_SUFFI
 /** A post view draws with the dense post style: one with a `postOf`, or a LinkedIn view. */
 export const isPostView = (v: { id?: string; postOf?: string | null }) => !!v.postOf || (!!v.id && isLinkedInView(v.id));
 
-/** The overview's targets (diagram contract, Overview targets): 4–6 top-level zones, at most 15 connections. */
-export const OVERVIEW_TARGETS = { zones: { min: 4, max: 6 }, connections: 15 } as const;
-
-/** The overview's counts when they miss its targets, else null. Counts every connection, zone interiors too. */
-export function overviewMiss(view: { nodes: readonly { parent?: string | null; form: string }[]; edges: readonly unknown[] }): { zones: number; connections: number } | null {
-  const zones = view.nodes.filter((n) => !n.parent && n.form === "group").length, connections = view.edges.length;
-  const T = OVERVIEW_TARGETS;
-  return zones < T.zones.min || zones > T.zones.max || connections > T.connections ? { zones, connections } : null;
-}
-
-/** The depth checks: they never make a file invalid. */
+/**
+ * The depth checks: they never make a file invalid. The overview has no count targets (ADR 0007);
+ * a tuning number is a warning on LinkedIn only, since elsewhere a limit may show one (STORY-5).
+ */
 export function depthWarnings(file: Pick<DiagramFile, "views">, o: { prefix?: string; overview?: boolean; share?: boolean } = {}): string[] {
   const out: string[] = [];
   file.views.forEach((v, vi) => {
     const P = `${o.prefix ?? "views"}[${vi}]`;
-    const miss = vi === 0 && (o.overview ?? !isPostView(v)) ? overviewMiss(v) : null;
-    if (miss) {
-      out.push(`${P}: the overview has ${miss.zones} zone${miss.zones === 1 ? "" : "s"} and ${miss.connections} connection${miss.connections === 1 ? "" : "s"}; it targets 4–6 zones and at most 15 connections — simplify it, with finer detail in detail views`);
-    }
     const top = v.nodes.filter((n) => n.parent === null);
     const stepped = v.edges.filter((e) => e.step !== null);
     const share = o.share ?? (typeof v.id === "string" && isLinkedInView(v.id));
@@ -443,7 +432,7 @@ export function depthWarnings(file: Pick<DiagramFile, "views">, o: { prefix?: st
     if (v.nodes.length >= 6 && !share && !v.nodes.some((n) => n.form === "panel")) {
       out.push(`${P}: no component lists what it holds; use form "panel" with items where the code shows distinct mechanisms`);
     }
-    v.nodes.forEach((n, i) => {
+    if (share) v.nodes.forEach((n, i) => {
       for (const [field, text] of [["label", n.label], ["sub", n.sub], ...n.items.map((t, j) => [`items[${j}]`, t])] as [string, string][]) {
         if (TUNING.test(text)) out.push(`${P}.nodes[${i}].${field}: ${q(text)} looks like a tuning number; leave limits, timeouts and counts out`);
       }

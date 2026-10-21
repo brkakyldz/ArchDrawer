@@ -28,8 +28,10 @@ repository:
   directions (request and typed result); never draw a second reverse
   connection. Label a connection only when the label adds something ("pending
   request", "decision", "emit"); repeat no label.
-- **No tuning numbers.** Leave out limits, timeouts, counts and sizes ("6
-  turns", "90 s", "2 retries"). They change; the architecture does not.
+- **Numbers that explain a guarantee are limits.** A deadline, a turn limit
+  or a size cap ("Stops after 12 turns") goes in `facts.limits`, on the
+  component it guards, with the file that sets it; it never goes in a label or
+  an item.
 - **Every component explains itself.** `description`: 1–3 plain sentences on
   what it is for and what it guarantees, for a reader new to the code.
   `files`: repository-relative paths you actually opened that implement it.
@@ -46,9 +48,8 @@ repository:
 - **Loops live inside their owner.** An agent loop, a retry loop or a
   pipeline of stages owned by one component is drawn inside that component as
   a group, with the loop's own connections between its parts.
-- **At most five columns.** Use `col` 0–4. A main path longer than five
-  components continues on a second band below (rows 2–3), again from col 0;
-  keep its side parts next to the step they serve.
+- **Keep the map compact.** A long main path continues on a second band
+  below, again from col 0; keep its side parts next to the step they serve.
 - **Go one level down when a component is big.** When a component holds more
   than about six parts of its own, give it `detail`: a second view with those
   parts, drawn by the same rules.
@@ -58,10 +59,11 @@ repository:
 The first view is the overview. It is a map of the system, not its full
 inventory:
 
-- **4–6 zones.** Its top-level components are groups (zones) that hold what
-  belongs together: the entry points, the runtime with its loop, the stores.
-- **At most about 15 connections** in the whole view, zone interiors
-  included. A connection the reader needs only for the detail lives there.
+- **Zones are the system's real boundaries.** Its top-level components are
+  groups (zones) that hold what belongs together: the entry points, the
+  runtime with its loop, the stores.
+- **Only the connections the map needs.** A connection the reader needs only
+  for the detail lives there.
 - **A `lane` on every top-level component**, and on the parts inside a zone.
   The main request path gets `{"spine": 0}`, `{"spine": 1}` … in order. A part
   that serves one spine part sits beside it: `{"anchor": "<that part's id>",
@@ -70,15 +72,14 @@ inventory:
   part before `place` does.
 - **Detail goes one level down.** What does not fit the map goes into a view
   reached by a zone's or component's `detail`; that view is drawn by the rules
-  above, at full depth, with no zone target.
+  above, at full depth.
 - **Nothing is lost.** Every component fact is drawn by at least one part of
   the overview or its detail views. A component moved into a detail view keeps
   its fact, its files and its relations. A part that stands for several
   components lists their facts in `facts` and gives its own `label`, `kind`
   and `description`.
 
-Size: 8–20 components per detail view including those inside groups. Merge
-small helpers into what they serve; leave out tests and build scripts.
+Merge small helpers into what they serve; leave out tests and build scripts.
 
 ## The file
 

@@ -34,6 +34,8 @@ export interface RepairContext {
   view?: string;
   /** The stored drawing's component fact ids: a part may point to any of them, shown in this channel or not. */
   facts?: Iterable<string>;
+  /** The mechanisms and limits a part may draw as rows (diagram contract, What a channel draws). */
+  rows?: { mechanisms: Map<string, { label: string; within: string | null }>; limits: Map<string, { text: string; on: string }> };
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
@@ -44,7 +46,7 @@ const GRID = 8;
 const snap = (v: number) => Math.round(v / GRID) * GRID;
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 /** What the engine sees of a component or a connection, to tell whether it changed one. */
-const nodeKey = (n: Record<string, unknown>) => JSON.stringify([n.label, n.kind, n.form, n.icon ?? null, n.sub, n.items, n.description, n.files, n.parent ?? null, n.detail ?? null, n.lane ?? null, n.facts ?? n.from ?? []]);
+const nodeKey = (n: Record<string, unknown>) => JSON.stringify([n.label, n.kind, n.form, n.icon ?? null, n.sub, n.items, n.description, n.files, n.parent ?? null, n.detail ?? null, n.lane ?? null, n.facts ?? n.from ?? [], n.held ?? [], n.limits ?? []]);
 const edgeKey = (e: Record<string, unknown>) => JSON.stringify([e.label, e.style, e.both === true, e.step ?? null]);
 
 export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocument {
@@ -206,13 +208,30 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
       let items = said.filter((t) => t.trim());
       let form = str(n.form) as Form;
       if (!FORMS.includes(form)) { warnings.push(`Component "${id}": unknown form "${str(n.form)}", drawn as a card`); form = "card"; }
+      const kept0 = basePos.get(id);
+      const from = fromOf(n.facts ?? n.from, id, kept0?.from ?? []);
+      // Held mechanisms and limits a refine keeps: only ones the part may draw (rule 22), no new fact.
+      const held: string[] = [], limits: string[] = [];
+      for (const m of [...new Set(arr(n.held).map(str))]) {
+        const w = ctx.rows?.mechanisms.get(m)?.within;
+        if (w && from.includes(w)) held.push(m); else warnings.push(`Component "${id}": dropped "${m}" from what it holds: no mechanism within its facts`);
+      }
+      for (const l of [...new Set(arr(n.limits).map(str))]) {
+        const on = ctx.rows?.limits.get(l)?.on;
+        if (on && (from.includes(on) || held.includes(on))) limits.push(l); else warnings.push(`Component "${id}": dropped the limit "${l}": not on what it shows`);
+      }
       if (form === "panel") {
         // Only a panel's items are drawn, so only a panel's items are repaired.
         if (items.length && items.length < said.length) warnings.push(`Component "${id}": dropped ${said.length - items.length} empty items`);
-        if (items.length > LIMITS.items) { warnings.push(`Kept the first ${LIMITS.items} items of "${id}"`); items.length = LIMITS.items; }
+        const room = LIMITS.items - held.length - limits.length;
+        if (items.length > room) { warnings.push(`Kept the first ${Math.max(0, room)} items of "${id}"`); items.length = Math.max(0, room); }
         items = items.map((t, j) => clip(t, LIMITS.item, `item ${j + 1} of "${id}"`));
-        if (!items.length) { warnings.push(`Component "${id}": a panel without items, drawn as a card`); form = "card"; }
-      } else if (said.length) { warnings.push(`Component "${id}": items dropped, only a panel shows them`); items = []; }
+        if (!items.length && !held.length && !limits.length) { warnings.push(`Component "${id}": a panel without items, drawn as a card`); form = "card"; }
+      } else {
+        if (said.length) { warnings.push(`Component "${id}": items dropped, only a panel shows them`); items = []; }
+        if (held.length || limits.length) { warnings.push(`Component "${id}": its held and limit rows dropped, only a panel shows them`); held.length = 0; limits.length = 0; }
+      }
+      const rows = form === "panel" ? [...held.map((m) => ctx.rows!.mechanisms.get(m)!.label), ...items, ...limits.map((l) => ctx.rows!.limits.get(l)!.text)] : items;
       let icon: IconName | null = n.icon === null || n.icon === undefined || n.icon === "" ? null : (str(n.icon) as IconName);
       if (icon !== null && !ICONS.includes(icon)) { warnings.push(`Component "${id}": unknown icon "${str(n.icon)}", using the kind's`); icon = null; }
       const files: string[] = [];
@@ -237,10 +256,11 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
         if (!from || Math.abs(at.x - from.x) > 1 || Math.abs(at.y - from.y) > 1) { moves.set(id, { x: snap(at.x), y: snap(at.y) }); groupAt.set(id, { x: at.x, y: at.y }); }
       }
       return {
-        id, label, kind, form, icon, sub: clip(str(n.sub), LIMITS.sub, `the sub-line of "${id}"`), items, description, files,
+        id, label, kind, form, icon, sub: clip(str(n.sub), LIMITS.sub, `the sub-line of "${id}"`), items: rows, description, files,
         parent: str(n.parent) || null, detail: str(n.detail) || null, place,
         // The answer names the facts a part shows in `facts` (diagram contract, Engine answers).
-        lane: lane === undefined ? kept?.lane ?? null : lane, from: fromOf(n.facts ?? n.from, id, kept?.from ?? []),
+        lane: lane === undefined ? kept?.lane ?? null : lane, from,
+        ...(held.length ? { heldIds: held } : {}), ...(limits.length ? { limitIds: limits } : {}),
         ...(kept ? { x: kept.x, y: kept.y } : {}),
       };
     });
@@ -448,8 +468,11 @@ function clearOverlaps(view: DiagramView, placed: Set<string>, fresh: Set<string
 
 /** A component as the engine sees it (no position); `facts` names the facts it shows (its `from` here). */
 function draftNode(n: DiagramNode) {
-  const { id, label, kind, form, icon, sub, items, description, files, parent, detail, place } = n;
-  return { id, label, kind, form, icon, sub, items: [...items], description, files: [...files], parent, detail, place, lane: n.lane ?? null, facts: [...(n.from ?? [])] };
+  const { id, label, kind, form, icon, sub, description, files, parent, detail, place } = n;
+  // A panel's held and limit rows go as ids (diagram contract, Engine answers); `items` are its own rows.
+  const held = n.heldIds ?? [], limits = n.limitIds ?? [];
+  const items = n.items.slice(held.length, n.items.length - limits.length);
+  return { id, label, kind, form, icon, sub, items, description, files: [...files], parent, detail, place, lane: n.lane ?? null, facts: [...(n.from ?? [])], held: [...held], limits: [...limits] };
 }
 
 /** A stored view as the engine would have written it back unchanged. */
@@ -529,7 +552,7 @@ export const DRAFT_JSON_SCHEMA = {
             items: {
               type: "object",
               additionalProperties: false,
-              required: ["id", "label", "kind", "form", "icon", "sub", "items", "description", "files", "parent", "detail", "place", "lane", "facts", "at"],
+              required: ["id", "label", "kind", "form", "icon", "sub", "items", "description", "files", "parent", "detail", "place", "lane", "facts", "held", "limits", "at"],
               properties: {
                 id: { type: "string" },
                 label: { type: "string" },
@@ -549,6 +572,8 @@ export const DRAFT_JSON_SCHEMA = {
                   { type: "null" },
                 ] },
                 facts: { type: "array", items: { type: "string" } },
+                held: { type: "array", items: { type: "string" } },
+                limits: { type: "array", items: { type: "string" } },
                 at: nullable({ type: "object", additionalProperties: false, required: ["x", "y"], properties: { x: { type: "integer" }, y: { type: "integer" } } }),
               },
             },

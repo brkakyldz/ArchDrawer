@@ -707,8 +707,10 @@ document fields:
 - A zone's spine parts are consecutive on the spine and its side parts'
   anchors are inside it, or it holds only side parts of one anchor.
 - Connections join two parts, never a part to itself.
-- A step names at least one part, and each is an existing part.
 - There is at least one part.
+
+A step's parts are not a relation: a wrong one is dropped with a warning
+(see the presentation's row below).
 
 **Hard limits** fail the run and are never shortened:
 

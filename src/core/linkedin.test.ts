@@ -73,11 +73,11 @@ describe("the simple LinkedIn version (prepareLinkedIn)", () => {
 });
 
 const part = (id: string, extra: Partial<StoryPart>): StoryPart =>
-  ({ id, label: id, sub: "", kind: "service", chips: [], zone: null, spine: null, anchor: null, side: null, from: [], ...extra });
+  ({ id, label: id, sub: "", kind: "service", chips: [], zone: null, spine: null, anchor: null, side: null, from: [], inside: null, held: [], limits: [], ...extra });
 
 describe("a post answer as the LinkedIn channel (intentToChannel)", () => {
   const intent: StoryIntent = {
-    title: "How an order flows", lede: "",
+    title: "How an order flows", lede: "", steps: [],
     zones: [{ id: "back", label: "Back end" }],
     parts: [
       part("web", { label: "Shop", spine: 0, from: ["web"] }),

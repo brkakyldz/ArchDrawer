@@ -1,4 +1,5 @@
 import type { RunScope } from "../../core/repair";
+import type { DiagramView } from "../../core/model";
 
 export interface EngineModel { id: string; label: string }
 
@@ -38,9 +39,9 @@ export interface EngineRunRequest {
    * `tools` is `"none"` (a story from the facts alone; api contract, Engines).
    */
   task?: {
-    kind: "post" | "scan"; schema: object; prompt: string; tools?: "read" | "none";
-    /** What the fixture builds its answer from (the scan's listing and entry points); real engines ignore it. */
-    data?: { listing?: string[]; entries?: string[] };
+    kind: "post" | "story" | "scan"; schema: object; prompt: string; tools?: "read" | "none";
+    /** What the fixture builds its answer from (the scan's listing, a story's channel); real engines ignore it. */
+    data?: { listing?: string[]; entries?: string[]; channel?: string; overview?: DiagramView };
   };
   /** A simplify run (api contract): the overview becomes a map, and its prompt says what may change. */
   simplify?: boolean;

@@ -2,7 +2,7 @@ import type { DiagramDocument, DiagramView } from "./model";
 import type { Document3 } from "./file3";
 
 /** The instruction a simplify run always carries (api contract Run kinds; ui contract `simplify-overview`). */
-export const SIMPLIFY_INSTRUCTION = "Simplify the overview: keep every component in a detail view or a merged part's from";
+export const SIMPLIFY_INSTRUCTION = "Simplify the overview: keep every component in a detail view or a merged part";
 
 /** The overview and every view reached from it by `detail`, recursively (diagram contract, Simplification coverage). */
 export function reachableViews(doc: Pick<DiagramDocument, "views">): Set<string> {
@@ -89,10 +89,3 @@ export function missingFacts(before: Document3, after: Document3): string[] {
   return before.facts.components.map((c) => c.id).filter((id) => !shown.has(id));
 }
 
-/** The overview's one-line suggestion (ui contract `overview-suggestion`), e.g. "This overview has 32 connections — simplify it?". */
-export function overviewSuggestion(miss: { zones: number; connections: number }): string {
-  const parts: string[] = [];
-  if (miss.zones < 4 || miss.zones > 6) parts.push(`${miss.zones} zone${miss.zones === 1 ? "" : "s"}`);
-  if (miss.connections > 15) parts.push(`${miss.connections} connections`);
-  return `This overview has ${parts.join(" and ")} — simplify it?`;
-}

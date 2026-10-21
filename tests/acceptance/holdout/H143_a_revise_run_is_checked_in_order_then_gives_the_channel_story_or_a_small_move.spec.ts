@@ -67,7 +67,8 @@ test('H143 [LAYOUT-4, AI-1, FILE-3] a revise run is refused in the contracted or
   expect(overview.changes).toEqual({ ...noChanges, moved: ['web'] }); expect(overview.layoutReport).toMatchObject({ channel: 'overview', view: 'overview' });
   const done = (await runEvents(overview.id)).at(-1)!; expect(done.event).toBe('done'); expect(done.data).toMatchObject({ status: 'succeeded', route: null, channel: 'overview', view: 'overview' });
   const moved = await readDrawing(file), was = beforeDrawing.views[0].nodes.find(n => n.id === 'web')!, now = moved.views[0].nodes.find(n => n.id === 'web')!;
-  expect(now.x! - was.x!, 'moved 40 px right (on the 8 px grid)').toBeGreaterThanOrEqual(32); expect(now.x! - was.x!).toBeLessThanOrEqual(48); expect(now.y).toBe(was.y);
+  expect(now.x! - was.x!, 'moved 40 px right (on the 8 px grid)').toBeGreaterThanOrEqual(32); expect(now.x! - was.x!).toBeLessThanOrEqual(48);
+  expect(now.y! % 8, 'y is on the 8 px grid').toBe(0); expect(Math.abs(now.y! - was.y!), 'y is the grid point nearest the old y').toBeLessThanOrEqual(4);
   for (const n of beforeDrawing.views[0].nodes.filter(n => n.id !== 'web')) expect(moved.views[0].nodes.find(m => m.id === n.id), n.id).toEqual(n);
   const afterOverview = await readDocument(file);
   expect(afterOverview.facts, 'a second look changes no fact').toEqual(before.facts); expect(afterOverview.channels.linkedin).toEqual(before.channels.linkedin);

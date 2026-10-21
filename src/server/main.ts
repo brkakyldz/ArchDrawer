@@ -6,6 +6,7 @@ import { createApp, envelopeError } from "./app";
 import { loadConfig } from "./config";
 import { writeAtomic } from "./files";
 import { RunManager } from "./runs";
+import { ScanManager } from "./scans";
 import { serverFile } from "./serverfile";
 import { Store } from "./store";
 import { ClaudeEngine } from "./engines/claude";
@@ -16,6 +17,7 @@ import type { Engine } from "./engines/types";
 const config = loadConfig();
 const store = new Store(config.dataDir);
 const runs = new RunManager(store, { timeoutMs: config.runTimeoutMs });
+const scans = new ScanManager(config.dataDir, { timeoutMs: config.runTimeoutMs });
 const factories: Record<string, () => Engine> = {
   claude: () => new ClaudeEngine(),
   codex: () => new CodexEngine(),
@@ -31,6 +33,7 @@ const infoFile = serverFile(config.dataDir);
 
 const shutdown = () => {
   runs.cancelAll();
+  scans.cancelAll();
   store.close();
   try {
     // Remove server.json only when it is still ours (a newer server may have replaced it).
@@ -40,7 +43,7 @@ const shutdown = () => {
   process.exit(0);
 };
 
-const app = createApp({ config, store, runs, engines, token, onShutdown: shutdown });
+const app = createApp({ config, store, runs, scans, engines, token, onShutdown: shutdown });
 
 // The envelope's Host/Origin check runs before the adapter: a Host such as "127.0.0.1:4317.evil.example"
 // is not a valid URL authority, and the adapter would answer 400 instead of the contract's 403.

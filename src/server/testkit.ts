@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { createApp } from "./app";
 import { APP_ROOT, loadConfig } from "./config";
 import { RunManager } from "./runs";
+import { ScanManager } from "./scans";
 import { Store } from "./store";
 import { FixtureEngine } from "./engines/fixture";
 import type { Engine } from "./engines/types";
@@ -45,9 +46,10 @@ export function makeApp(opts: { engines?: Engine[]; stepMs?: number; timeoutMs?:
   const config = loadConfig({ PORT: String(PORT), ARCHDRAW_DATA_DIR: dataDir, ARCHDRAW_ENGINES: "fixture" });
   const store = new Store(dataDir);
   const runs = new RunManager(store, { timeoutMs: opts.timeoutMs ?? 60_000 });
+  const scans = new ScanManager(dataDir, { timeoutMs: opts.timeoutMs ?? 60_000 });
   const engines = new Map<string, Engine>((opts.engines ?? [new FixtureEngine(opts.stepMs ?? 1)]).map((e) => [e.id, e]));
   let shutdowns = 0;
-  const app = createApp({ config, store, runs, engines, token: TOKEN, onShutdown: () => { shutdowns++; } });
+  const app = createApp({ config, store, runs, scans, engines, token: TOKEN, onShutdown: () => { shutdowns++; } });
   const req = (path: string, init: RequestInit & { json?: unknown; token?: string | null; host?: string } = {}) => {
     const headers = new Headers(init.headers);
     headers.set("host", init.host ?? `127.0.0.1:${PORT}`);
@@ -60,5 +62,5 @@ export function makeApp(opts: { engines?: Engine[]; stepMs?: number; timeoutMs?:
     }
     return app.request(`${BASE}${path}`, { ...init, method, headers, body });
   };
-  return { app, req, store, runs, dataDir, shutdowns: () => shutdowns };
+  return { app, req, store, runs, scans, dataDir, shutdowns: () => shutdowns };
 }

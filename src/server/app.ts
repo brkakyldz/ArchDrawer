@@ -14,12 +14,15 @@ import { APP_ROOT } from "./config";
 import type { Config } from "./config";
 import { FileError, nowIso, type Store } from "./store";
 import type { RunManager } from "./runs";
+import type { ScanManager } from "./scans";
+import { checkFolder, headCommit } from "./folders";
 import type { Engine, EngineInfo } from "./engines/types";
 
 export interface AppDeps {
   config: Config;
   store: Store;
   runs: RunManager;
+  scans: ScanManager;
   engines: Map<string, Engine>;
   token: string;
   /** Called after `POST /api/shutdown` has answered. */
@@ -52,7 +55,7 @@ function draftOf(stored: Document3, channel: ChannelId): DiagramDocument {
 
 /** The HTTP surface of docs/contracts/api.md, as a Hono app (testable with app.request). */
 export function createApp(deps: AppDeps): Hono {
-  const { config, store, runs, engines, token } = deps;
+  const { config, store, runs, scans, engines, token } = deps;
   const app = new Hono();
   type Status = 400 | 403 | 404 | 409 | 413 | 500;
   const err = (c: Context, status: Status, message: string, extra: Record<string, unknown> = {}) => c.json({ error: message, ...extra }, status);
@@ -233,6 +236,69 @@ export function createApp(deps: AppDeps): Hono {
     }
     return c.json({ missing: store.missingFiles(id, files as string[]) });
   });
+
+  // Folders and scans (api contract, Folders, Scans).
+  app.post("/api/folders/check", async (c) => {
+    const b = (await readJson(c)) as Record<string, unknown> | null;
+    const f = checkFolder(b && typeof b === "object" ? b.folder : undefined);
+    if ("error" in f) return err(c, 400, f.error);
+    const drawing = join(f.folder, "docs", "architecture.archdraw.json");
+    return c.json({ folder: f.folder, root: f.root, git: (await headCommit(f.root)) !== null, drawing: existsSync(drawing) ? drawing : null });
+  });
+
+  app.post("/api/scans", async (c) => {
+    const b = (await readJson(c)) as Record<string, unknown> | null;
+    const f = checkFolder(b && typeof b === "object" ? b.folder : undefined);
+    if ("error" in f) return err(c, 400, f.error);
+    const body = b!;
+    if (body.refresh !== undefined && typeof body.refresh !== "boolean") return err(c, 400, "refresh must be true or false");
+    const picked = await pickEngine(body);
+    if (typeof picked === "string") return err(c, 400, picked);
+    if (scans.runningOn(f)) return err(c, 409, "A scan of this folder is already running");
+    return c.json({ scanId: await scans.start(f, picked.engine, picked.model, body.refresh === true) }, 202);
+  });
+
+  app.get("/api/scans/:id", (c) => {
+    const s = scans.get(c.req.param("id"));
+    return s ? c.json(s) : err(c, 404, "Scan not found");
+  });
+
+  app.get("/api/scans/:id/events", (c) => {
+    const id = c.req.param("id");
+    if (!scans.get(id)) return err(c, 404, "Scan not found");
+    return streamSSE(c, async (stream) => {
+      await new Promise<void>((done) => {
+        let chain = Promise.resolve();
+        let unsub: (() => void) | null = null;
+        unsub = scans.subscribe(id, (e) => {
+          const { type, ...data } = e;
+          chain = chain.then(() => stream.writeSSE({ event: type, data: JSON.stringify(data) })).catch(() => {});
+          if (e.type === "done") void chain.then(() => { unsub?.(); done(); });
+        });
+        stream.onAbort(() => { unsub?.(); done(); });
+      });
+    });
+  });
+
+  app.post("/api/scans/:id/cancel", (c) => (scans.cancel(c.req.param("id")) ? c.json({ ok: true }) : err(c, 404, "Scan not found")));
+
+  /** The model and the engine of a body, checked as a run's are; a string is the refusal. */
+  const pickEngine = async (b: Record<string, unknown>, remembered: string | null = null): Promise<{ engine: Engine; model: string | null } | string> => {
+    if (b.model !== undefined && b.model !== null && typeof b.model !== "string") return "model must be a model id or null";
+    if (b.engine !== undefined && b.engine !== null && typeof b.engine !== "string") return "engine must be an engine id or null";
+    const model = typeof b.model === "string" && b.model.trim() ? b.model.trim().slice(0, 100) : null;
+    // A leading "-" would reach the engine's command line as an option.
+    if (model !== null && (model.startsWith("-") || !/^[A-Za-z0-9._:\/@\[\]-]+$/.test(model))) return `Invalid model name "${model}"`;
+    if (typeof b.engine === "string") {
+      const engine = engines.get(b.engine);
+      if (!engine) return `Unknown engine "${b.engine}"`;
+      const info = await detect(engine);
+      if (!info.available) return `${info.label} is not available: ${info.detail}`;
+      return { engine, model };
+    }
+    const engine = await defaultEngine(remembered);
+    return engine ? { engine, model } : "No engine is available: install and log in to Claude Code or Codex";
+  };
 
   app.post("/api/runs", async (c) => {
     const body = await readJson(c);

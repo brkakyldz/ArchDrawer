@@ -108,24 +108,27 @@ describe("depth warnings", () => {
   it("warns on a flat row, no held items, tuning numbers, no main path and a repeated label", () => {
     const nodes = ["a", "b", "c", "d", "e", "f"].map((id, i) => node(id, { place: { row: 0, col: i }, sub: i === 0 ? "up to 6 turns" : "" }));
     const edges = [edge("a", "b", { label: "run" }), edge("b", "c", { label: "run" }), edge("c", "d", { label: "run" })];
-    const w = depthWarnings(file(nodes, edges)).filter((x) => !x.includes("the overview has"));
-    expect(w).toEqual([
+    expect(depthWarnings(file(nodes, edges))).toEqual([
       expect.stringMatching(/all 6 top-level components share row 0 — a flat pipeline/),
       expect.stringMatching(/no component lists what it holds/),
+      expect.stringMatching(/no main path/),
+      expect.stringMatching(/the label "run" repeats on 3 connections/),
+    ]);
+    // A tuning number is a warning on LinkedIn only (STORY-5); the flat and held-item checks skip LinkedIn.
+    expect(depthWarnings(file(nodes, edges), { share: true })).toEqual([
       expect.stringMatching(/nodes\[0\]\.sub: "up to 6 turns" looks like a tuning number/),
       expect.stringMatching(/no main path/),
       expect.stringMatching(/the label "run" repeats on 3 connections/),
     ]);
-    // The first view is also the overview: no zones misses its target.
   });
 
-  it("is quiet on a two-dimensional drawing with held items, apart from the overview target", () => {
+  it("is quiet on a two-dimensional drawing with held items: the overview has no count target", () => {
     const nodes = [
       node("web", { place: { row: 0, col: 0 } }), node("api", { place: { row: 0, col: 1 }, form: "panel", items: ["Validate", "Route"] }),
       node("svc", { place: { row: 0, col: 2 } }), node("db", { kind: "data", place: { row: 1, col: 2 } }),
       node("ops", { kind: "ops", place: { row: 1, col: 1 } }), node("ok", { kind: "actor", place: { row: -1, col: 2 } }),
     ];
-    expect(depthWarnings(file(nodes, [edge("web", "api", { step: 1 }), edge("api", "svc", { step: 2 }), edge("svc", "db")]))).toEqual([expect.stringMatching(/^views\[0\]: the overview has 0 zones and \d+ connections?; it targets 4–6 zones/)]);
+    expect(depthWarnings(file(nodes, [edge("web", "api", { step: 1 }), edge("api", "svc", { step: 2 }), edge("svc", "db")]))).toEqual([]);
   });
 });
 

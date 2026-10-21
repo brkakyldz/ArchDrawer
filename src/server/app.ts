@@ -305,19 +305,25 @@ export function createApp(deps: AppDeps): Hono {
     const body = await readJson(c);
     if (!body || typeof body !== "object") return err(c, 400, "Body must be a JSON object");
     const b = body as Record<string, unknown>;
-    if (b.kind !== undefined && b.kind !== "refine" && b.kind !== "post" && b.kind !== "simplify") return err(c, 400, `Unknown run kind ${JSON.stringify(b.kind)}: use refine, post or simplify`);
-    const kind = (b.kind as "refine" | "post" | "simplify" | undefined) ?? "refine";
-    const formats: readonly string[] = kind === "post" ? ["feed", "linkedin"] : FORMAT_IDS;
+    const KINDS = ["refine", "story", "post", "simplify", "draw"];
+    if (b.kind !== undefined && !(typeof b.kind === "string" && KINDS.includes(b.kind))) return err(c, 400, `Unknown run kind ${typeof b.kind === "string" ? b.kind : JSON.stringify(b.kind)}: use refine, story, post, simplify or draw`);
+    const kind = (b.kind as "refine" | "story" | "post" | "simplify" | "draw" | undefined) ?? "refine";
+    if (kind === "draw") return err(c, 400, "The draw run is not available yet");
+    // A story or post: a channel's one view; a post is a story on LinkedIn (api contract, Run kinds).
+    const story = kind === "story" || kind === "post";
+    const onLinkedIn = kind === "post" || (kind === "story" && b.channel === "linkedin");
+    // A story is measured in its channel's own format (api contract, Run kinds).
+    const formats: readonly string[] = onLinkedIn ? ["feed", "linkedin"] : kind === "story" && b.channel === "readme" ? ["readme"] : kind === "story" && b.channel === "presentation" ? ["slide"] : FORMAT_IDS;
     if (b.format !== undefined && !(typeof b.format === "string" && formats.includes(b.format))) return err(c, 400, `Invalid format ${JSON.stringify(b.format)}; use one of ${formats.join(", ")}`);
-    const format = (b.format as FormatId | undefined) ?? (kind === "post" ? "feed" : "readme");
+    const format = (b.format as FormatId | undefined) ?? (onLinkedIn ? "feed" : kind === "story" && b.channel === "presentation" ? "slide" : "readme");
     // A report-driven revision round is not enabled yet: `revise: true` is refused.
     if (b.revise !== undefined && typeof b.revise !== "boolean") return err(c, 400, "revise must be true or false");
     if (b.revise === true) return err(c, 400, "Layout revision is not enabled");
     if (b.readCode !== undefined && typeof b.readCode !== "boolean") return err(c, 400, "readCode must be true or false");
-    if (b.readCode !== undefined && kind !== "post") return err(c, 400, "readCode is for a post");
+    if (b.readCode !== undefined && !story) return err(c, 400, "readCode is for a story");
     if (kind !== "refine" && b.instruction !== undefined && typeof b.instruction !== "string") return err(c, 400, "instruction must be a string");
     if (kind !== "refine" && b.scope !== undefined && !(typeof b.scope === "object" && b.scope !== null && (b.scope as { kind?: unknown }).kind === "view" && Object.keys(b.scope).length === 1)) {
-      return err(c, 400, kind === "post" ? 'A post designs one view: give no scope or {"kind": "view"}' : 'A simplification works on the overview: give no scope or {"kind": "view"}');
+      return err(c, 400, story ? 'A story draws the channel\'s one view: give no scope or {"kind": "view"}' : 'A simplification works on the overview: give no scope or {"kind": "view"}');
     }
     const instruction = typeof b.instruction === "string" ? b.instruction.trim() : "";
     if (!instruction && kind === "refine") return err(c, 400, "Say what to change: the instruction is empty");
@@ -331,15 +337,16 @@ export function createApp(deps: AppDeps): Hono {
     if (!stored) return res!;
     if (b.channel !== undefined && !isChannel(b.channel)) return err(c, 400, `Unknown channel "${String(b.channel)}"; use one of ${CHANNELS.join(", ")}`);
     if (kind === "post" && b.channel !== undefined && b.channel !== "linkedin") return err(c, 400, "A post is drawn in the linkedin channel");
-    // Refine and simplify read the run's channel, its parts' facts given as `from`; a post reads the
-    // overview it is designed from, and its optional view is the LinkedIn channel's.
+    if (kind === "story" && (b.channel === undefined || b.channel === "overview")) return err(c, 400, "A story is drawn in the linkedin, readme or presentation channel");
+    // Refine and simplify read the run's channel, its parts' facts given as `from`; a story reads the
+    // overview it is told from, and its optional view is the channel's own.
     const first = stored.channels.overview.views[0].id;
     const channel = (b.channel as ChannelId | undefined) ?? (kind === "post" ? "linkedin" : "overview");
-    if (kind === "post" && b.view !== undefined && (typeof b.view !== "string" || channelOfView(stored, b.view) !== "linkedin")) return err(c, 400, `Unknown view "${String(b.view)}"`);
-    const view = kind === "post" ? first : typeof b.view === "string" ? b.view : "";
-    if (kind !== "post" && stored.channels[channel].views.length === 0) return err(c, 400, `The channel "${channel}" has no drawing`);
-    const doc = draftOf(stored, kind === "post" ? "overview" : channel);
-    if (!doc.views.some((v) => v.id === view) || (kind !== "post" && channelOfView(stored, view) !== channel)) return err(c, 400, `Unknown view "${view}"`);
+    if (story && b.view !== undefined && (typeof b.view !== "string" || channelOfView(stored, b.view) !== channel)) return err(c, 400, `Unknown view "${String(b.view)}"`);
+    const view = story ? first : typeof b.view === "string" ? b.view : "";
+    if (!story && stored.channels[channel].views.length === 0) return err(c, 400, `The channel "${channel}" has no drawing`);
+    const doc = draftOf(stored, story ? "overview" : channel);
+    if (!doc.views.some((v) => v.id === view) || (!story && channelOfView(stored, view) !== channel)) return err(c, 400, `Unknown view "${view}"`);
     if (kind === "simplify" && view !== first) return err(c, 400, `Only the overview is simplified: give the view "${first}"`);
     const scope = parseScope(b.scope, doc.views.find((v) => v.id === view)!.nodes.map((n) => n.id));
     if (typeof scope === "string") return err(c, 400, scope);
@@ -354,7 +361,7 @@ export function createApp(deps: AppDeps): Hono {
       if (!engine) return err(c, 400, "No engine is available: install and log in to Claude Code or Codex");
     }
     if (runs.runningOn(doc.id)) return err(c, 409, "An instruction is already running on this drawing");
-    const runId = runs.start({ engine, model, instruction, view, base: doc, stored, channel: kind === "post" ? "linkedin" : channel, scope: kind === "refine" ? scope : { kind: "view" }, format, kind, readCode: b.readCode as boolean | undefined });
+    const runId = runs.start({ engine, model, instruction, view, base: doc, stored, channel, scope: kind === "refine" ? scope : { kind: "view" }, format, kind, readCode: b.readCode as boolean | undefined });
     return c.json({ runId }, 202);
   });
 
@@ -381,7 +388,7 @@ export function createApp(deps: AppDeps): Hono {
         let chain = Promise.resolve();
         let unsub: (() => void) | null = null;
         unsub = runs.subscribe(id, (e) => {
-          const data = e.type === "progress" ? { message: e.message } : { status: e.status, diagramId: e.diagramId, error: e.error, changes: e.changes, view: e.view, layoutReport: e.layoutReport };
+          const data = e.type === "progress" ? { message: e.message, stage: null } : { status: e.status, diagramId: e.diagramId, error: e.error, changes: e.changes, channel: e.channel, view: e.view, layoutReport: e.layoutReport, route: e.route, path: e.path };
           chain = chain.then(() => stream.writeSSE({ event: e.type, data: JSON.stringify(data) })).catch(() => {});
           if (e.type === "done") void chain.then(() => { unsub?.(); done(); });
         });

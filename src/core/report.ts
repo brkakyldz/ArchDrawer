@@ -17,13 +17,14 @@ export interface LayoutReport {
   smallestText: { inPlace: number; opened: number; level: "good" | "ok" | "warn"; names: { inPlace: number; opened: number } };
   counts: { parts: number; zones: number; connections: number };
   targets: { parts: number | null; zones: { min: number; max: number } | null; connections: number | null };
+  /** The channel the run measured (set by the run). */
+  channel?: string;
   longestConnection: number;
 }
 
 /** Story targets of a post (diagram contract, Brief and targets). Text limits are characters; title and side labels count words. */
 export const STORY_LIMITS = { label: 28, sub: 28, chip: 22, lede: 140, titleWords: 9, sideLabelWords: 2 } as const;
 const POST_TARGETS = { parts: 12, zones: { min: 0, max: 4 }, connections: 14 };
-const OVERVIEW_TARGETS = { parts: null, zones: { min: 4, max: 6 }, connections: 15 };
 const DETAIL_TARGETS = { parts: null, zones: null, connections: null };
 
 const STEPS = 64;
@@ -121,7 +122,8 @@ export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, v
       zones: view.nodes.filter((n) => n.form === "group" && (!n.parent || !byId.has(n.parent))).length,
       connections: edges.length,
     },
-    targets: post ? POST_TARGETS : doc.views[0]?.id === whole.id ? OVERVIEW_TARGETS : DETAIL_TARGETS,
+    // Only LinkedIn has count targets (ADR 0007).
+    targets: post ? POST_TARGETS : DETAIL_TARGETS,
     longestConnection: diagonal > 0 && edges.length ? finite(longest / diagonal) : 0,
   };
 }

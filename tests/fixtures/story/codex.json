@@ -22,10 +22,13 @@
       "spine": 0,
       "anchor": null,
       "side": null,
+      "inside": null,
       "facts": [
         "guest",
         "ui"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "request_run",
@@ -42,11 +45,14 @@
       "spine": 1,
       "anchor": null,
       "side": null,
+      "inside": null,
       "facts": [
         "guest_api",
         "run_service",
         "channel"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "hotel_agent",
@@ -62,11 +68,14 @@
       "spine": 2,
       "anchor": null,
       "side": null,
+      "inside": null,
       "facts": [
         "runtime",
         "agent_def",
         "model"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "tool_gate",
@@ -82,6 +91,7 @@
       "spine": 3,
       "anchor": null,
       "side": null,
+      "inside": null,
       "facts": [
         "gateway",
         "t_record",
@@ -89,7 +99,9 @@
         "t_reads",
         "t_writes",
         "t_envelope"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "hotel_actions",
@@ -105,6 +117,7 @@
       "spine": 4,
       "anchor": null,
       "side": null,
+      "inside": null,
       "facts": [
         "services",
         "rules",
@@ -118,7 +131,9 @@
         "t_txn",
         "t_receipt",
         "t_rules"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "hotel_changes",
@@ -134,12 +149,15 @@
       "spine": null,
       "anchor": "request_run",
       "side": "above",
+      "inside": null,
       "facts": [
         "operator_api",
         "operator_services",
         "update_gate",
         "s_updates"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "manager_review",
@@ -155,6 +173,7 @@
       "spine": null,
       "anchor": "hotel_actions",
       "side": "above",
+      "inside": null,
       "facts": [
         "operator",
         "s_operator",
@@ -162,7 +181,9 @@
         "s_pending",
         "s_decide",
         "s_expiry"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "hotel_records",
@@ -178,11 +199,14 @@
       "spine": null,
       "anchor": "hotel_actions",
       "side": "below",
+      "inside": null,
       "facts": [
         "hotel_db",
         "s_db",
         "t_store"
-      ]
+      ],
+      "held": [],
+      "limits": []
     }
   ],
   "edges": [
@@ -270,5 +294,6 @@
       "style": "call",
       "step": null
     }
-  ]
+  ],
+  "steps": []
 }

@@ -145,6 +145,77 @@ describe("edits of rows, mechanisms, limits and steps", () => {
     expect(nodeOf(joinChannel(d, "overview"), "agent").heldIds).toEqual(["propose", "check"]);
   });
 
+  it("in the overview, a mechanism no part holds any more is deleted with its limits", () => {
+    const d = edit(doc(), "overview", (j) => { const a = nodeOf(j, "agent"); a.items = ["Propose a tool", "Stops after 12 turns"]; a.heldIds = ["propose"]; });
+    expect(d.facts.components.map((c) => c.id)).toEqual(["app", "agent", "propose"]);
+    expect(d.channels.readme.views[0].nodes.map((p) => p.id)).toEqual(["app", "agent"]);
+    // Turning the panel into a card stops holding both: both go, the limit on the agent stays.
+    const card = edit(doc(), "overview", (j) => { const a = nodeOf(j, "agent"); a.form = "card"; a.items = []; delete a.heldIds; delete a.limitIds; });
+    expect(card.facts.components.map((c) => c.id)).toEqual(["app", "agent"]);
+    expect(card.facts.limits!.map((l) => l.id)).toEqual(["turns"]);
+  });
+
+  it("an engine's answer never deletes a mechanism silently: a reworded row is a rename, a dropped one is warned", () => {
+    const answer = (change: (j: DiagramDocument) => void) => {
+      const j = joinChannel(doc(), "overview");
+      change(j);
+      const r = applyChannel(doc(), "overview", j, { answer: true });
+      if (!r.ok) throw new Error(r.error);
+      expect(validateDocument3(r.doc).ok).toBe(true);
+      return r.doc;
+    };
+    // No row ids, as many rows as drawn: the reworded mechanism and limit are edits of those facts.
+    const reworded = answer((j) => { const a = nodeOf(j, "agent"); delete a.heldIds; delete a.limitIds; a.items = ["Proposes a tool", "Check the call", "Stops after 20 turns"]; });
+    expect(reworded.facts.components.map((c) => [c.id, c.label])).toEqual([["app", "App"], ["agent", "Agent"], ["propose", "Proposes a tool"], ["check", "Check the call"]]);
+    expect([reworded.facts.limits![0].text, reworded.facts.components.find((c) => c.id === "agent")!.items, reworded.warnings]).toEqual(["Stops after 20 turns", [], []]);
+    // The answer holds one mechanism less: it is deleted, with one warning.
+    const dropped = answer((j) => { const a = nodeOf(j, "agent"); a.heldIds = ["propose"]; a.items = ["Propose a tool", "Stops after 12 turns"]; });
+    expect(dropped.facts.components.map((c) => c.id)).toEqual(["app", "agent", "propose"]);
+    expect(dropped.warnings).toEqual(['View "overview": "agent" no longer holds "check"; the mechanism and its limits were deleted']);
+  });
+
+  it("a node that names no row ids keeps the held and limit rows it still draws", () => {
+    // An engine's answer may echo the rows as items: they stay mechanisms and limits, not items.
+    const d = edit(doc(), "overview", (j) => { const a = nodeOf(j, "agent"); delete a.heldIds; delete a.limitIds; a.sub = "Runs"; });
+    const agent = d.channels.overview.views[0].nodes.find((p) => p.id === "agent")!;
+    expect([agent.held, agent.limits, agent.items]).toEqual([["propose", "check"], ["turns"], undefined]);
+    expect(d.facts.components.find((c) => c.id === "agent")!.items).toEqual([]);
+  });
+
+  it("a kept panel whose facts change keeps its own items, not its held rows", () => {
+    const d = edit(doc(), "readme", (j) => {
+      j.views[0].nodes = j.views[0].nodes.filter((n) => n.id !== "check");
+      nodeOf(j, "agent").facts = ["agent", "check"];
+    });
+    const agent = d.channels.readme.views[0].nodes.find((p) => p.id === "agent")!;
+    expect([agent.held, agent.items]).toEqual([["propose"], []]);
+    expect(nodeOf(joinChannel(d, "readme"), "agent").items).toEqual(["Propose a tool"]);
+  });
+
+  it("a part that loses a fact an earlier part shows stops holding what is within it, one warning each", () => {
+    const d = edit(doc(), "readme", (j) => { nodeOf(j, "app").facts = ["app", "agent"]; });
+    const agent = d.channels.readme.views[0].nodes.find((p) => p.id === "agent")!;
+    expect([agent.facts, agent.held]).toEqual([[], undefined]);
+    expect(d.warnings).toEqual([
+      'View "readme": "agent" no longer shows "agent", which an earlier part shows',
+      'View "readme": "agent" no longer holds "propose", which is within a fact it no longer shows',
+      'View "readme": "agent" has no rows left and is drawn as a card',
+    ]);
+  });
+
+  it("a panel left with no rows by holding what an earlier part shows is drawn as a card", () => {
+    const d = edit(doc(), "readme", (j) => {
+      const [app, agent, check] = j.views[0].nodes;
+      j.views[0].nodes = [app, check, agent];
+      Object.assign(agent, { items: ["Check the call"], heldIds: ["check"] });
+    });
+    expect(d.channels.readme.views[0].nodes.find((p) => p.id === "agent")!.form).toBe("card");
+    expect(d.warnings).toEqual([
+      'View "readme": "agent" no longer holds "check", which an earlier part shows or holds',
+      'View "readme": "agent" has no rows left and is drawn as a card',
+    ]);
+  });
+
   it("deleting a component in the overview takes its mechanisms and limits, and every part stops drawing them", () => {
     const d = edit(doc(), "overview", (j) => { j.views[0].nodes = j.views[0].nodes.filter((n) => n.id !== "agent"); j.views[0].edges = []; });
     expect(d.facts.components.map((c) => c.id)).toEqual(["app"]);
@@ -194,15 +265,22 @@ describe("the evidence check (Read answers)", () => {
     }, repo);
     expect(r.warnings).toEqual([
       "ghost: dropped the evidence fixture/ghost.ts: not found",
-      'Dropped "ghost": no evidence left',
       "r1: dropped the evidence src/a.ts:4-12: the file has 10 lines",
+      'Dropped "ghost": no evidence left',
       'Dropped "r2": its component "ghost" was dropped',
       'Dropped "lim": its component "ghost" was dropped',
     ]);
     expect(r.facts.components.map((x) => [x.id, x.files])).toEqual([["app", ["src/a.ts"]], ["agent", ["src/b.ts"]], ["loop", ["src/b.ts"]]]);
     expect(r.facts.relations.map((x) => x.id)).toEqual(["r1"]);
-    // A path listed twice is kept once, silently.
+    // A path listed twice is kept once, silently: its first supported entry.
     expect(r.facts.components[0].evidence).toEqual([{ file: "src/a.ts", lines: null }]);
+    expect(r.facts.relations[0].evidence).toEqual([{ file: "src/a.ts", lines: [4, 5] }]);
+  });
+
+  it("warns once for a missing path listed twice, and keeps one entry of a path listed with other lines", () => {
+    const r = checkEvidence({ components: [c("app", [{ file: "src/gone.ts", lines: [1, 2] }, { file: "src/gone.ts", lines: null }, { file: "src/a.ts", lines: [1, 2] }, { file: "src/a.ts", lines: [3, 4] }])], relations: [], limits: [] }, repo);
+    expect(r.warnings).toEqual(["app: dropped the evidence src/gone.ts:1-2: not found"]);
+    expect(r.facts.components[0].evidence).toEqual([{ file: "src/a.ts", lines: [1, 2] }]);
   });
 
   it("drops a mechanism within a dropped component, and a path outside the repository", () => {

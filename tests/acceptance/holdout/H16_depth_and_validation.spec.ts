@@ -5,7 +5,7 @@ import { component, drawing, fromLegacy, workspace, writeJSON, cli, token, baseU
 
 const OVERVIEW = 'channels.overview.views[0]';
 
-test('H16 [START-5, FILE-1, FILE-2] depth warnings permit a drawing but every broken field is reported without repair', async ({ request }) => {
+test('H16 [START-5, FILE-1, FILE-2, STORY-5] depth warnings permit a drawing but every broken field is reported without repair', async ({ request }) => {
   const doc = drawing('Depth review');
   doc.views[0].nodes = Array.from({ length: 6 }, (_, i) => component(`part-${i}`, { place: { row: 0, col: i }, sub: i === 0 ? '90 s' : '' }));
   doc.views[0].edges = Array.from({ length: 5 }, (_, i) => ({ id: `flow-${i}`, from: `part-${i}`, to: `part-${i + 1}`, label: 'process', style: 'call', both: false, step: null }));
@@ -13,10 +13,14 @@ test('H16 [START-5, FILE-1, FILE-2] depth warnings permit a drawing but every br
   const bytes = await readFile(file, 'utf8'); const valid = await cli(['validate', file]);
   expect(valid.code).toBe(0); expect(valid.stdout).toMatch(/valid with \d+ warning/);
   const warningLines = valid.stdout.split(/\r?\n/).filter(line => /^WARN\s+/.test(line));
-  expect(warningLines.length).toBeGreaterThanOrEqual(5);
-  for (const phrase of [/flat|pipeline/i, /held items|panel/i, /tuning|90 s/i, /main path|step/i, /repeat/i]) {
+  expect(warningLines.length).toBeGreaterThanOrEqual(4);
+  for (const phrase of [/flat|pipeline/i, /held items|panel/i, /main path|step/i, /repeat/i]) {
     expect(warningLines.some(line => phrase.test(line)), String(phrase)).toBe(true);
   }
+  // From 0.3 a number that explains a guarantee may show outside LinkedIn (STORY-5): `90 s` on an overview part is no
+  // longer a tuning-number warning, and no warning of any kind is left for the overview's size.
+  expect(warningLines.some(line => /tuning|90 s/i.test(line)), 'the tuning-number warning is LinkedIn only').toBe(false);
+  for (const line of warningLines) expect(line, 'only the depth warnings remain').toMatch(/flat|pipeline|held items|panel|main path|step|repeat/i);
   // Warnings are checked on every channel view and name it.
   expect(warningLines.every(line => /WARN\s+channels\.overview\.views\[0\]/.test(line))).toBe(true);
   expect(await readFile(file, 'utf8')).toBe(bytes);

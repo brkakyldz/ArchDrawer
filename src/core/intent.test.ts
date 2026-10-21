@@ -14,9 +14,9 @@ const shop = (): DiagramDocument => {
 };
 const intent = (name: string): StoryIntent => parseIntent(JSON.parse(readFileSync(`tests/fixtures/story/${name}.json`, "utf8")));
 const part = (id: string, extra: Partial<StoryPart> = {}): StoryPart =>
-  ({ id, label: id, sub: "", kind: "service", chips: [], zone: null, spine: null, anchor: null, side: null, from: [], ...extra });
+  ({ id, label: id, sub: "", kind: "service", chips: [], zone: null, spine: null, anchor: null, side: null, from: [], inside: null, held: [], limits: [], ...extra });
 const small = (extra: Partial<StoryIntent> = {}): StoryIntent => ({
-  title: "Orders end to end", lede: "A shop takes an order.", zones: [],
+  title: "Orders end to end", lede: "A shop takes an order.", zones: [], steps: [],
   parts: [part("web", { spine: 0, from: ["web"] }), part("api", { spine: 1, chips: ["Validate", "Create"], from: ["api"] }), part("db", { anchor: "api", side: "below", from: ["db", "ghost"] })],
   edges: [{ from: "web", to: "api", label: "", style: "call", step: 1 }, { from: "api", to: "db", label: "writes", style: "call", step: null }],
   ...extra,
@@ -112,6 +112,10 @@ describe("story intent → post view", () => {
     expect(() => parseIntent({ ...raw, parts: [{ ...raw.parts[0], spine: 1.5 }] })).toThrow(/integer/);
     const { title: _t, ...noTitle } = raw;
     expect(() => parseIntent(noTitle)).toThrow(/missing "title"/);
+    const { steps: _s, ...noSteps } = raw;
+    expect(() => parseIntent(noSteps)).toThrow(/missing "steps"/);
+    const { held: _h, ...noHeld } = raw.parts[0];
+    expect(() => parseIntent({ ...raw, parts: [noHeld] })).toThrow(/parts\[0\] is missing "held"/);
   });
 });
 

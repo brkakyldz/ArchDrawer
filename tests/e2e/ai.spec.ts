@@ -84,8 +84,9 @@ test("a finished run shows its layout report; a new run never shows the previous
   await expect(report).toHaveAttribute("data-format", "readme");
   await expect(report).toHaveAttribute("data-view", "overview");
   await expect(report).toHaveAttribute("data-parts", "4");
-  await expect(report).toContainText(/^\d+ crossings? · \d+ connections? over parts · (nothing cut|\d+ cut) · \d+\.\d px in place · 4 parts · \d+ zones? \/ 4–6 · \d+ connections? \/ 15 · longest \d\.\d\d/);
-  await expect(report.getByTestId("layout-report-warning")).toContainText("against 4–6: group the parts into zones");
+  // The overview has no count targets (ADR 0007): counts only, and no target warning.
+  await expect(report).toContainText(/^\d+ crossings? · \d+ connections? over parts · (nothing cut|\d+ cut) · \d+\.\d px in place · 4 parts · \d+ zones? · \d+ connections? · longest \d\.\d\d/);
+  await expect(report.getByTestId("layout-report-warning")).toHaveCount(0);
 
   await page.getByTestId("ai-input").fill("add Queue component [fixture:slow]");
   await page.getByTestId("ai-send").click();

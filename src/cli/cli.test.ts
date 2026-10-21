@@ -16,8 +16,8 @@ describe("archdrawer validate", () => {
   it("says valid and writes nothing", async () => {
     const { file } = shopRepo();
     const before = readFileSync(file, "utf8");
-    // The shop's overview has no zones: one overview-target warning, still valid.
-    expect(await cli("validate", file)).toMatchObject({ code: 0, out: [expect.stringMatching(/^WARN  channels\.overview\.views\[0\]: the overview has 0 zones/), "valid with 1 warning(s)"] });
+    // The overview has no count targets (ADR 0007): the shop is valid without a warning.
+    expect(await cli("validate", file)).toMatchObject({ code: 0, out: ["valid"] });
     expect(readFileSync(file, "utf8")).toBe(before);
   });
 

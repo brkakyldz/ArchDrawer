@@ -22,7 +22,10 @@
       "spine": 0,
       "anchor": null,
       "side": null,
-      "facts": []
+      "inside": null,
+      "facts": [],
+      "held": [],
+      "limits": []
     },
     {
       "id": "intake",
@@ -34,7 +37,10 @@
       "spine": 1,
       "anchor": null,
       "side": null,
-      "facts": []
+      "inside": null,
+      "facts": [],
+      "held": [],
+      "limits": []
     },
     {
       "id": "scope",
@@ -46,7 +52,10 @@
       "spine": 2,
       "anchor": null,
       "side": null,
-      "facts": []
+      "inside": null,
+      "facts": [],
+      "held": [],
+      "limits": []
     },
     {
       "id": "loop",
@@ -63,7 +72,10 @@
       "spine": 3,
       "anchor": null,
       "side": null,
-      "facts": []
+      "inside": null,
+      "facts": [],
+      "held": [],
+      "limits": []
     },
     {
       "id": "limits",
@@ -75,7 +87,10 @@
       "spine": null,
       "anchor": "loop",
       "side": "below",
-      "facts": []
+      "inside": null,
+      "facts": [],
+      "held": [],
+      "limits": []
     },
     {
       "id": "gateway",
@@ -92,7 +107,10 @@
       "spine": 4,
       "anchor": null,
       "side": null,
-      "facts": []
+      "inside": null,
+      "facts": [],
+      "held": [],
+      "limits": []
     },
     {
       "id": "domain",
@@ -108,7 +126,10 @@
       "spine": 5,
       "anchor": null,
       "side": null,
-      "facts": []
+      "inside": null,
+      "facts": [],
+      "held": [],
+      "limits": []
     },
     {
       "id": "db",
@@ -120,7 +141,10 @@
       "spine": null,
       "anchor": "domain",
       "side": "below",
-      "facts": []
+      "inside": null,
+      "facts": [],
+      "held": [],
+      "limits": []
     },
     {
       "id": "approval",
@@ -136,7 +160,10 @@
       "spine": null,
       "anchor": "domain",
       "side": "above",
-      "facts": []
+      "inside": null,
+      "facts": [],
+      "held": [],
+      "limits": []
     },
     {
       "id": "notify",
@@ -150,7 +177,10 @@
       "spine": null,
       "anchor": "loop",
       "side": "above",
-      "facts": []
+      "inside": null,
+      "facts": [],
+      "held": [],
+      "limits": []
     },
     {
       "id": "audit",
@@ -166,7 +196,10 @@
       "spine": null,
       "anchor": "gateway",
       "side": "below",
-      "facts": []
+      "inside": null,
+      "facts": [],
+      "held": [],
+      "limits": []
     },
     {
       "id": "obs",
@@ -182,7 +215,10 @@
       "spine": null,
       "anchor": "loop",
       "side": "below",
-      "facts": []
+      "inside": null,
+      "facts": [],
+      "held": [],
+      "limits": []
     }
   ],
   "edges": [
@@ -263,5 +299,6 @@
       "style": "dep",
       "step": null
     }
-  ]
+  ],
+  "steps": []
 }

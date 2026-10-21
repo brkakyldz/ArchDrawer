@@ -4,8 +4,7 @@ import { clearOutdated } from "../../core/channels";
 import { prepareLinkedIn } from "../../core/export/feed";
 import { channelOfView, isChannel, type ChannelId, type Document3 } from "../../core/file3";
 import { layoutRects, routeEdges, viewBounds } from "../../core/geometry";
-import { isPostView, LIMITS, overviewMiss, TEXT_SIZE, viewById, type DiagramDocument, type DiagramView, type Form, type Kind } from "../../core/model";
-import { overviewSuggestion, SIMPLIFY_INSTRUCTION } from "../../core/simplify";
+import { LIMITS, TEXT_SIZE, viewById, type DiagramDocument, type DiagramView, type Form, type Kind } from "../../core/model";
 import { PALETTES } from "../../core/theme";
 import { summarize, touched, type Changes } from "../../core/diff";
 import { api, ApiError, type EngineInfo } from "../api";
@@ -348,7 +347,6 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
 
   const openAi = (text: string, scope: ScopeChoice = "view") => setAi({ text, scope, at: Date.now() });
   // On the overview only, one line when it misses its targets; nothing changes by itself.
-  const miss = doc && view && view.id === doc.views[0].id && !isPostView(view) ? overviewMiss(view) : null;
   const ctl: Ctl | null = doc && view ? {
     doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: hist.checkpoint,
     sel, setSel, callout, setCallout, tool, setTool, editing, setEditing, textSize, picker, setPicker,
@@ -623,12 +621,6 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
         {outdated > 0 && <OutdatedBanner count={outdated} onKeep={keep} busy={runner.state.status === "running"}
           onRedraw={chan === "linkedin" ? () => drawFromFacts(engineProps, prepare) : undefined} />}
         {HINTS[tool] && <div className="tool-hint" data-testid="tool-hint" role="status">{HINTS[tool]}</div>}
-        {miss && (
-          <div className="overview-suggestion" data-testid="overview-suggestion" role="status">
-            <span>{overviewSuggestion(miss)}</span>
-            <button className="btn small" data-testid="overview-simplify" onClick={() => openAi(SIMPLIFY_INSTRUCTION)}>Simplify it</button>
-          </div>
-        )}
         <div className="overlay">
           {callout && !editing && !pinned && <Callout key={callout} ctl={ctl} id={callout} />}
           {searching && <Search doc={doc} view={view.id} focusRound={searchRound} onFound={setFound} onStep={step} onOpen={openHit} onClose={() => setSearching(false)} />}

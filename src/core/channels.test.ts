@@ -381,9 +381,9 @@ describe("markOutside and warnings", () => {
     expect(markOutside(before, after).channels.linkedin.outdated).toEqual([]);
   });
 
-  it("checks the overview targets on the overview only and skips the depth checks on LinkedIn", () => {
+  it("gives the overview no count target and skips the depth checks on LinkedIn", () => {
     const w = channelWarnings(small());
-    expect(w.some((x) => x.startsWith("channels.overview.views[0]: the overview has 0 zones"))).toBe(true);
+    expect(w.some((x) => x.includes("the overview has"))).toBe(false);
     expect(w.some((x) => x.startsWith("channels.linkedin"))).toBe(false);
   });
 });

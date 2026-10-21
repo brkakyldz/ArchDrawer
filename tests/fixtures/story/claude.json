@@ -25,9 +25,12 @@
       "spine": null,
       "anchor": "app",
       "side": "above",
+      "inside": null,
       "facts": [
         "guest"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "app",
@@ -44,9 +47,12 @@
       "spine": 0,
       "anchor": null,
       "side": null,
+      "inside": null,
       "facts": [
         "ui"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "api",
@@ -63,9 +69,12 @@
       "spine": 1,
       "anchor": null,
       "side": null,
+      "inside": null,
       "facts": [
         "guest_api"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "run",
@@ -82,11 +91,14 @@
       "spine": 2,
       "anchor": null,
       "side": null,
+      "inside": null,
       "facts": [
         "run_service",
         "channel",
         "conv_db"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "agent",
@@ -103,10 +115,13 @@
       "spine": 3,
       "anchor": null,
       "side": null,
+      "inside": null,
       "facts": [
         "runtime",
         "agent_def"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "gateway",
@@ -123,9 +138,12 @@
       "spine": 4,
       "anchor": null,
       "side": null,
+      "inside": null,
       "facts": [
         "gateway"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "domain",
@@ -142,10 +160,13 @@
       "spine": 5,
       "anchor": null,
       "side": null,
+      "inside": null,
       "facts": [
         "services",
         "rules"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "model",
@@ -161,9 +182,12 @@
       "spine": null,
       "anchor": "agent",
       "side": "above",
+      "inside": null,
       "facts": [
         "model"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "manager",
@@ -179,11 +203,14 @@
       "spine": null,
       "anchor": "run",
       "side": "above",
+      "inside": null,
       "facts": [
         "operator",
         "operator_api",
         "operator_services"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "updates",
@@ -200,9 +227,12 @@
       "spine": null,
       "anchor": "run",
       "side": "above",
+      "inside": null,
       "facts": [
         "update_gate"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "store",
@@ -218,9 +248,12 @@
       "spine": null,
       "anchor": "domain",
       "side": "below",
+      "inside": null,
       "facts": [
         "hotel_db"
-      ]
+      ],
+      "held": [],
+      "limits": []
     },
     {
       "id": "telemetry",
@@ -236,9 +269,12 @@
       "spine": null,
       "anchor": "run",
       "side": "below",
+      "inside": null,
       "facts": [
         "telemetry"
-      ]
+      ],
+      "held": [],
+      "limits": []
     }
   ],
   "edges": [
@@ -340,5 +376,6 @@
       "style": "dep",
       "step": null
     }
-  ]
+  ],
+  "steps": []
 }

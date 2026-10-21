@@ -1,4 +1,5 @@
 import { EngineError, type Engine, type EngineInfo, type EngineRunRequest } from "./types";
+import type { DiagramView } from "../../core/model";
 
 export const FIXTURE_STEPS = ["Reading the drawing", "Reading the code", "Updating the drawing"] as const;
 export const FIXTURE_MODELS = [{ id: "fixture-fast", label: "Fast (test)" }, { id: "fixture-careful", label: "Careful (test)" }];
@@ -96,6 +97,27 @@ export function fixtureScan(folderName: string, data: { listing?: string[]; entr
   };
 }
 
+/**
+ * The README and presentation stories (testing contract, Story): built from the overview's first
+ * view — each part that is not a group and shows a fact, in view order, at most 12, on the spine —
+ * and, for the presentation, a step for each of the first three parts plus one naming `ghost-part`.
+ */
+export function fixtureStory(view: DiagramView, presentation: boolean) {
+  const parts = view.nodes.filter((n) => n.form !== "group" && (n.facts?.length ?? 0) > 0).slice(0, 12);
+  const ids = new Set(parts.map((p) => p.id));
+  return {
+    title: view.caption.title, lede: "A detailed drawing made by the test engine.", zones: [],
+    parts: parts.map((n, i) => ({
+      id: n.id, label: n.label, sub: n.sub, kind: n.kind, chips: [], zone: null, inside: null, spine: i, anchor: null, side: null,
+      facts: [...(n.facts ?? [])], held: [...(n.heldIds ?? [])], limits: [...(n.limitIds ?? [])],
+    })),
+    edges: view.edges.filter((e) => ids.has(e.from) && ids.has(e.to)).map((e) => ({ from: e.from, to: e.to, label: e.label, style: e.style, step: e.step })),
+    steps: presentation
+      ? [...parts.slice(0, 3).map((n, i) => ({ parts: [n.id], text: `Step ${i + 1}: ${n.label}`, note: `The test engine explains ${n.label}.` })), { parts: ["ghost-part"], text: "A step about nothing", note: "" }]
+      : [],
+  };
+}
+
 /** The deterministic stand-in engine of docs/contracts/testing.md. */
 export class FixtureEngine implements Engine {
   readonly id = "fixture";
@@ -123,6 +145,7 @@ export class FixtureEngine implements Engine {
     if (req.instruction.includes("[fixture:fail]")) throw new EngineError("Fixture failure requested");
     if (req.task?.kind === "scan") return fixtureScan(req.folderName, req.task.data ?? {});
     if (req.task?.kind === "post") return fixturePost(req.base, req.view, req.instruction);
+    if (req.task?.kind === "story" && req.task.data?.overview) return fixtureStory(req.task.data.overview, req.task.data.channel === "presentation");
     if (req.simplify) return fixtureSimplify(req.base, req.instruction);
     return fixtureAnswer(req.base, req.view, req.instruction);
   }
@@ -174,12 +197,12 @@ export const CANNED_INTENT = {
   lede: "A request enters the app, is checked, and produces a result.",
   zones: [{ id: "runtime", label: "App runtime" }],
   parts: [
-    { id: "request", label: "Request", sub: "start the work", kind: "client", chips: [], zone: null, spine: 0, anchor: null, side: null, facts: [] },
-    { id: "intake", label: "Request intake", sub: "check the request", kind: "api", chips: ["Validate input", "Bind the scope"], zone: null, spine: 1, anchor: null, side: null, facts: [] },
-    { id: "loop", label: "Work loop", sub: "choose the next action", kind: "llm", chips: ["Propose action", "Read tool result"], zone: "runtime", spine: 2, anchor: null, side: null, facts: [] },
-    { id: "result", label: "Result", sub: "deliver the outcome", kind: "service", chips: [], zone: null, spine: 3, anchor: null, side: null, facts: [] },
-    { id: "facts", label: "Stored facts", sub: "keep the current state", kind: "data", chips: [], zone: "runtime", spine: null, anchor: "loop", side: "below", facts: [] },
-    { id: "approval", label: "Approval", sub: "review the action", kind: "actor", chips: [], zone: null, spine: null, anchor: "result", side: "above", facts: [] },
+    { id: "request", label: "Request", sub: "start the work", kind: "client", chips: [], zone: null, spine: 0, anchor: null, side: null, facts: [], inside: null, held: [], limits: [] },
+    { id: "intake", label: "Request intake", sub: "check the request", kind: "api", chips: ["Validate input", "Bind the scope"], zone: null, spine: 1, anchor: null, side: null, facts: [], inside: null, held: [], limits: [] },
+    { id: "loop", label: "Work loop", sub: "choose the next action", kind: "llm", chips: ["Propose action", "Read tool result"], zone: "runtime", spine: 2, anchor: null, side: null, facts: [], inside: null, held: [], limits: [] },
+    { id: "result", label: "Result", sub: "deliver the outcome", kind: "service", chips: [], zone: null, spine: 3, anchor: null, side: null, facts: [], inside: null, held: [], limits: [] },
+    { id: "facts", label: "Stored facts", sub: "keep the current state", kind: "data", chips: [], zone: "runtime", spine: null, anchor: "loop", side: "below", facts: [], inside: null, held: [], limits: [] },
+    { id: "approval", label: "Approval", sub: "review the action", kind: "actor", chips: [], zone: null, spine: null, anchor: "result", side: "above", facts: [], inside: null, held: [], limits: [] },
   ],
   edges: [
     { from: "request", to: "intake", label: "", style: "call", step: 1 },
@@ -189,6 +212,7 @@ export const CANNED_INTENT = {
     { from: "result", to: "approval", label: "review", style: "async", step: null },
     { from: "approval", to: "result", label: "decision", style: "call", step: null },
   ],
+  steps: [],
 };
 
 /** The fixture's post: part i shows the fact the source view's part i shows; markers per the testing contract. */

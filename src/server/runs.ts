@@ -5,8 +5,8 @@ import { channelOfView, validateDocument3, type ChannelId, type Document3 } from
 import { isPostView, validateDocument, type DiagramDocument } from "../core/model";
 import { startSwitches, type FormatId } from "../core/export/share";
 import { layoutReport, type LayoutReport } from "../core/report";
-import { intentToChannel, linkedInViewId, parseIntent, STORY_SCHEMA, StoryError } from "../core/intent";
-import { postPrompt } from "./engines/prompt";
+import { channelViewId, intentToChannel, parseIntent, STORY_SCHEMA, StoryError, storyRows } from "../core/intent";
+import { postPrompt, storyPrompt } from "./engines/prompt";
 import { diffDocuments, type Changes } from "../core/diff";
 import { CoverageError, keepUnrelatedViews, missingFacts, SIMPLIFY_INSTRUCTION } from "../core/simplify";
 import { answerToDocument, documentToDraft, EmptyDiagramError, type RunScope } from "../core/repair";
@@ -15,10 +15,12 @@ import { nowIso, type Store } from "./store";
 import { EngineError, type Engine } from "./engines/types";
 
 export type RunStatus = "running" | "succeeded" | "failed" | "cancelled";
-export type RunKind = "refine" | "post" | "simplify";
+export type RunKind = "refine" | "story" | "post" | "simplify";
+/** The channels a story is drawn in (a post is a story on LinkedIn). */
+export type StoryChannel = Exclude<ChannelId, "overview">;
 export type RunEvent =
   | { type: "progress"; message: string }
-  | { type: "done"; status: Exclude<RunStatus, "running">; diagramId: string | null; error: string | null; changes: Changes | null; channel: ChannelId; view: string; layoutReport: LayoutReport | null };
+  | { type: "done"; status: Exclude<RunStatus, "running">; diagramId: string | null; error: string | null; changes: Changes | null; channel: ChannelId; view: string; layoutReport: LayoutReport | null; route: "facts" | "story" | null; path: string | null };
 
 export interface RunRecord {
   id: string;
@@ -38,6 +40,10 @@ export interface RunRecord {
   changes: Changes | null;
   /** The saved result's layout report (api contract, Layout report), once it has succeeded. */
   layoutReport: LayoutReport | null;
+  /** Which way a refine went (api contract, Routing); null for other kinds. */
+  route: "facts" | "story" | null;
+  /** The drawing file a `draw` run wrote, once it has succeeded. */
+  path: string | null;
 }
 
 interface Run extends RunRecord {
@@ -75,6 +81,10 @@ export interface StartRun {
   readCode?: boolean;
 }
 
+/** The channel a story or post run draws; null for other kinds. */
+const storyChannelOf = (req: StartRun): StoryChannel | null =>
+  req.kind === "post" ? "linkedin" : req.kind === "story" ? ((req.channel as StoryChannel | undefined) ?? "linkedin") : null;
+
 /** Runs one instruction-box call end to end and keeps its event log for replay over SSE. */
 export class RunManager {
   private readonly runs = new Map<string, Run>();
@@ -88,7 +98,7 @@ export class RunManager {
     const r = this.runs.get(id);
     return r ? {
       id: r.id, kind: r.kind, channel: r.channel, view: r.view, status: r.status, progress: [...r.progress], diagramId: r.diagramId, error: r.error,
-      engine: r.engine, model: r.model, changes: r.changes, layoutReport: r.layoutReport,
+      engine: r.engine, model: r.model, changes: r.changes, layoutReport: r.layoutReport, route: r.route, path: r.path,
     } : null;
   }
 
@@ -129,8 +139,11 @@ export class RunManager {
     const id = `r_${randomBytes(6).toString("hex")}`;
     let resolveFinished!: () => void;
     const run: Run = {
-      id, kind: req.kind ?? "refine", channel: (req.kind === "post" ? "linkedin" : channelOfView(req.stored, req.view)) ?? "overview", view: req.kind === "post" ? linkedInViewId(req.stored) : req.view, status: "running", progress: [], diagramId: null, error: null, engine: req.engine.id, model: req.model,
-      changes: null, layoutReport: null, target: req.base.id,
+      id, kind: req.kind ?? "refine",
+      channel: storyChannelOf(req) ?? channelOfView(req.stored, req.view) ?? "overview",
+      view: storyChannelOf(req) ? channelViewId(req.stored, storyChannelOf(req)!) : req.view,
+      status: "running", progress: [], diagramId: null, error: null, engine: req.engine.id, model: req.model,
+      changes: null, layoutReport: null, route: null, path: null, target: req.base.id,
       events: [], listeners: new Set(), abort: new AbortController(),
       finished: new Promise((r) => (resolveFinished = r)), timedOut: false,
     };
@@ -153,12 +166,13 @@ export class RunManager {
       run.error = error;
       run.changes = changes;
       run.layoutReport = report;
-      emit({ type: "done", status, diagramId, error, changes, channel: run.channel, view: run.view, layoutReport: report });
+      emit({ type: "done", status, diagramId, error, changes, channel: run.channel, view: run.view, layoutReport: report, route: run.route, path: run.path });
       run.listeners.clear();
       resolveFinished();
     };
     void this.execute(req, run.abort.signal, progress).then(
-      (r) => { run.channel = r.channel; run.view = r.view; end("succeeded", r.diagramId, null, r.changes, r.layoutReport); },
+      // The report names the channel it measured (api contract, Layout report).
+      (r) => { run.channel = r.channel; run.view = r.view; end("succeeded", r.diagramId, null, r.changes, { ...r.layoutReport, channel: r.channel }); },
       (err: unknown) => {
         if (run.timedOut) return end("failed", null, `Timed out after ${Math.round(this.opts.timeoutMs / 60_000) || 1} min — try a narrower instruction`);
         if (run.abort.signal.aborted) return end("cancelled", null, null);
@@ -177,7 +191,8 @@ export class RunManager {
     // The root the store checks this drawing's files against, so a repair and a save never disagree.
     const root = this.store.rootOf(req.base.id);
     if (!root) throw new EngineError("This drawing has no repository folder to read");
-    if (req.kind === "post") return this.post(req, root, signal, progress);
+    const story = storyChannelOf(req);
+    if (story) return this.story(req, story, root, signal, progress);
     // A simplification may change the overview and the detail it links to, nothing else (api contract).
     const simplify = req.kind === "simplify";
     const scope: RunScope = simplify ? { kind: "all" } : req.scope ?? { kind: "all" };
@@ -192,7 +207,7 @@ export class RunManager {
     });
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the drawing");
-    let doc = answerToDocument(answer, { base: req.base, now: nowIso(), engine: { id: req.engine.id, model: req.model }, fileExists: repoFileChecker(root), scope, view: req.view, facts: req.stored.facts.components.map((c) => c.id) });
+    let doc = answerToDocument(answer, { base: req.base, now: nowIso(), engine: { id: req.engine.id, model: req.model }, fileExists: repoFileChecker(root), scope, view: req.view, facts: req.stored.facts.components.map((c) => c.id), rows: storyRows(req.stored) });
     if (simplify) doc = keepUnrelatedViews(req.base, doc).doc;
     // Never replace a readable drawing with one the store would refuse to read back.
     // The view shape is checked on its own: a LinkedIn view's `postOf` (its post style) names no view of its channel.
@@ -203,7 +218,7 @@ export class RunManager {
     // channel, and the other channels are marked (diagram contract, Writing the answer back). Simplify
     // changes the overview's appearance only.
     const channel = req.channel ?? "overview";
-    const split = applyChannel(req.stored, channel, { views: doc.views, title: doc.title, engine: doc.engine, warnings: doc.warnings }, { keepFacts: simplify });
+    const split = applyChannel(req.stored, channel, { views: doc.views, title: doc.title, engine: doc.engine, warnings: doc.warnings }, { keepFacts: simplify, answer: true });
     if (!split.ok) throw new EngineError(split.error);
     if (simplify) {
       // After repair and before the save: a fact no part shows fails the run, nothing is saved.
@@ -226,32 +241,38 @@ export class RunManager {
     return { diagramId: req.base.id, changes: diffDocuments(req.base, doc, scope.kind === "all" ? undefined : [req.view]), layoutReport: report, channel, view: req.view };
   }
 
-  /** A post run: the engine designs the story, code converts, places and measures it. */
-  private async post(req: StartRun, root: string, signal: AbortSignal, progress: (m: string) => void) {
-    const format = req.format === "linkedin" ? "linkedin" : "feed";
+  /**
+   * A story run (a post is one on LinkedIn): the engine tells the channel's story from the facts,
+   * code converts, places and measures it. It changes no fact (diagram contract, Story answers).
+   */
+  private async story(req: StartRun, channel: StoryChannel, root: string, signal: AbortSignal, progress: (m: string) => void) {
+    const format: FormatId = channel === "linkedin" ? (req.format === "linkedin" ? "linkedin" : "feed") : channel === "readme" ? "readme" : "slide";
+    // A post may read the code unless told not to; any other story reads none unless told to.
+    const readCode = req.readCode ?? req.kind === "post";
     // The engine designs from the overview's first view (`base` is the overview's draft).
     const source = req.base.views[0].id;
+    const draft = documentToDraft(req.base);
+    const current = req.stored.channels[channel].views.length ? documentToDraft(joinChannel(req.stored, channel)) : null;
+    const prompt = channel === "linkedin"
+      ? postPrompt({ folderName: basename(root), view: source, base: draft, facts: req.stored.facts, format: format as "feed" | "linkedin", instruction: req.instruction, readCode })
+      : storyPrompt({ channel, folderName: basename(root), view: source, base: current ? { overview: draft, current } : draft, facts: req.stored.facts, instruction: req.instruction, readCode });
     const answer = await req.engine.run({
       cwd: root, folderName: basename(root), instruction: req.instruction, view: source, model: req.model, scope: { kind: "view" }, parts: [],
-      base: documentToDraft(req.base), signal, timeoutMs: this.opts.timeoutMs, progress,
-      task: {
-        kind: "post", schema: STORY_SCHEMA, tools: req.readCode === false ? "none" : "read",
-        prompt: postPrompt({ folderName: basename(root), view: source, base: documentToDraft(req.base), facts: req.stored.facts, format, instruction: req.instruction, readCode: req.readCode }),
-      },
+      base: draft, signal, timeoutMs: this.opts.timeoutMs, progress,
+      task: { kind: channel === "linkedin" ? "post" : "story", schema: STORY_SCHEMA, tools: readCode ? "read" : "none", prompt, data: { channel, overview: req.base.views[0] } },
     });
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the post");
-    // A post is the LinkedIn channel's one view; it changes no fact (diagram contract, Post answers).
-    const { doc, view, warnings } = intentToChannel(req.stored, parseIntent(answer), { portrait: format === "feed" });
+    const { doc, view, warnings } = intentToChannel(req.stored, parseIntent(answer), { portrait: format === "feed", channel });
     const toSave: Document3 = { ...doc, engine: { id: req.engine.id, model: req.model }, updatedAt: nowIso() };
     if (signal.aborted) throw new EngineError("Cancelled");
     const saved = this.store.put(req.base.id, toSave, { base: req.base.updatedAt, announce: true });
     if (!saved) throw new EngineError("The drawing was removed while the post was designed.");
     if (!saved.ok) throw new EngineError(saved.conflict ? "The drawing changed while the post was designed." : `The drawing could not be saved: ${saved.error}`);
     progress(warnings.length ? `Saved with ${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : "Saved");
-    const after = joinChannel(toSave, "linkedin");
-    const report = layoutReport(after, view, { ...startSwitches(format, true), format, theme: toSave.theme });
-    return { diagramId: req.base.id, changes: diffDocuments(joinChannel(req.stored, "linkedin"), after, [view]), layoutReport: report, channel: "linkedin" as ChannelId, view };
+    const after = joinChannel(toSave, channel);
+    const report = layoutReport(after, view, { ...startSwitches(format, channel === "linkedin"), format, theme: toSave.theme });
+    return { diagramId: req.base.id, changes: diffDocuments(joinChannel(req.stored, channel), after, [view]), layoutReport: report, channel: channel as ChannelId, view };
   }
 }
 

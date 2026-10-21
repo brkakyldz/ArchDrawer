@@ -20,10 +20,12 @@ describe("one rule set for the skill and the engine", () => {
     expect(drawingRules()).not.toContain('"schema"');
   });
 
-  it("the rules ask for depth and forbid tuning numbers, repeated labels and reverse connections", () => {
+  it("the rules ask for depth, keep numbers in limits, and forbid repeated labels and reverse connections", () => {
     const r = drawingRules();
     for (const need of ["items", "group", "parent", "place", "row -1", "row 1", "async", "both: true", "description", "files", "detail"]) expect(r).toContain(need);
-    expect(r).toMatch(/No tuning numbers/);
+    // ADR 0007: no count caps; a number that explains a guarantee is a limit fact, never a label.
+    expect(r).toMatch(/Numbers that explain a guarantee are limits/);
+    expect(r).not.toMatch(/4–6 zones|about 15 connections|At most five columns|No tuning numbers/);
     expect(r).toMatch(/repeat no label/);
     expect(r).toMatch(/never draw a second reverse\s+connection/);
     expect(r).toContain("archdraw/diagram@3");

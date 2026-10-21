@@ -254,8 +254,9 @@ export function createApp(deps: AppDeps): Hono {
     if (body.refresh !== undefined && typeof body.refresh !== "boolean") return err(c, 400, "refresh must be true or false");
     const picked = await pickEngine(body);
     if (typeof picked === "string") return err(c, 400, picked);
-    if (scans.runningOn(f)) return err(c, 409, "A scan of this folder is already running");
-    return c.json({ scanId: await scans.start(f, picked.engine, picked.model, body.refresh === true) }, 202);
+    const scanId = await scans.start(f, picked.engine, picked.model, body.refresh === true);
+    if (!scanId) return err(c, 409, "A scan of this folder is already running");
+    return c.json({ scanId }, 202);
   });
 
   app.get("/api/scans/:id", (c) => {

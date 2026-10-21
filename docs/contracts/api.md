@@ -101,8 +101,16 @@ The **repository root** is the nearest ancestor of the folder (the folder
 included) that holds `.git`, else the folder itself. It is the engine's
 working directory and Codex's `-C` (AGENTS.md invariant 1). Facts' paths are
 relative to it. The folder is **in git** when `git rev-parse HEAD`, run in the
-root as an argument array, succeeds: a repository with at least one commit.
-A `.git` without a commit, or no `git` on PATH, is not in git.
+root as an argument array, succeeds and `git rev-parse --show-toplevel` is the
+root itself: a repository with at least one commit. A `.git` without a commit,
+one that belongs to a repository above the root, or no `git` on PATH, is not
+in git.
+
+The repository is untrusted: every `git` call runs with `-c
+core.fsmonitor=false -c core.untrackedCache=false --no-optional-locks` and no
+terminal prompt, so the repository's own config runs no command and nothing is
+written to it. An input that is a symlink leading out of the root, or is not a
+file, is left out of the listing and never read.
 
 ## Scans
 
@@ -192,7 +200,8 @@ home screen always offers them (SCAN-3).
 **Cache** (SCAN-4).
 
 - **In git:** the key is the root, the folder and `HEAD`'s commit. A tree
-  with uncommitted changes uses the same entry.
+  with uncommitted changes uses the same entry, so a new untracked file shows
+  only after `refresh`.
 - **Not in git** (*Folders*), nothing is cached.
 - **A cached scan** answers at once: its record is created already
   `succeeded`, with `cached: true`, and no engine starts. `refresh: true`

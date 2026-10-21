@@ -26,8 +26,12 @@ const cases: { name: string; pattern: RegExp; break: (d: Doc3) => void }[] = [
     break: d => { d.channels.overview.views![0].nodes.push(part('frame', { facts: [] })); } },
   { name: 'own-label-too-long', pattern: new RegExp(`^ERROR ${escape(OVERVIEW)}\\.nodes\\[0\\]\\.label`, 'm'),
     break: d => { d.channels.overview.views![0].nodes[0].label = 'x'.repeat(49); } },
-  { name: 'readme-holds-a-view', pattern: /^ERROR channels\.readme/m,
-    break: d => { const copy = structuredClone(d.channels.overview.views![0]); copy.id = 'readme-view'; d.channels.readme = { views: [copy] }; } },
+  // From 0.3 the README holds one view like LinkedIn; a second one breaks the rule (the one-view case is H106's).
+  { name: 'readme-holds-two-views', pattern: /^ERROR channels\.readme/m,
+    break: d => {
+      const first = structuredClone(d.channels.overview.views![0]), second = structuredClone(first);
+      first.id = 'readme-view'; second.id = 'readme-second-view'; d.channels.readme = { views: [first, second] };
+    } },
   { name: 'linkedin-holds-two-views', pattern: /^ERROR channels\.linkedin/m,
     break: d => { const copy = structuredClone(d.channels.linkedin!.views![0]); copy.id = 'second-post'; d.channels.linkedin!.views!.push(copy); } },
   { name: 'detail-outside-the-overview', pattern: /^ERROR channels\.linkedin\.views\[0\]\.nodes\[0\]\.detail/m,

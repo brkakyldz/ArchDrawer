@@ -51,6 +51,64 @@ function roundedRectPath(r: Rect, rad: number): string {
   return `M${n(x + rad)},${n(y)} H${n(x + w - rad)} A${rad},${rad} 0 0 1 ${n(x + w)},${n(y + rad)} V${n(y + h - rad)} A${rad},${rad} 0 0 1 ${n(x + w - rad)},${n(y + h)} H${n(x + rad)} A${rad},${rad} 0 0 1 ${n(x)},${n(y + h - rad)} V${n(y + rad)} A${rad},${rad} 0 0 1 ${n(x + rad)},${n(y)} Z`;
 }
 
+/** The outline a part draws (diagram contract, Geometry, Shapes): `data-shape` of its `body`. */
+export type Shape = "card" | "agent" | "person" | "store" | "external" | "check" | "group";
+export const SHAPES_BY_KIND: Partial<Record<Kind, Shape>> = { llm: "agent", actor: "person", data: "store", external: "external", gate: "check" };
+/** The kind alone gives a card's or compact part's outline; a panel is a card and a group a group. */
+export function shapeOf(node: Pick<DiagramNode, "kind" | "form">): Shape {
+  if (node.form === "group") return "group";
+  if (node.form === "panel") return "card";
+  return SHAPES_BY_KIND[node.kind] ?? "card";
+}
+
+/** The measures of an outline: corner radius, agent inset, person head radius and x offset, store ellipse height, check corner cut. */
+export interface OutlineSize { rad: number; inset: number; head: number; headX: number; ry: number; cut: number }
+export function outlineSize(form: "card" | "compact", post = false): OutlineSize {
+  return form === "compact"
+    ? { rad: 12, inset: 4, head: 6, headX: COMPACT.padX + COMPACT.icon / 2, ry: 4, cut: 9 }
+    : { rad: 12, inset: 4, head: 6, headX: 22, ry: post ? 5 : 7, cut: 12 };
+}
+
+export interface Outline {
+  /** The silhouette, inside the box `r`. */
+  d: string;
+  /** Strokes drawn over the body in the kind's colour: the agent's inner outline, the store's rim, the lower half of the head. */
+  marks: string[];
+  /** The person's head, filled in the kind's colour. */
+  dot?: { cx: number; cy: number; r: number };
+  dash?: string;
+}
+
+/** The outline of a shape inside the box `r`. Every point lies inside the box, so no size changes with the shape. */
+export function outlineOf(shape: Shape, r: Rect, s: OutlineSize): Outline {
+  const { x, y, w, h } = r;
+  switch (shape) {
+    case "agent":
+      return { d: roundedRectPath(r, s.rad), marks: [roundedRectPath({ x: x + s.inset, y: y + s.inset, w: w - s.inset * 2, h: h - s.inset * 2 }, Math.max(1, s.rad - s.inset))] };
+    case "external":
+      return { d: roundedRectPath(r, s.rad), marks: [], dash: "6 4" };
+    case "person": {
+      // The box's top edge is the top of the head; the rounded rectangle starts at the head's centre.
+      const top = y + s.head, hx = x + s.headX, k = s.head, rad = Math.min(s.rad, (h - s.head) / 2);
+      const d = `M${n(x + rad)},${n(top)} H${n(hx - k)} A${k},${k} 0 0 1 ${n(hx + k)},${n(top)} H${n(x + w - rad)} A${rad},${rad} 0 0 1 ${n(x + w)},${n(top + rad)} V${n(y + h - rad)} A${rad},${rad} 0 0 1 ${n(x + w - rad)},${n(y + h)} H${n(x + rad)} A${rad},${rad} 0 0 1 ${n(x)},${n(y + h - rad)} V${n(top + rad)} A${rad},${rad} 0 0 1 ${n(x + rad)},${n(top)} Z`;
+      return { d, marks: [`M${n(hx - k)},${n(top)} A${k},${k} 0 0 0 ${n(hx + k)},${n(top)}`], dot: { cx: hx, cy: top, r: Math.max(1, k - 2.5) } };
+    }
+    case "store": {
+      const rx = w / 2, ry = s.ry;
+      return {
+        d: `M${n(x)},${n(y + ry)} A${n(rx)},${ry} 0 0 1 ${n(x + w)},${n(y + ry)} V${n(y + h - ry)} A${n(rx)},${ry} 0 0 1 ${n(x)},${n(y + h - ry)} Z`,
+        marks: [`M${n(x)},${n(y + ry)} A${n(rx)},${ry} 0 0 0 ${n(x + w)},${n(y + ry)}`],
+      };
+    }
+    case "check": {
+      const c = s.cut;
+      return { d: `M${n(x + c)},${n(y)} H${n(x + w - c)} L${n(x + w)},${n(y + c)} V${n(y + h - c)} L${n(x + w - c)},${n(y + h)} H${n(x + c)} L${n(x)},${n(y + h - c)} V${n(y + c)} Z`, marks: [] };
+    }
+    default:
+      return { d: roundedRectPath(r, s.rad), marks: [] };
+  }
+}
+
 /** Ambient shadow and kind glow under a box (DESIGN.md, Elevation): depth by light, not by lift. */
 function glowUnder(r: Rect, color: string, P: Palette, prefix: string, group = false): string {
   if (group) {
@@ -87,7 +145,7 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
 
   if (node.form === "group") {
     out.push(glowUnder(r, K, P, prefix, true));
-    out.push(`<rect class="body" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="18" fill="${P.surface}" fill-opacity="0.6" stroke="${mix(K, P.line2, 0.38)}" stroke-width="1"/>`);
+    out.push(`<rect class="body" data-shape="group" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="18" fill="${P.surface}" fill-opacity="0.6" stroke="${mix(K, P.line2, 0.38)}" stroke-width="1"/>`);
     out.push(`<rect x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="18" fill="${K}" fill-opacity="0.05" pointer-events="none"/>`);
     const cy = r.y + GROUP.head / 2;
     out.push(iconMarkup(icon, r.x + GROUP.padHead, cy - GROUP.icon / 2, GROUP.icon, K, 1.75, `${prefix}-ig-${node.kind}`));
@@ -102,8 +160,20 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
   }
 
   out.push(glowUnder(r, K, P, prefix));
-  out.push(`<rect class="body" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="12" fill="${P.surface}" stroke="${P.line2}" stroke-width="1"/>`);
-  out.push(`<rect x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="12" fill="url(#${prefix}-tint-${node.kind})" pointer-events="none"/>`);
+  const shape = shapeOf(node);
+  if (shape === "card") {
+    out.push(`<rect class="body" data-shape="card" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="12" fill="${P.surface}" stroke="${P.line2}" stroke-width="1"/>`);
+    out.push(`<rect x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="12" fill="url(#${prefix}-tint-${node.kind})" pointer-events="none"/>`);
+  } else {
+    // The shape lies inside the box; the tint follows it, and its marks are drawn in the kind's colour. Round joins keep
+    // the stroke's box as a rect's (Chromium widens a path's box by the miter limit), so the part measures the same.
+    const ol = outlineOf(shape, r, outlineSize(node.form === "compact" ? "compact" : "card", o.post));
+    const mark = mix(K, P.line2, 0.55);
+    out.push(`<path class="body" data-shape="${shape}" d="${ol.d}" fill="${P.surface}" stroke="${P.line2}" stroke-width="1" stroke-linejoin="round"${ol.dash ? ` stroke-dasharray="${ol.dash}"` : ""}/>`);
+    out.push(`<path d="${ol.d}" fill="url(#${prefix}-tint-${node.kind})" pointer-events="none"/>`);
+    for (const d of ol.marks) out.push(`<path class="shape-mark" d="${d}" fill="none" stroke="${mark}" stroke-width="1" stroke-linejoin="round" pointer-events="none"/>`);
+    if (ol.dot) out.push(`<circle class="shape-mark" cx="${n(ol.dot.cx)}" cy="${n(ol.dot.cy)}" r="${n(ol.dot.r)}" fill="${K}" pointer-events="none"/>`);
+  }
   const ig = `${prefix}-ig-${node.kind}`;
 
   if (node.form === "card") {

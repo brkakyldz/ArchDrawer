@@ -51,12 +51,14 @@ copy a user's CLI credentials.
 
 ## Invariants
 
-1. Nothing the user types reaches a shell. Engine CLIs are spawned with
-   argument arrays and the prompt goes through stdin. Two user inputs reach an
-   engine's arguments: the model name, refused when it starts with `-` or
-   holds anything but letters, digits and `._:/@[]-`, and the repository
-   folder of an opened drawing file, passed as the working directory and as
-   the value of Codex's `-C`.
+1. Nothing the user types reaches a shell. Engine CLIs and `git` are
+   spawned with argument arrays and the prompt goes through stdin. Three user
+   inputs reach an engine's arguments: the model name, refused when it starts
+   with `-` or holds anything but letters, digits and `._:/@[]-`; the
+   repository folder of an opened drawing file; and the folder typed on the
+   home screen, which must be absolute, exist and be a directory. Each folder
+   reaches the engine only as its repository root, passed as the working
+   directory and as the value of Codex's `-C`.
 2. Engines only read: Claude with read/search tools only and
    `--permission-mode dontAsk`; Codex with `--sandbox read-only`. Never
    `--bare` (it breaks subscription sign-in), never a write-capable tool.
@@ -83,7 +85,11 @@ copy a user's CLI credentials.
   Claude/Codex adapter is broken. The fake-CLI adapter tests guard it; a
   real-engine path is never reported working from fixture evidence.
 - **Success without a drawing** — a run ends `succeeded` but no document was
-  written. `succeeded` must imply a `diagramId` and a readable file.
+  written. `succeeded` must imply a `diagramId` and a readable file; a `draw`
+  run's file is also registered. A scan writes no drawing and is not a run.
+- **Unchecked evidence** — a fact from a read answer whose file or lines do
+  not exist is kept. Every read answer goes through the evidence check before
+  anything is written.
 - **Shell injection through an input** — a model name like `x; rm -rf ~` or
   `--dangerously-skip-permissions`, or a drawing path with shell characters,
   reaching an engine CLI as anything other than a single argument.

@@ -155,8 +155,7 @@ out again); the overview is left with one group `System map` (id
 `system-map`; both ids get `-2`, `-3` … when taken), kind `service`,
 description `The whole system; open it for its parts.`, `detail` the new view,
 lane `{"spine": 0}`, no facts (so its label, kind and description are its
-own and it has no files), and no connections. No fact changes. Other views, texts and requests are kept. Coverage passes; the
-one-zone overview then misses its targets (a warning, not a failure). When the
+own and it has no files), and no connections. No fact changes. Other views, texts and requests are kept. Coverage passes. When the
 overview already is a single group with an existing detail view, nothing
 changes.
 
@@ -192,7 +191,143 @@ exactly one (`[]` otherwise, or when there is none):
 
 The last two connections become one two-way connection with exactly one
 warning. The server, not the fixture, converts, places, measures and saves the
-post (drawing contract, Post answers).
+post (drawing contract, Story answers).
+
+### Scan
+
+Markers are read from the folder's last path segment, the same markers as
+above: `[fixture:fail]` fails the scan, and `[fixture:slow]` adds the 30 slow
+lines. Progress is `Reading the inputs`, then `Writing the card`.
+
+The answer is built from the inputs code gathered:
+
+- **card.**
+  - `name`: the folder's last segment, markers removed and trimmed.
+  - `sentence`: `A project scanned by the test engine.`
+  - `type`: `agent`.
+  - `languages`: `["TypeScript"]`.
+  - `entryPoints`: the first two entry-point candidates.
+- **options**, in this order:
+  1. `flow`, `How a request moves through the project` (`Follows one
+     request from the entry point to the store.`), with the listing's first
+     two files;
+  2. `mechanism`, `The agent loop` (`How the agent proposes and runs a
+     tool.`), with the listing's third file (else its first);
+  3. `overview`, `The whole architecture` (`Every part and how they
+     connect.`), with the listing's first file;
+  4. `flow`, `A path that is not there` (`Backed by a file that does not
+     exist.`), with `fixture/missing-file.ts`.
+
+  Option 4 is always left out, with one warning. A folder with no file leaves
+  out all four, so the scan succeeds with no option.
+
+### Draw
+
+A `draw` run makes the three calls of the api contract.
+
+**Markers** come from the folder's last segment and the typed focus:
+
+- `[fixture:fail]` fails the read;
+- `[fixture:fail:overview]` fails the overview call, and
+  `[fixture:fail:channel]` the channel call, after the earlier calls
+  succeeded;
+- `[fixture:slow]` slows the read;
+- `[fixture:partial]` makes the overview story leave out `store`.
+
+Each call has the fixture's progress lines.
+
+**Read.** Let A be the listing's first file and B its second (else A). The
+answer is always the following.
+
+Components:
+
+| id | kind | label | within | evidence |
+|---|---|---|---|---|
+| `app` | service | `App` | — | A |
+| `agent` | llm | `Agent` | — | B, lines `[1, 1]` |
+| `model-call` | llm | `Model call` | `agent` | B, `[1, 1]` |
+| `tool-proposal` | service | `Tool proposal` | `agent` | B, `[1, 1]` |
+| `tool-check` | gate | `Tool check` | `agent` | B, `[1, 1]` |
+| `tool-run` | worker | `Tool execution` | `agent` | B, `[1, 1]` |
+| `tool-result` | service | `Tool result` | `agent` | B, `[1, 1]` |
+| `store` | data | `Store` | — | A |
+| `ghost` | external | `Ghost service` | — | `fixture/ghost.ts` |
+
+Every sub-line is `""` and every description is `<label> as the test engine
+read it.`
+
+Relations, `call` unless noted:
+
+- `app → agent` (`asks`);
+- `model-call → tool-proposal → tool-check → tool-run → tool-result`;
+- `tool-result → model-call` (`async`);
+- `agent → store` (`keeps state`);
+- `app → ghost`.
+
+Their evidence is A for those ending in `app`, `store` or `ghost`, else B.
+
+Limits:
+
+- `turn-limit` on `agent`, `Stops after 12 turns`, B `[1, 1]`;
+- `ghost-limit` on `ghost`, `Answers within 2 s`, `fixture/ghost.ts`.
+
+The evidence check then adds exactly these four warnings:
+
+1. `ghost: dropped the evidence fixture/ghost.ts: not found`
+2. `Dropped "ghost": no evidence left`
+3. `Dropped "r8": its component "ghost" was dropped`
+4. `Dropped "ghost-limit": its component "ghost" was dropped`
+
+A folder with no file fails the read with the drawing contract's
+no-fact error.
+
+**Overview story.**
+
+- Title: the card's name. Lede: `Drawn by the test engine.`
+- One zone, `runtime` (`Agent runtime`).
+- Parts:
+  - `app`: spine 0, facts `["app"]`;
+  - `agent`: spine 1, in `runtime`, facts `["agent"]`, holding every
+    mechanism in the table's order, with limits `["turn-limit"]`;
+  - `store`: anchored below `agent`, in `runtime`, facts `["store"]`.
+- Connections: `app → agent` (step 1, `asks`) and `agent → store`.
+- `[fixture:partial]` leaves `store` out, so code adds it with one warning.
+
+**Channel story.** As for a `story` run (below), on the overview just drawn.
+
+### Story
+
+These are the answers of a `story` run, a `draw` run's channel call, and the
+`story` route of a refine (*Routing*).
+
+- **LinkedIn:** the post intent above.
+- **README.** Code builds the intent from the overview channel's first view:
+  - title: its caption title; lede: `A detailed drawing made by the test
+    engine.`; no zones;
+  - parts: one per part that is not a group and shows a fact, in view order,
+    at most 12. Each keeps its id, drawn label, sub-line and kind, and has no
+    chips. Its spine is its index. Its `facts`, `held` and `limits` are the
+    part's;
+  - edges: the connections between those parts, with their drawn label,
+    style and step;
+  - steps: `[]`.
+- **Presentation:** the README intent, with steps added:
+  - one step for each of the first three parts:
+    `{ "parts": ["<id>"], "text": "Step <n>: <label>", "note": "The test
+    engine explains <label>." }`;
+  - a fourth step naming `ghost-part`, which is dropped with one warning.
+
+### Routing
+
+A refine's routing question answers `story` when the instruction holds
+`[fixture:story]`, else `facts`.
+
+- **`facts` route:** the *Refine* answer.
+- **`story` route on LinkedIn, README or presentation:** the channel's
+  *Story* answer.
+- **`story` route on the overview:** the *Refine* answer. A content change in
+  it (`add`, `remove`, `rename`, `hold`) is then ignored with one warning;
+  `move` and `align` apply.
 
 ## Test suites
 

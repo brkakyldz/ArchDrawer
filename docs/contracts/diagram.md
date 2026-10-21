@@ -6,14 +6,15 @@ and the instruction engine write it; the CLI, the server and the editor read
 it. This file defines its shape, the rules that make it valid, how an edit is
 split between the facts and a channel, the warnings it can carry, how it is
 normalised, measured and laid out, and what an engine answers when it changes
-a drawing. Why the file is shaped this way: ADR 0003 and ADR 0006.
+a drawing. Why the file is shaped this way: ADR 0003, ADR 0006 and ADR 0007.
 
 Implemented by: `src/core/file3.ts` (the `@3` shape, validation, defaults),
 `src/core/channels.ts` (joining a channel view, splitting an edit, `outdated`,
 warnings, normalisation), `src/core/convert.ts` (reading `@2`),
 `src/core/model.ts` (the view shape and the `@2` rules),
 `src/core/normalize.ts`, `src/core/geometry.ts`, `src/core/layout.ts`,
-`src/core/repair.ts` (engine answers), `src/core/intent.ts` (post answers),
+`src/core/repair.ts` (engine answers), `src/core/intent.ts` (story answers),
+`src/core/evidence.ts` (read answers and the evidence check),
 `src/core/simplify.ts`, `src/core/migrate.ts`, `src/server/files.ts`.
 
 ## Format identifier
@@ -36,13 +37,15 @@ Files with `archdraw/diagram@2` are converted when read (*Reading
   "createdAt": "…", "updatedAt": "…",                     // optional ISO strings; the server keeps them
   "facts": {
     "components": [ /* component facts, at most 1800 */ ],
-    "relations": [ /* relation facts, at most 3600; optional, default [] */ ]
+    "relations": [ /* relation facts, at most 3600; optional, default [] */ ],
+    "limits": [ /* limit facts, at most 600; optional, default [] */ ]
   },
   "channels": {
     "overview":     { "views": [ /* 1–30 views; views[0] is the overview */ ], "showSteps": false, "outdated": [] },
     "linkedin":     { "views": [ /* 0 or 1 view */ ], "showSteps": false, "outdated": [] },
-    "readme":       { "views": [], "showSteps": false, "outdated": [] },
-    "presentation": { "views": [], "showSteps": false, "outdated": [] }
+    "readme":       { "views": [ /* 0 or 1 view */ ], "showSteps": false, "outdated": [] },
+    "presentation": { "views": [ /* 0 or 1 view */ ], "showSteps": false, "outdated": [],
+                      "steps": [ /* the presentation's ordered steps; optional, default [] */ ] }
   },
   "requests": [],               // optional; instructions waiting for the next session
   "warnings": []                // optional; one line per repair or conversion
@@ -54,8 +57,9 @@ A channel is one of four fixed names. `showSteps` (optional, default false)
 draws numbered step badges in that channel. `outdated` (optional, default
 `[]`) lists the facts changed since the channel was drawn that it has not
 taken up (*Edits: facts or channel*). A channel other than `overview` may be
-written as `{}` or left out; it is then empty. In this format version the
-`readme` and `presentation` channels hold no view.
+written as `{}` or left out; it is then empty. Every field ADR 0007 added
+(`limits`, `evidence`, `within`, a part's `held` and `limits`, the
+presentation's `steps`) is optional, so a file written before it stays valid.
 
 ### Component fact
 
@@ -67,9 +71,17 @@ written as `{}` or left out; it is then empty. In this format version the
   "sub": "every call passes here",    // 0–60 chars, one line under the label
   "description": "The only way …",    // 1–400 chars
   "files": ["src/tools/gateway.py"],  // 0–20 repository-relative paths
-  "items": ["Schema validation"]      // 0–12 strings of 1–44 chars: what it holds inside
+  "items": ["Schema validation"],     // 0–12 strings of 1–44 chars: what it holds inside
+  "within": null,                     // optional, default null: the component fact that holds this mechanism
+  "evidence": [{ "file": "src/tools/gateway.py", "lines": [12, 48] }]  // optional, default []
 }
 ```
+
+A component fact with `within` is a **mechanism**: a part of how the
+component it names works (an agent's tool loop, a retry policy, a cache
+lookup). A story draws it as a row of that component's part (`held`) or as a
+part of its own, often inside the component's part. Mechanisms and their
+holders are ordinary component facts for every other rule.
 
 | kind | label | default icon | meaning |
 |---|---|---|---|
@@ -92,7 +104,30 @@ written as `{}` or left out; it is then empty. In this format version the
 
 `from`/`to` are component facts. `label` 0–40 chars. `style`: `call` (solid),
 `async` (dashed: event, queue, emit) or `dep` (dotted: telemetry, read-only
-dependency). `both`: the relation runs both ways.
+dependency). `both`: the relation runs both ways. `evidence` (optional,
+default `[]`) as for a component fact.
+
+### Limit fact
+
+```jsonc
+{ "id": "turn-limit", "on": "agent", "text": "Stops after 12 turns", "evidence": [{ "file": "src/agent.ts", "lines": [30, 31] }] }
+```
+
+A limit says a guarantee of the component fact `on` in one line: a deadline,
+a turn limit, a size cap, a retry count. `text` 1–60 chars; numbers belong
+here (STORY-5). `evidence` optional, default `[]`.
+
+### Evidence
+
+```jsonc
+[{ "file": "src/agent.ts", "lines": [30, 31] }, { "file": "README.md", "lines": null }]
+```
+
+0–8 entries. `file` is repository-relative as `files` are (rule 14); `lines`
+is null (the whole file) or `[from, to]`, integers with `1 ≤ from ≤ to`.
+Evidence says where a fact comes from; `files` stay what a part offers to
+open. A read answer must give evidence and code checks it (*Read answers*);
+in a file it is optional, and only its paths are checked, as `files` are.
 
 ### View
 
@@ -120,6 +155,8 @@ dependency). `both`: the relation runs both ways.
   "place": { "row": 0, "col": 4 },    // grid hint, or null
   "lane": { "spine": 2 },             // optional, default null: relational layout hint
   "x": 1052, "y": 272,                // optional pair: top-left in canvas px; absent = lay it out
+  "held": ["approval-check"],         // optional, default []: mechanisms within its facts, drawn as rows
+  "limits": ["call-timeout"],         // optional, default []: limit facts on its facts or held facts, drawn as rows
   // optional, absent or null = taken from the fact; a value = this channel's own text
   "label": null, "kind": null, "sub": null, "description": null, "items": null
 }
@@ -130,9 +167,9 @@ layers bell db chat loop book pen receipt inbox box cpu cog globe key lock mail
 file folder terminal code server queue search chart eye git plug`.
 
 Forms: `card` (icon, label, sub-line); `compact` (one row: icon, label,
-sub-line); `panel` (a card plus one row per shown item — only a panel shows
-items); `group` (a header and the parts whose `parent` it is — only a group
-may be a parent).
+sub-line); `panel` (a card plus one row per held mechanism, shown item and
+limit — only a panel shows rows); `group` (a header and the parts whose
+`parent` it is — only a group may be a parent).
 
 ### Connection (edge)
 
@@ -158,6 +195,18 @@ wrapped. `size` is the font size in drawing px, 8–200 (default 20); weight
 wide as its widest drawn line (at least 8 px, rounded up) and 1.25 × size tall
 per line. Drawn in the ink colour with no frame.
 
+### Presentation steps
+
+```jsonc
+{ "id": "s1", "parts": ["intake", "loop"], "text": "A request is checked first", "note": "The intake refuses …" }
+```
+
+The presentation channel's `steps` (0–20) are the order it is told in. A step
+highlights the parts of the presentation view it names (1–60 distinct part
+ids), shows `text` on screen (1–120 chars) and carries a speaker `note`
+(0–1000 chars, newlines allowed). Step ids are unique in the channel. Steps
+are appearance (*Edits*).
+
 ### Requests
 
 ```jsonc
@@ -178,8 +227,12 @@ invariant 5).
 - A part's `label`, `kind`, `sub` and `description` are its own when not
   null, else its single fact's. Its `files` are the union of its facts'
   files in fact order, without repeats, at most 20.
-- A panel's shown items are the part's `items` when not null, else its single
-  fact's `items`; any other form shows none.
+- A panel's rows are, in this order: the labels of its `held` mechanisms,
+  its shown items (the part's `items` when not null, else its single fact's
+  `items`), then the texts of its `limits`. Geometry counts every row as an
+  item; a limit row is drawn in the muted colour after a `timer` icon. Any
+  other form shows no row. In the joined view shape `items` holds the
+  mechanisms' labels and the shown items, and `limits` the limit texts.
 - A connection's `label`, `style` and `both` are its own when not null, else
   its single relation's (`""`, `call`, `false` without one).
 - A part with no fact, or with several, has no single fact: it gives its own
@@ -199,11 +252,13 @@ with 400 and the first violation. Invalid files are never repaired.
    checked.
 2. Ids match `^[A-Za-z0-9_-]{1,64}$`. Fact ids (components and relations
    together, one id space) are unique among facts; a part's id may equal a
-   fact's. View ids are unique across the file.
-   Part, connection and text ids are unique within their channel. Request ids
-   are unique.
+   fact's. View ids are unique across the file. Limit ids share the facts'
+   id space.
+   Part, connection, text and step ids are unique within their channel.
+   Request ids are unique.
 3. Every component-fact and relation-fact property above is present. Every
-   part property is present except `x`/`y`, `lane` and the five own texts;
+   part property is present except `x`/`y`, `lane`, `held`, `limits` and
+   the five own texts;
    every connection property except `id`, `relations` and the three own
    values. `x` and `y` are both present or both absent, and finite.
 4. Lengths, list sizes and enumerations as stated above, for facts and for a
@@ -211,15 +266,15 @@ with 400 and the first violation. Invalid files are never repaired.
    after trimming.
 5. `channels` holds `overview` and may hold `linkedin`, `readme` and
    `presentation`, no other key; each is an object with at most `views`,
-   `showSteps` and `outdated` (`views` required in the overview). The
-   overview holds 1–30 views; `linkedin` at most one; `readme` and
-   `presentation` none.
-6. A part's `facts` are distinct component facts. A fact is shown by at most
-   one part of a view.
+   `showSteps` and `outdated` (`views` required in the overview), and the
+   presentation also `steps`. The overview holds 1–30 views; each other
+   channel at most one.
+6. A part's `facts` are distinct component facts. A fact is shown or held by
+   at most one part of a view.
 7. A part with no fact or with several gives its own `label`, `kind` and
    `description`.
-8. A panel shows at least one item; a part that is not a panel has `items`
-   null.
+8. A panel shows at least one row; a part that is not a panel has `items`
+   null and no `held` or `limits`.
 9. `parent` names a group part in the same view; no part is its own
    ancestor; nesting is at most three groups deep.
 10. `detail` is null outside the overview channel; in it, it names another
@@ -248,12 +303,23 @@ with 400 and the first violation. Invalid files are never repaired.
     is the nearest ancestor of the file's folder holding `.git`, else the
     file's folder; a registered drawing's `source` is always that root.
 15. At most 60 parts per view.
-16. Every component fact is shown by at least one part of the overview
-    channel.
+16. Every component fact is shown or held by at least one part of the
+    overview channel.
 17. `outdated` lists distinct ids (any id syntax; a removed fact's id stays
     listed). An empty channel's `outdated` is `[]`.
 18. A request names an existing channel and one of its views.
 19. `lane` follows *Lane* below.
+20. A component fact's `within` names another component fact, never itself;
+    the fact it names has no `within` (one level).
+21. A limit's `on` names a component fact.
+22. A part's `held` are distinct mechanisms whose `within` is one of the
+    part's facts; its `limits` are distinct limit facts on one of its facts
+    or held mechanisms. Together they and the shown items make at most 12
+    rows.
+23. Evidence follows *Evidence*: at most 8 entries, each path as in rule 14,
+    `lines` null or `[from, to]` with `1 ≤ from ≤ to`.
+24. A presentation step names 1–60 distinct parts of the presentation view;
+    a channel without a view has no steps.
 
 ### Lane
 
@@ -278,8 +344,10 @@ to the facts, appearance to the channel it was made in.
 
 **Appearance** changes only the channel it is made in: moving, a part's form,
 icon, `place`, `lane`, `parent` and `detail`, which items a panel shows (as
-the part's own `items`), a connection's step, texts, captions, view titles,
-`showSteps`, and any of a part's or connection's own texts.
+the part's own `items`), which mechanisms it holds and which limits it shows
+(`held`, `limits`), a connection's step, texts, captions, view titles,
+`showSteps`, the presentation's steps (adding, removing, reordering, a step's
+parts, text and note), and any of a part's or connection's own texts.
 
 **Content** changes the facts:
 
@@ -327,6 +395,17 @@ the part's own `items`), a connection's step, texts, captions, view titles,
 - When a fact or relation is deleted, every part and connection that showed
   it stops pointing to it. A part or connection that pointed to facts and is
   left with none is removed (a removed group's members move to its parent).
+  A deleted component fact takes its mechanisms (`within` it) and its limits
+  with it, and every part stops holding or showing them; a side part whose
+  anchor is removed keeps no lane.
+- **Mechanisms and limits.** A held mechanism's row is its label: renaming
+  the row renames the mechanism fact, in every channel, wherever the edit is
+  made. A limit row's text edits the limit fact the same way. Removing a held
+  row or a limit row only stops the part showing it (appearance); the fact
+  stays.
+- **Steps.** Deleting a part of the presentation view removes it from every
+  step that names it; a step left with no part is removed, one warning each
+  (`Step "<id>" had no part left and was removed`).
 
 **`outdated`.** For every channel the change was *not* made in (an editor
 edit or run: every channel but the current one; an outside write: every
@@ -339,10 +418,13 @@ the id of:
 - a fact or relation whose label, kind, sub-line, description, items, style
   or two-way flag changed, when the channel does not show that field
   directly: its part or connection has its own value for it, or shows several
-  facts.
+  facts;
+- a new limit on a fact it shows or holds; a deleted limit it showed; a limit
+  whose text changed, when it shows that limit nowhere.
 
 A change the channel shows directly adds nothing: a rename through the fact,
-a longer label, new files. Undo restores `outdated` with everything else.
+a held mechanism renamed, a limit's text it shows, a longer label, new files,
+new or changed evidence. Undo restores `outdated` with everything else.
 Redrawing a channel, or "Keep as it is", empties its `outdated`.
 
 ## Warnings
@@ -351,17 +433,14 @@ Redrawing a channel, or "Keep as it is", empties its `outdated`.
 They are checked on every channel view; *Flat* and *No held items* skip the
 LinkedIn channel.
 
-- **Overview** — the overview channel's first view has fewer than 4 or more
-  than 6 top-level groups, or more than 15 connections (all of the view's
-  connections count). The message gives both counts. Nothing is merged,
-  moved or removed because of it.
 - **Flat** — six or more top-level parts that all have a `place` on the same
   row, or none has a `place` and every one is an end of a numbered
   connection.
 - **No held items** — six or more parts and no panel.
-- **Tuning number** — a drawn label, sub-line or item with a number and a
-  unit of time, count or size (`6 turns`, `90 s`, `2 retries`, `5 MB`,
-  `30%`).
+- **Tuning number** (LinkedIn channel only) — a drawn label, sub-line or item
+  with a number and a unit of time, count or size (`6 turns`, `90 s`,
+  `2 retries`, `5 MB`, `30%`). Elsewhere a number that explains a guarantee
+  may show (STORY-5), best as a limit.
 - **No main path** — three or more connections and none has a step.
 - **Repeated label** — the same non-empty drawn label (trimmed,
   case-insensitive) on three or more connections of a view.
@@ -469,12 +548,14 @@ The engine receives a **draft** of the run's channel: `title` and every view
 of the channel as channel views (`id`, `title`, `caption`, parts with their
 drawn content, connections with their drawn label, style and two-way flag)
 without document metadata, texts, requests, warnings, connection ids or
-relation ids, with each part's `facts` and current `box` `{x, y, w, h}`
-instead of `x`/`y`. It answers the whole draft in the strict schema dialect
+relation ids, with each part's `facts`, `held`, `limits` and current `box`
+`{x, y, w, h}` instead of `x`/`y`. It answers the whole draft in the strict schema dialect
 (every property required, no extra properties, absence as `null`, `""` or
 `[]`) without `box`, plus `at` (`{x, y}` or null) on every part and
-`relayout` (part ids) on every view; `lane` and `facts` are required on every
-part.
+`relayout` (part ids) on every view; `lane`, `facts`, `held` and `limits`
+are required on every part. A refine adds no mechanism or limit fact: an id
+in `held` or `limits` that is not a fact the part may draw is dropped, one
+warning each.
 
 The answer is repaired. Every repair that changes what the engine said adds
 exactly one warning: an unknown kind becomes `service`; an unknown form
@@ -538,63 +619,183 @@ were (one warning each); a new view nothing links to is left out. A fact
 shown by no part fails the run with
 `The simplified drawing loses <n> components: <ids>. Nothing was changed.`
 
-## Post answers (story intent)
+## Read answers (facts)
 
-A post run's engine answers this schema exactly (every property required, no
-others); it carries no pixels, forms or document fields:
+The deep read of a `draw` run (api contract) answers the facts in the strict
+schema dialect, with no layout:
+
+```json
+{ "components": [{ "id": "", "label": "", "kind": "service", "sub": "", "description": "",
+                   "within": null, "evidence": [{ "file": "", "lines": [1, 1] }] }],
+  "relations":  [{ "from": "", "to": "", "label": "", "style": "call", "both": false,
+                   "evidence": [{ "file": "", "lines": null }] }],
+  "limits":     [{ "id": "", "on": "", "text": "", "evidence": [{ "file": "", "lines": null }] }] }
+```
+
+`lines` is `[from, to]` or null; `within` is a component id or null.
+
+**Repair** adds one warning per change, as for engine answers where the rule
+is the same:
+
+- ids are cleaned and made unique (a duplicate is renamed `<id>-2`);
+- an unknown kind becomes `service`, an unknown style `call`;
+- an empty label becomes the id, an empty description `No description yet.`;
+- over-long text is shortened with `…`;
+- more than 120 components or 60 limits are cut, the last first;
+- a `within` that names no component, the fact itself, or a fact that has its
+  own `within` is cleared;
+- a relation joining a fact to itself or to an unknown id is dropped, a second
+  relation on a pair is dropped, and a reverse pair becomes one two-way
+  relation.
+
+Relation ids are `r1`, `r2`, … in answer order.
+
+**The evidence check** (`src/core/evidence.ts`) is pure: it is given a
+file-exists and a line-count function. It runs on the repaired answer, in
+this order:
+
+1. An evidence entry is dropped when its file does not exist under the
+   repository root, is outside it, or its `lines` are not
+   `1 ≤ from ≤ to ≤` the file's line count. One warning:
+   `<fact>: dropped the evidence <file>[:<from>-<to>]: <reason>`, the reason
+   being `not found`, `outside the repository` or `the file has <n> lines`.
+   A path listed twice in one fact is kept once, silently.
+2. A component, relation or limit fact left with no evidence is dropped:
+   `Dropped "<id>": no evidence left`.
+3. What depended on a dropped component is dropped too: a relation to it, a
+   mechanism within it, a limit on it. One warning each:
+   `Dropped "<id>": its component "<c>" was dropped`.
+
+A component fact's `files` are its evidence files, each once, in order, at
+most 20. Its `items` are `[]`, since mechanisms are facts. An answer with no
+component fact left fails the run with
+`The read found no fact the code supports. Nothing was written.`
+
+## Story answers (story intent)
+
+Every story call answers this one schema exactly: a post, the overview of a
+first drawing, and the LinkedIn, README and presentation channels. Every
+property is required and there are no others. It carries no pixels, forms or
+document fields:
 
 ```json
 { "title": "", "lede": "",
   "zones": [{ "id": "", "label": "" }],
   "parts": [{ "id": "", "label": "", "sub": "", "kind": "service", "chips": [""],
-              "zone": null, "spine": 0, "anchor": null, "side": null, "facts": [] }],
-  "edges": [{ "from": "", "to": "", "label": "", "style": "call", "step": 1 }] }
+              "zone": null, "inside": null, "spine": 0, "anchor": null, "side": null,
+              "facts": [], "held": [], "limits": [] }],
+  "edges": [{ "from": "", "to": "", "label": "", "style": "call", "step": 1 }],
+  "steps": [{ "parts": [""], "text": "", "note": "" }] }
 ```
 
-`kind` is one of the ten kinds; `zone`, `anchor` are string or null; `spine`,
-`step` integer or null; `side` `"above"`, `"below"` or null; `style` call,
-async or dep.
+- `kind` is one of the ten kinds; `style` is call, async or dep.
+- `zone`, `inside` and `anchor` are a string or null; `spine` and `step` an
+  integer or null; `side` `"above"`, `"below"` or null.
+- `facts` names component facts, `held` mechanism facts, `limits` limit facts.
 
-**Relations** (a violation fails the run, nothing saved): zone and part ids
-unique; a part's zone exists; a spine part has a unique non-negative `spine`
-and null `anchor`/`side`; a side part has null `spine`, a spine part as
-`anchor` and a `side`; a zone's spine parts are consecutive on the spine and
-its side parts' anchors are inside it, or it holds only side parts of one
-anchor; connections join two parts and never a part to itself; at least one
-part.
+**Relations.** A violation fails the run, and nothing is saved.
 
-**Hard limits** fail the run, never shortened: title 120, lede 240, labels 48,
-sub-lines 60, at most 12 chips of 44, connection labels 40, a non-empty title.
+- Zone ids are unique, and so are part ids. A part's zone exists.
+- A part's `inside` names another part, never itself or one inside it.
+  Zones and holders together nest at most three levels. A part inside another
+  takes no zone of its own: its zone is the holder's.
+- Within each zone, holder or top level, a spine part has a unique
+  non-negative `spine` and null `anchor`/`side`. A side part has null `spine`,
+  a `side`, and as `anchor` a spine part of the same level.
+- A zone's spine parts are consecutive on the spine and its side parts'
+  anchors are inside it, or it holds only side parts of one anchor.
+- Connections join two parts, never a part to itself.
+- A step names at least one part, and each is an existing part.
+- There is at least one part.
 
-**Targets** are kept whole with one warning each: title 9 words, lede 140
-chars, label and sub-line 28, chip 22, side-connection label 2 words; a
-numbered connection with a label is kept and warned about.
+**Hard limits** fail the run and are never shortened:
 
-**Conversion** into the LinkedIn channel's one view: zones become group parts
-(`zone-<id>`) with no facts, their label, kind `service` and description
-`A group of components.`; parts become panels (chips as their own items) or
-cards; `zone` becomes `parent`, `spine`/`anchor`/`side` become `lane`;
-`facts` keeps only existing component facts (one warning per dropped id),
-lists each once, and drops a fact an earlier part already shows (one warning
-each). A
-part showing exactly one fact keeps a label, sub-line or kind as its own only
-where it differs from the fact's; any other part gives its own label and
-kind, and its description is its first fact's, else its sub-line, else its
-label. Part ids are unique in the channel: an invalid id is sanitised with
-one warning; a taken one is suffixed `-2` without one, since the intent's ids
-only tie the intent together. A connection between two parts that each show
-one fact shows the relation joining those facts when there is one (its ends
-swapped when the relation runs the other way), keeping its label and style as
-its own only where they differ; connection ids are
-`<from>-<to>`. A reverse pair becomes one two-way connection (keeping the
-first label, else the second, and the earlier step), a same-direction
-duplicate is dropped, steps are renumbered 1, 2, 3 … — one warning each. The
-view's id is kept when the channel already has a view, else `linkedin`, or
-`linkedin-2`, `-3`, … when another view has that id; its title
-`LinkedIn`, its caption the intent's title and lede, no texts, laid out by
-its lanes. It replaces the channel's view and empties the channel's
-`outdated`; the facts and every other channel are unchanged. The result must
-pass validation before it is saved.
+- title 120 chars, never empty; lede 240;
+- labels 48, sub-lines 60;
+- at most 12 chips, each at most 44;
+- connection labels 40;
+- step texts 120, notes 1000, at most 20 steps.
+
+**Briefs and targets per channel.** Each story call has its own brief
+(`src/server/engines/prompt.ts`). The checks in the last column are what code
+does.
+
+| Channel | Brief | Code checks |
+|---|---|---|
+| overview | The complete map: every fact shown or held. Merged parts where many facts are alike. Zones as the system's real boundaries. Held mechanisms and limits where they explain a part. No count caps | Every fact drawn (below); `steps` must be `[]` |
+| linkedin | One image for a phone: about 8–12 parts. A title of at most 9 words and one plain sentence. No held items or limits, no tuning numbers | The post targets below. A non-empty `held`, `limits` or `steps` is dropped, one warning each |
+| readme | A detailed drawing that renders on GitHub. One-line sub-lines. Held mechanisms only on the few parts whose mechanism matters. Limits where they explain a guarantee | `steps` must be `[]` |
+| presentation | One drawing and 3–8 ordered steps that tell it. Each step highlights the parts it is about, says it on screen in one short sentence, and gives the speaker one to three sentences | Each step's parts exist. A wrong one is dropped, and a step left with none, one warning each |
+
+A non-empty `steps` outside the presentation is ignored, with one warning.
+
+**Post targets** (LinkedIn only) are kept whole, with one warning each:
+
+- title 9 words, lede 140 chars;
+- label and sub-line 28, chip 22;
+- side-connection label 2 words;
+- a numbered connection with a label is kept and warned about.
+
+**Conversion** into the channel's one view (for the overview, its first
+view):
+
+- **Zones** become group parts (`zone-<id>`) with no facts. Each takes its
+  zone's label, kind `service` and description `A group of components.`
+- **Holders:** a part that another part is `inside` becomes a group showing
+  its own facts. `zone` and `inside` become `parent`; `spine`, `anchor` and
+  `side` become `lane`.
+- **Forms:** a part with chips, held mechanisms or limits becomes a panel,
+  any other part a card. Chips become its own items.
+- **Facts.** Each step below drops with one warning per id:
+  - `facts` keeps only existing component facts, lists each once, and drops
+    a fact an earlier part already shows or holds;
+  - `held` keeps only mechanisms within the part's facts;
+  - `limits` keeps only limits on its facts or held mechanisms.
+
+  The rows (held, chips, limits) are then cut to 12, with one warning.
+- **Text.** A part showing exactly one fact keeps a label, sub-line or kind
+  as its own only where it differs from the fact's. Any other part gives its
+  own label and kind. Its description is its first fact's, else its
+  sub-line, else its label.
+- **Part ids** are unique in the channel. An invalid id is sanitised, with one
+  warning. A taken one is suffixed `-2` without a warning, since the intent's
+  ids only tie the intent together.
+- **Connections.**
+  - Between two parts that each show one fact, a connection shows the
+    relation joining those facts, if there is one; its ends are swapped when
+    the relation runs the other way. It keeps its label and style as its own
+    only where they differ.
+  - Connection ids are `<from>-<to>`.
+  - Each of these adds one warning: a reverse pair becomes one two-way
+    connection, keeping the first label (else the second) and the earlier
+    step; a same-direction duplicate is dropped; steps are renumbered 1, 2,
+    3 …
+- **Steps:** the presentation's steps become the channel's `steps`, with ids
+  `s1`, `s2`, …, their part ids mapped as the parts' were.
+
+**The view.**
+
+- Its id is kept when the channel already has a view. Otherwise it is the
+  channel's name (`linkedin`, `readme`, `presentation`; for the overview,
+  `overview`), or `<name>-2`, `-3`, … when another view has that id.
+- Its title is `LinkedIn`, `README`, `Presentation` or `Overview`, and its
+  caption is the intent's title and lede. It has no texts.
+- It is laid out by its lanes: portrait for the LinkedIn feed format, wide
+  otherwise.
+- It replaces the channel's view; for the overview, the whole channel, and
+  only for a first drawing. The channel's `outdated` is emptied. The facts and
+  every other channel stay unchanged.
+
+**Every fact drawn (overview).** Code fills in what the overview story left
+out, one warning each:
+
+- A component fact it neither shows nor holds is added as a card of its own
+  at a free spot. It goes inside the zone or holder of the part it has the
+  most relations with: `Added "<id>", which the overview left out`.
+- A relation between two parts that each show one fact, which no connection
+  shows, is added as a connection.
+
+The result must pass validation before it is saved.
 
 ## Reading `archdraw/diagram@2`
 

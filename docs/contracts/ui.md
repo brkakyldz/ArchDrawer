@@ -7,6 +7,7 @@ dialog with its image. Every element named here carries
 normative for end-to-end tests; styling is not, except where stated.
 
 Implemented by: `src/web/App.tsx`, `src/web/library/Library.tsx`,
+`src/web/library/Start.tsx`,
 `src/web/editor/*` (Editor, Canvas, Callout, Panels, AskBox, AiPanel, Find,
 Views, LoadError, ops, runner, useAutosave, useDocHistory, viewport),
 `src/web/share/ShareDialog.tsx`, `src/web/ui/LayoutReport.tsx`,
@@ -44,7 +45,37 @@ Views, LoadError, ops, runner, useAutosave, useDocHistory, viewport),
 | `library-menu` | button `⋯`, accessible name `More actions for <title>`; opens `library-menu-list` (Escape or a click elsewhere closes it) |
 | `library-forget` | `Remove from list` (registered file) or `Delete` (imported); asks `confirm()` (`Remove "<title>" from this list? The file stays where it is.` / `Delete the imported drawing "<title>"?`) |
 | `import-input` | file input (`.json`): a valid `@3`, `@2` or `@1` document is imported and opened (`@2` and `@1` converted, drawing contract); otherwise `form-error` shows the server's message and up to 8 violations, or `Not a JSON file: <message>` |
-| `start-help` | shown when the list is empty: how to start a drawing from Claude Code or Codex; holds `library-example` (`Open the example drawing`: `POST /api/example`, then opens it) |
+| `library-example` | `Open the example drawing`: `POST /api/example`, then opens it; shown when the list is empty, beside the start flow |
+
+### Starting a drawing from a folder
+
+`start` sits above the list, whether the library is empty or full (START-4).
+It moves through four choices, each kept while the user goes on: folder,
+focus, channel, draw. Every control is reachable by keyboard in that order.
+Enter in a field acts as its button.
+
+| Test id | Element and behaviour |
+|---|---|
+| `start-folder` | text field `Folder of the project`, placeholder `C:\code\my-project` on Windows, else `/home/me/my-project`. Its list (`<datalist>`) offers the folders of the drawings in the library: each registered file's repository root, once each |
+| `start-scan` | `Scan`. It first checks the folder (`POST /api/folders/check`); a refused folder shows `start-error` and nothing else happens |
+| `start-error` | one plain sentence (`role="alert"`) for the server's refusal: `This folder does not exist.`, `This is a file, not a folder.`, `Give the whole path, starting from the drive or from /.`. For a failed scan or draw, the run's error |
+| `start-existing` | when the folder has `docs/architecture.archdraw.json` (`drawing` from the check): `This folder already has a drawing.` with `start-open-existing` (`Open it`: `POST /api/files` with that path, then the editor) and `start-again` (`Start again`: goes on to the scan; the new drawing gets the next free name). Neither scans by itself |
+| `start-no-engine` | when no engine is available: `To draw a project, install Claude Code or Codex and sign in to it.` with the commands `npm install -g @anthropic-ai/claude-code` and `npm install -g @openai/codex`. `start-scan` is disabled, and `library-example` shows beside it |
+| `start-engine` | the engine and model a scan and a draw use, as `ai-engine` and `ai-model` choose them and sharing their stored choice (*Choosing the engine*) |
+| `scan-progress` | while the scan runs: its latest progress line, and `scan-cancel` (`Cancel`). A cancelled scan shows `start-error` `Cancelled` and keeps the folder |
+| `scan-card` | the repository card: `scan-card-name`, `scan-card-sentence`, `scan-card-type` (`AI agent project`, `Backend service`, `Full-stack app`, `Other project`, with `data-type`), `scan-card-languages`, `scan-card-entry` (one per entry point). A cached scan adds `scan-cached` (`Scanned before at <short commit>`) and `scan-again` (`Scan again`: `refresh: true`) |
+| `focus-option` | one per option, a radio with `data-option` (`o1` …) and `data-kind`. It shows the title, the sentence and `focus-option-files`, one line per file |
+| `focus-whole` | radio `The whole system`, always there (SCAN-3) |
+| `focus-typed` | radio `Something else`, always there. Choosing it focuses `focus-text`, a text field of at most 300 chars (`What should the drawing explain?`) |
+| `channel-choice-linkedin`, `channel-choice-readme`, `channel-choice-presentation` | radios `LinkedIn post`, `README drawing`, `Presentation`, shown once a focus is chosen. None is chosen at first (STORY-1) |
+| `draw-start` | `Draw it`, enabled once a focus and a channel are chosen (and `focus-text` is not empty for a typed focus). It starts the `draw` run (api contract, The draw run) |
+| `draw-progress` | while the run goes: `draw-stage` per stage, in order, with `data-stage` (`read`, `overview`, `channel`) and `data-state` (`waiting`, `running`, `done`). The texts are `Reading the code`, `Drawing the overview` and `Drawing the <LinkedIn post / README drawing / presentation>`. Also `draw-line` (the latest progress line) and `draw-cancel` |
+| `draw-error` | after a failed or cancelled draw: the error, and `draw-retry` (`Try again`, the same choices). Folder, card, focus and channel stay chosen; nothing was written |
+
+On success the editor opens on the new drawing at the chosen channel
+(`/d/<id>?channel=<channel>`), and the drawing is in the list. While a scan or
+a draw runs, the folder, focus and channel controls are disabled.
+
 
 ## Editor frame
 
@@ -118,8 +149,55 @@ leaves it out of that channel. The current channel is never marked.
 
 | Test id | Element and behaviour |
 |---|---|
-| `channel-empty` | the stage of a channel with no view, instead of the canvas. README and presentation: `This channel comes in 0.3`. LinkedIn: `The LinkedIn post is not drawn yet` and the controls of *The LinkedIn flow*. Drawing tools, `ai-button`, the ask box and `share-button` are disabled there |
-| `channel-outdated` | on the stage of a channel whose `outdated` is not empty: `<n> change(s) in the facts since this was drawn`; `channel-keep` (`Keep as it is`) empties `outdated` as one undoable edit; on the LinkedIn channel also `channel-redraw` (`Redraw it`), which redraws it from the facts as one undoable step: with an engine a `post` run with `readCode: false`, without one the simple version (*The LinkedIn flow*). Both are disabled during a run |
+| `channel-empty` | the stage of a channel with no view, instead of the canvas: `The <LinkedIn post / README drawing / presentation> is not drawn yet`. With an engine, `channel-draw` (`Draw it`) draws it from the facts alone as one undoable step: a `story` run with `readCode: false` (the engine is asked to read no file, and Claude Code runs with no tools; STORY-1). Without one, `channel-prepare` (`Prepare the simple version`; on LinkedIn `linkedin-prepare`) draws the simple version (*Simple versions*), and `post-engine-note` shows (`No engine available — prepared without AI`). LinkedIn also has the controls of *The LinkedIn flow*; its `channel-draw` may send the same run as a `post` with `readCode: false` (api contract: a post is a story on LinkedIn). Drawing tools, `ai-button`, the ask box and `share-button` are disabled there |
+| `channel-outdated` | on the stage of a channel other than the overview whose `outdated` is not empty: `<n> change(s) in the facts since this was drawn`. `channel-keep` (`Keep as it is`) empties `outdated` as one undoable edit. `channel-redraw` (`Redraw it`) redraws the channel from the facts as one undoable step: with an engine a `story` run with `readCode: false`, without one the simple version. On the overview only `channel-keep` shows. Both are disabled during a run |
+
+### Simple versions
+
+Without an engine, `channel-prepare` (and `linkedin-prepare` on LinkedIn) and
+`channel-redraw` draw a channel from the overview channel's first view in
+code. It is one undoable edit that replaces what the channel held and empties
+its `outdated`. The view keeps its id when the channel already has one, else
+it is named after the channel. It is titled `LinkedIn`, `README` or
+`Presentation`, and its caption is copied from the overview's first view.
+
+- **LinkedIn:** as *The LinkedIn flow* says.
+- **README:** the overview's first view as it is:
+  - the same parts, with the same ids, facts, forms, held mechanisms, limits
+    and groups, and no own text;
+  - the same connections and relations;
+  - laid out again with the README format's spacing;
+  - no texts.
+- **Presentation:** the README's simple version, plus one step per numbered
+  connection, in step order. Each step:
+  - names the connection's two parts;
+  - has as text the connection's drawn label, else
+    `<from label> → <to label>`;
+  - has an empty note.
+
+  With no numbered connection, it has one step naming every top-level part,
+  with the caption title as its text.
+
+### README and presentation
+
+The README channel is edited, measured and shared like the others. On the
+presentation, `steps-panel` sits beside the drawn view (STORY-4):
+
+| Test id | Element and behaviour |
+|---|---|
+| `steps-panel` | `Steps`: one `step-item` per step, in order (`data-step-id`, its number and text); the current one `aria-current="true"` |
+| `step-item` | choosing it makes it current. Its parts get `data-step="on"` and every other part `data-dim="true"`, the way search dims them, never changing a part's size. `step-text` (input, at most 120 chars) and `step-note` (textarea, at most 1000 chars) edit the current step |
+| `step-prev`, `step-next` | `Previous` and `Next` go one step back or on. They are disabled at the ends. With no step current, `Next` goes to the first. Left and right arrow keys do the same while focus is in the panel and not in a field |
+| `step-parts` | `Parts in this step`: one checkbox per part of the view, checked for the step's parts. Unchecking the last one is refused, with the toast `A step highlights at least one part` |
+| `step-add` | `Add a step` after the current one (else at the end). It holds the selected parts, else the current step's, and has the text `New step` and an empty note. At most 20 steps |
+| `step-remove` | `Remove this step` |
+| `step-up`, `step-down` | move the current step one place |
+| `step-none` | without steps: `No steps yet`, with `step-add` |
+
+Every step edit is undoable, saved like any edit, and changes only the
+presentation channel. Escape on the canvas leaves the current step and
+un-dims the parts. Full-screen presenting and slide exports are 0.5
+(PRES-1, PRES-3).
 
 ## Drawing
 
@@ -271,6 +349,7 @@ Beside the stage, not modal: the canvas stays usable.
 | `ai-progress` | while a run is going: `ai-progress-line` per message (last 12) and `ai-cancel` |
 | `ai-error` | after a failed or cancelled run: the error and `ai-retry` (same request); `ai-input` keeps the instruction |
 | `ai-summary` | after success: e.g. `1 part added · 2 connections changed · 3 parts moved` (zeros left out; `Nothing changed`), with `data-added`, `data-removed`, `data-changed`, `data-moved`, `data-edges-added`, `data-edges-removed`, `data-edges-changed` |
+| `ai-route` | after a refine succeeded: which way the instruction went (api contract, Routing), `data-route` `facts` or `story`: `Changed the facts: every channel that shows them shows it` or `Redrew this channel from the facts, without reading the code`. The ask box's toast adds the same sentence |
 | `layout-report` | after success, the run's report (below) |
 | `ai-saved` | without an engine, after saving the request: the `ask-saved` text |
 | `simplify-overview` | `Simplify the overview`: goes to the overview channel's first view, fills `ai-input` with `Simplify the overview: keep every component in a detail view or a merged part` and starts a `simplify` run on the first view with scope view; disabled during a run; without an engine saves the request for the first view |
@@ -279,10 +358,8 @@ Sending uses scope `{"kind":"view"}`, `{"kind":"parts","ids":[…]}` or
 `{"kind":"all"}`, and the chosen engine and model (`null` for `Default`). On
 success the instruction is cleared.
 
-`overview-suggestion`: on the overview channel's first view when it misses the
-overview targets, one line such as `This overview has 32 connections —
-simplify it?`; `overview-simplify` (`Simplify it`) opens the panel with the
-simplify instruction filled in, without starting a run.
+There is no `overview-suggestion` any more: the overview has no count
+targets (ADR 0007). `simplify-overview` stays.
 
 ## External changes
 
@@ -302,7 +379,7 @@ part (SHARE-2).
 
 | Test id | Element and behaviour |
 |---|---|
-| `format-feed`, `format-readme`, `format-slide`, `format-square` | `Where will you share it?` (`aria-pressed`): `LinkedIn` 1080×1350, `README` 1600×900, `Slide` 1920×1080, `Square post` 1080×1080. `format-feed` is also pressed for the wide post. Default `format-feed` on the LinkedIn channel, else `format-readme` |
+| `format-feed`, `format-readme`, `format-slide`, `format-square` | `Where will you share it?` (`aria-pressed`): `LinkedIn` 1080×1350, `README` 1600×900, `Slide` 1920×1080, `Square post` 1080×1080. `format-feed` is also pressed for the wide post. Default `format-feed` on the LinkedIn channel, `format-slide` on the presentation, else `format-readme` |
 | `share-theme-light`, `share-theme-dark` | the image theme (default the drawing's) |
 | `share-advanced-toggle` | `Advanced options` (`aria-expanded`); shows `share-advanced`: `format-linkedin` (`Landscape LinkedIn post`, 1620×1080) and checkboxes `show-title`, `show-lede`, `show-items`, `show-steps`, `show-labels`, `show-legend`, `show-texts`. Starting toggles (reset when the format changes): on the LinkedIn channel, or with `format-feed`, title, description, held items, numbered path, labels and texts on, colour key off; Square: title, description, numbered path and texts on, held items, labels and colour key off; otherwise title, held items, numbered path, labels, colour key and texts on, description off |
 | `share-actions` | always visible: `readability`, `layout-report`, `download-png`, `download-svg`, `copy-image` |

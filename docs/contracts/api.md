@@ -109,10 +109,11 @@ in git.
 The repository is untrusted: every `git` call runs with `-c
 core.fsmonitor=false -c core.untrackedCache=false --no-optional-locks` and no
 terminal prompt, and with none of the server's own `GIT_*` environment
-variables, so the repository's own config runs no command, nothing is written
-to it, and no inherited `GIT_DIR` or `GIT_WORK_TREE` points git elsewhere. A
-listed path that is a symlink, or is not a file, is left out of the listing; a
-file is read only when it resolves inside the root.
+variables that point it at another repository or add config, so the
+repository's own config runs no command, nothing is written to it, and no
+inherited `GIT_DIR` or `GIT_WORK_TREE` points git elsewhere. An input that is a
+symlink, is not a file, or lies in a folder leading out of the root (a
+symlinked folder or a junction) is left out of the listing and never read.
 
 ## Scans
 

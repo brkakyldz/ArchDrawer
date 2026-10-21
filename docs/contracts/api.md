@@ -226,7 +226,8 @@ before at <short commit>`.
 ## The draw run
 
 `POST /api/runs` with `kind: "draw"` starts a first drawing (STORY-1,
-READ-1–3). It takes no `diagramId`:
+READ-1–3). It takes no `diagramId`. (Until it is built, a draw is refused
+with 400 `The draw run is not available yet`.)
 
 ```jsonc
 { "kind": "draw",

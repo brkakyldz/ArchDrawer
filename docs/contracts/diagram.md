@@ -371,8 +371,8 @@ parts, text and note), and any of a part's or connection's own texts.
   becomes a card. Choosing the form panel shows the fact's items, or adds
   `New item` to the fact when it has none (to the part's own items when it
   has no single fact); leaving panel sets the part's `items` to null and
-  removes nothing from the fact. Showing fewer items than the fact holds is
-  the part's own `items`.
+  removes no item from the fact (held mechanisms follow *Mechanisms and
+  limits*). Showing fewer items than the fact holds is the part's own `items`.
 - **Files** always belong to the facts. Adding one on a part with several
   facts adds it to its first fact; removing one removes it from every fact of
   the part that lists it. A part with no fact has no files and offers none.
@@ -409,7 +409,11 @@ parts, text and note), and any of a part's or connection's own texts.
   stays. In the overview, where every fact is shown or held (rule 16), a
   mechanism that no overview part holds or shows any more is deleted with its
   limits: removing its last held row, or turning its panel into another form,
-  deletes it.
+  deletes it. When an engine's answer does it, each deletion adds one warning:
+  `View "<view>": "<part>" no longer holds "<m>"; the mechanism and its limits
+  were deleted`. An answer that names no row ids but draws as many rows as the
+  part had keeps them in place, so a changed row text edits that mechanism or
+  limit.
 - **Steps.** Deleting a part of the presentation view removes it from every
   step that names it; a step left with no part is removed, one warning each
   (`Step "<id>" had no part left and was removed`).
@@ -761,7 +765,8 @@ view):
 - **Facts.** Each step below drops with one warning per id:
   - `facts` keeps only existing component facts, lists each once, and drops
     a fact an earlier part already shows or holds;
-  - `held` keeps only mechanisms within the part's facts;
+  - `held` keeps only mechanisms within the part's facts, and drops one an
+    earlier part already holds or shows;
   - `limits` keeps only limits on its facts or held mechanisms.
 
   The rows (held, chips, limits) are then cut to 12, with one warning.

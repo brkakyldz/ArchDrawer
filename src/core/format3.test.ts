@@ -155,6 +155,25 @@ describe("edits of rows, mechanisms, limits and steps", () => {
     expect(card.facts.limits!.map((l) => l.id)).toEqual(["turns"]);
   });
 
+  it("an engine's answer never deletes a mechanism silently: a reworded row is a rename, a dropped one is warned", () => {
+    const answer = (change: (j: DiagramDocument) => void) => {
+      const j = joinChannel(doc(), "overview");
+      change(j);
+      const r = applyChannel(doc(), "overview", j, { answer: true });
+      if (!r.ok) throw new Error(r.error);
+      expect(validateDocument3(r.doc).ok).toBe(true);
+      return r.doc;
+    };
+    // No row ids, as many rows as drawn: the reworded mechanism and limit are edits of those facts.
+    const reworded = answer((j) => { const a = nodeOf(j, "agent"); delete a.heldIds; delete a.limitIds; a.items = ["Proposes a tool", "Check the call", "Stops after 20 turns"]; });
+    expect(reworded.facts.components.map((c) => [c.id, c.label])).toEqual([["app", "App"], ["agent", "Agent"], ["propose", "Proposes a tool"], ["check", "Check the call"]]);
+    expect([reworded.facts.limits![0].text, reworded.facts.components.find((c) => c.id === "agent")!.items, reworded.warnings]).toEqual(["Stops after 20 turns", [], []]);
+    // The answer holds one mechanism less: it is deleted, with one warning.
+    const dropped = answer((j) => { const a = nodeOf(j, "agent"); a.heldIds = ["propose"]; a.items = ["Propose a tool", "Stops after 12 turns"]; });
+    expect(dropped.facts.components.map((c) => c.id)).toEqual(["app", "agent", "propose"]);
+    expect(dropped.warnings).toEqual(['View "overview": "agent" no longer holds "check"; the mechanism and its limits were deleted']);
+  });
+
   it("a node that names no row ids keeps the held and limit rows it still draws", () => {
     // An engine's answer may echo the rows as items: they stay mechanisms and limits, not items.
     const d = edit(doc(), "overview", (j) => { const a = nodeOf(j, "agent"); delete a.heldIds; delete a.limitIds; a.sub = "Runs"; });

@@ -127,6 +127,11 @@ export interface ApplyOptions {
    * deletion deletes no fact.
    */
   keepFacts?: boolean;
+  /**
+   * The change is an engine's answer (a run): a mechanism it stops holding in the overview, which is
+   * then deleted with its limits, is reported with one warning each, never deleted silently.
+   */
+  answer?: boolean;
 }
 
 export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelState, o: ApplyOptions = {}): ApplyResult {
@@ -139,9 +144,9 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
   const overview = channel === "overview";
   const keep = o.keepFacts === true;
 
-  const oldParts = new Map<string, Part>(), oldConns = new Map<string, Connection>();
+  const oldParts = new Map<string, Part>(), oldConns = new Map<string, Connection>(), oldViewOf = new Map<string, string>();
   for (const v of doc.channels[channel].views) {
-    for (const p of v.nodes) oldParts.set(p.id, p);
+    for (const p of v.nodes) { oldParts.set(p.id, p); oldViewOf.set(p.id, v.id); }
     for (const c of v.edges) oldConns.set(c.id, c);
   }
   const drawnNodes = new Map<string, DiagramNode>(), drawnEdges = new Map<string, DiagramEdge>();
@@ -210,6 +215,10 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
   function withRowIds(n: DiagramNode, drawn: DiagramNode): DiagramNode {
     if (n.form !== "panel" || n.heldIds !== undefined || n.limitIds !== undefined) return n;
     const dr = rowsOf(drawn);
+    // As many rows as it drew: the same rows in the same places, a changed text an edit of that row.
+    if (drawn.form === "panel" && n.items.length === drawn.items.length && (dr.held.length || dr.limits.length)) {
+      return { ...n, ...(dr.held.length ? { heldIds: [...dr.held] } : {}), ...(dr.limits.length ? { limitIds: [...dr.limits] } : {}) };
+    }
     const held = dr.mech.length && same(n.items.slice(0, dr.mech.length), dr.mech) ? dr.held : [];
     const rest = n.items.length - held.length;
     const limits = dr.texts.length && rest >= dr.texts.length && same(n.items.slice(n.items.length - dr.texts.length), dr.texts) ? dr.limits : [];
@@ -409,7 +418,11 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
     const keptConns = new Set(views.flatMap((v) => v.edges.map((c) => c.id)));
     for (const [id, p] of oldParts) if (!keptParts.has(id)) for (const f of p.facts) if (!shown.has(f)) deletedFacts.add(f);
     // A mechanism held before and held or shown by no overview part now is deleted (rule 16).
-    for (const p of oldParts.values()) for (const m of p.held ?? []) if (!shown.has(m)) deletedFacts.add(m);
+    for (const p of oldParts.values()) for (const m of p.held ?? []) {
+      if (shown.has(m) || deletedFacts.has(m)) continue;
+      deletedFacts.add(m);
+      if (o.answer) repairs.push(`View "${oldViewOf.get(p.id)}": "${p.id}" no longer holds "${m}"; the mechanism and its limits were deleted`);
+    }
     for (const [id, c] of oldConns) if (!keptConns.has(id)) for (const r of c.relations) if (!shownRels.has(r)) deletedRels.add(r);
   }
   // A deleted component takes its mechanisms and its limits with it (contract, Edits).

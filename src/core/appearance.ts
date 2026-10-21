@@ -4,7 +4,7 @@
  * titles — and nothing it says. Every content change in the answer is undone, with one warning each
  * (invariant 6). Pure (invariant 4).
  */
-import type { DiagramDocument, DiagramEdge, DiagramNode, DiagramView } from "./model";
+import { LIMITS, type DiagramDocument, type DiagramEdge, type DiagramNode, type DiagramView } from "./model";
 
 const WHY = "redrawing from the facts changes no content";
 /** What a part says, with its inside view (`detail`, which links a view this route may not add): everything but where it is and how it looks. */
@@ -22,7 +22,7 @@ export function appearanceOnly(base: DiagramDocument, answer: DiagramDocument): 
     for (const n of a.nodes) if (!b.nodes.some((o) => o.id === n.id)) warnings.push(`Ignored the new component "${n.label}": ${WHY}`);
     // A part may move into a group the view already has, or out of one; a group the answer adds was ignored above.
     const groups = new Set(b.nodes.filter((n) => n.form === "group").map((n) => n.id));
-    const nodes = b.nodes.map((o) => {
+    let nodes = b.nodes.map((o) => {
       const n = got.get(o.id);
       if (!n) { warnings.push(`Kept "${o.label}", which the answer removed: ${WHY}`); return o; }
       const parent = n.parent === null || (groups.has(n.parent) && n.parent !== o.id) ? n.parent : o.parent;
@@ -31,6 +31,13 @@ export function appearanceOnly(base: DiagramDocument, answer: DiagramDocument): 
       if (said(o) !== said(n)) { warnings.push(`Ignored the change to "${o.label}": ${WHY}`); return { ...o, ...at }; }
       return { ...o, ...at, form: n.form, icon: n.icon };
     });
+    // Kept and accepted groupings together may nest wrongly (a part in a card, a loop): then the view keeps
+    // the base's grouping, and its groups stay groups, as one ignored change.
+    if (!nestingOk(nodes)) {
+      warnings.push(`Kept how the parts of "${b.title || b.id}" are grouped: ${WHY}`);
+      const was = new Map(b.nodes.map((n) => [n.id, n]));
+      nodes = nodes.map((n) => { const o = was.get(n.id)!; return { ...n, parent: o.parent, form: o.form === "group" || n.form === "group" ? o.form : n.form }; });
+    }
     // Connections are matched by their ends, either way round (a run gives them new ids; api contract, Change summary).
     const left = [...a.edges];
     const edges = b.edges.map((o) => {
@@ -51,6 +58,22 @@ export function appearanceOnly(base: DiagramDocument, answer: DiagramDocument): 
   if (answer.title !== base.title) warnings.push(`Kept the title "${base.title}": ${WHY}`);
   const doc: DiagramDocument = { ...answer, title: base.title, views, warnings: [...answer.warnings, ...warnings] };
   return { doc, warnings };
+}
+
+/** Every part sits in a group of the view, in no loop and no deeper than the limit (validation's own rule). */
+function nestingOk(nodes: DiagramNode[]): boolean {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  for (const n of nodes) {
+    let depth = 0;
+    const seen = new Set<string>([n.id]);
+    for (let up = n.parent; up !== null; ) {
+      const p = byId.get(up);
+      if (!p || p.form !== "group" || seen.has(p.id) || ++depth > LIMITS.depth) return false;
+      seen.add(p.id);
+      up = p.parent;
+    }
+  }
+  return true;
 }
 
 const label = (v: DiagramView, id: string) => v.nodes.find((n) => n.id === id)?.label ?? id;

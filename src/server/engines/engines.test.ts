@@ -356,6 +356,7 @@ describe("a refine's routing (AI-5)", () => {
     expect(JSON.parse(log.args[log.args.indexOf("--json-schema") + 1])).toEqual(DRAFT_JSON_SCHEMA);
     expect(log.stdin).toContain("you have no tools and must not read the repository");
     expect(log.stdin).not.toContain("read-only tools");
+    expect(log.stdin).toContain("the group they sit in (a group the view already has, or none)");
   });
 
   it("Codex, which has no tool-free mode, stays read-only for both and is told to read nothing", async () => {

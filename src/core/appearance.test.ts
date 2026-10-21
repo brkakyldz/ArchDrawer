@@ -92,4 +92,25 @@ describe("a story on the overview changes appearance only", () => {
     [t.from, t.to] = [t.to, t.from];
     expect(appearanceOnly(both, turnedBoth).warnings).toEqual([]);
   });
+
+  it("keeps the base's grouping, with one warning, when kept and accepted groupings would nest wrongly", () => {
+    const v0 = validateFile(file([node("a", { form: "group", place: { row: 0, col: 0 } }), node("b", { form: "group", parent: "a", place: { row: 0, col: 0 } }), node("z", { form: "group", place: { row: 0, col: 1 } }), node("api", { kind: "api", parent: "z", place: { row: 0, col: 0 } })]));
+    if (!v0.ok) throw new Error(v0.errors.join("; "));
+    const base = normalizeFile(v0.file!, { id: "d_appear0003", now: NOW, source: null });
+    const kept = `Kept how the parts of "${base.views[0].title}" are grouped: redrawing from the facts changes no content`;
+    const newGroup = (d: DiagramDocument, id: string) => d.views[0].nodes.push({ ...structuredClone(d.views[0].nodes.find((n) => n.id === "z")!), id, label: id.toUpperCase(), parent: null });
+    const at = (d: DiagramDocument, id: string) => d.views[0].nodes.find((n) => n.id === id)!;
+    // A loop: b goes into a new group (ignored, so it stays in a) while a goes into b.
+    const loop = structuredClone(base);
+    newGroup(loop, "c"); at(loop, "b").parent = "c"; at(loop, "a").parent = "b";
+    const r1 = appearanceOnly(base, loop);
+    expect(r1.warnings).toEqual(['Ignored the new component "C": redrawing from the facts changes no content', kept]);
+    expect(r1.doc.views[0].nodes.map((n) => [n.id, n.parent, n.form])).toEqual([["a", null, "group"], ["b", "a", "group"], ["z", null, "group"], ["api", "z", "card"]]);
+    // A part left in a group the answer made a card.
+    const card = structuredClone(base);
+    newGroup(card, "y"); at(card, "z").form = "card"; at(card, "api").parent = "y";
+    const r2 = appearanceOnly(base, card);
+    expect(r2.warnings).toEqual(['Ignored the new component "Y": redrawing from the facts changes no content', kept]);
+    expect([at(r2.doc, "z").form, at(r2.doc, "api").parent]).toEqual(["group", "z"]);
+  });
 });

@@ -50,6 +50,8 @@ export const DOC_ID_RE = /^d_[a-z0-9]{6,}$/;
 export const LIMITS = {
   title: 120, viewTitle: 60, captionTitle: 120, lede: 240,
   label: 48, sub: 60, item: 44, items: 12, description: 400, files: 20,
+  /** A limit fact's text, drawn as a panel's last rows (diagram contract, limits). */
+  limitText: 60,
   edgeLabel: 40, text: 500,
   nodesPerView: 60, views: 30, depth: 3, place: 20, request: 4000,
 } as const;
@@ -229,7 +231,10 @@ export function validateFile(raw: unknown, check: FileCheck = {}): ValidationRep
       if (!Array.isArray(n.items)) err(`${p}.items`, "must be an array of short strings ([] when none)");
       else {
         if (n.items.length > LIMITS.items) err(`${p}.items`, `has ${n.items.length} items; at most ${LIMITS.items}`);
-        n.items.forEach((t, j) => str(t, `${p}.items[${j}]`, 1, LIMITS.item));
+        // In a channel's drawn view the first rows are held mechanisms and the last its limits: each row is
+        // measured by its own fact's limit (a mechanism's label, a limit's text), the rest as items.
+        const held = Array.isArray(n.heldIds) ? n.heldIds.length : 0, limits = Array.isArray(n.limitIds) ? n.limitIds.length : 0;
+        n.items.forEach((t, j) => str(t, `${p}.items[${j}]`, 1, j < held ? LIMITS.label : j >= (n.items as unknown[]).length - limits ? LIMITS.limitText : LIMITS.item));
         if (n.form === "panel" && n.items.length === 0) err(`${p}.items`, 'a panel lists what the component holds; add items or use form "card"');
         if (n.form !== "panel" && n.items.length > 0 && FORMS.includes(n.form as Form)) err(`${p}.items`, `only a panel shows held items; set form to "panel" or remove the items`);
       }

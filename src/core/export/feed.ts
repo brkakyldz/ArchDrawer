@@ -37,8 +37,22 @@ export function importance(parts: readonly DiagramNode[], edges: readonly Diagra
   return out;
 }
 
-/** What an open part lists: at most five entries, a longer list ending with `+ <n> more`. */
-const listed = (all: string[]) => (all.length > OPEN.items ? [...all.slice(0, OPEN.items - 1), `+ ${all.length - (OPEN.items - 1)} more`] : all).map((t) => t.slice(0, LIMITS.item));
+/**
+ * What an open part lists: at most five rows, a longer list ending with `+ <n> more`. A panel's rows keep
+ * their text (each is already within its own fact's limit) and the held and limit rows still shown keep
+ * their ids; a limit row is always last, so a cut list counts the limits in `+ <n> more`. A folded group
+ * lists its members' labels, cut to an item's length.
+ */
+function listed(n: DiagramNode, group: boolean, all: string[]): Pick<DiagramNode, "items" | "heldIds" | "limitIds"> {
+  if (group) {
+    const rows = all.length > OPEN.items ? [...all.slice(0, OPEN.items - 1), `+ ${all.length - (OPEN.items - 1)} more`] : all;
+    return { items: rows.map((t) => t.slice(0, LIMITS.item)), heldIds: undefined, limitIds: undefined };
+  }
+  const held = n.heldIds ?? [], limits = n.limitIds ?? [];
+  if (all.length <= OPEN.items) return { items: all, heldIds: n.heldIds, limitIds: n.limitIds };
+  const shown = all.slice(0, all.length - limits.length).slice(0, OPEN.items - 1);
+  return { items: [...shown, `+ ${all.length - shown.length} more`], heldIds: held.length ? held.slice(0, shown.length) : undefined, limitIds: undefined };
+}
 
 /** A card whose sub-line its width would cut short. */
 const cardClips = (n: DiagramNode) => !!n.sub && measureNode({ ...n, form: "card" }, { post: true }).sub !== n.sub;
@@ -100,7 +114,7 @@ export function foldForFeed(v: DiagramView, o: FoldOptions = {}): DiagramView {
   const nodes = parts.map((n): DiagramNode => {
     const base = { ...n, parent: null, detail: null, place: null };
     const held = holds(n);
-    if (open.has(n.id) && held.length) return { ...base, form: "panel", items: listed(held) };
+    if (open.has(n.id) && held.length) return { ...base, form: "panel", ...listed(n, n.form === "group", held) };
     const card: DiagramNode = { ...base, form: "card", items: [] };
     if ((open.has(n.id) || path.includes(n.id)) && !cardClips(card)) return card;
     return { ...base, form: "compact", items: [] };

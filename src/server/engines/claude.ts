@@ -68,8 +68,7 @@ export class ClaudeEngine implements Engine {
     if (!this.cmd) await this.detect();
     if (!this.cmd) throw new EngineError("Claude Code is not installed");
     const prompt = req.task?.prompt ?? instructionPrompt(req);
-    const kind = req.task?.kind;
-    const parser = new ClaudeStreamParser(req.cwd, req.progress, kind === "scan" ? "Writing the card" : kind === "read" ? "Writing the facts" : kind === "route" ? "Choosing the way" : req.task ? "Writing the post" : "Writing the diagram");
+    const parser = new ClaudeStreamParser(req.cwd, req.progress, writingLine(req.task?.kind));
     req.progress("Starting Claude Code");
     const r = await runProcess(this.cmd, this.args(req.model, req.task?.schema, req.task ? req.task.tools !== "none" : !req.appearance), {
       cwd: req.cwd, stdin: prompt, signal: req.signal, timeoutMs: req.timeoutMs, onLine: (l) => parser.line(l),
@@ -78,6 +77,11 @@ export class ClaudeEngine implements Engine {
     if (r.timedOut) throw new EngineError(`Claude Code did not finish within ${Math.round(req.timeoutMs / 60000)} minutes`);
     return parser.finish(r.code, r.stderr);
   }
+}
+
+/** The progress line when Claude Code writes its answer: what that call writes. */
+export function writingLine(kind: NonNullable<EngineRunRequest["task"]>["kind"] | undefined): string {
+  return kind === "scan" ? "Writing the card" : kind === "read" ? "Writing the facts" : kind === "route" ? "Choosing the way" : kind === "post" ? "Writing the post" : kind === "story" ? "Writing the story" : "Writing the diagram";
 }
 
 /**

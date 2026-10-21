@@ -198,6 +198,17 @@ describe("LinkedIn version", () => {
     expect(g).toMatchObject({ form: "panel", items: ["Part k0", "Part k1", "Part k2", "Part k3", "+ 3 more"] });
   });
 
+  it("keeps a panel's held and limit rows whole and named; a cut list counts its limits in + n more", () => {
+    const limit = "Each job tried once; the 3-try limit never comes into play";
+    const panel = (items: string[], heldIds: string[], limitIds: string[]) => part("p", { form: "panel", items, heldIds, limitIds });
+    const view = (p: DiagramNode): DiagramView => ({ id: "v", title: "V", caption: { title: "", lede: "" }, postOf: null, nodes: [part("x"), p], edges: [edge("1", "x", "p", 1)], texts: [] });
+    const short = foldForFeed(view(panel(["Mech one", "Item a", limit], ["m1"], ["l1"]))).nodes.find((n) => n.id === "p")!;
+    expect(short).toMatchObject({ form: "panel", items: ["Mech one", "Item a", limit], heldIds: ["m1"], limitIds: ["l1"] });
+    const long = foldForFeed(view(panel(["Mech one", "Mech two", "Item a", "Item b", "Item c", "Item d", limit], ["m1", "m2"], ["l1"]))).nodes.find((n) => n.id === "p")!;
+    expect(long).toMatchObject({ form: "panel", items: ["Mech one", "Mech two", "Item a", "Item b", "+ 3 more"], heldIds: ["m1", "m2"] });
+    expect(long.limitIds).toBeUndefined();
+  });
+
   it("makes a path card compact when its sub-line would be shortened, and lists what is still shortened", () => {
     const long = "a sub-line far too long to fit on one card";
     const v: DiagramView = {

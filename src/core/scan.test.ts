@@ -28,6 +28,11 @@ describe("the scan's inputs", () => {
     expect(t).toContain("--- Entry point a.ts ---\n// a");
     expect(t.length).toBeLessThan(SCAN_BUDGET.total + 500);
   });
+
+  it("counts the cut from the whole file's length, not from what was read", () => {
+    const t = scanText({ listing: [], more: 0, readme: { path: "README.md", text: "x".repeat(SCAN_BUDGET.readme * 2), length: 100_000 }, deps: [], entries: [] });
+    expect(t).toContain(`[… cut: ${100_000 - SCAN_BUDGET.readme} more characters]`);
+  });
 });
 
 describe("the scan's answer", () => {

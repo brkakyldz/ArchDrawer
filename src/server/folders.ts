@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { closeSync, existsSync, openSync, readdirSync, readSync, realpathSync, statSync } from "node:fs";
+import { closeSync, existsSync, lstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { SCAN_BUDGET, SKIP_DIRS } from "../core/scan";
 import { repoFileChecker } from "./files";
@@ -39,10 +39,23 @@ export function rootOfFolder(folder: string): string {
  */
 export const GIT_SAFE = ["-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "--no-optional-locks"];
 
+/**
+ * The server's own variables that would point git at another repository or add config. The user's
+ * global config (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`) stays, so `safe.directory` still applies.
+ */
+const GIT_REDIRECTS = /^GIT_(DIR|WORK_TREE|INDEX_FILE|COMMON_DIR|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|NAMESPACE|CEILING_DIRECTORIES|DISCOVERY_ACROSS_FILESYSTEM|CONFIG|CONFIG_PARAMETERS|CONFIG_COUNT|CONFIG_KEY_\d+|CONFIG_VALUE_\d+)$/i;
+
+/** The environment git runs with: no redirecting variable, no prompt, no optional lock. */
+export function gitEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(process.env)) if (!GIT_REDIRECTS.test(k)) env[k] = v;
+  return { ...env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" };
+}
+
 /** `git <args>` in `cwd`, as an argument array; null when git is missing or fails. */
 export function git(cwd: string, args: string[], maxBuffer = 16 * 1024 * 1024): Promise<string | null> {
   return new Promise((done) => {
-    execFile("git", [...GIT_SAFE, ...args], { cwd, windowsHide: true, maxBuffer, timeout: 20_000, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" } },
+    execFile("git", [...GIT_SAFE, ...args], { cwd, windowsHide: true, maxBuffer, timeout: 20_000, env: gitEnv() },
       (e, out) => done(e ? null : String(out)));
   });
 }
@@ -75,9 +88,11 @@ export async function listFolder(f: Folder, inGit: boolean): Promise<{ listing: 
   let all: string[] | null = null;
   if (inGit) {
     const out = await git(f.root, ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", f.rel || "."]);
-    // A listed path that is a symlink out of the root, or not a file, is no input (it would be quoted to the engine).
-    const inside = repoFileChecker(f.root);
-    if (out !== null) all = out.split("\0").filter(Boolean).map((p) => p.replace(/\\/g, "/")).filter((p) => inside(p) && isFile(join(f.root, p)));
+    // A listed path that is a symlink, is not a file, or lies in a folder that resolves outside the root
+    // (a junction or a symlinked folder, which git may list through) is no input. One lstat per path and
+    // one realpath per folder keep a large repository fast; readPart checks a file again before reading.
+    const inside = folderInside(f.root);
+    if (out !== null) all = out.split("\0").filter(Boolean).map((p) => p.replace(/\\/g, "/")).filter((p) => isPlainFile(join(f.root, p)) && inside(dirname(p)));
   }
   if (!all) all = walk(f.root, f.folder);
   all = [...new Set(all)].sort();
@@ -100,7 +115,25 @@ function walk(root: string, folder: string): string[] {
   return out;
 }
 
-const isFile = (p: string) => { try { return statSync(p).isFile(); } catch { return false; } };
+const isPlainFile = (p: string) => { try { return lstatSync(p).isFile(); } catch { return false; } };
+
+/** Whether a root-relative folder resolves inside the root, symlinks and junctions followed; cached per folder. */
+function folderInside(root: string): (rel: string) => boolean {
+  const real = (p: string) => { try { return realpathSync.native(p); } catch { return null; } };
+  const base = real(root);
+  const seen = new Map<string, boolean>();
+  return (rel) => {
+    if (rel === "." || rel === "") return true;
+    let ok = seen.get(rel);
+    if (ok === undefined) {
+      const r = real(join(root, rel));
+      const out = base && r ? relative(base, r) : "..";
+      ok = !out.startsWith("..") && !isAbsolute(out);
+      seen.set(rel, ok);
+    }
+    return ok;
+  };
+}
 
 /**
  * A root-relative file's text, read no further than `max` characters need, and the length it has.

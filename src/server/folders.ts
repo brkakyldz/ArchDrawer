@@ -61,7 +61,8 @@ export async function headCommit(root: string): Promise<string | null> {
 }
 
 const samePlace = (a: string, b: string) => {
-  const real = (p: string) => { try { return realpathSync(p); } catch { return resolve(p); } };
+  // The native form expands Windows short names (RUNNER~1), which git never prints.
+  const real = (p: string) => { try { return realpathSync.native(p); } catch { return resolve(p); } };
   const x = real(a), y = real(b);
   return process.platform === "win32" ? x.toLowerCase() === y.toLowerCase() : x === y;
 };

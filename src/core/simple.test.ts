@@ -34,6 +34,26 @@ describe("the simple README and presentation", () => {
     expect(r.doc.channels.readme.outdated).toEqual([]);
   });
 
+  it("drops an inside view's link and an overview part's own text: the README and presentation show the facts' names", () => {
+    const r0 = readAnyFile({
+      schema: "archdraw/diagram@2", title: "Shop",
+      views: [
+        { id: "overview", title: "Overview", caption: { title: "Shop", lede: "" }, nodes: [node("api", { kind: "api", detail: "inside", place: { row: 0, col: 0 } }), node("db", { kind: "data", place: { row: 0, col: 1 } })], edges: [], texts: [] },
+        { id: "inside", title: "Inside", caption: { title: "Inside", lede: "" }, nodes: [node("check", { place: { row: 0, col: 0 } })], edges: [], texts: [] },
+      ],
+    });
+    if (!r0.ok) throw new Error(r0.errors.join("; "));
+    const d = normalizeFile3(r0.file!, { id: "d_simple0002", now: NOW, source: null });
+    const db = d.channels.overview.views[0].nodes.find((p) => p.id === "db")!;
+    db.label = "DB (short)";
+    for (const channel of ["readme", "presentation"] as const) {
+      const r = prepareChannel(d, channel);
+      if (!r.ok) throw new Error(r.error);
+      const [v] = r.doc.channels[channel].views;
+      expect(v.nodes.map((p) => [p.id, p.detail, p.label ?? null])).toEqual([["api", null, null], ["db", null, null]]);
+    }
+  });
+
   it("gives the presentation one step per numbered connection, else one step of every top-level part", () => {
     const r = prepareChannel(stored(), "presentation");
     if (!r.ok) throw new Error(r.error);

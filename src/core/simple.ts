@@ -19,7 +19,12 @@ const TITLES = { readme: "README", presentation: "Presentation" } as const;
 export function prepareChannel(stored: Document3, channel: "readme" | "presentation"): ApplyResult {
   const src = joinChannel(stored, "overview").views[0];
   const used = new Set<string>(src.nodes.map((n) => n.id));
-  const fresh = src.nodes.map(({ x: _x, y: _y, ...n }) => ({ ...n, facts: [...(n.facts ?? [])] }));
+  const comps = new Map(stored.facts.components.map((c) => [c.id, c]));
+  // No own text: a part showing one fact shows its name and sub-line. No inside view: `detail` is the overview's alone (rule 10).
+  const fresh = src.nodes.map(({ x: _x, y: _y, ...n }) => {
+    const fact = n.facts?.length === 1 ? comps.get(n.facts[0]) : undefined;
+    return { ...n, ...(fact ? { label: fact.label, sub: fact.sub } : {}), detail: null, facts: [...(n.facts ?? [])] };
+  });
   const laid = layoutView({ ...src, postOf: null, nodes: fresh }, { post: false });
   const edges = src.edges.map((e) => { const id = freeIdAmong(used, `${channel === "readme" ? "rd" : "pr"}-e`); used.add(id); return { ...e, id, relations: [...(e.relations ?? [])] }; });
   const view: DiagramView = { id: channelViewId(stored, channel), title: TITLES[channel], caption: { ...src.caption }, postOf: null, nodes: laid.nodes, edges, texts: [] };

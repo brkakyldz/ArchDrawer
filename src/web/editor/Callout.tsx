@@ -247,7 +247,7 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
       <footer>
         {node.detail
           ? <button className="btn primary" data-testid="callout-open-inside" onClick={() => ctl.goView(node.detail!)}><Icon name="stack" size={15} /> Open inside</button>
-          : <button className="btn" data-testid="callout-create-inside" onClick={() => {
+          : ctl.channel === "overview" && <button className="btn" data-testid="callout-create-inside" onClick={() => {
               const r = createInside(ctl.doc, ctl.vid, id);
               ctl.apply(() => r.doc);
               ctl.goView(r.view, r.doc);

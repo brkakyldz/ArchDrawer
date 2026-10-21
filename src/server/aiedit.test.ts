@@ -1,6 +1,6 @@
+import { joinChannel } from "../core/channels";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { joinDrawing } from "../core/drawing";
 import { layoutRects } from "../core/geometry";
 import type { DiagramDocument } from "../core/model";
 import { BUILD } from "./config";
@@ -31,7 +31,7 @@ async function setup(engines?: Engine[], engine: { id: string; model: null } | n
     const body = (await r.json()) as { runId?: string; error?: string };
     return { status: r.status, body, done: body.runId ? await t.runs.wait(body.runId) : null };
   };
-  const doc = (): DiagramDocument => joinDrawing(JSON.parse(readFileSync(file, "utf8")));
+  const doc = (): DiagramDocument => joinChannel(JSON.parse(readFileSync(file, "utf8")), "overview");
   const stored = () => JSON.parse(readFileSync(file, "utf8"));
   return { ...t, file, id, run, doc, stored };
 }

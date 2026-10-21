@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { applyDrawing, joinDrawing } from "../../core/drawing";
-import { clearOutdated } from "../../core/channels";
+import { applyChannel, clearOutdated, joinChannel } from "../../core/channels";
 import { prepareLinkedIn } from "../../core/export/feed";
 import { channelOfView, isChannel, type ChannelId, type Document3 } from "../../core/file3";
 import { layoutRects, routeEdges, viewBounds } from "../../core/geometry";
@@ -63,15 +62,20 @@ function useNarrow() {
 }
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 
+/** The channel the canvas draws: the current one, or the overview behind a channel with no drawing. */
+export const drawnChannel = (d: Document3, c: ChannelId): ChannelId => (d.channels[c].views.length ? c : "overview");
+
 /**
- * An edit of the drawn view list, split back into the stored document's facts and channels
+ * An edit of a channel's drawing, split back into the stored document's facts and that channel
  * (diagram contract, Edits: facts or channel). A refused edit leaves the document as it was.
  */
-function splitEdit(d: Document3, fn: (d: DiagramDocument) => DiagramDocument, toast: (m: string) => void): Document3 {
-  const before = joinDrawing(d);
+function splitEdit(d: Document3, channel: ChannelId, fn: (d: DiagramDocument) => DiagramDocument, toast: (m: string) => void): Document3 {
+  const c = drawnChannel(d, channel);
+  const before = joinChannel(d, c);
   const next = fn(before);
   if (next === before) return d;
-  const r = applyDrawing(d, next);
+  const { views, title, theme, requests, warnings, engine, showSteps, steps } = next;
+  const r = applyChannel(d, c, { views, title, theme, requests, warnings, engine, showSteps, ...(steps ? { steps } : {}) });
   if (!r.ok) { toast(r.error); return d; }
   return r.doc;
 }
@@ -93,19 +97,23 @@ function startOf(stored: Document3, channel: string | null, view: string | null)
 
 /** `/d/<id>`: the editor (ui contract). */
 export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: string; channel: string | null; view: string | null }) {
-  // The history holds the stored @3 document; the editor draws and edits the overview and the post as
-  // one view list (`joinDrawing`), and every edit is split back into facts and channels.
+  // The history holds the stored @3 document, one history across channels; the editor draws and edits
+  // the current channel (`joinChannel`), and every edit is split back into the facts and that channel.
   const hist = useDocHistory<Document3>();
   const stored = hist.doc;
-  const doc = useMemo(() => (stored ? joinDrawing(stored) : null), [stored]);
+  /** The current channel; a channel with no drawing shows its own stage instead of the canvas. */
+  const [chan, setChan] = useState<ChannelId>("overview");
+  const chanRef = useRef(chan);
+  chanRef.current = chan;
+  const storedRef = useRef(stored);
+  storedRef.current = stored;
+  const doc = useMemo(() => (stored ? joinChannel(stored, drawnChannel(stored, chan)) : null), [stored, chan]);
   const save = useAutosave(stored);
   const [missing, setMissing] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadRound, setLoadRound] = useState(0);
   const [loading, setLoading] = useState(true);
   const [vid, setVid] = useState<string | null>(null);
-  /** The current channel; a channel with no drawing shows its own stage instead of the canvas. */
-  const [chan, setChan] = useState<ChannelId>("overview");
   const [vp, setVp] = useState<Viewport>({ x: 0, y: 0, k: 1 });
   const [stage, setStage] = useState({ w: 1200, h: 800 });
   const [sel, setSel] = useState<Selection>(NOTHING);
@@ -179,11 +187,11 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     changedTimer.current = setTimeout(() => setChanged(new Set()), 3000);
   }, []);
   const runner = useRunner({
-    doc, vid: vid ?? doc?.views[0].id ?? null, settle,
+    doc, channel: stored ? drawnChannel(stored, chan) : "overview", vid: vid ?? doc?.views[0].id ?? null, settle,
     onUpdated: (d: Document3, c: Changes | null, req: RunRequest) => {
       // One undo step: the stored result and the edit made after it (a re-arrangement) together.
       save.markSaved(d);
-      hist.apply(req.after ? splitEdit(d, req.after, toast) : d);
+      hist.apply(req.after ? splitEdit(d, channelOfView(d, req.view ?? "") ?? chanRef.current, req.after, toast) : d);
       toast(c ? `The drawing was updated: ${summarize(c)}` : "The drawing was updated");
       mark(c);
       if (req.after && req.view === vid) pendingFit.current = { view: req.view! };
@@ -256,10 +264,11 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   useLayoutEffect(() => {
     if (!doc || !stored || vid) return;
     const s = startOf(stored, wantedChannel, wantedView);
-    const start = s.view && viewById(doc, s.view) ? s.view : doc.views[0].id;
+    const shown = joinChannel(stored, drawnChannel(stored, s.channel));
+    const start = s.view && viewById(shown, s.view) ? s.view : shown.views[0].id;
     setChan(s.channel);
     setVid(start);
-    fitTo(viewOf(doc, start));
+    fitTo(viewOf(shown, start));
   }, [doc, stored, vid, wantedChannel, wantedView, fitTo]);
 
   useEffect(() => {
@@ -278,14 +287,14 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     return () => ro.disconnect();
   }, [doc !== null]);
 
-  /** Go to a view, fitted; with `focus`, select that component and move the view further only if it is still off screen. */
+  /** Go to a view of any channel, fitted; with `focus`, select that component and move the view further only if it is still off screen. */
   const goView = useCallback((v: string, next?: DiagramDocument, focus?: string) => {
-    const d = next ?? docRef.current;
-    if (!d || !viewById(d, v)) return;
-    // In the drawn view list the post is the LinkedIn channel's view; every other view is the overview's.
-    const c: ChannelId = viewById(d, v)!.postOf ? "linkedin" : "overview";
+    const d = storedRef.current;
+    // A view just made (`next`, not saved yet) belongs to the current channel.
+    const c = !d ? null : next?.views.some((x) => x.id === v) ? chanRef.current : channelOfView(d, v);
+    if (!d || !c) return;
     setChan(c); setVid(v); setSel(focus ? { ...NOTHING, nodes: [focus] } : NOTHING); setCallout(null); setEditing(null); setPicker(null);
-    const url = c === "overview" && v === d.views.find((x) => !x.postOf)?.id ? `/d/${d.id}` : `/d/${d.id}?channel=${c}&view=${encodeURIComponent(v)}`;
+    const url = c === "overview" && v === d.channels.overview.views[0].id ? `/d/${d.id}` : `/d/${d.id}?channel=${c}&view=${encodeURIComponent(v)}`;
     history.replaceState({}, "", url);
     pendingFit.current = { view: v, focus };
     fitRound((n) => n + 1);
@@ -302,31 +311,31 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     setVp(p.focus ? revealIn(target, p.focus, fitted) : fitted);
   });
 
-  // The LinkedIn tab shows the post once there is one (prepared, designed, redone) and its own stage when
-  // it is gone (undone); elsewhere a view removed by undo or a run falls back to the first.
+  // A channel shows its drawing once there is one (prepared, drawn, redone) and its own stage when it is
+  // gone (undone); a view removed by undo or a run falls back to the channel's first.
   useEffect(() => {
-    if (!doc || !vid) return;
-    const post = doc.views.find((v) => v.postOf);
-    if (chan === "linkedin") {
-      if (post && vid !== post.id) goView(post.id);
-      else if (!post && !viewById(doc, vid)) { setVid(doc.views[0].id); setSel(NOTHING); setCallout(null); setEditing(null); history.replaceState({}, "", `/d/${doc.id}?channel=linkedin`); }
+    if (!doc || !vid || !stored) return;
+    const own = stored.channels[chan].views;
+    if (chan !== "overview" && !own.length) {
+      if (!viewById(doc, vid)) { setVid(doc.views[0].id); setSel(NOTHING); setCallout(null); setEditing(null); history.replaceState({}, "", `/d/${doc.id}?channel=${chan}`); }
       return;
     }
     if (!viewById(doc, vid)) goView(doc.views[0].id);
-  }, [doc, vid, chan, goView]);
+  }, [doc, stored, vid, chan, goView]);
 
   // A run pauses edits (api contract); an edit saved meanwhile would fail the run's version check and its
   // result would be thrown away. The run's own result goes through `hist.apply`.
   const histApply = hist.apply;
   const apply = useCallback((next: DiagramDocument | ((d: DiagramDocument) => DiagramDocument), opts?: ApplyOptions) => {
     if (running.current) { toast(PAUSED); return; }
-    histApply((d) => splitEdit(d, typeof next === "function" ? next : () => next, toast), opts);
+    const c = chanRef.current;
+    histApply((d) => splitEdit(d, c, typeof next === "function" ? next : () => next, toast), opts);
   }, [histApply, toast]);
   /** A tab: the channel's first view, or its own stage when it has no drawing (not an edit). */
   const goChannel = useCallback((c: ChannelId) => {
-    const d = docRef.current;
+    const d = storedRef.current;
     if (!d) return;
-    const target = c === "overview" ? d.views.find((v) => !v.postOf) : c === "linkedin" ? d.views.find((v) => v.postOf) : undefined;
+    const target = d.channels[c].views[0];
     setMenuOpen(false);
     if (target) { goView(target.id); return; }
     setChan(c); setSel(NOTHING); setCallout(null); setEditing(null); setPicker(null); setAi(null); setSearching(false);
@@ -350,7 +359,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const ctl: Ctl | null = doc && view ? {
     doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: hist.checkpoint,
     sel, setSel, callout, setCallout, tool, setTool, editing, setEditing, textSize, picker, setPicker,
-    toast, goView, changed, pinned, setPinned, found,
+    toast, goView, changed, pinned, setPinned, found, channel: stored ? drawnChannel(stored, chan) : "overview",
     changePart: (nid) => { setSel({ ...NOTHING, nodes: [nid] }); openAi("", "selection"); },
   } : null;
 
@@ -646,7 +655,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
           {ai && engines && (
             <AiPanel runner={runner} engines={engines} engine={engine} model={model} onEngine={pickEngine} onModel={pickModel}
               selected={sel.nodes} initial={ai} onClose={() => setAi(null)}
-              overview={doc.views[0].id} onOverview={() => { if (view?.id !== doc.views[0].id) goView(doc.views[0].id); }}
+              overview={stored.channels.overview.views[0].id} onOverview={() => { const first = stored.channels.overview.views[0].id; if (view?.id !== first) goView(first); }}
               nameOf={(id) => view?.nodes.find((n) => n.id === id)?.label ?? id} />
           )}
         </div>

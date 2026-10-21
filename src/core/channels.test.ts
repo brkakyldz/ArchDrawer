@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { applyChannel, channelView, channelWarnings, joinChannel, markOutside, normalizeFile3, clearOutdated, OVERVIEW_FULL } from "./channels";
 import { CONVERTED_V2, convertV2, readAnyFile } from "./convert";
-import { applyDrawing, joinDrawing } from "./drawing";
 import { makeLinkedInView } from "./testkit";
 import { validateDocument3, validateFile3, type Document3, type File3 } from "./file3";
 import { layoutRects, routeEdges } from "./geometry";
@@ -360,10 +359,10 @@ describe("applyChannel", () => {
   });
 
   it("a part the editor adds on the LinkedIn channel adds a fact and an overview part", () => {
-    const d = joinDrawing(small());
-    const post = d.views.find((v) => v.postOf)!;
+    const d = joinChannel(small(), "linkedin");
+    const post = d.views[0];
     post.nodes.push({ ...post.nodes[0], id: "queue", label: "Queue", facts: undefined, from: undefined, lane: null, x: 900, y: 0 });
-    const r = applyDrawing(small(), d);
+    const r = applyChannel(small(), "linkedin", d);
     if (!r.ok) throw new Error(r.error);
     expect(fact(r.doc, "queue")).toMatchObject({ label: "Queue" });
     expect(r.doc.channels.overview.views[0].nodes.some((n) => n.facts[0] === "queue")).toBe(true);

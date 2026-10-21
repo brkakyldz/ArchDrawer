@@ -1,3 +1,4 @@
+import type { ChannelId } from "../../core/file3";
 import type { DiagramDocument, DiagramView } from "../../core/model";
 import type { Palette } from "../../core/theme";
 import type { Found } from "./Find";
@@ -45,6 +46,8 @@ export interface Ctl {
   setPicker: (p: Ctl["picker"]) => void;
   toast: (msg: string) => void;
   goView: (vid: string, next?: DiagramDocument, focus?: string) => void;
+  /** The channel the canvas draws; only the overview holds more than one view (rule 5). */
+  channel: ChannelId;
   /** "Change this part": open the AI panel with this component selected as the scope. */
   changePart: (id: string) => void;
   /** Components a run just added, changed or moved (marked for about 3 s). */

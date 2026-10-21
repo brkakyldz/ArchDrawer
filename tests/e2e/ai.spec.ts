@@ -189,3 +189,14 @@ test("Draw it and Redraw it send readCode false, Design the post does not", asyn
   // Draw it, Design the post, Redraw it: only Design the post may read the code.
   expect(sent.map((readCode) => readCode === false)).toEqual([true, false, true]);
 });
+
+test("Simplify the overview started on the LinkedIn tab simplifies the overview and shows it", async ({ page }) => {
+  await open(page);
+  await page.getByTestId("channel-tab-linkedin").click();
+  await page.getByTestId("design-post").click();
+  await expect(page.getByTestId("editor")).toHaveAttribute("data-view", "linkedin", { timeout: 15_000 });
+  await page.getByTestId("ai-button").click();
+  await page.getByTestId("simplify-overview").click();
+  await expect(page.getByTestId("editor")).toHaveAttribute("data-channel", "overview");
+  await expect(page.getByTestId("node-system-map")).toBeVisible({ timeout: 15_000 });
+});

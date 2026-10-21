@@ -88,6 +88,15 @@ describe("scanning an untrusted repository", () => {
     expect(seen[0].task!.data!.listing).toEqual(["a.ts"]);
   });
 
+  it("lists a folder whose name starts with two dots: it is inside the root", async () => {
+    const dir = repo({ "a.ts": "x\n", "..odd/b.ts": "y\n" });
+    const { engine, seen } = recorder();
+    const t = makeApp({ engines: [engine] });
+    const r = await json(await t.req("/api/scans", { method: "POST", json: { folder: dir } }));
+    await t.scans.wait(r.body.scanId);
+    expect(seen[0].task!.data!.listing).toEqual(["..odd/b.ts", "a.ts"]);
+  });
+
   it("does not call a folder in git when its .git is not a repository and one above it is", async () => {
     const outer = repo({ "a.ts": "x\n" });
     const inner = join(outer, "inner");

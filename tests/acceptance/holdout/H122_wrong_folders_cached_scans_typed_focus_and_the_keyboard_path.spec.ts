@@ -21,8 +21,9 @@ test('H122 [START-4, SCAN-3, SCAN-4, STORY-1] a wrong folder gets a plain senten
 
     // The folders of the library are offered for the field (each root once); a wrong folder gets one sentence.
     const listId = await folder.getAttribute('list'); expect(listId, 'the field has a list of folders').toBeTruthy();
-    const offered = await page.locator(`datalist[id="${listId}"] option`).evaluateAll(els => els.map(el => (el as HTMLOptionElement).value));
-    expect(offered.filter(value => samePath(value, home.dir))).toHaveLength(1);
+    const offeredNow = () => page.locator(`datalist[id="${listId}"] option`).evaluateAll(els => els.map(el => (el as HTMLOptionElement).value));
+    // the list fills when GET /api/diagrams answers, so wait for the option instead of reading once
+    await expect.poll(async () => (await offeredNow()).filter(value => samePath(value, home.dir)).length, { timeout: 30_000 }).toBe(1);
     const wrong: [string, string][] = [
       [join(project.dir, 'no-such-folder'), 'This folder does not exist.'],
       [join(project.dir, 'alpha.ts'), 'This is a file, not a folder.'],
@@ -46,14 +47,19 @@ test('H122 [START-4, SCAN-3, SCAN-4, STORY-1] a wrong folder gets a plain senten
     // The same commit again, after a reload: the card is there at once and says it was scanned before; Scan again reads it anew.
     const head = await project.head();
     await page.reload(); await expect(page.getByTestId('start')).toBeVisible();
+    // A cached scan answers at once with no engine: the engine's first progress line never shows. Folder check and cache
+    // lookup spawn git, so on a slow machine the card may take seconds; no engine is pinned, not speed.
+    await page.evaluate(() => { (window as any).__gathered = false; const seen = () => { if (document.body.innerText.includes('Gathering the repository')) (window as any).__gathered = true; }; new MutationObserver(seen).observe(document.body, { subtree: true, childList: true, characterData: true }); });
     await folder.fill(project.dir); await page.getByTestId('start-scan').click();
-    await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 1_500 });
+    await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('scan-cached')).toContainText('Scanned before at ');
     const short = ((await page.getByTestId('scan-cached').textContent()) ?? '').replace(/^.*Scanned before at\s*/, '').trim();
     expect(short.length).toBeGreaterThanOrEqual(4); expect(head.startsWith(short)).toBe(true);
     await expect(page.getByTestId('scan-card-name')).toHaveText(basename(project.dir)); await expect(page.getByTestId('focus-option')).toHaveCount(3);
     const scans = posts.filter(p => p.path === '/api/scans');
     expect(scans).toHaveLength(2); expect(scans[1].body.refresh ?? false).toBe(false);
+    expect(await page.evaluate(() => (window as any).__gathered), 'no engine ran: no Gathering the repository progress').toBe(false);
+    await expect(page.getByTestId('scan-progress')).toHaveCount(0);
     await page.getByTestId('scan-again').click();
     await expect(page.getByTestId('scan-progress')).toBeVisible();
     await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 60_000 }); await expect(page.getByTestId('scan-cached')).toHaveCount(0);

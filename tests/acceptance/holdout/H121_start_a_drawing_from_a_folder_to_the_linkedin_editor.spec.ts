@@ -10,7 +10,6 @@ test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1] type a folder, see
   test.setTimeout(240_000);
   const project = await gitRepo('start-flow');
   const first = await writeExistingDrawing(project.dir, 'architecture.archdraw.json', 'Earlier drawing');
-  const firstBytes = await readFile(first, 'utf8');
   const other = await workspaceRaw('start-home', shop3('Home shop'));
   const server = await isolatedDrawing(page, request, other.file, '600'); // slow enough to watch the stages of a draw
   try {
@@ -31,6 +30,7 @@ test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1] type a folder, see
     await page.getByTestId('start-open-existing').click();
     await expect(page.getByTestId('editor')).toBeVisible(); await expect(page.getByTestId('repo-name')).toHaveText('Earlier drawing');
     expect(posts.some(p => p.path === '/api/files' && samePath(p.body.path, first))).toBe(true);
+    const openedBytes = await readFile(first, 'utf8'); // opening registers the file in normal form (api.md POST /api/files): this is the content the draw must leave alone
 
     // Start again: the scan runs, the card and the options appear, the channel is asked only after a focus.
     await startFlow();
@@ -83,7 +83,7 @@ test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1] type a folder, see
 
     // The new drawing took the next free name; the user's own file is as it was; the library lists both.
     const written = join(project.dir, 'docs', 'architecture-2.archdraw.json');
-    expect(await exists(written)).toBe(true); expect(await readFile(first, 'utf8')).toBe(firstBytes);
+    expect(await exists(written)).toBe(true); expect(await readFile(first, 'utf8')).toBe(openedBytes); // same bytes as after it was opened, so its facts are the same too
     await page.goto(`${server.base}/`);
     const rows = page.getByTestId('library-item');
     await expect(rows.filter({ has: page.getByTestId('library-item-title').filter({ hasText: basename(project.dir) }) }).getByTestId('library-item-path')).toHaveText(written);

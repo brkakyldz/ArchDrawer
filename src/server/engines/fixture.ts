@@ -73,6 +73,15 @@ function strip(d: Draft): Draft {
   return d;
 }
 
+/** The suggestions whose instruction the fixture hears as a story (testing contract, Routing; ui contract, Suggestions). */
+export const STORY_SUGGESTIONS = ["Make it shorter for LinkedIn", "Show fewer details", "Use fewer steps"] as const;
+
+/** The fixture's answer to a refine's routing question: the story marker or a story suggestion, else the facts. */
+export function fixtureRoute(instruction: string): "facts" | "story" {
+  const text = instruction.trim();
+  return instruction.includes("[fixture:story]") || STORY_SUGGESTIONS.some((s) => text.startsWith(s)) ? "story" : "facts";
+}
+
 const SCAN_STEPS = ["Reading the inputs", "Writing the card"];
 const MARKERS = /\s*\[fixture:[a-z:]+\]\s*/g;
 
@@ -186,7 +195,7 @@ export class FixtureEngine implements Engine {
   async run(req: EngineRunRequest): Promise<unknown> {
     // A draw's markers come from the folder's name and the typed focus (testing contract, Draw).
     // The routing question (testing contract, Routing): answered at once, from the marker alone.
-    if (req.task?.kind === "route") return { route: req.instruction.includes("[fixture:story]") ? "story" : "facts" };
+    if (req.task?.kind === "route") return { route: fixtureRoute(req.instruction) };
     const stage = req.task?.data?.draw;
     if (stage) return this.drawCall(req, stage, (m) => req.instruction.includes(m) || req.folderName.includes(m));
     if (req.instruction.includes("[fixture:slow]")) {

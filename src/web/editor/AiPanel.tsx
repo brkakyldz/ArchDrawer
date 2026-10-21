@@ -4,7 +4,9 @@ import type { RunScope } from "../../core/repair";
 import type { EngineInfo } from "../api";
 import { Icon } from "../ui/Icon";
 import { LayoutReportLine } from "../ui/LayoutReport";
+import type { ChannelId } from "../../core/file3";
 import { engineName, ROUTE_SENTENCE, type Runner, type Turn } from "./runner";
+import { SUGGESTIONS, type Suggestion } from "./suggestions";
 
 export type ScopeChoice = "view" | "selection" | "all";
 
@@ -26,6 +28,11 @@ interface Props {
   setText: (t: string) => void;
   /** The current channel has no view: nothing to change there (ui contract, ai-send). */
   blank: boolean;
+  /** The current channel: its suggestions (ui contract, Suggestions). */
+  channel: ChannelId;
+  /** The overview's first view, where `Simpler` runs; the editor goes there first. */
+  overview: string;
+  onOverview: () => void;
   onClose: () => void;
 }
 
@@ -79,7 +86,7 @@ function TurnView({ turn, latest, runner, nameOf }: { turn: Turn; latest: boolea
 }
 
 /** The AI panel (ui contract): the one place to type, the conversation of the open drawing, the engine, model and scope. Not modal. */
-export function AiPanel({ runner, engines, engine, model, onEngine, onModel, selected, initial, text, setText, blank, onClose, nameOf }: Props) {
+export function AiPanel({ runner, engines, engine, model, onEngine, onModel, selected, initial, text, setText, blank, channel, overview, onOverview, onClose, nameOf }: Props) {
   const [scope, setScope] = useState<ScopeChoice>(initial.scope);
   const input = useRef<HTMLTextAreaElement>(null);
   const thread = useRef<HTMLOListElement>(null);
@@ -103,6 +110,13 @@ export function AiPanel({ runner, engines, engine, model, onEngine, onModel, sel
     if (!canSend) return;
     void runner.start({ instruction: text.trim(), typed: true, engine: engine?.id ?? null, model: model || null, scope: toScope(), origin: "panel" });
   };
+  // A suggestion is sent as a typed instruction would be, with the view as its scope, and leaves the input as it is.
+  const suggest = (s: Suggestion) => {
+    if (running || blank) return;
+    const base = { instruction: s.instruction, label: s.label, engine: engine?.id ?? null, model: model || null, scope: { kind: "view" } as RunScope, origin: "panel" as const };
+    if (s.kind === "simplify") { onOverview(); void runner.start({ ...base, view: overview, kind: "simplify" }); }
+    else void runner.start(base);
+  };
   const placeholder = !engine ? "Ask Claude to change this drawing"
     : engine.test ? "Ask the test engine (no AI) to change this drawing" : `Ask ${engine.label} to change this drawing`;
 
@@ -119,6 +133,12 @@ export function AiPanel({ runner, engines, engine, model, onEngine, onModel, sel
         <ol className="thread" data-testid="ai-thread" ref={thread} aria-label="Conversation">
           {turns.map((t, i) => <TurnView key={t.key} turn={t} latest={i === turns.length - 1} runner={runner} nameOf={nameOf} />)}
         </ol>
+
+        <div className="suggestions" data-testid="ai-suggestions" role="group" aria-label="Suggestions">
+          {SUGGESTIONS[channel].map((s) => (
+            <button key={s.id} type="button" className="chip" data-testid={`ai-suggest-${s.id}`} disabled={running || blank} title={s.instruction} onClick={() => suggest(s)}>{s.label}</button>
+          ))}
+        </div>
 
         <textarea ref={input} data-testid="ai-input" value={text} maxLength={4000} rows={4} aria-label="Instruction" placeholder={placeholder}
           onChange={(e) => setText(e.target.value)}

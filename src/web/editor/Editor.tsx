@@ -732,6 +732,8 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
           {ai && engines && (
             <AiPanel runner={runner} engines={engines} engine={engine} model={model} onEngine={pickEngine} onModel={pickModel}
               selected={blank ? [] : sel.nodes} initial={ai} text={aiText} setText={setAiText} blank={blank} onClose={() => setAi(null)}
+              channel={chan} overview={stored.channels.overview.views[0].id}
+              onOverview={() => { const first = stored.channels.overview.views[0].id; if (view.id !== first) goView(first); }}
               nameOf={(id) => view?.nodes.find((n) => n.id === id)?.label ?? id} />
           )}
         </div>

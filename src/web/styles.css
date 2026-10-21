@@ -510,3 +510,8 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .ai-preview { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 14; display: flex; align-items: center; gap: 10px; max-width: min(640px, calc(100% - 200px)); padding: 7px 8px 7px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line-2)); background: var(--surface); box-shadow: var(--shadow), 0 16px 36px -22px rgba(16, 24, 40, .4); font-size: 13px; color: var(--ink); }
 .ai-preview span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 760px) { .ai-preview { max-width: calc(100% - 24px); bottom: 12px; } }
+/* One-click suggestions (ui contract, Suggestions): chips over the input. */
+.ai-panel .suggestions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-panel .chip { height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--ink); font-size: 12.5px; cursor: pointer; }
+.ai-panel .chip:hover:not(:disabled) { background: var(--surface-3); }
+.ai-panel .chip:disabled { color: var(--soft); cursor: default; }

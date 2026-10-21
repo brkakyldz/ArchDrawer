@@ -1,7 +1,7 @@
 import type { DiagramDocument, DiagramView } from "./model";
 import type { Document3 } from "./file3";
 
-/** The instruction a simplify run always carries (api contract Run kinds; ui contract `simplify-overview`). */
+/** The instruction a simplify run always carries (api contract Run kinds; ui contract, Suggestions: `Simpler`). */
 export const SIMPLIFY_INSTRUCTION = "Simplify the overview: keep every component in a detail view or a merged part";
 
 /** The overview and every view reached from it by `detail`, recursively (diagram contract, Simplification coverage). */

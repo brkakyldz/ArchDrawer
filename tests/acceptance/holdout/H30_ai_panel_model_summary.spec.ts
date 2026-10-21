@@ -44,12 +44,15 @@ test('H30 [AI-1, EDIT-1, EDIT-4, FILE-1] expand a quick ask, pick a test model, 
     const running =await (await request.get(`${server.base}/api/runs/${(await started.json()).runId}`)).json();
     expect(running.status).toBe('running'); expect(running.changes).toBeNull();
     for (const message of ['Using model fixture-careful', 'Reading the drawing', 'Reading the code', 'Updating the drawing']) {
-      await expect(page.getByTestId('ai-progress-line').filter({ hasText: message })).toHaveText(message);
+      await expect(page.getByTestId('ai-progress-line').filter({ hasText: message }).first()).toHaveText(message);
     }
     const result = await finishRun(request, (await started.json()).runId, 'succeeded', 20_000, server.base);
     expect(result).toMatchObject({ engine: 'fixture', model: 'fixture-careful' });
     const wanted = ['Using model fixture-careful', 'Reading the drawing', 'Reading the code', 'Updating the drawing'];
-    expect(result.progress.filter((line: string) => wanted.includes(line))).toEqual(wanted);
+    // The routing question of a refine (0.3) is a call of its own; the refine's lines come in this order whether or not the question reports lines too.
+    const seen = result.progress.filter((line: string) => wanted.includes(line));
+    expect(seen.slice(-wanted.length)).toEqual(wanted); expect(seen[0]).toBe('Using model fixture-careful');
+    expect(result.progress).toContain('Changing the facts');
     const summary = page.getByTestId('ai-summary');
     await expect(summary).toContainText(/\badd(?:ed)?\b/i);
     await expect(summary).toContainText(/\b1\b/); await expect(summary).toContainText(/\bparts?\b/i); await expect(summary).toContainText(/\bconnections?\b/i);

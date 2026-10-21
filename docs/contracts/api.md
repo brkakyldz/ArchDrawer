@@ -37,7 +37,7 @@ Implemented by: `src/server/app.ts` (routes), `src/server/main.ts`
 |---|---|---|
 | `GET /api/health` | 200 `{"ok": true, "app": "archdrawer", "version", "build"}`; `build` is a hash of the code this process runs (the web page embeds the build it was made from) | — |
 | `GET /api/engines` | 200 `{"engines": [{"id", "label", "available", "version", "detail", "test", "models"}]}` in `ARCHDRAW_ENGINES` order; detection is cached for 60 s | — |
-| `GET /api/diagrams` | 200 `{"diagrams": [{"id", "title", "path", "updatedAt"}]}`, newest `updatedAt` first; `path` is the file of a registered drawing, `null` for an imported one | — |
+| `GET /api/diagrams` | 200 `{"diagrams": [{"id", "title", "path", "root", "updatedAt"}]}`, newest `updatedAt` first; `path` is the file of a registered drawing, `null` for an imported one; `root` is a registered drawing's repository root (drawing contract rule 14), `null` for an imported one | — |
 | `POST /api/files` `{"path"}` | 200 `{"id", "url"}`: validates (a path missing from the repository is no error, drawing contract rule 14), normalises, writes back and registers the file; the same path (case-insensitive on Windows) gets the same id; the file's own `id` is kept unless another drawing has it | 400 `Give the absolute path of a drawing file` / `The path must be absolute` / `Not found: <path>` / `The file is not a valid drawing` + `errors` |
 | `POST /api/diagrams` (a document, `@3`, `@2` or `@1`) | 201 `{"id"}`: imported into the data directory under a new id, an older format converted (drawing contract); files are not checked | 400 `Invalid diagram` + `errors` |
 | `POST /api/example` | 201 `{"id"}`: imports the bundled `examples/shop.archdraw.json` (title `Sample Shop`) | 500 |

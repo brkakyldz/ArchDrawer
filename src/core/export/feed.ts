@@ -1,11 +1,8 @@
 import { applyChannel, clearOutdated, joinChannel, type ApplyResult } from "../channels";
-import { freeIdAmong, type Document3 } from "../file3";
+import { freeIdAmong, validateDocument3, type Document3 } from "../file3";
 import { measureNode } from "../geometry";
-import { linkedInViewId, postSource, postViewId } from "../intent";
-import {
-  allIds, LIMITS, slugify,
-  type DiagramDocument, type DiagramEdge, type DiagramNode, type DiagramView,
-} from "../model";
+import { linkedInViewId } from "../intent";
+import { LIMITS, type DiagramEdge, type DiagramNode, type DiagramView } from "../model";
 
 /**
  * The LinkedIn version of a view: a view of its own that the editor opens and the user
@@ -55,7 +52,10 @@ export function foldForFeed(v: DiagramView, o: FoldOptions = {}): DiagramView {
     while (cur?.parent && byId.has(cur.parent) && !seen.has(cur.id)) { seen.add(cur.id); cur = byId.get(cur.parent); }
     return cur?.id ?? id;
   };
-  const parts = v.nodes.filter((n) => !n.parent || !byId.has(n.parent));
+  // A side part anchored to a part folded away keeps no lane (layout places it as an unlaned part).
+  const kept = v.nodes.filter((n) => !n.parent || !byId.has(n.parent));
+  const keptIds = new Set(kept.map((n) => n.id));
+  const parts = kept.map((n) => (n.lane && "anchor" in n.lane && !keptIds.has(n.lane.anchor) ? { ...n, lane: null } : n));
 
   const edges: DiagramEdge[] = [];
   const pair = new Map<string, DiagramEdge>();
@@ -234,41 +234,6 @@ export const arrangeForFeed = (v: DiagramView): DiagramView => layoutForFeed(fol
 export const rearrangeForFeed = (v: DiagramView): DiagramView => layoutForFeed(foldForFeed(v, { keepForms: true }));
 
 /**
- * Add the LinkedIn version of view `vid` to the document, or return the one it already has.
- * The post is found and named as an engine's is (diagram contract, Post-view identity): by
- * `postOf`, never by its id. Its components and connections get ids of their own: ids are
- * unique across the file.
- */
-export function makeLinkedInView(doc: DiagramDocument, vid: string): { doc: DiagramDocument; view: string } {
-  const asked = doc.views.find((v) => v.id === vid) ?? doc.views[0];
-  const src = doc.views.find((v) => v.id === postSource(doc, asked.id)) ?? asked;
-  const id = postViewId(doc, src.id);
-  if (doc.views.some((v) => v.id === id)) return { doc, view: id };
-  if (doc.views.length >= LIMITS.views) throw new Error(`A drawing holds at most ${LIMITS.views} views`);
-  const used = allIds(doc);
-  const fresh = (base: string) => {
-    const root = slugify(base).slice(0, 56) || "part";
-    let x = root;
-    for (let i = 2; used.has(x); i++) x = `${root}-${i}`;
-    used.add(x);
-    return x;
-  };
-  const laid = arrangeForFeed(src);
-  const ren = new Map(laid.nodes.map((n) => [n.id, fresh(`${n.id}-li`)]));
-  const view: DiagramView = {
-    id,
-    title: (src.id === doc.views[0].id ? "LinkedIn" : `${src.title} · LinkedIn`).slice(0, LIMITS.viewTitle),
-    caption: { ...src.caption },
-    // The version is the post of its source (diagram contract, Post-view identity).
-    postOf: src.postOf ?? src.id,
-    nodes: laid.nodes.map((n) => ({ ...n, id: ren.get(n.id)! })),
-    edges: laid.edges.map((e) => ({ ...e, id: fresh("li-e"), from: ren.get(e.from)!, to: ren.get(e.to)! })),
-    texts: [],
-  };
-  return { doc: { ...doc, views: [...doc.views, view] }, view: id };
-}
-
-/**
  * The instruction the "Explain it" button sends: an engine rewrites the LinkedIn view so a
  * stranger understands the system from the image alone. The editor re-places the view afterwards.
  */
@@ -297,5 +262,8 @@ export function prepareLinkedIn(stored: Document3): ApplyResult {
   };
   const cleared: Document3 = { ...stored, channels: { ...stored.channels, linkedin: { ...stored.channels.linkedin, views: [] } } };
   const r = applyChannel(cleared, "linkedin", { views: [view] }, { keepFacts: true });
-  return r.ok ? { ok: true, doc: clearOutdated(r.doc, "linkedin") } : r;
+  if (!r.ok) return r;
+  // Never hand the editor a drawing the server would refuse to save.
+  const checked = validateDocument3(clearOutdated(r.doc, "linkedin"));
+  return checked.ok ? { ok: true, doc: checked.doc } : { ok: false, error: `The simple version could not be drawn: ${checked.error}` };
 }

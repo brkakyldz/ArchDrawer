@@ -32,6 +32,8 @@ export interface RepairContext {
   scope?: RunScope;
   /** The view the run was asked from: the one a `view` or `parts` scope names. */
   view?: string;
+  /** The stored drawing's component fact ids: a part may point to any of them, shown in this channel or not. */
+  facts?: Iterable<string>;
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
@@ -42,7 +44,7 @@ const GRID = 8;
 const snap = (v: number) => Math.round(v / GRID) * GRID;
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 /** What the engine sees of a component or a connection, to tell whether it changed one. */
-const nodeKey = (n: Record<string, unknown>) => JSON.stringify([n.label, n.kind, n.form, n.icon ?? null, n.sub, n.items, n.description, n.files, n.parent ?? null, n.detail ?? null, n.lane ?? null, n.from ?? []]);
+const nodeKey = (n: Record<string, unknown>) => JSON.stringify([n.label, n.kind, n.form, n.icon ?? null, n.sub, n.items, n.description, n.files, n.parent ?? null, n.detail ?? null, n.lane ?? null, n.facts ?? n.from ?? []]);
 const edgeKey = (e: Record<string, unknown>) => JSON.stringify([e.label, e.style, e.both === true, e.step ?? null]);
 
 export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocument {
@@ -66,7 +68,7 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
   };
   // `from` is provenance (diagram contract, Simplification coverage): ids of the input, or provenance it
   // already carries, never invented; what a component already carried is carried forward.
-  const known = new Set<string>(), carriedBy = new Map<string, string[]>();
+  const known = new Set<string>(ctx.facts ?? []), carriedBy = new Map<string, string[]>();
   for (const v of ctx.base.views) for (const n of v.nodes) { known.add(n.id); for (const f of n.from ?? []) known.add(f); if (n.from?.length) carriedBy.set(n.id, n.from); }
   const laneOf = (raw: unknown, id: string): Lane | null | undefined => {
     if (raw === undefined) return undefined;

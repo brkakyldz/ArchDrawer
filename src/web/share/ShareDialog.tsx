@@ -241,9 +241,9 @@ export function ShareDialog({ doc, view, onClose, toast }: Props) {
 
         </div>
         <div className="actions" data-testid="share-actions">
-          {/* One plain sentence for the destination; the numbers behind it on request (SHARE-3). */}
-          <div className="meter" data-testid="readability" data-level={r.level}>
-            <p className="say"><i data-level={r.level} />{r.text}</p>
+          {/* One plain sentence for the destination; the numbers behind it on request, beside it (SHARE-3). */}
+          <div className="meter">
+            <p className="say" data-testid="readability" data-level={r.level}><i data-level={r.level} />{r.text}</p>
             <button className="disclose" data-testid="readability-details-toggle" aria-expanded={details} onClick={() => setDetails(!details)}>
               <Icon name={details ? "down" : "send"} size={12} /> Details
             </button>

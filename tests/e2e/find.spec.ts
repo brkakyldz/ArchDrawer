@@ -115,3 +115,19 @@ test("a pinned callout stays pinned across a reload until it is unpinned", async
   await page.getByTestId("callout-db").getByTestId("callout-pin").click();
   await expect(page.getByTestId("callout-db")).toHaveAttribute("data-docked", "false");
 });
+
+test("a result only pointed at and left is not what Enter opens: Enter steps through this view", async ({ page }) => {
+  await open(page, withDetail());
+  const view = await page.getByTestId("editor").getAttribute("data-view");
+  await page.keyboard.press("ControlOrMeta+k");
+  const input = page.getByTestId("search-input");
+  await input.fill("order");
+  await expect(page.getByTestId("search-count")).toHaveText("2 matches");
+  await page.getByTestId("search-result").hover();
+  await expect(page.getByRole("option", { selected: true })).toContainText("Orders queue");
+  await input.hover();
+  await expect(page.getByRole("option", { selected: true })).toHaveCount(0);
+  await input.press("Enter");
+  await expect(page.getByTestId("editor")).toHaveAttribute("data-view", view!);
+  await expect(page.getByTestId("search-count")).toHaveText("1 of 2");
+});

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { onDisk, open, savedWhen } from "./helpers";
+import { onDisk, open, savedWhen, storedOnDisk } from "./helpers";
 
 // The ask box and the AI panel. Their journeys (model, scope, progress, summary, retry, cancel,
 // no engine, expand) are held-out H24, H25 and H30–H33; simplifying the overview has no held-out
@@ -154,4 +154,37 @@ test("edits are paused while an instruction runs and work again once it ends", a
   expect(JSON.stringify(onDisk(path))).toBe(before);
   await page.getByTestId("tool-steps").click();
   await savedWhen(page, path, (d) => d.showSteps);
+});
+
+// Draw it and Redraw it tell the story from the facts alone; Design the post may read the code.
+// H102 and H103 run them through the fixture engine, which ignores the flag: this checks what the
+// buttons send.
+test("Draw it and Redraw it send readCode false, Design the post does not", async ({ page }) => {
+  const { path } = await open(page);
+  const sent: unknown[] = [];
+  page.on("request", (r) => { if (r.url().endsWith("/api/runs") && r.method() === "POST") sent.push(r.postDataJSON().readCode); });
+  // A run has ended once it was sent and nothing on the page is running any more.
+  const ended = async (n: number) => {
+    await expect.poll(() => sent.length).toBe(n);
+    await expect(page.getByTestId("share-run")).toHaveCount(0, { timeout: 15_000 });
+  };
+
+  await page.getByTestId("channel-tab-linkedin").click();
+  await page.getByTestId("channel-draw").click();
+  await ended(1);
+  await expect(page.getByTestId("linkedin-panel")).toBeVisible();
+  await page.getByTestId("design-post").click();
+  await ended(2);
+
+  // Deleting a part the post shows marks the LinkedIn channel.
+  await page.getByTestId("channel-tab-overview").click();
+  await page.getByTestId("node-db").click();
+  await page.keyboard.press("Delete");
+  await savedWhen(page, path, () => storedOnDisk(path).channels.linkedin.outdated.length > 0);
+  await page.getByTestId("channel-tab-linkedin").click();
+  await page.getByTestId("channel-redraw").click();
+  await expect(page.getByTestId("channel-outdated")).toHaveCount(0, { timeout: 15_000 });
+
+  // Draw it, Design the post, Redraw it: only Design the post may read the code.
+  expect(sent.map((readCode) => readCode === false)).toEqual([true, false, true]);
 });

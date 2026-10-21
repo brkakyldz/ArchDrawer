@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { layoutRects, overlaps } from "../geometry";
-import { depthWarnings, isLinkedInView, LIMITS, validateDocument, validateFile, type DiagramDocument, type DiagramEdge, type DiagramNode, type DiagramView } from "../model";
-import { postViewId } from "../intent";
+import { depthWarnings, LIMITS, validateFile, type DiagramDocument, type DiagramEdge, type DiagramNode, type DiagramView } from "../model";
 import { normalizeFile } from "../normalize";
 import { PALETTES } from "../theme";
-import { arrangeForFeed, explainInstruction, foldForFeed, importance, makeLinkedInView, rearrangeForFeed } from "./feed";
+import { arrangeForFeed, explainInstruction, foldForFeed, importance, rearrangeForFeed } from "./feed";
+import { makeLinkedInView } from "../testkit";
 import { renderMermaid } from "./mermaid";
 import { DEFAULT_SHARE, FORMAT_IDS, FORMATS, readabilityOf, renderShare, shortenedIn, startSwitches, suggestionFor } from "./share";
 import { drawView } from "./svg";
@@ -246,47 +246,6 @@ describe("LinkedIn version", () => {
   it("handles an empty view", () => {
     const v: DiagramView = { id: "v", title: "V", caption: { title: "", lede: "" }, postOf: null, nodes: [], edges: [], texts: [] };
     expect(arrangeForFeed(v).nodes).toEqual([]);
-  });
-
-  it("adds the LinkedIn view with ids of its own, leaves the source alone and opens the same view the second time", () => {
-    const doc = { ...shop(), views: [grouped()] } as DiagramDocument;
-    const before = structuredClone(doc);
-    const { doc: next, view } = makeLinkedInView(doc, "main");
-    expect(view).toBe("main-linkedin");
-    expect(isLinkedInView(view)).toBe(true);
-    expect(doc).toEqual(before);
-    expect(next.views[0]).toEqual(before.views[0]);
-    const li = next.views.find((v) => v.id === view)!;
-    expect(li.caption).toEqual(grouped().caption);
-    expect(li.nodes).toHaveLength(3);
-    expect(validateDocument(next).ok).toBe(true); // ids are unique across the whole file
-    expect(makeLinkedInView(next, "main")).toEqual({ doc: next, view });
-  });
-
-  it("finds and names the post by postOf as an engine does, not by its id", () => {
-    // An ordinary view that happens to be called `main-linkedin` is not main's post.
-    const plain: DiagramView = { ...grouped(), id: "main-linkedin", title: "Plain", nodes: [part("p")], edges: [], texts: [] };
-    const doc = { ...shop(), views: [grouped(), plain] } as DiagramDocument;
-    const { doc: next, view } = makeLinkedInView(doc, "main");
-    expect(view).toBe("main-2-linkedin");
-    expect(view).toBe(postViewId(doc, "main"));
-    expect(next.views.find((v) => v.id === view)!.postOf).toBe("main");
-    expect(next.views.find((v) => v.id === "main-linkedin")).toEqual(plain);
-    expect(validateDocument(next).ok).toBe(true);
-    // Found again by its association, from the source or from the post itself.
-    expect(makeLinkedInView(next, "main")).toEqual({ doc: next, view });
-    expect(makeLinkedInView(next, view)).toEqual({ doc: next, view });
-    expect(postViewId(next, "main")).toBe(view);
-    // The plain view is its own source: preparing it gives it a post of its own.
-    const own = makeLinkedInView(next, "main-linkedin");
-    expect(own.view).toBe("main-linkedin-linkedin");
-    expect(own.doc.views.find((v) => v.id === own.view)!.postOf).toBe("main-linkedin");
-  });
-
-  it("returns a post whose id does not end in -linkedin", () => {
-    const { doc } = makeLinkedInView({ ...shop(), views: [grouped()] } as DiagramDocument, "main");
-    const renamed = { ...doc, views: doc.views.map((v) => (v.postOf ? { ...v, id: "story" } : v)) };
-    expect(makeLinkedInView(renamed, "main")).toEqual({ doc: renamed, view: "story" });
   });
 
   it("suggests the LinkedIn version on an ordinary -linkedin view and not on a post", () => {

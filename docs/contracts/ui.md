@@ -329,7 +329,8 @@ controls below.
 
 - On the LinkedIn channel's `channel-empty` stage, `linkedin-flow`: with an
   engine, `channel-draw` (`Draw it`) starts a `post` run from the facts
-  alone (`readCode: false`; the code is not read again, STORY-1) and
+  alone (`readCode: false`: the engine is asked to read no file, and Claude
+  Code runs with no tools; STORY-1) and
   `design-post` (`Design the post`) one that may also read the code (the
   chosen engine and model, format `feed`); without one, `linkedin-prepare`
   (`Prepare the simple version`) and `post-engine-note`

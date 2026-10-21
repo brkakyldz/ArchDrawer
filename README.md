@@ -109,9 +109,9 @@ archdrawer open docs/architecture.archdraw.json
   that shows it, and a tab whose drawing may be out of date is marked
   “needs update”.
 - **A LinkedIn post from the same facts.** The LinkedIn tab draws one image
-  for a phone screen. Your engine tells the story from the facts already read,
-  without reading the code again; with no engine, a simple version is laid
-  out by code. Redraw it, or keep it, when the facts change.
+  for a phone screen. Your engine tells the story from the facts already read
+  and is asked not to read the code again (Claude Code runs with no tools at
+  all); with no engine, a simple version is laid out by code. Redraw it, or keep it, when the facts change.
 - **AI changes with a scope.** Type an instruction, choose Claude Code or
   Codex and a model, then target the current view, selected parts or the
   whole channel.
@@ -146,9 +146,11 @@ Claude Code or Codex CLI sends through your existing subscription.
 
 The engine reads your source code with read-only tools. It cannot edit that
 code; changes are applied to the drawing file. The files a part points to are
-checked against your repository when you open or save a drawing file and when
-the engine changes it; a part may also point to no files, and a drawing
-imported into the app rather than opened from your repository is not checked.
+checked against your repository: the editor marks a file that no longer
+exists, `archdrawer validate` refuses one, and a file the engine names that
+does not exist is removed. A part may also point to no files. A drawing
+imported into the app is not checked when it is imported; its files are
+checked only if its source folder exists on this machine.
 Every automatic repair of AI output is surfaced as a warning.
 
 ## Current limits
@@ -162,7 +164,7 @@ small to read. Improving that is a focus of ongoing development.
 
 ## Planned work
 
-Everything in this section is planned and not yet available. Development
+Most of this section is planned; what already exists is marked. Development
 work and the roadmap are tracked in
 [GitHub issues](https://github.com/brkakyldz/Archdrawer/issues).
 
@@ -176,7 +178,7 @@ You will also be able to write your own focus.
 
 | Channel | What it is designed for |
 | --- | --- |
-| LinkedIn (available) | One image that reads at a glance on a phone. |
+| LinkedIn (first version available) | One image that reads at a glance on a phone. |
 | README (planned) | A drawing that lives in the repository and renders well on GitHub. |
 | Presentation (planned) | A step-by-step walkthrough with highlights, on-screen notes and speaker notes; full-screen presenting and PDF/PNG slides. The same walkthrough can guide someone through an unfamiliar repository. |
 

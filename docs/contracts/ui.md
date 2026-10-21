@@ -1,14 +1,14 @@
 # Contract — the web client
 
 What the browser shows and how it behaves: the library, the editor (canvas,
-callouts, connections, texts, views), the ask box and AI panel, and the share
+callouts, connections, texts, views), the AI panel, and the share
 dialog with its image. Every element named here carries
 `data-testid="<id>"`; `<x>` marks a template (`node-api`). Behaviour is
 normative for end-to-end tests; styling is not, except where stated.
 
 Implemented by: `src/web/App.tsx`, `src/web/library/Library.tsx`,
 `src/web/library/Start.tsx`,
-`src/web/editor/*` (Editor, Canvas, Callout, Panels, AskBox, AiPanel, Find,
+`src/web/editor/*` (Editor, Canvas, Callout, Panels, AiPanel, Find,
 Views, LoadError, ops, runner, useAutosave, useDocHistory, viewport),
 `src/web/share/ShareDialog.tsx`, `src/web/ui/LayoutReport.tsx`,
 `src/core/export/svg.ts`, `src/core/export/share.ts`,
@@ -121,8 +121,8 @@ another to connect them`; text `Click anywhere to type text`; pan
 `Drag to move around`.
 
 **While a run is going**, every edit, undo and redo is refused with the toast
-`Edits are paused while the instruction runs`; the run's result is then one
-undo step.
+`Edits are paused while the instruction runs`; the run's result then arrives
+as a preview (*Preview, Accept and Undo*) and, once kept, is one undo step.
 
 **Undo/redo** covers every edit in every view of every channel, with the
 `outdated` marks it set, and keeps the last 200 steps; a view or channel
@@ -149,7 +149,7 @@ leaves it out of that channel. The current channel is never marked.
 
 | Test id | Element and behaviour |
 |---|---|
-| `channel-empty` | the stage of a channel with no view, instead of the canvas: `The <LinkedIn post / README drawing / presentation> is not drawn yet`. With an engine, `channel-draw` (`Draw it`) draws it from the facts alone as one undoable step: a `story` run whose request carries `readCode: false` (the engine is asked to read no file, and Claude Code runs with no tools; STORY-1). Without one, `channel-prepare` (`Prepare the simple version`; on LinkedIn `linkedin-prepare`) draws the simple version (*Simple versions*), and `post-engine-note` shows (`No engine available — prepared without AI`). LinkedIn also has the controls of *The LinkedIn flow*; its `channel-draw` may send the same run as a `post` with `readCode: false` (api contract: a post is a story on LinkedIn). Drawing tools, `ai-button`, the ask box and `share-button` are disabled there |
+| `channel-empty` | the stage of a channel with no view, instead of the canvas: `The <LinkedIn post / README drawing / presentation> is not drawn yet`. With an engine, `channel-draw` (`Draw it`) draws it from the facts alone as one undoable step: a `story` run whose request carries `readCode: false` (the engine is asked to read no file, and Claude Code runs with no tools; STORY-1). Without one, `channel-prepare` (`Prepare the simple version`; on LinkedIn `linkedin-prepare`) draws the simple version (*Simple versions*), and `post-engine-note` shows (`No engine available — prepared without AI`). LinkedIn also has the controls of *The LinkedIn flow*; its `channel-draw` may send the same run as a `post` with `readCode: false` (api contract: a post is a story on LinkedIn). Drawing tools and `share-button` are disabled there |
 | `channel-outdated` | on the stage of a channel other than the overview whose `outdated` is not empty: `<n> change(s) in the facts since this was drawn`. `channel-keep` (`Keep as it is`) empties `outdated` as one undoable edit. `channel-redraw` (`Redraw it`) redraws the channel from the facts as one undoable step: with an engine a `story` run whose request carries `readCode: false`, without one the simple version. On the overview only `channel-keep` shows. Both are disabled during a run |
 
 ### Simple versions
@@ -203,7 +203,7 @@ un-dims the parts. Full-screen presenting and slide exports are 0.5
 
 | Test id | Element |
 |---|---|
-| `node-<id>` | one per component of the view; `data-kind`, `data-form`, `data-parent` (id or empty), `data-selected`, `data-changed="true"` for 3 s after a run added, changed or moved it; `data-dim="true"` while dimmed (an open callout or a search); `data-match` while search lights it (`true`, or `current` for the one stepped to); contains `node-label`, `node-sub` (when non-empty), `node-item` per held item (`data-index`), `node-inside` (when `detail` is set; a click goes to that view) |
+| `node-<id>` | one per component of the view; `data-kind`, `data-form`, `data-parent` (id or empty), `data-selected`, `data-changed="true"` while a run's result that added, changed or moved it is in preview (*Preview, Accept and Undo*); `data-dim="true"` while dimmed (an open callout or a search); `data-match` while search lights it (`true`, or `current` for the one stepped to); contains the outline with `data-shape` (drawing contract, *Geometry*, Shapes), `node-label`, `node-sub` (when non-empty), `node-item` per held item (`data-index`), `node-inside` (when `detail` is set; a click goes to that view) |
 | `port-<id>-<t\|r\|b\|l>` | four ports on the hovered component; dragging from one onto another component connects them |
 | `edge-<id>` | `data-style`, `data-both`, `data-step` (number or empty), `data-selected`, `data-dim="true"` while dimmed (an open callout, a search, or numbered steps on and the connection has no step) |
 | `edge-label-<id>` | the label when drawn (a label without room is left out, never drawn over a component) |
@@ -263,7 +263,8 @@ is refused, an emptied item is removed.
 
 `tool-component`, then a click on empty canvas opens `component-picker`:
 `picker-kind-<kind>` (default `service`), `picker-form-<form>` (default
-`card`, each with a `form-thumb`), `picker-add` (`Add component`). Adding
+`card`, each with a `form-thumb` drawn in the chosen kind's shape, with its
+`data-shape`), `picker-add` (`Add component`). Adding
 places `New component` (id `new-component`, `-2`, …) of that kind and form
 centred on the click, moved to the nearest free spot, inside the group
 clicked in; a panel starts with `New item`, a group empty. `node-label-input`
@@ -306,60 +307,115 @@ blur commits, Escape resets), `edge-style-call|async|dep` (`aria-pressed`),
 falls back to the first. With `tool-steps` on, `step-badge-<id>` appear and
 connections without a step dim; off, no badges.
 
-## Ask box
+## AI panel
+
+The one place to type an instruction (AI-2). Beside the stage, not modal: the
+canvas stays usable. Closed when a drawing opens; `ai-button` (accessible
+name `Ask AI`) opens and closes it.
 
 | Test id | Element and behaviour |
 |---|---|
-| `ask-input` | placeholder `Ask <engine label> to change this drawing`; for the test engine `Ask the test engine (no AI) to change this drawing`; with no engine `Ask Claude to change this drawing`. At most 4000 chars |
-| `ask-send` | sends (also Enter); empty does nothing |
-| `ask-expand` | opens `ai-panel` with the typed text moved into `ai-input` |
-| `ask-status` | while a run is going: its latest progress line (`Starting` first); `ask-cancel` cancels |
-| `ask-error` | after a failed or cancelled run started here: the error (`Cancelled`) and `ask-retry` (`Try again`, the same request again); the instruction is back in `ask-input` |
-| `ask-saved` | `Saved in the file for your next archdrawer session` |
+| `ai-panel` | the panel; `ai-close` or Escape inside it closes it |
+| `ai-thread` | the conversation (below) |
+| `ai-suggestions` | the current channel's suggestions (*Suggestions*) |
+| `ai-input` | textarea, at most 4000 chars; placeholder `Ask <engine label> to change this drawing`; for the test engine `Ask the test engine (no AI) to change this drawing`; with no engine `Ask Claude to change this drawing`. Enter or Ctrl/Cmd+Enter sends; Shift+Enter adds a line break |
+| `ai-engine` | `<select>` of available engines (value id, text label); absent without an engine |
+| `ai-model` | `<select>`: `""` `Default`, then the engine's models; each engine remembers its own choice in the browser |
+| `ai-engine-note` | `<label> reads the repository (read-only) and changes the drawing`; for the test engine `Test engine (no AI): it understands only add, remove, rename, hold, move and align, gives a canned post, a canned simplification and a canned second look, and changes nothing else`; without engine `No engine is available: the instruction is saved in the file for your next archdrawer session` |
+| `ai-scope-view`, `ai-scope-selection`, `ai-scope-all` | radios `This view`, `Selected parts (<n>)`, `The whole channel`; default view; selection disabled (and falls back to view) without a selected component |
+| `ai-send` | disabled while `ai-input` is empty or a run is going |
+| `ai-look-again` | `Look at the drawing again` (LAYOUT-4): renders the current view as the share image in the channel's default format with its starting switches (*Share*), at 1×, as PNG, and starts a `revise` run for the current channel and view with that image (api contract, *The second look*). Disabled during a run, on a channel with no view and without an engine |
 
 Sending first waits until every edit is saved (else fails with
 `Your last edit is not saved yet; the instruction was not sent`). With an
-engine it starts `POST /api/runs` for the current channel and view, scope `view`, the
-chosen engine and model; on success the editor shows the stored drawing, the
-toast `The drawing was updated: <summary>`, marks changed components, and
-undo returns to the drawing before the run. Without an engine it posts to
-`/api/diagrams/:id/requests` (current channel and view) and shows `ask-saved`. If the run's event stream
-closes for good, the run is cancelled and fails with
-`Lost the connection to the instruction, so it was stopped`. Only one run at
-a time; the ask box, AI panel and share dialog share it.
+engine it starts `POST /api/runs` for the current channel and view, the scope
+`{"kind":"view"}`, `{"kind":"parts","ids":[…]}` or `{"kind":"all"}`, and the
+chosen engine and model (`null` for `Default`); `ai-input` is then cleared.
+Without an engine it posts to `/api/diagrams/:id/requests` (current channel
+and view). If the run's event stream closes for good, the run is cancelled
+and fails with `Lost the connection to the instruction, so it was stopped`.
+Only one run at a time; the AI panel, the channel stages, the LinkedIn panel
+and the share dialog share it.
 
 **Choosing the engine**: the one last chosen in this browser if available;
 else the document's `engine` if available and not the test engine; else the
 first available real engine; else the test engine. The test engine is named
 `Test engine (no AI)` everywhere.
 
-## AI panel
+### The conversation
 
-Beside the stage, not modal: the canvas stays usable.
+`ai-thread` holds one `ai-turn` per run started on the open drawing, and per
+request saved without an engine, oldest first, whichever control started it
+(`ai-send`, a suggestion, `ai-look-again`, `channel-draw`, `channel-redraw`,
+`design-post`, `explain-feed`). It lives in the browser's memory for the open
+drawing: reloading or opening another drawing starts it empty, and nothing
+of it is written to the file. Each turn has:
+
+- `ai-turn-text`: the instruction as sent, or for a control without one its
+  name (`Look at the drawing again`, `Draw it`, `Redraw it`, `Design the
+  post`, `Rewrite it in plain words`, a suggestion's label);
+- `ai-turn-where`: `<channel name> · <scope>` (`Overview · This view`,
+  `README · Selected parts (2)`, …);
+- `data-state`: `running`, `failed`, `cancelled`, `preview`, `accepted`,
+  `undone`, `unchanged` (succeeded with `Nothing changed`) or `saved`
+  (without an engine), and `data-run-id` when it was a run.
+
+Only the latest turn holds these, each while its state calls for it:
 
 | Test id | Element and behaviour |
 |---|---|
-| `ai-panel` | the panel; `ai-close` or Escape inside it closes it |
-| `ai-input` | textarea, at most 4000 chars; Ctrl/Cmd+Enter sends |
-| `ai-engine` | `<select>` of available engines (value id, text label); absent without an engine |
-| `ai-model` | `<select>`: `""` `Default`, then the engine's models; each engine remembers its own choice in the browser |
-| `ai-engine-note` | `<label> reads the repository (read-only) and changes the drawing`; for the test engine `Test engine (no AI): it understands only add, remove, rename, hold, move and align, gives a canned post and a canned simplification, and changes nothing else`; without engine `No engine is available: the instruction is saved in the file for your next archdrawer session` |
-| `ai-scope-view`, `ai-scope-selection`, `ai-scope-all` | radios `This view`, `Selected parts (<n>)`, `The whole channel`; default view; selection disabled (and falls back to view) without a selected component |
-| `ai-send` | disabled while `ai-input` is empty or a run is going |
-| `ai-progress` | while a run is going: `ai-progress-line` per message (last 12) and `ai-cancel` |
-| `ai-error` | after a failed or cancelled run: the error and `ai-retry` (same request); `ai-input` keeps the instruction |
+| `ai-progress` | while running: `ai-progress-line` per message (last 12) and `ai-cancel` |
+| `ai-error` | after a failed or cancelled run: the error (`Cancelled`) and `ai-retry` (`Try again`, the same request again as a new turn); a typed instruction is back in `ai-input` |
 | `ai-summary` | after success: e.g. `1 part added · 2 connections changed · 3 parts moved` (zeros left out; `Nothing changed`), with `data-added`, `data-removed`, `data-changed`, `data-moved`, `data-edges-added`, `data-edges-removed`, `data-edges-changed` |
-| `ai-route` | after a refine succeeded: which way the instruction went (api contract, Routing), `data-route` `facts` or `story`: `Changed the facts: every channel that shows them shows it` or `Redrew this channel from the facts, without reading the code`. It goes when another run starts, and a run of another kind shows none. The ask box's toast adds the same sentence |
+| `ai-route` | after a refine succeeded: which way the instruction went (api contract, Routing), `data-route` `facts` or `story`: `Changed the facts: every channel that shows them shows it` or `Redrew this channel from the facts, without reading the code`. A run of another kind shows none |
 | `layout-report` | after success, the run's report (below) |
-| `ai-saved` | without an engine, after saving the request: the `ask-saved` text |
-| `simplify-overview` | `Simplify the overview`: goes to the overview channel's first view, fills `ai-input` with `Simplify the overview: keep every component in a detail view or a merged part` and starts a `simplify` run on the first view with scope view; disabled during a run; without an engine saves the request for the first view |
+| `ai-saved` | without an engine, after saving the request: `Saved in the file for your next archdrawer session` |
 
-Sending uses scope `{"kind":"view"}`, `{"kind":"parts","ids":[…]}` or
-`{"kind":"all"}`, and the chosen engine and model (`null` for `Default`). On
-success the instruction is cleared.
+An earlier turn keeps `ai-turn-text`, `ai-turn-where`, its final
+`data-state`, and `ai-turn-result`: its summary, its error, or the
+`ai-saved` text.
 
-There is no `overview-suggestion` any more: the overview has no count
-targets (ADR 0007). `simplify-overview` stays.
+### Preview, Accept and Undo
+
+Every run on the open drawing but a `draw` arrives as a preview (AI-3): the
+editor shows the saved result, and `ai-preview` appears over the stage, in
+every channel, until the user chooses:
+
+| Test id | Element and behaviour |
+|---|---|
+| `ai-preview` | `The drawing was updated: <summary>`, plus the route sentence after a refine |
+| `ai-accept` | `Accept`: keeps the result. The turn becomes `accepted`; `tool-undo` then returns to the drawing before the run, as one step |
+| `ai-undo` | `Undo`: returns to the drawing before the run, exactly as `tool-undo` would, and saves it; `tool-redo` brings the result back. The turn becomes `undone` |
+
+While a preview is shown, the editor shows the run's channel and view, and
+every component the run added, changed or moved has `data-changed="true"`;
+edits, `tool-undo` and `tool-redo` are refused with the toast `Accept or undo
+the AI's change first`. Going to other views and channels, search, zoom and
+the share dialog still work. Starting another run (any control in *The
+conversation*) accepts the preview first. When the stored file changes
+outside the editor during a preview, the preview ends as accepted and the
+change is shown as in *External changes*. A reload ends it as accepted (the
+file holds the result). A run whose summary is `Nothing changed` shows no
+preview. A failed save of an Undo shows in `save-status`, never `Saved`.
+
+### Suggestions
+
+`ai-suggestions` shows the current channel's buttons (AI-4). Each starts a
+run as `ai-send` would, with its instruction, the scope `This view` and the
+chosen engine and model, and leaves `ai-input` as it is. A preview is
+accepted first; every suggestion is disabled during a run. Without an engine
+each saves its instruction as a request.
+
+| Channel | Test id | Label | Run |
+|---|---|---|---|
+| overview | `ai-suggest-simpler` | `Simpler` | a `simplify` run on the overview's first view (the editor goes there first) with `Simplify the overview: keep every component in a detail view or a merged part` |
+| overview | `ai-suggest-loop` | `Show the loop` | a refine: `Show the loop: draw the agent's loop and the checks around it as parts with numbered connections` |
+| linkedin | `ai-suggest-shorter` | `Shorter for LinkedIn` | a refine: `Make it shorter for LinkedIn: fewer parts and shorter names` |
+| readme | `ai-suggest-fewer-details` | `Fewer details` | a refine: `Show fewer details: hold mechanisms only where the story is about them` |
+| presentation | `ai-suggest-fewer-steps` | `Fewer steps` | a refine: `Use fewer steps: merge steps that say the same thing` |
+
+There is no `overview-suggestion` and no `simplify-overview` any more
+(ADR 0007, ADR 0008).
 
 ## External changes
 
@@ -421,7 +477,7 @@ controls below.
   starts a `post` run with the instruction `Rewrite this post in plain words
   for someone who has never seen the project`; without an engine
   `post-engine-note` shows, and a rewrite is saved as a request
-  (`share-run-saved` with the `ask-saved` text).
+  (`share-run-saved` with the `ai-saved` text).
 - During a post run started there: `share-run` with the latest line and
   `share-run-cancel`; caption, design, rewrite and re-arrange are disabled.
   On failure or cancel `share-run-error` with `share-run-retry`

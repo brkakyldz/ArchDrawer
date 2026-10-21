@@ -321,7 +321,10 @@ These are the answers of a `story` run, a `draw` run's channel call, and the
 ### Routing
 
 A refine's routing question answers `story` when the instruction holds
-`[fixture:story]`, else `facts`. It answers at once and adds no progress line;
+`[fixture:story]` or starts with one of the suggestions' `Make it shorter for
+LinkedIn`, `Show fewer details` or `Use fewer steps` (ui contract,
+*Suggestions*), else `facts` (so `Show the loop` takes the `facts` route and,
+as an unknown verb, changes nothing). It answers at once and adds no progress line;
 no marker (`[fixture:slow]`, `[fixture:fail]`, …) acts on it.
 
 - **`facts` route:** the *Refine* answer.
@@ -330,6 +333,21 @@ no marker (`[fixture:slow]`, `[fixture:fail]`, …) acts on it.
 - **`story` route on the overview:** the *Refine* answer. A content change in
   it (`add`, `remove`, `rename`, `hold`) is then ignored with one warning;
   `move` and `align` apply.
+
+### Revise
+
+The answer of a `revise` run (api contract, *The second look*). The fixture
+first checks that the image file the run names exists and starts with the PNG
+signature; otherwise the run fails with `Fixture: no image to look at`. The
+markers `[fixture:fail]` and `[fixture:slow]` act on the optional
+instruction as for every kind.
+
+- **LinkedIn, README or presentation:** the channel's *Story* answer.
+- **Overview:** the view as it is, except its first top-level component that
+  is not a group, which answers `at` 40 px right of its current box
+  (`x + 40`, same `y`), so the run's summary says `1 part moved`. A view whose
+  only top-level component is a group answers no change (`Nothing
+  changed`).
 
 ## Test suites
 

@@ -329,22 +329,25 @@ A failure, cancel or timeout at any stage writes and registers nothing.
   "engine": "claude",                // engine id, or null for the default
   "model": null,                     // model id, or null for the engine's default
   "scope": { "kind": "view" },       // refine: all (default, the whole channel) | view | parts; others: absent or view
-  "kind": "refine",                  // refine (default) | story | post | simplify | draw
+  "kind": "refine",                  // refine (default) | story | post | simplify | revise | draw
   "format": "readme",                // the report's format
-  "revise": false,                   // optional boolean
+  "image": "iVBORw0KGgo…",           // revise only, required: the view's PNG, base64, no data: prefix
   "readCode": true }                 // story and post only, optional: whether the engine may read the code
 ```
 
 Checked in this order, all 400 before any engine starts:
-`Unknown run kind <k>: use refine, story, post, simplify or draw`;
+`Unknown run kind <k>: use refine, story, post, simplify, revise or draw`;
 `Invalid format <f>; use one of …` (post, and story on LinkedIn: `feed` or
 `linkedin`; story on the README: `readme`; on the presentation: `slide`;
-others any share format); `revise must be true or false`;
-`revise: true` → `Layout revision is not enabled`; `readCode must be true or
+others any share format); `readCode must be true or
 false`; `readCode` on a run other than a story or a post → `readCode is for a
-story`; a non-string instruction for story, post or simplify →
+story`; for a revise, a missing or non-string `image` → `A revise needs the
+drawing's image`, bytes that are not valid base64 or do not start with the
+PNG signature → `The image is not a PNG`, more than 4 MB once decoded →
+`The image is too large (4 MB at most)`; an `image` on another kind →
+`An image is for a revise`; a non-string instruction for story, post, simplify or revise →
 `instruction must be a string`; a scope other than `{"kind": "view"}` for a
-story or post (`A story draws the channel's one view: give no scope or
+story, post or revise (`A story draws the channel's one view: give no scope or
 {"kind": "view"}`) or simplify; an empty refine instruction →
 `Say what to change: the instruction is empty`; over 4000 chars →
 `The instruction is too long (4000 characters at most)`; a non-string model
@@ -352,7 +355,7 @@ or engine; a model (trimmed, at most 100 chars) that starts with `-` or
 contains anything outside `A–Z a–z 0–9 . _ : / @ [ ] -` →
 `Invalid model name "<m>"`; then 404 for the diagram; `Unknown view "<v>"`;
 `Unknown channel "<c>"; use one of overview, linkedin, readme, presentation`;
-a refine on a channel with no view → `The channel "<c>" has no drawing`;
+a refine or revise on a channel with no view → `The channel "<c>" has no drawing`;
 post on a channel other than `linkedin` (absent means `linkedin` for post) →
 `A post is drawn in the linkedin channel`; a story on the overview or with no
 channel → `A story is drawn in the linkedin, readme or presentation channel`;
@@ -379,6 +382,7 @@ model it used in the document's `engine`.
 | `simplify` | the overview channel's draft; the instruction is `Simplify the overview: keep every component in a detail view or a merged part`, plus whatever the caller adds after it | the overview channel's views reached from its first, appearance only; coverage enforced (every fact still drawn) | default `readme` |
 | `story` | a story intent (drawing contract, Story answers) under the channel's brief; the brief carries the facts, the overview's first view and, for a redraw, the channel's current view, and the optional instruction is added to it. `readCode` defaults to false: the engine is asked to read no file and Claude Code runs with no tools (STORY-1); `true` lets it read the code read-only | only the channel's one view (created or replaced, its `outdated` emptied) and, for the presentation, its steps; the facts and other channels stay | LinkedIn `feed` (default) or `linkedin`; README `readme`; presentation `slide` |
 | `post` | a `story` on the LinkedIn channel, with `readCode` defaulting to true (`Design the post`) | as `story` on LinkedIn | `feed` (1080 × 1350, default) or `linkedin` (1620 × 1080) |
+| `revise` | one round of fixes after looking at the image (*The second look*): on LinkedIn, README or presentation the channel's story; on the overview a refine draft | as a refine's `story` route (*Routing*): only how the channel tells the facts; the facts stay | the channel's default |
 | `draw` | three answers: the read (drawing contract, Read answers), then the overview's story and the chosen channel's story (Story answers) | a new drawing file (*The draw run*) | the chosen channel's default |
 
 **Routing (refine).** A refine first asks the engine one small question with
@@ -398,6 +402,20 @@ warning each. A `parts` scope skips the question and
 takes the `facts` route. The run record and `done` carry `route`
 (`facts`, `story`, or null for other kinds), and progress says
 `Changing the facts` or `Redrawing this channel from the facts`.
+
+**The second look (revise).** The request's `view` is the one drawn in
+`image` (the share image of that view in the channel's default format, as the
+browser renders it). The server writes the decoded PNG to `view.png` in a new
+private temporary folder (`<os temp>/archdraw-revise-<random>/`), named by the
+server alone, and removes the folder when the run ends — succeeded, failed,
+cancelled or timed out. The prompt names that file, gives the layout report
+of the view, the facts and, on a story channel, the current view, plus the
+optional instruction, and asks for one round of fixes to what the reader sees
+(overlaps, crossings, cut or small text, crowding, an unclear order). The
+engine reads no code. Progress starts `Looking at the drawing`. The run then
+goes as a refine's `story` route: a story answer on LinkedIn, README or
+presentation, an appearance-only draft on the overview (other changes ignored
+with one warning each). `route` is null.
 
 **Lifecycle.** `status` is `running`, `succeeded`, `failed` or `cancelled`.
 A run reads the drawing's repository root, the one its files are checked
@@ -432,7 +450,7 @@ warning(s)`. A `draw` run's events carry `stage`: `read`, `overview` or
 
 `{"added", "removed", "changed", "moved", "edgesAdded", "edgesRemoved",
 "edgesChanged"}`, id lists, computed over the channel views the run could change
-(refine `view`/`parts`: that view; post: the LinkedIn view; otherwise every
+(refine `view`/`parts` and revise: that view; post: the LinkedIn view; otherwise every
 view of the run's channel). A
 component is `changed` when any field but its position differs and `moved`
 when its position differs (never a group). One that moved to another view is
@@ -498,7 +516,10 @@ alone); Codex, which has no tool-free mode, always with `exec --json
 path> -C <repo> [--ephemeral] -`. The scan, the routing question, a
 story without `readCode`, a `draw` run's two story calls and a refine's
 `story` route run Claude Code the same way as a post with `readCode: false`; the read and a refine (`facts` route) with
-`Read,Grep,Glob`. `<repo>` and the working directory are the drawing's
+`Read,Grep,Glob`. A revise runs Claude Code with `--tools Read --allowedTools
+Read --add-dir <temp folder>` (the image's folder, one argument) and Codex
+with its usual arguments plus `-i <abs path of view.png>` (one argument);
+both paths are made by the server, never taken from a request. `<repo>` and the working directory are the drawing's
 repository root, or for a scan and a `draw` run the root of the typed folder
 (*Folders*). A model goes as `--model` / `-m`. The
 engine's environment is the server's minus `CLAUDECODE`, `CLAUDE_CODE_*` and,

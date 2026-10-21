@@ -171,6 +171,11 @@ sub-line); `panel` (a card plus one row per held mechanism, shown item and
 limit — only a panel shows rows); `group` (a header and the parts whose
 `parent` it is — only a group may be a parent).
 
+Shapes: a `card` or `compact` part of kind `llm`, `actor`, `data`, `external`
+or `gate` draws its own outline (*Geometry*, Shapes); every other part keeps
+the rounded rectangle. The shape comes from the kind alone; there is no shape
+field.
+
 ### Connection (edge)
 
 ```jsonc
@@ -447,13 +452,12 @@ Redrawing a channel, or "Keep as it is", empties its `outdated`.
 ## Warnings
 
 `archdrawer validate` also prints warnings; they never make a file invalid.
-They are checked on every channel view; *Flat* and *No held items* skip the
-LinkedIn channel.
+They are checked on every channel view; *Flat* skips the LinkedIn channel.
+A drawing without held items is not warned about (LOOK-3).
 
 - **Flat** — six or more top-level parts that all have a `place` on the same
   row, or none has a `place` and every one is an end of a numbered
   connection.
-- **No held items** — six or more parts and no panel.
 - **Tuning number** (LinkedIn channel only) — a drawn label, sub-line or item
   with a number and a unit of time, count or size (`6 turns`, `90 s`,
   `2 retries`, `5 MB`, `30%`). Elsewhere a number that explains a guarantee
@@ -495,6 +499,26 @@ Geist metrics. The editor and every export draw from the same numbers.
   and a 46 px header, at least as wide as its header text; a group with no
   children is 260 (or its header width) × 140 at its position.
 - Step badge radius 10.5; connection label box 22 tall.
+
+**Shapes** (LOOK-2). The outline of a part is the element with class `body`;
+it carries `data-shape`, the same in the editor's `node-<id>` and the
+export's `g[data-node-id]`:
+
+| Kind | `card` and `compact` outline | `data-shape` |
+|---|---|---|
+| `llm` (AI agent) | the rounded rectangle with a second outline 4 px inside it | `agent` |
+| `actor` (Person) | the rounded rectangle with a round head badge on its top edge, inside the box | `person` |
+| `data` (Data store) | a cylinder: straight sides, an ellipse at the top, a curved bottom | `store` |
+| `external` (External) | the rounded rectangle with a dashed outline | `external` |
+| `gate` (Check) | a rectangle with its four corners cut at 45° | `check` |
+| any other kind | the rounded rectangle | `card` |
+
+A `panel` is `card` and a `group` is `group`, whatever their kind. Every
+shape lies inside the part's box, which is measured as above: no size, no
+position of the icon, label, sub-line or detail mark, and no route changes
+with the shape. The first `rect.box` stays the part's box (parity check).
+Selection, search and target rings stay box-shaped. The post style draws the
+same shapes.
 
 **Post style.** The LinkedIn channel's view measures and draws denser, in the
 editor and in exports alike: part and group names 16.5 px (compact names
@@ -745,10 +769,10 @@ does.
 
 | Channel | Brief | Code checks |
 |---|---|---|
-| overview | The complete map: every fact shown or held. Merged parts where many facts are alike. Zones as the system's real boundaries. Held mechanisms and limits where they explain a part. No count target, within the 60 parts a view holds | Every fact drawn (below) |
+| overview | The complete map: every fact shown or held. A one-line sub-line on every part. Merged parts where many facts are alike. Zones as the system's real boundaries. Every mechanism held by its part; limits where they explain a part. No count target, within the 60 parts a view holds | Every fact drawn (below) |
 | linkedin | One image for a phone: about 8–12 parts. A title of at most 9 words and one plain sentence. No held items or limits, no tuning numbers | The post targets below. A non-empty `held`, `limits` or `steps` is dropped, one warning each |
-| readme | A detailed drawing that renders on GitHub. One-line sub-lines. Held mechanisms only on the few parts whose mechanism matters. Limits where they explain a guarantee | — |
-| presentation | One drawing and 3–8 ordered steps that tell it. Each step highlights the parts it is about, says it on screen in one short sentence, and gives the speaker one to three sentences | Each step's parts exist. A wrong one is dropped with one warning; a step none of whose parts exist is dropped instead, with one warning |
+| readme | A detailed drawing that renders on GitHub. A one-line sub-line on every part, the default description. Held mechanisms only on a part whose working the story is about; elsewhere none. Limits where they explain a guarantee | — |
+| presentation | One drawing and 3–8 ordered steps that tell it. A one-line sub-line on every part; held mechanisms as in the README. Each step highlights the parts it is about, says it on screen in one short sentence, and gives the speaker one to three sentences | Each step's parts exist. A wrong one is dropped with one warning; a step none of whose parts exist is dropped instead, with one warning |
 
 A non-empty `steps` outside the presentation is ignored, with one warning.
 

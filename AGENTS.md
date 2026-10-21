@@ -96,6 +96,12 @@ copy a user's CLI credentials.
 - **Orphaned engine processes** — cancel marks the run cancelled but the CLI
   keeps running (on Windows a `.cmd` shim kill stops only the shell). The
   cancel test checks the child exits.
+- **Leftover image** — a revise run's temporary folder with the drawing's
+  PNG survives a failure, cancel or timeout. The revise tests check the
+  folder is gone in every outcome.
+- **Preview that never ends** — an AI result stays in preview after an
+  outside change or a new run, so edits stay refused. Either ends it as
+  accepted.
 - **Autosave race** — a later edit overwritten by an earlier in-flight save.
   Two quick edits then a reload must show the second.
 - **Stale token after a restart** — every save fails quietly. A failed save

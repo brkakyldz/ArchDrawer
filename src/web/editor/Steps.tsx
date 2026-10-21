@@ -123,13 +123,13 @@ export function StepsPanel({ steps, view, current, onPick, edit, selected, toast
  */
 function StepText({ value, onCommit }: { value: string; onCommit: (text: string) => void }) {
   const [draft, setDraft] = useState(value);
-  const typing = useRef(false);
-  useEffect(() => { if (!typing.current) setDraft(value); }, [value]);
+  // The text this field last saved: any other value (an undo, a run) is shown at once, even while typing.
+  const mine = useRef(value);
+  useEffect(() => { if (value !== mine.current) { mine.current = value; setDraft(value); } }, [value]);
   return (
     <input type="text" data-testid="step-text" maxLength={FACT3_LIMITS.stepText} value={draft}
-      onFocus={() => (typing.current = true)}
-      onBlur={() => { typing.current = false; setDraft(value); }}
-      onChange={(e) => { setDraft(e.target.value); const t = e.target.value.trim(); if (t && t !== value) onCommit(t); }} />
+      onBlur={() => setDraft(value)}
+      onChange={(e) => { setDraft(e.target.value); const t = e.target.value.trim(); if (t && t !== value) { mine.current = t; onCommit(t); } }} />
   );
 }
 

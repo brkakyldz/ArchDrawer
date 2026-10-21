@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { component, drawing, workspace, isolatedDrawing, readDrawing, persisted, finishRun, reportNumber, drag } from './helpers';
 
-test('H30 [AI-1, EDIT-1, EDIT-4, FILE-1] expand a quick ask, pick a test model, follow progress and undo the reported change', async ({ page, request }) => {
+test('H30 [AI-1, AI-2, AI-3, EDIT-1, EDIT-4, FILE-1] pick a test model in the AI panel, follow progress, keep the previewed change and undo it', async ({ page, request }) => {
   const doc = drawing('Panel shop');
   doc.views.push({ id: 'storage', title: 'Storage', caption: { title: 'Kept records', lede: '' }, nodes: [component('ledger', { label: 'Ledger' })], edges: [], texts: [] });
   const { file } = await workspace('panel', doc), server = await isolatedDrawing(page, request, file);
@@ -20,14 +20,16 @@ test('H30 [AI-1, EDIT-1, EDIT-4, FILE-1] expand a quick ask, pick a test model, 
       { id: 'fixture-fast', label: 'Fast (test)' }, { id: 'fixture-careful', label: 'Careful (test)' },
     ] });
     expect(engines.filter((e: { available: boolean }) => e.available).map((e: { id: string }) => e.id)).toEqual(['fixture']);
-    await expect(page.getByTestId('ask-input')).toHaveAttribute('placeholder', 'Ask the test engine (no AI) to change this drawing');
-    await page.getByTestId('ask-input').fill('add Cache component'); await page.getByTestId('ask-expand').click();
-    await expect(page.getByTestId('ai-input')).toHaveValue('add Cache component'); await expect(page.getByTestId('ask-input')).toHaveValue('');
+    // From 0.4 the AI panel is the one place to type: there is no ask box to expand it from.
+    for (const id of ['ask-input', 'ask-send', 'ask-expand']) await expect(page.getByTestId(id), id).toHaveCount(0);
+    await page.getByTestId('ai-button').click(); await expect(page.getByTestId('ai-panel')).toBeVisible();
+    await expect(page.getByTestId('ai-input')).toHaveAttribute('placeholder', 'Ask the test engine (no AI) to change this drawing');
     await expect(page.getByTestId('ai-engine')).toHaveValue('fixture');
     await expect(page.getByTestId('ai-engine').locator('option')).toHaveText(['Test engine (no AI)']);
-    // The note names the test engine and the six instructions it understands.
+    // The note names the test engine, the six instructions it understands and its canned answers (a post, a simplification, a second look).
     const note = page.getByTestId('ai-engine-note'); await expect(note).toContainText('Test engine (no AI)');
     for (const command of ['add', 'remove', 'rename', 'hold', 'move', 'align']) await expect(note).toContainText(command);
+    for (const canned of ['a canned post', 'a canned simplification', 'a canned second look']) await expect(note).toContainText(canned);
     await expect(page.getByTestId('ai-model').locator('option')).toHaveText(['Default', 'Fast (test)', 'Careful (test)']);
     await expect(page.getByTestId('ai-model')).toHaveValue(''); await expect(page.getByTestId('ai-scope-view')).toBeChecked();
     await expect(page.getByTestId('ai-scope-selection')).toBeDisabled();
@@ -64,15 +66,21 @@ test('H30 [AI-1, EDIT-1, EDIT-4, FILE-1] expand a quick ask, pick a test model, 
     await persisted(file, d => d.engine?.id === 'fixture' && d.engine.model === 'fixture-careful' && d.views[0].nodes.some(n => n.id === 'cache'));
     const after = await readDrawing(file); expect(after.views[1]).toEqual(baseline.views[1]);
     for (const node of baseline.views[0].nodes) expect(after.views[0].nodes.find(n => n.id === node.id)).toEqual(node);
-    await expect(page.getByTestId('node-cache')).not.toHaveAttribute('data-changed', 'true', { timeout: 6000 });
+    // The changed part stays lit until the user chooses (it no longer goes out after 3 s), and the turn says what was asked and where.
+    await expect(page.getByTestId('ai-preview')).toBeVisible(); await expect(page.getByTestId('node-cache')).toHaveAttribute('data-changed', 'true');
+    const turn = page.getByTestId('ai-thread').getByTestId('ai-turn').last();
+    await expect(turn.getByTestId('ai-turn-text')).toContainText('add Cache component'); await expect(turn.getByTestId('ai-turn-where')).toHaveText('Overview · This view');
+    await page.getByTestId('ai-accept').click(); await expect(page.getByTestId('ai-preview')).toHaveCount(0);
+    await expect(page.getByTestId('node-cache')).not.toHaveAttribute('data-changed', 'true'); await expect(turn).toHaveAttribute('data-state', 'accepted');
     await page.getByTestId('ai-close').click(); await page.getByTestId('ai-button').click(); await expect(page.getByTestId('ai-model')).toHaveValue('fixture-careful');
     await page.reload(); await page.getByTestId('ai-button').click(); await expect(page.getByTestId('ai-engine')).toHaveValue('fixture'); await expect(page.getByTestId('ai-model')).toHaveValue('fixture-careful');
-    // Reload ends browser undo history; use a fresh run to test the undo boundary.
+    // A fresh run, kept, then one ordinary undo takes only that run back.
     await page.getByTestId('ai-input').fill('rename Cache to Request cache');
     const renamed = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/runs');
     await page.getByTestId('ai-send').click(); await finishRun(request, (await (await renamed).json()).runId, 'succeeded', 20_000, server.base);
     await expect(page.getByTestId('node-cache').getByTestId('node-label')).toHaveText('Request cache');
     await expect.poll(async () => reportNumber(await page.getByTestId('ai-summary').getAttribute('data-changed'), 'changed')).toBe(1);
+    await page.getByTestId('ai-accept').click(); await expect(page.getByTestId('ai-preview')).toHaveCount(0);
     await page.getByTestId('tool-undo').click(); await persisted(file, d => d.views[0].nodes.find(n => n.id === 'cache')?.label === 'Cache');
     expect((await readDrawing(file)).views).toEqual(after.views);
   } finally { await server.close(); }

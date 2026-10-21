@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { component, drawing, workspace, openDrawing, cli, readDocument, warnLines, errorLines, factOf, sorted } from './helpers';
+import { component, drawing, workspace, openDrawing, cli, readDocument, warnLines, errorLines, factOf, sorted, startedRun } from './helpers';
 
 const FIVE_KINDS = /flat|pipeline|held items|panel|tuning|main path|step|repeat/i;
 
 // STORY-6: the overview is the complete map, with no zone or connection caps. A big overview is no longer warned about or
 // offered a suggestion to cut; Simplify stays, as the user's own choice, and never loses a fact.
-test('H115 [STORY-6, AI-1, FILE-3] a 24-part overview gets no size warning and no overview suggestion, shows no count targets, and Simplify the overview still folds it without losing a fact', async ({ page, request }) => {
+test('H115 [STORY-6, AI-1, FILE-3, AI-4] a 24-part overview gets no size warning and no overview suggestion, shows no count targets, and Simplify the overview still folds it, from the Simpler suggestion, without losing a fact', async ({ page, request }) => {
   const doc = drawing('Large system'), view = doc.views[0];
   view.nodes = Array.from({ length: 24 }, (_, i) => component(`part-${i}`, { label: `Part ${i}`, place: { row: Math.floor(i / 6), col: i % 6 } }));
   view.edges = Array.from({ length: 23 }, (_, i) => ({ id: `flow-${i}`, from: `part-${i}`, to: `part-${i + 1}`, label: `Hop ${i}`, style: 'call', both: false, step: i + 1 }));
@@ -20,7 +20,9 @@ test('H115 [STORY-6, AI-1, FILE-3] a 24-part overview gets no size warning and n
   await expect(page.getByTestId('node-part-23')).toBeVisible();
   await page.getByTestId('ai-button').click(); await expect(page.getByTestId('ai-panel')).toBeVisible();
   await expect(page.getByTestId('overview-suggestion')).toHaveCount(0); // gone with the overview's count targets
-  await expect(page.getByTestId('simplify-overview')).toBeVisible(); await expect(page.getByTestId('simplify-overview')).toBeEnabled();
+  // From 0.4 the one-click fold is the overview's `Simpler` suggestion; the old button is gone.
+  await expect(page.getByTestId('simplify-overview')).toHaveCount(0);
+  await expect(page.getByTestId('ai-suggest-simpler')).toHaveText('Simpler'); await expect(page.getByTestId('ai-suggest-simpler')).toBeEnabled();
   await page.getByTestId('ai-close').click();
 
   // Share reports what is drawn, with no target to miss: no `/ <target>` beside the counts, no line about a missed target.
@@ -35,9 +37,10 @@ test('H115 [STORY-6, AI-1, FILE-3] a 24-part overview gets no size warning and n
   // Simplify is still there when the user asks: the overview folds into one group, every part in the detail view.
   const before = await readDocument(file);
   await page.getByTestId('ai-button').click();
-  await page.getByTestId('simplify-overview').click();
-  await expect(page.getByTestId('ai-input')).toHaveValue('Simplify the overview: keep every component in a detail view or a merged part');
+  const folding = await startedRun(page, () => page.getByTestId('ai-suggest-simpler').click());
+  expect(folding.body).toMatchObject({ kind: 'simplify', view: 'overview' }); await expect(page.getByTestId('ai-input')).toHaveValue(''); // a suggestion leaves the input as it was
   await expect(page.getByTestId('ai-summary')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('ai-preview')).toBeVisible(); // the fold arrives as a preview; the file already holds it
   await expect(page.getByTestId('overview-suggestion')).toHaveCount(0);
   const after = await readDocument(file);
   const views = after.channels.overview.views!;

@@ -14,9 +14,14 @@ the folder start (START-4), the scan (SCAN-1–4), the deep read and its evidenc
 instruction (AI-5) — was written by Claude Sonnet 5.5 (`claude-sonnet-5-5`) as an
 independent acceptance author, from the contracts and ADRs 0002, 0006 and 0007
 alone (the existing suite was copied in unchanged, and no product code was read), in
-batches A–H and Z that land with the nine steps of 0.3.
+batches A–H and Z that land with the nine steps of 0.3; and on 2026-10-22 the 0.4
+round — shapes by kind (LOOK-2), held items only where needed (LOOK-3), one AI
+conversation (AI-2), previewed results (AI-3), suggestions (AI-4) and the second look
+(LAYOUT-4) — was written by Claude Sonnet 5.5 (`claude-sonnet-5-5`) as an independent
+acceptance author, from ADR 0008 and the contracts alone (no product code was read),
+in batches `0-helpers`, A–F and Z for the two lanes that build 0.4 at the same time.
 
-The suite holds 76 Playwright acceptance journeys, written from the product
+The suite holds 90 Playwright acceptance journeys, written from the product
 contracts and never from product code. Each title reads
 `H<nn> [REQUIREMENT IDS] journey`; the ids are the requirements of the product
 spec that the journey observes.
@@ -58,7 +63,24 @@ spec that the journey observes.
   - `H126`–`H128`, the presentation: drawn from a story, steps lit and dimmed,
     edited, a part deleted, and the simple version's steps.
   - `H129`–`H130`, routing: facts or story, in the run record, the events and the
-    AI panel and ask box.
+    AI panel.
+- `H131`–`H144` `*.spec.ts` (14 journeys, the 0.4 round; the 0.3 files that used the
+  ask box, `simplify-overview` or an immediate result changed with it):
+  - `H131`–`H133`, shapes: the five shaped kinds in the editor and the exported image
+    at the size of a plain part, in light and dark; the picker's buttons and a kind
+    changed in the callout; the post style.
+  - `H134`, held items: no *No held items* warning, the other depth warnings where
+    their rules say.
+  - `H135`–`H137`, the one AI conversation: no ask box, a turn per run with its text
+    and place, failures, cancels and Try again, and a saved turn with no engine.
+  - `H138`–`H140`, previews: held until a choice, edits refused and undo and redo
+    disabled meanwhile, Accept and Undo, and the four ways a preview ends. `H97` also
+    holds that on a channel with no drawing the AI panel opens but sending, the
+    suggestions and the second look are disabled.
+  - `H141`–`H142`, suggestions: per channel, routed, disabled during a run, `Simpler`
+    from a detail view, and saved as requests with no engine.
+  - `H143`–`H144`, the second look: the `revise` run's checks in order and its fixture
+    answers, and `ai-look-again` in the editor.
 - `helpers.ts`, `helpers-svg-parity.ts`: shared, test-owned helpers (files, the
   command line, the editor, the share dialog, image measurement; for 0.3 also
   project folders in real git repositories, the scan and draw requests, event
@@ -110,3 +132,13 @@ briefs (#49), `C` the draw run (#48), `E` the start flow (#51), `F` the README c
 the complete final content of every file it adds or changes; no batch after `A`
 changes a helper. `COVERAGE.md` says which scenario lands in which batch, and
 `batches/MANIFEST.md` lists the files of each.
+
+The 0.4 scenarios are written in batches for two lanes that build at the same time, each on its own
+branch, and are merged at the end. All the batches land together, on one branch both lanes start
+from; each lane then runs only its own batches until the merge. `0-helpers` (both lanes) adds the helpers and changes
+nothing the 0.3 files use. The look lane runs `A-shapes` (LOOK-2) and `B-held` (LOOK-3) and
+none of the others; the ai lane runs `C-conversation`, `D-preview`, `E-suggestions` and
+`F-second-look`. A lane's batches use nothing the other lane builds, and every file also
+passes after the merge. A changed file replaces its 0.3 version in the batch of the lane that
+changes its behaviour; `H130` is renamed (its title no longer names the ask box). `Z-index`
+is this index.

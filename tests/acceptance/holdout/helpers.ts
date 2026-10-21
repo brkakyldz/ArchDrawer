@@ -853,3 +853,124 @@ export async function nodeSizes(page: Page, ids: string[]) {
   for (const id of ids) { const b = await box(page.getByTestId(`node-${id}`)); sizes[id] = { width: Math.round(b.width * 10) / 10, height: Math.round(b.height * 10) / 10 }; }
   return sizes;
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// 0.4: shapes (LOOK-2), the one AI conversation (AI-2), previews (AI-3), suggestions (AI-4) and the second look (LAYOUT-4).
+// Nothing above this line changed. These helpers only read the surfaces the contracts name.
+// ---------------------------------------------------------------------------------------------------------------
+// diagram contract, Geometry, Shapes: a `card` or `compact` part's `data-shape` by its kind; a panel is `card`, a group `group`.
+export const shapeByKind: Record<string, string> = { llm: 'agent', actor: 'person', data: 'store', external: 'external', gate: 'check' };
+export function shapeFor(kind: string, form: string): string {
+  if (form === 'group') return 'group';
+  if (form === 'panel') return 'card';
+  return shapeByKind[kind] ?? 'card';
+}
+// The `data-shape` of a part's outline (the element with class `body`) in the editor; null when there is none.
+export async function editorShape(page: Page, id: string): Promise<string | null> {
+  return await page.getByTestId(`node-${id}`).evaluate(el => {
+    const body = el.matches('[class~="body"]') ? el : el.querySelector('[class~="body"]');
+    return body ? body.getAttribute('data-shape') : null;
+  });
+}
+export async function editorShapes(page: Page, ids: string[]) {
+  const shapes: Record<string, string | null> = {};
+  for (const id of ids) shapes[id] = await editorShape(page, id);
+  return shapes;
+}
+// The same in an exported image: every `g[data-node-id]` and the `data-shape` of its outline.
+export async function svgShapes(page: Page, svg: string): Promise<Record<string, string | null>> {
+  return await page.evaluate(text => {
+    const xml = new DOMParser().parseFromString(text, 'image/svg+xml');
+    const result: Record<string, string | null> = {};
+    for (const group of Array.from(xml.querySelectorAll('g[data-node-id]'))) {
+      const body = group.querySelector('[class~="body"]');
+      result[group.getAttribute('data-node-id')!] = body ? body.getAttribute('data-shape') : null;
+    }
+    return result;
+  }, svg);
+}
+// The `data-shape` values drawn in the component picker's button of a form (ui contract, Adding a component).
+export async function thumbShapes(page: Page, form: string): Promise<string[]> {
+  return await page.getByTestId(`picker-form-${form}`).evaluate(el =>
+    [el, ...Array.from(el.querySelectorAll('[data-shape]'))].map(found => found.getAttribute('data-shape')).filter((value): value is string => !!value));
+}
+
+// ui contract, Preview, Accept and Undo; While a run is going.
+export const REFUSED_WHILE_PREVIEW = "Accept or undo the AI's change first";
+export const PAUSED_WHILE_RUNNING = 'Edits are paused while the instruction runs';
+// ui contract, AI panel: the sentences of a refine's route.
+export const FACTS_ROUTE = 'Changed the facts: every channel that shows them shows it';
+export const STORY_ROUTE = 'Redrew this channel from the facts, without reading the code';
+// ui contract, Suggestions: per channel the test id suffix and label, and the instruction each one sends.
+export const SUGGESTIONS: Record<Channel, [string, string][]> = {
+  overview: [['simpler', 'Simpler'], ['loop', 'Show the loop']], linkedin: [['shorter', 'Shorter for LinkedIn']],
+  readme: [['fewer-details', 'Fewer details']], presentation: [['fewer-steps', 'Fewer steps']],
+};
+export const SUGGESTION_TEXT: Record<string, string> = {
+  simpler: 'Simplify the overview: keep every component in a detail view or a merged part',
+  loop: "Show the loop: draw the agent's loop and the checks around it as parts with numbered connections",
+  shorter: 'Make it shorter for LinkedIn: fewer parts and shorter names',
+  'fewer-details': 'Show fewer details: hold mechanisms only where the story is about them',
+  'fewer-steps': 'Use fewer steps: merge steps that say the same thing',
+};
+
+export async function openAiPanel(page: Page) {
+  const panel = page.getByTestId('ai-panel');
+  if (!await panel.isVisible()) await page.getByTestId('ai-button').click();
+  await expect(panel).toBeVisible();
+}
+export const aiTurns = (page: Page) => page.getByTestId('ai-thread').getByTestId('ai-turn');
+// The turn a run made (`data-run-id`).
+export const aiTurn = (page: Page, runId: string) => page.locator(`[data-testid="ai-turn"][data-run-id="${runId}"]`);
+export async function turnStates(page: Page) {
+  return await aiTurns(page).evaluateAll(turns => turns.map(turn => turn.getAttribute('data-state')));
+}
+export async function turnTexts(page: Page) {
+  return await aiTurns(page).evaluateAll(turns => turns.map(turn => (turn.querySelector('[data-testid="ai-turn-text"]')?.textContent ?? '').trim()));
+}
+// Runs `trigger` (a click on any control that starts a run) and returns the accepted run's id and request body.
+export async function startedRun(page: Page, trigger: () => Promise<unknown>) {
+  const waiting = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/runs');
+  await trigger();
+  const response = await waiting; expect(response.status(), await response.text()).toBe(202);
+  return { runId: (await response.json()).runId as string, body: response.request().postDataJSON() as Record<string, any> };
+}
+// Types into the AI panel and sends with the button, or with Enter.
+export async function sendInPanel(page: Page, text: string, how: 'button' | 'enter' = 'button') {
+  await openAiPanel(page);
+  return await startedRun(page, async () => {
+    await page.getByTestId('ai-input').fill(text);
+    if (how === 'enter') await page.getByTestId('ai-input').press('Enter'); else await page.getByTestId('ai-send').click();
+  });
+}
+// Waits until the run's turn is no longer `running`; returns the state it ended in.
+export async function runDone(page: Page, runId: string, timeout = 90_000): Promise<string> {
+  await openAiPanel(page);
+  const turn = aiTurn(page, runId);
+  await expect(turn).toHaveCount(1, { timeout });
+  await expect(turn).not.toHaveAttribute('data-state', 'running', { timeout });
+  return (await turn.getAttribute('data-state'))!;
+}
+// Keeps a run's preview (`ai-accept`) and waits for the preview to go.
+export async function acceptPreview(page: Page) {
+  await page.getByTestId('ai-accept').click();
+  await expect(page.getByTestId('ai-preview')).toHaveCount(0);
+}
+// A toast shows for about 2.6 s: wait for none, so the next one read is a fresh one.
+export async function noToast(page: Page) { await expect(page.getByTestId('toast')).toHaveCount(0, { timeout: 8_000 }); }
+
+// api contract, The second look: a PNG is base64 with no `data:` prefix and starts with the PNG signature.
+export const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+// A 1 × 1 PNG.
+export const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+// `bytes` long once decoded: the signature, then zeros.
+export const paddedPng = (bytes: number) => Buffer.concat([PNG_SIGNATURE, Buffer.alloc(Math.max(0, bytes - PNG_SIGNATURE.length))]).toString('base64');
+export function pngInfo(base64: string) {
+  const bytes = Buffer.from(base64, 'base64');
+  return { png: bytes.length >= 24 && bytes.subarray(0, 8).equals(PNG_SIGNATURE), width: bytes.length >= 24 ? bytes.readUInt32BE(16) : 0, height: bytes.length >= 24 ? bytes.readUInt32BE(20) : 0, bytes: bytes.length };
+}
+// ui contract, Share: the format a channel opens the share dialog with, and its size (1×).
+export const DEFAULT_IMAGE: Record<Channel, { width: number; height: number }> = {
+  overview: { width: 1600, height: 900 }, linkedin: { width: 1080, height: 1350 }, readme: { width: 1600, height: 900 }, presentation: { width: 1920, height: 1080 },
+};
+export const noChanges = { added: [], removed: [], changed: [], moved: [], edgesAdded: [], edgesRemoved: [], edgesChanged: [] };

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { shop3, workspaceRaw, openDrawing, readDocument, persistedDoc, viewOf, partOf, outdatedOf, channelNames, type Channel } from './helpers';
 
 // STORY-1: after the facts are read, a channel is chosen and drawn from them; switching channel never reads the code again.
-test('H102 [STORY-1, NAV-2, AI-1] an empty LinkedIn channel is drawn from the facts with Draw it, switching channels starts no run, and one undo step takes the drawing away', async ({ page, request }) => {
+test('H102 [STORY-1, NAV-2, AI-1, AI-3] an empty LinkedIn channel is drawn from the facts with Draw it, switching channels starts no run, and one undo step takes the drawing away', async ({ page, request }) => {
   const { file } = await workspaceRaw('draw', shop3('Draw shop'));
   const runs: string[] = [];
   page.on('request', req => { if (req.method() === 'POST' && new URL(req.url()).pathname === '/api/runs') runs.push(req.url()); });
@@ -23,6 +23,8 @@ test('H102 [STORY-1, NAV-2, AI-1] an empty LinkedIn channel is drawn from the fa
   await page.getByTestId('channel-draw').click();
   await persistedDoc(file, d => (d.channels.linkedin?.views ?? []).length === 1, 30_000);
   await expect(page.getByTestId('node-intake')).toBeVisible({ timeout: 15_000}); await expect(empty).toHaveCount(0);
+  // From 0.4 the drawn channel arrives as a preview: the file already holds it; keeping it brings edits and undo back.
+  await expect(page.getByTestId('ai-preview')).toBeVisible(); await page.getByTestId('ai-accept').click(); await expect(page.getByTestId('ai-preview')).toHaveCount(0);
   await expect(page.getByTestId('tool-undo')).toBeEnabled(); // the run is over: edits and undo are back
   expect(runs.length).toBeGreaterThanOrEqual(1);
   const drawn = await readDocument(file);

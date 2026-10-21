@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { drawing, workspace, openDrawing, readDrawing, finishRun, persisted, svgInfo, baseURL } from './helpers';
+import { drawing, workspace, openDrawing, readDrawing, finishRun, persisted, svgInfo, baseURL, runDone } from './helpers';
 
-test('H32 [AI-1, LAYOUT-1, EDIT-1] move and align just one part and warn once for a move outside selected parts', async ({ page, request }) => {
+test('H32 [AI-1, AI-3, LAYOUT-1, EDIT-1] move and align just one part and warn once for a move outside selected parts', async ({ page, request }) => {
   const doc = drawing('Position shop');
   for (const [i, node] of doc.views[0].nodes.entries()) { node.place = null; node.x = [80, 400, 80][i]; node.y = [80, 240, 480][i]; }
   doc.views[0].texts.push({ id: 'position-title', text: 'A stored order', x: 80, y: 680, size: 28 });
@@ -13,12 +13,14 @@ test('H32 [AI-1, LAYOUT-1, EDIT-1] move and align just one part and warn once fo
     await page.getByTestId('ai-input').fill(instruction);
     const waiting = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/runs');
     await page.getByTestId('ai-send').click(); const response = await waiting; expect(response.status()).toBe(202);
-    const run = await finishRun(request, (await response.json()).runId, 'succeeded'); await expect(page.getByTestId('ai-summary')).toBeVisible(); return run;
+    const runId = (await response.json()).runId as string;
+    const run = await finishRun(request, runId, 'succeeded'); await runDone(page, runId); await expect(page.getByTestId('ai-summary')).toBeVisible(); return run;
   }
   const moved = await send('move Orders DB right of Order API');
   expect(moved.changes).toEqual({ added: [], removed: [], changed: [], moved: ['db'], edgesAdded: [], edgesRemoved: [], edgesChanged: [] });
+  // The moved part is lit while the result is a preview; the next run accepts it first.
   await expect(page.getByTestId('ai-summary')).toHaveAttribute('data-moved', '1'); await expect(page.getByTestId('node-db')).toHaveAttribute('data-changed', 'true');
-  await expect(page.getByTestId('node-api')).not.toHaveAttribute('data-changed', 'true');
+  await expect(page.getByTestId('node-api')).not.toHaveAttribute('data-changed', 'true'); await expect(page.getByTestId('ai-preview')).toBeVisible();
   await persisted(file, d => d.views[0].nodes.find(n => n.id === 'db')?.y === api.y);
   const afterMove = await readDrawing(file), db = afterMove.views[0].nodes.find(n => n.id === 'db')!;
   expect(db.x).toBe(Math.round((api.x! + sizes.nodes.find(n => n.id === 'api')!.width + 64) / 8) * 8); expect(db.y).toBe(api.y);
@@ -40,6 +42,8 @@ test('H32 [AI-1, LAYOUT-1, EDIT-1] move and align just one part and warn once fo
   expect(afterIgnored.warnings!.at(-1)).toMatch(/scope|outside|ignored/i);
   await page.getByTestId('ai-scope-view').check(); await send('move Orders DB below Order API');
   await expect(page.getByTestId('node-db')).toHaveAttribute('data-changed', 'true');
+  // The undo is refused while the result is a preview; kept, it is one ordinary undo step.
+  await page.getByTestId('ai-accept').click(); await expect(page.getByTestId('ai-preview')).toHaveCount(0);
   await page.getByTestId('tool-undo').click(); await persisted(file, d => d.views[0].nodes.find(n => n.id === 'db')?.y === 80);
   expect((await readDrawing(file)).views).toEqual(beforeIgnored.views);
 });

@@ -14,8 +14,9 @@ import { AiPanel, type ScopeChoice } from "./AiPanel";
 import { AskBox } from "./AskBox";
 import { Search, type Found, type Hit } from "./Find";
 import { ViewsMenu } from "./Views";
-import { ChannelTabs, EmptyStage, OutdatedBanner } from "./Channels";
-import { drawFromFacts, LinkedInPanel, LinkedInStart } from "./LinkedIn";
+import { ChannelStart, ChannelTabs, EmptyStage, OutdatedBanner } from "./Channels";
+import { drawFromFacts, LinkedInPanel, LinkedInStart, RunLine } from "./LinkedIn";
+import { prepareChannel } from "../../core/simple";
 import { LoadError } from "./LoadError";
 import { Callout } from "./Callout";
 import { Canvas } from "./Canvas";
@@ -349,7 +350,19 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   /** The simple LinkedIn version, drawn by code from the overview (ui contract, The LinkedIn flow): one undoable edit. */
   const prepare = () => {
     if (running.current) { toast(PAUSED); return; }
-    histApply((d) => { const r = prepareLinkedIn(d); if (!r.ok) { toast(r.error); return d; } return r.doc; });
+    const c = chanRef.current;
+    histApply((d) => {
+      const r = c === "readme" || c === "presentation" ? prepareChannel(d, c) : prepareLinkedIn(d);
+      if (!r.ok) { toast(r.error); return d; }
+      return r.doc;
+    });
+  };
+  /** The README or the presentation from the facts alone (STORY-1): a story run with an engine, else the simple version. */
+  const drawStory = () => {
+    const c = chanRef.current;
+    if (c !== "readme" && c !== "presentation") return;
+    if (!engine) { prepare(); return; }
+    void runner.start({ instruction: "", engine: engine.id, model: model || null, scope: { kind: "view" }, origin: "panel", kind: "story", channel: c, readCode: false });
   };
   const undo = () => { if (running.current) toast(PAUSED); else hist.undo(); };
   const redo = () => { if (running.current) toast(PAUSED); else hist.redo(); };
@@ -514,7 +527,8 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
 
   // Until the editor edits each channel on its own (#50, #52, #53), README and presentation keep
   // their empty stage even when the file holds a view for them.
-  const blank = stored.channels[chan].views.length === 0 || chan === "readme" || chan === "presentation";
+  const blank = stored.channels[chan].views.length === 0;
+  const story = chan === "readme" || chan === "presentation";
   const outdated = blank ? 0 : stored.channels[chan].outdated.length;
   const crumbs = crumbsTo(doc, view.id);
   const sel1 = sel.edges.length === 1 && !sel.nodes.length && !sel.texts.length ? sel.edges[0] : null;
@@ -625,10 +639,14 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       </header>
 
       <main className="stage" ref={stageEl}>
-        {blank ? <EmptyStage channel={chan}>{chan === "linkedin" && <LinkedInStart {...engineProps} onPrepare={prepare} />}</EmptyStage> : <>
+        {blank ? <EmptyStage channel={chan}>
+          {chan === "linkedin" && <LinkedInStart {...engineProps} onPrepare={prepare} />}
+          {story && <ChannelStart engine={!!engine} running={runner.state.status === "running"} onDraw={drawStory} onPrepare={prepare} />}
+          {story && <RunLine runner={runner} />}
+        </EmptyStage> : <>
         <Canvas ctl={ctl} steps={stepsOn} onDouble={onDouble} />
         {outdated > 0 && <OutdatedBanner count={outdated} onKeep={keep} busy={runner.state.status === "running"}
-          onRedraw={chan === "linkedin" ? () => drawFromFacts(engineProps, prepare) : undefined} />}
+          onRedraw={chan === "linkedin" ? () => drawFromFacts(engineProps, prepare) : story ? drawStory : undefined} />}
         {HINTS[tool] && <div className="tool-hint" data-testid="tool-hint" role="status">{HINTS[tool]}</div>}
         <div className="overlay">
           {callout && !editing && !pinned && <Callout key={callout} ctl={ctl} id={callout} />}

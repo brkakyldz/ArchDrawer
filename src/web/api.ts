@@ -10,7 +10,7 @@ export interface RunRecord {
   engine: string; model: string | null; changes: Changes | null;
 }
 export interface Health { ok: boolean; app: string; version: string; build: string }
-export interface RunStart { engine: string | null; model: string | null; scope: RunScope; kind?: "refine" | "post" | "simplify"; format?: string; readCode?: boolean }
+export interface RunStart { engine: string | null; model: string | null; scope: RunScope; kind?: "refine" | "post" | "simplify" | "story"; format?: string; readCode?: boolean }
 
 export class ApiError extends Error {
   constructor(readonly status: number, message: string, readonly body: Record<string, unknown> | null = null) {

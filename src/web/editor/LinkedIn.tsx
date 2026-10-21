@@ -23,7 +23,7 @@ interface Engine {
 }
 
 /** A post run started on the LinkedIn channel: going, failed or saved for the next session. */
-function RunLine({ runner }: { runner: Runner }) {
+export function RunLine({ runner }: { runner: Runner }) {
   const { state } = runner;
   if (state.req?.origin !== "linkedin") return null;
   if (state.status === "running") {

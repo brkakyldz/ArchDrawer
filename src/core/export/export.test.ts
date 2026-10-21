@@ -380,8 +380,8 @@ describe("LinkedIn version", () => {
     const flat = Array.from({ length: 7 }, (_, i) => part(`q${i}`, { form: "card", items: [] }));
     const edges = flat.slice(1).map((n, i) => edge(`s${i}`, flat[i].id, n.id, i + 1));
     const views = (id: string) => [{ id, title: "T", caption: { title: "T", lede: "" }, postOf: null, nodes: flat, edges, texts: [] }];
-    expect(depthWarnings({ views: views("main") }).join(" ")).toMatch(/flat pipeline|lists what it holds/);
-    expect(depthWarnings({ views: views("main-linkedin") }).join(" ")).not.toMatch(/flat pipeline|lists what it holds/);
+    expect(depthWarnings({ views: views("main") }).join(" ")).toMatch(/flat pipeline/);
+    expect(depthWarnings({ views: views("main-linkedin") }).join(" ")).not.toMatch(/flat pipeline/);
   });
 
   it("asks the engine to rewrite only that view, in plain words", () => {

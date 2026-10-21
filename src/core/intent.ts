@@ -425,15 +425,25 @@ function leftOut(drawn: Document3, intent: StoryIntent): { intent: StoryIntent; 
   if (missing.length > room && missing.length) {
     const fits = Math.max(0, room - 1);
     const rest = missing.slice(fits);
-    const top = next.parts.find((p) => p.inside === null && p.spine !== null);
-    const id = freeIdAmong(taken, "more-components");
-    taken.add(id);
-    next.parts.push({
-      id, label: "More components", sub: `${rest.length} the overview left out`, kind: "service", chips: [], from: rest.map((c) => c.id), held: [], limits: [],
-      zone: null, inside: null, spine: top ? null : nextSpine(next, null), anchor: top?.id ?? null, side: top ? "below" : null,
-    });
-    for (const c of rest) { shown.add(c.id); partOf.set(c.id, next.parts.at(-1)!); }
-    added.push(`Drew the ${rest.length} facts the overview left out beyond its ${LIMITS.nodesPerView} parts in one part "${id}"`);
+    // With a slot left, one new part takes them; with none, the last part that holds no parts does.
+    const holders = new Set(next.parts.filter((p) => p.inside !== null).map((p) => p.inside!));
+    const host = room > 0 ? undefined : [...next.parts].reverse().find((p) => !holders.has(p.id));
+    let part: StoryPart;
+    if (host) {
+      host.from = [...host.from, ...rest.map((c) => c.id)];
+      part = host;
+    } else {
+      const top = next.parts.find((p) => p.inside === null && p.spine !== null);
+      const id = freeIdAmong(taken, "more-components");
+      taken.add(id);
+      part = {
+        id, label: "More components", sub: `${rest.length} the overview left out`, kind: "service", chips: [], from: rest.map((c) => c.id), held: [], limits: [],
+        zone: null, inside: null, spine: top ? null : nextSpine(next, null), anchor: top?.id ?? null, side: top ? "below" : null,
+      };
+      next.parts.push(part);
+    }
+    for (const c of rest) { shown.add(c.id); partOf.set(c.id, part); }
+    added.push(`Drew the ${rest.length} facts the overview left out beyond its ${LIMITS.nodesPerView} parts in one part "${part.id}"`);
   }
   for (const c of drawn.facts.components) {
     if (shown.has(c.id)) continue;

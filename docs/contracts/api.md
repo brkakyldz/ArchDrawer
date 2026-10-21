@@ -217,9 +217,10 @@ home screen always offers them (SCAN-3).
 
 **Lifecycle.** As a run's: `running`, `succeeded`, `failed` or `cancelled`,
 the same timeout, and cancel kills the engine's process tree. A failed or
-cancelled scan caches nothing. The latest finished scan of each folder is kept
-while the server runs, so a `draw` can follow it at any time; an earlier one
-of the same folder is forgotten when a newer one finishes. Its cache entry
+cancelled scan caches nothing. The latest succeeded scan of each folder is kept
+while the server runs, so a `draw` can follow it at any time: a newer success
+forgets every earlier finished scan of the folder, a newer failure or cancel
+only the earlier failed and cancelled ones. Its cache entry
 stays.
 
 **Scan record** (`GET /api/scans/:scanId`):

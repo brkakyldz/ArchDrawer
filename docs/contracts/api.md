@@ -108,9 +108,12 @@ in git.
 
 The repository is untrusted: every `git` call runs with `-c
 core.fsmonitor=false -c core.untrackedCache=false --no-optional-locks` and no
-terminal prompt, so the repository's own config runs no command and nothing is
-written to it. An input that is a symlink leading out of the root, or is not a
-file, is left out of the listing and never read.
+terminal prompt, and with none of the server's own `GIT_*` environment
+variables that point it at another repository or add config, so the
+repository's own config runs no command, nothing is written to it, and no
+inherited `GIT_DIR` or `GIT_WORK_TREE` points git elsewhere. An input that is a
+symlink, is not a file, or lies in a folder leading out of the root (a
+symlinked folder or a junction) is left out of the listing and never read.
 
 ## Scans
 

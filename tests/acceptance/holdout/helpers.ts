@@ -1,8 +1,8 @@
 import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, writeFile, rename } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rename, readdir, realpath, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:net';
 
@@ -24,6 +24,8 @@ export interface Component {
   items: string[]; description: string; files: string[]; parent: string | null;
   detail: string | null; place: { row: number; col: number } | null;
   lane?: Lane; from?: string[]; facts?: string[]; x?: number; y?: number;
+  // 0.3: only present when the part draws a mechanism row or a limit row (items then holds the mechanisms' labels first).
+  limits?: string[];
 }
 export interface Connection { id?: string; from: string; to: string; label: string; style: string; both: boolean; step: number | null }
 export interface Text { id: string; text: string; x: number; y: number; size: number }
@@ -42,20 +44,27 @@ export interface Drawing {
 // ---------------------------------------------------------------------------------------------------------------
 // The stored shape, `archdraw/diagram@3` (diagram contract, Shape).
 // ---------------------------------------------------------------------------------------------------------------
-export interface Fact { id: string; label: string; kind: string; sub: string; description: string; files: string[]; items: string[] }
-export interface Relation { id: string; from: string; to: string; label: string; style: string; both: boolean }
+export interface Evidence { file: string; lines: [number, number] | null }
+export interface Fact {
+  id: string; label: string; kind: string; sub: string; description: string; files: string[]; items: string[];
+  within?: string | null; evidence?: Evidence[];
+}
+export interface Relation { id: string; from: string; to: string; label: string; style: string; both: boolean; evidence?: Evidence[] }
+export interface LimitFact { id: string; on: string; text: string; evidence?: Evidence[] }
 export interface Part {
   id: string; facts: string[]; form: string; icon: string | null; parent: string | null; detail: string | null;
   place: { row: number; col: number } | null; lane?: Lane; x?: number; y?: number;
+  held?: string[]; limits?: string[];
   label?: string | null; kind?: string | null; sub?: string | null; description?: string | null; items?: string[] | null;
 }
 export interface Link { id?: string; from: string; to: string; relations?: string[]; step: number | null; label?: string | null; style?: string | null; both?: boolean | null }
 export interface View3 { id: string; title: string; caption: { title: string; lede: string }; nodes: Part[]; edges: Link[]; texts?: Text[] }
-export interface ChannelDoc { views?: View3[]; showSteps?: boolean; outdated?: string[] }
+export interface Step { id: string; parts: string[]; text: string; note: string }
+export interface ChannelDoc { views?: View3[]; showSteps?: boolean; outdated?: string[]; steps?: Step[] }
 export interface Doc3 {
   schema: string; id?: string; title: string; theme?: string; source?: { kind: string; path: string } | null;
   engine?: { id: string; model: string | null } | null; createdAt?: string; updatedAt?: string;
-  facts: { components: Fact[]; relations?: Relation[] };
+  facts: { components: Fact[]; relations?: Relation[]; limits?: LimitFact[] };
   channels: { overview: ChannelDoc; linkedin?: ChannelDoc; readme?: ChannelDoc; presentation?: ChannelDoc };
   requests?: Request[]; warnings?: string[];
 }
@@ -158,15 +167,21 @@ export function withLinkedIn(doc: Doc3, opts: { id?: string; visitorLabel?: stri
 export function joinView(doc: Doc3, view: View3): View {
   const facts = new Map(doc.facts.components.map(f => [f.id, f] as const));
   const relations = new Map((doc.facts.relations ?? []).map(r => [r.id, r] as const));
+  const limits = new Map((doc.facts.limits ?? []).map(l => [l.id, l] as const));
   const nodes: Component[] = view.nodes.map(p => {
     const shown = p.facts.map(id => facts.get(id)).filter((f): f is Fact => !!f);
     const single = shown.length === 1 ? shown[0] : null;
     const files: string[] = [];
     for (const f of shown) for (const file of f.files) if (!files.includes(file)) files.push(file);
+    // 0.3 (diagram contract, What a channel draws): a panel's rows are its held mechanisms' labels, its shown items, then its
+    // limits' texts. `limits` is only set when the part draws one, so a drawing written before 0.3 joins exactly as it did.
+    const held = (p.held ?? []).map(id => facts.get(id)?.label ?? id);
+    const limitTexts = (p.limits ?? []).map(id => limits.get(id)?.text ?? id);
     return { id: p.id, label: p.label ?? single?.label ?? p.id, kind: p.kind ?? single?.kind ?? 'service', form: p.form, icon: p.icon,
-      sub: p.sub ?? single?.sub ?? '', items: p.form === 'panel' ? (p.items ?? single?.items ?? []) : [],
+      sub: p.sub ?? single?.sub ?? '', items: p.form === 'panel' ? [...held, ...(p.items ?? single?.items ?? [])] : [],
       description: p.description ?? single?.description ?? '', files: files.slice(0, 20), parent: p.parent, detail: p.detail,
       place: p.place, lane: p.lane ?? null, facts: p.facts,
+      ...(limitTexts.length && p.form === 'panel' ? { limits: limitTexts } : {}),
       ...(p.x !== undefined ? { x: p.x } : {}), ...(p.y !== undefined ? { y: p.y } : {}) };
   });
   const edges: Connection[] = view.edges.map(l => {
@@ -602,4 +617,239 @@ export async function checkReadability(page: Page, width: number, seen: number) 
   const meter = page.getByTestId('share-dialog').getByTestId('readability');
   await expect(meter).toHaveAttribute('data-level', report.level!);
   return { ...report, namesInPlace, namesOpened: measured.namesOpened };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// 0.3: facts with evidence, mechanisms and limits, and a README and a presentation drawn over the same facts.
+// ---------------------------------------------------------------------------------------------------------------
+// An agent project's facts: `app`, an `agent` that holds the mechanisms `model-call` and `tool-check` (a gate) and has a
+// limit, and a `store`; every fact carries evidence in the files `repo()` writes. The overview draws the agent as a panel
+// with two mechanism rows and one limit row.
+export function agent3(title: string): Doc3 {
+  const at = (file: string, lines: [number, number] | null = [1, 1]): Evidence[] => [{ file, lines }];
+  return { schema: 'archdraw/diagram@3', title,
+    facts: {
+      components: [
+        fact('app', { label: 'App', kind: 'client', description: 'Starts the work.', files: ['src/web.ts'], evidence: at('src/web.ts', null) }),
+        fact('agent', { label: 'Agent', kind: 'llm', description: 'Runs the tool loop.', files: ['src/api.ts'], evidence: at('src/api.ts') }),
+        fact('model-call', { label: 'Model call', kind: 'llm', description: 'Asks the model for the next step.', within: 'agent', files: ['src/api.ts'], evidence: at('src/api.ts') }),
+        fact('tool-check', { label: 'Tool check', kind: 'gate', description: 'Approves a tool call before it runs.', within: 'agent', files: ['src/extra.ts'], evidence: at('src/extra.ts') }),
+        fact('store', { label: 'Store', kind: 'data', description: 'Keeps the run state.', files: ['src/db.ts'], evidence: at('src/db.ts', null) }),
+      ],
+      relations: [
+        { id: 'r1', from: 'app', to: 'agent', label: 'asks', style: 'call', both: false, evidence: at('src/web.ts') },
+        { id: 'r2', from: 'agent', to: 'store', label: 'keeps state', style: 'call', both: false, evidence: at('src/db.ts') },
+      ],
+      limits: [{ id: 'turn-limit', on: 'agent', text: 'Stops after 12 turns', evidence: at('src/api.ts') }],
+    },
+    channels: { overview: { showSteps: false, outdated: [], views: [{ id: 'overview', title: 'Overview',
+      caption: { title: `How ${title} runs`, lede: 'An app asks an agent, which keeps its state.' },
+      nodes: [part('app', { place: { row: 0, col: 0 } }),
+        part('agent', { form: 'panel', place: { row: 0, col: 1 }, held: ['model-call', 'tool-check'], limits: ['turn-limit'] }),
+        part('store', { place: { row: 1, col: 1 } })],
+      edges: [{ id: 'e1', from: 'app', to: 'agent', relations: ['r1'], step: 1 }, { id: 'e2', from: 'agent', to: 'store', relations: ['r2'], step: 2 }],
+      texts: [] }] } } };
+}
+function overviewCopy(doc: Doc3, id: string, title: string): View3 {
+  return { ...structuredClone(doc.channels.overview.views![0]), id, title, texts: [] };
+}
+// A README channel drawn over the same facts: the overview's first view under the id `readme`.
+export function withReadme(doc: Doc3, opts: { outdated?: string[]; id?: string } = {}): Doc3 {
+  doc.channels.readme = { showSteps: false, outdated: opts.outdated ?? [], views: [overviewCopy(doc, opts.id ?? 'readme', 'README')] };
+  return doc;
+}
+// A presentation channel over the same facts: the overview's first view under the id `presentation` and ordered steps
+// (by default one per top-level part that shows a fact, the first three).
+export function withPresentation(doc: Doc3, opts: { steps?: Step[]; outdated?: string[]; id?: string } = {}): Doc3 {
+  const view = overviewCopy(doc, opts.id ?? 'presentation', 'Presentation');
+  const shown = view.nodes.filter(n => n.form !== 'group' && n.facts.length > 0).map(n => n.id).slice(0, 3);
+  const steps = opts.steps ?? shown.map((id, i) => ({ id: `s${i + 1}`, parts: [id], text: `Look at ${id}`, note: `Say what ${id} does.` }));
+  doc.channels.presentation = { showSteps: false, outdated: opts.outdated ?? [], views: [view], steps };
+  return doc;
+}
+// shop3 with no `files`, so a drawing file may sit anywhere (a project folder of a scan) without missing paths.
+export function shopWithoutFiles(title: string): Doc3 {
+  const doc = shop3(title); for (const f of doc.facts.components) f.files = []; return doc;
+}
+export const outputLines = (result: { stdout: string; stderr: string }) => `${result.stdout}\n${result.stderr}`.split(/\r?\n/).map(line => line.trimEnd());
+export const warnLines = (result: { stdout: string; stderr: string }) => outputLines(result).filter(line => /^WARN\s/.test(line));
+export const errorLines = (result: { stdout: string; stderr: string }) => outputLines(result).filter(line => /^ERROR /.test(line));
+export async function exists(path: string) { try { await stat(path); return true; } catch { return false; } }
+// The same folder whichever way the platform writes it (case on Windows, separators).
+export const samePath = (a: string, b: string) => {
+  const flat = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '');
+  return process.platform === 'win32' ? flat(a).toLowerCase() === flat(b).toLowerCase() : flat(a) === flat(b);
+};
+
+// ---------------------------------------------------------------------------------------------------------------
+// 0.3: project folders to scan and draw. A folder in git is a real repository with commits (`git` is on PATH).
+// ---------------------------------------------------------------------------------------------------------------
+export const dataDir = () => process.env.ARCHDRAW_HOLDOUT_DATA!;
+function git(cwd: string, args: string[]) {
+  return new Promise<string>((resolve, reject) => {
+    execFile('git', ['-c', 'user.name=Holdout', '-c', 'user.email=holdout@example.com', '-c', 'commit.gpgsign=false', ...args],
+      { cwd, encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+      (error, stdout, stderr) => error ? reject(new Error(`git ${args.join(' ')}: ${stderr || error.message}`)) : resolve(stdout));
+  });
+}
+const sixLines = (name: string) => Array.from({ length: 6 }, (_, i) => `// ${name} line ${i + 1}`).join('\n') + '\n';
+// The project every scan and draw scenario uses. The names sort the same under every collation, so the fixture's
+// "first", "second" and "third" file of the listing are alpha.ts, beta.ts and gamma.ts.
+export const projectFiles: Record<string, string> = {
+  'alpha.ts': sixLines('alpha'), 'beta.ts': sixLines('beta'), 'gamma.ts': sixLines('gamma'), 'main.ts': sixLines('main'),
+  'package.json': '{\n  "name": "holdout-project",\n  "main": "main.ts"\n}\n', 'readme.md': '# Holdout project\n\nA project for the scan.\n',
+};
+export async function writeFiles(dir: string, files: Record<string, string>) {
+  for (const [name, content] of Object.entries(files)) { const target = join(dir, name); await mkdir(dirname(target), { recursive: true }); await writeFile(target, content, 'utf8'); }
+}
+// A repository with one commit holding `files`.
+export async function gitRepo(id: string, files: Record<string, string> = projectFiles, folderName?: string) {
+  const parent = await realpath(await mkdtemp(join(tmpdir(), `archdrawer-${id}-`)));
+  const dir = folderName ? join(parent, folderName) : parent;
+  if (folderName) await mkdir(dir);
+  await git(dir, ['init']); await writeFiles(dir, files);
+  await git(dir, ['add', '--all']); await git(dir, ['commit', '-m', 'first commit']);
+  return {
+    dir, git: (args: string[]) => git(dir, args), head: async () => (await git(dir, ['rev-parse', 'HEAD'])).trim(),
+    write: (more: Record<string, string>) => writeFiles(dir, more),
+    commit: async (more: Record<string, string>, message = 'next commit') => {
+      await writeFiles(dir, more); await git(dir, ['add', '--all']); await git(dir, ['commit', '-m', message]);
+      return (await git(dir, ['rev-parse', 'HEAD'])).trim();
+    },
+  };
+}
+// A folder that is not in git at all.
+export async function plainFolder(id: string, files: Record<string, string> = projectFiles) {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), `archdrawer-${id}-`))); await writeFiles(dir, files); return dir;
+}
+// A repository with no commit yet: `.git` exists, `git rev-parse HEAD` fails, so it is not in git for the product.
+export async function gitWithoutCommit(id: string, files: Record<string, string> = projectFiles) {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), `archdrawer-${id}-`))); await git(dir, ['init']); await writeFiles(dir, files); return dir;
+}
+// A folder whose last segment carries a fixture marker (testing contract, Scan). A Windows folder cannot be named with
+// ":", so there it is null and a scenario skips the part that needs it (the marker also works in a typed focus for a draw).
+export async function markerFolder(marker: string, files: Record<string, string> = projectFiles): Promise<string | null> {
+  if (process.platform === 'win32') return null;
+  const parent = await realpath(await mkdtemp(join(tmpdir(), 'archdrawer-marker-')));
+  const dir = join(parent, `shop ${marker}`); await mkdir(dir); await writeFiles(dir, files); return dir;
+}
+// The same, as a repository with a commit (so a finished scan of it would be cached).
+export async function markerRepo(marker: string, files: Record<string, string> = projectFiles) {
+  if (process.platform === 'win32') return null;
+  return await gitRepo('marker', files, `shop ${marker}`);
+}
+// A project folder that already holds a drawing at docs/architecture.archdraw.json (api contract, The draw run).
+export async function writeExistingDrawing(dir: string, name = 'architecture.archdraw.json', title = 'Earlier drawing') {
+  await mkdir(join(dir, 'docs'), { recursive: true }); const file = join(dir, 'docs', name);
+  await writeJSON(file, shopWithoutFiles(title)); return file;
+}
+export async function scanCacheCount() {
+  try { return (await readdir(join(dataDir(), 'scans'))).filter(name => name.endsWith('.json')).length; } catch { return 0; }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// 0.3: the scan resource, the draw run and event streams.
+// ---------------------------------------------------------------------------------------------------------------
+export interface ScanOption { id: string; kind: string; title: string; sentence: string; files: string[] }
+export interface ScanRecord {
+  id: string; status: string; progress: string[]; folder: string; root: string; commit: string | null; cached: boolean;
+  card: { name: string; sentence: string; type: string; languages: string[]; entryPoints: string[] } | null;
+  options: ScanOption[] | null; warnings: string[]; error: string | null; engine: string | null; model: string | null;
+}
+// A POST that carries the token; the status and the parsed body, whatever they are.
+export async function postJSON(request: APIRequestContext, auth: string, path: string, data: unknown, base = baseURL()) {
+  const response = await request.post(`${base}${path}`, { headers: { 'X-Archdraw-Token': auth }, data });
+  let body: any = null; try { body = await response.json(); } catch { body = null; }
+  return { status: response.status(), body };
+}
+export const checkFolder = (request: APIRequestContext, auth: string, folder: unknown, base = baseURL()) => postJSON(request, auth, '/api/folders/check', { folder }, base);
+export async function startScan(request: APIRequestContext, auth: string, folder: string, extra: Record<string, unknown> = {}, base = baseURL()) {
+  const started = await postJSON(request, auth, '/api/scans', { folder, engine: 'fixture', model: null, ...extra }, base);
+  expect(started.status, JSON.stringify(started.body)).toBe(202); return started.body.scanId as string;
+}
+export async function scanRecord(request: APIRequestContext, scanId: string, base = baseURL()): Promise<ScanRecord> {
+  const response = await request.get(`${base}/api/scans/${scanId}`); expect(response.status()).toBe(200); return await response.json() as ScanRecord;
+}
+export async function finishScan(request: APIRequestContext, scanId: string, status = 'succeeded', timeout = 60_000, base = baseURL()) {
+  await expect.poll(async () => (await scanRecord(request, scanId, base)).status, { timeout }).toBe(status);
+  return await scanRecord(request, scanId, base);
+}
+// Starts a scan and waits for it to succeed.
+export async function scanFolder(request: APIRequestContext, auth: string, folder: string, extra: Record<string, unknown> = {}, base = baseURL()) {
+  return await finishScan(request, await startScan(request, auth, folder, extra, base), 'succeeded', 60_000, base);
+}
+// Starts a `draw` run (api contract, The draw run) and returns its id.
+export async function startDraw(request: APIRequestContext, auth: string, scan: string, focus: unknown, channel: string, extra: Record<string, unknown> = {}, base = baseURL()) {
+  return await startKind(request, auth, { kind: 'draw', scan, focus, channel, engine: 'fixture', model: null, ...extra }, base);
+}
+export async function refusedDraw(request: APIRequestContext, auth: string, data: Record<string, unknown>, base = baseURL()) {
+  return await refusedRun(request, auth, { kind: 'draw', engine: 'fixture', model: null, ...data }, base);
+}
+// Scan, then draw, then wait: the finished run record.
+export async function drawFolder(request: APIRequestContext, auth: string, folder: string, opts: { focus?: unknown; channel?: string; status?: string; extra?: Record<string, unknown> } = {}, base = baseURL()) {
+  const scan = await scanFolder(request, auth, folder, {}, base);
+  const runId = await startDraw(request, auth, scan.id, opts.focus ?? { kind: 'option', option: 'o1' }, opts.channel ?? 'linkedin', opts.extra ?? {}, base);
+  return { scan, runId, run: await finishRun(request, runId, opts.status ?? 'succeeded', 120_000, base) };
+}
+// The events of a scan or a run: the stream is read until its `done` event, then closed.
+export async function sseEvents(url: string, until = 'done', timeoutMs = 60_000): Promise<{ event: string; data: any }[]> {
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs), events: { event: string; data: any }[] = [];
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers: { accept: 'text/event-stream' } });
+    expect(response.status).toBe(200);
+    const reader = response.body!.getReader(), decoder = new TextDecoder(); let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      for (let at = buffer.search(/\r?\n\r?\n/); at >= 0; at = buffer.search(/\r?\n\r?\n/)) {
+        const block = buffer.slice(0, at); buffer = buffer.slice(at).replace(/^\r?\n\r?\n/, '');
+        let event = 'message'; const data: string[] = [];
+        for (const line of block.split(/\r?\n/)) {
+          if (line.startsWith(':')) continue;
+          if (line.startsWith('event:')) event = line.slice(6).trim(); else if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
+        }
+        if (!data.length) continue;
+        events.push({ event, data: JSON.parse(data.join('\n')) });
+        if (event === until) { controller.abort(); return events; }
+      }
+    }
+    return events;
+  } catch (error) {
+    if (events.some(e => e.event === until)) return events; throw error;
+  } finally { clearTimeout(timer); }
+}
+export const scanEvents = (scanId: string, base = baseURL()) => sseEvents(`${base}/api/scans/${scanId}/events`, 'done');
+export const runEvents = (runId: string, base = baseURL()) => sseEvents(`${base}/api/runs/${runId}/events`, 'done');
+export async function listedDiagrams(request: APIRequestContext, base = baseURL()) {
+  const response = await request.get(`${base}/api/diagrams`); expect(response.status()).toBe(200);
+  return (await response.json()).diagrams as { id: string; title: string; path: string | null; updatedAt: string }[];
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// 0.3: the editor's start flow, the steps panel and the keyboard.
+// ---------------------------------------------------------------------------------------------------------------
+// Tab until the element with this test id (or one inside it) has the focus; fails when it is not reached.
+export async function tabTo(page: Page, testId: string, max = 60) {
+  for (let i = 0; i < max; i++) {
+    const there = await page.evaluate(id => !!document.activeElement?.closest(`[data-testid="${id}"]`), testId);
+    if (there) return; await page.keyboard.press('Tab');
+  }
+  throw new Error(`Tab never reached ${testId}`);
+}
+export async function stepIds(page: Page) {
+  return await page.getByTestId('step-item').evaluateAll(items => items.map(item => item.getAttribute('data-step-id')));
+}
+// The ids of the parts a step lights (`data-step="on"`) and of those it dims, on the canvas.
+export async function litParts(page: Page) {
+  return await page.getByTestId('canvas').locator('[data-testid^="node-"][data-form]').evaluateAll(nodes => {
+    const id = (el: Element) => (el.getAttribute('data-testid') ?? '').slice('node-'.length);
+    return { on: nodes.filter(n => n.getAttribute('data-step') === 'on').map(id).sort(),
+      dim: nodes.filter(n => n.getAttribute('data-dim') === 'true').map(id).sort(),
+      all: nodes.map(id).sort() };
+  });
+}
+export async function nodeSizes(page: Page, ids: string[]) {
+  const sizes: Record<string, { width: number; height: number }> = {};
+  for (const id of ids) { const b = await box(page.getByTestId(`node-${id}`)); sizes[id] = { width: Math.round(b.width * 10) / 10, height: Math.round(b.height * 10) / 10 }; }
+  return sizes;
 }

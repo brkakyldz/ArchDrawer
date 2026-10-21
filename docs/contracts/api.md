@@ -49,7 +49,7 @@ Implemented by: `src/server/app.ts` (routes), `src/server/main.ts`
 | `GET /api/diagrams/:id/export.mmd?channel=&view=` | 200 `text/plain`: a Mermaid `flowchart LR` of the channel view (groups as subgraphs); defaults as for `export.svg` | 404; 400 unknown or empty channel, unknown view |
 | `POST /api/diagrams/:id/requests` `{"channel", "view", "text"}` | 201 `{"id"}` (`q<n>`): appends to `requests`; `channel` defaults to `overview` | 400 `The instruction is empty` / `The instruction is too long (4000 characters at most)` / unknown channel / unknown view; 404; 409 `The drawing could not be saved` |
 | `POST /api/diagrams/:id/check-files` `{"files": [path, …]}` | 200 `{"missing": [path, …]}`: the given repository-relative paths that do not exist under the drawing's repository root (*Runs*), symlinks resolved; none when that folder is not on this machine | 400 `files must be at most 20 repository-relative paths`; 404 |
-| `POST /api/folders/check` `{"folder"}` | 200 `{"folder", "root", "git", "drawing"}`: the folder as resolved, its repository root (*Folders*), whether that root is a git repository, and the path of `<folder>/docs/architecture.archdraw.json` when that file exists, else null | 400 as in *Folders* |
+| `POST /api/folders/check` `{"folder"}` | 200 `{"folder", "root", "git", "drawing"}`: the folder as resolved, its repository root (*Folders*), whether `git` works there (*Folders*), and the path of `<folder>/docs/architecture.archdraw.json` when that file exists, else null | 400 as in *Folders* |
 | `POST /api/scans` | 202 `{"scanId"}` | see *Scans* |
 | `GET /api/scans/:scanId` | 200 the scan record | 404 `Scan not found` |
 | `GET /api/scans/:scanId/events` | 200 event stream: past events replayed, then `progress` `{"message"}` …, then exactly one `done` `{"status", "error", "card", "options", "cached", "warnings"}` | 404 |
@@ -100,7 +100,9 @@ A trailing separator is dropped and the path resolved, symlinks included.
 The **repository root** is the nearest ancestor of the folder (the folder
 included) that holds `.git`, else the folder itself. It is the engine's
 working directory and Codex's `-C` (AGENTS.md invariant 1). Facts' paths are
-relative to it.
+relative to it. The folder is **in git** when `git rev-parse HEAD`, run in the
+root as an argument array, succeeds: a repository with at least one commit.
+A `.git` without a commit, or no `git` on PATH, is not in git.
 
 ## Scans
 
@@ -127,7 +129,7 @@ A second scan of a folder while one is running gets 409
 files from the listing is pure (`src/core/scan.ts`); reading them is the
 server's.
 
-- **Listing.** In a git repository it is `git ls-files --cached --others
+- **Listing.** In git it is `git ls-files --cached --others
   --exclude-standard -- <folder>`, run in the root as an argument array.
   Otherwise the folder is walked, skipping `.git`, `node_modules`, `dist`,
   `build`, `out`, `target`, `vendor`, `coverage`, `.next`, `.venv`, `venv`
@@ -189,10 +191,9 @@ home screen always offers them (SCAN-3).
 
 **Cache** (SCAN-4).
 
-- **Inside git:** the key is the root, the folder and `HEAD`'s commit, read
-  with `git rev-parse HEAD` as an argument array. A tree with uncommitted
-  changes uses the same entry.
-- **Outside git**, or in a repository with no commit, nothing is cached.
+- **In git:** the key is the root, the folder and `HEAD`'s commit. A tree
+  with uncommitted changes uses the same entry.
+- **Not in git** (*Folders*), nothing is cached.
 - **A cached scan** answers at once: its record is created already
   `succeeded`, with `cached: true`, and no engine starts. `refresh: true`
   scans again and replaces the entry.

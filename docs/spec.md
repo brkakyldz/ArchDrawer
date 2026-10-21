@@ -28,48 +28,47 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **START-3** (Today) Before a run, the app tells whether `claude` and/or
   `codex` is installed, signed in and recent enough, and says what to do when
   it is not.
-- **START-4** (To build) The home screen starts a drawing from a local folder.
+- **START-4** (Today) The home screen starts a drawing from a local folder.
 - **START-5** (Today) The `archdrawer` command opens, validates and exports
   drawing files.
 
 ### Scan and focus (SCAN)
 
-- **SCAN-1** (To build) A scan of about a minute reads the README, the folder
+- **SCAN-1** (Today) A scan of about a minute reads the README, the folder
   tree, dependency files and entry points, and produces a short repository card.
-- **SCAN-2** (To build) The scan proposes 3–5 focus options of three kinds —
+- **SCAN-2** (Today) The scan proposes 3–5 focus options of three kinds —
   a flow, an inner mechanism, the overview — each with a title, one sentence
   and the files that back it. An option whose files do not exist is not shown.
-- **SCAN-3** (To build) The user can always pick "the whole system" or type a
+- **SCAN-3** (Today) The user can always pick "the whole system" or type a
   focus in their own words.
-- **SCAN-4** (To build) A scan is cached per commit; opening the same commit
+- **SCAN-4** (Today) A scan is cached per commit; opening the same commit
   again does not rescan.
 
 ### Deep read and facts (READ)
 
-- **READ-1** (To build) After a focus is chosen, the engine reads the files the
+- **READ-1** (Today) After a focus is chosen, the engine reads the files the
   focus needs and returns a facts list: components, the mechanisms inside
   them, who calls whom and how, and limits that explain a guarantee.
-- **READ-2** (To build) Every fact names the files (and lines where useful)
+- **READ-2** (Today) Every fact names the files (and lines where useful)
   that support it; code checks the files exist and rejects facts without
   evidence.
-- **READ-3** (To build) In an AI agent project, the facts include the agent's
+- **READ-3** (Today) In an AI agent project, the facts include the agent's
   loop (model call, tool proposal, execution, result) and the checks around
   tool execution, whenever the code has them.
 
 ### Channels and story (STORY)
 
-- **STORY-1** (To build) The user chooses a channel after the focus — LinkedIn,
+- **STORY-1** (Today) The user chooses a channel after the focus — LinkedIn,
   README or presentation — and can switch channel without a new deep read.
-  The LinkedIn channel does this today; README and presentation come in 0.3.
-- **STORY-2** (To build) LinkedIn: one image, about 8–12 parts, a title and one
+- **STORY-2** (Today) LinkedIn: one image, about 8–12 parts, a title and one
   plain sentence, no held items, readable on a phone.
-- **STORY-3** (To build) README: a detailed drawing; one-line descriptions;
+- **STORY-3** (Today) README: a detailed drawing; one-line descriptions;
   held items only on the few parts whose mechanism matters.
-- **STORY-4** (To build) Presentation: ordered steps; each highlights some
+- **STORY-4** (Today) Presentation: ordered steps; each highlights some
   parts and carries a short on-screen text and a speaker note.
-- **STORY-5** (To build) Numbers that explain a guarantee (a deadline, a turn
+- **STORY-5** (Today) Numbers that explain a guarantee (a deadline, a turn
   limit) may appear outside LinkedIn.
-- **STORY-6** (To change) The model decides what is drawn and its rough place
+- **STORY-6** (Today) The model decides what is drawn and its rough place
   (beside, above, below, inside); the fixed caps of one rulebook (zones and
   connection counts for every drawing) are removed.
 
@@ -120,7 +119,7 @@ and its files, and a guided tour for learning a repository (ADR 0001).
   — with Accept and Undo.
 - **AI-4** (To build) One-click suggestions for common changes ("simpler",
   "show the loop", "shorter for LinkedIn").
-- **AI-5** (To build) An instruction is routed to the facts or to the channel's
+- **AI-5** (Today) An instruction is routed to the facts or to the channel's
   story depending on whether it changes content or appearance.
 
 ### Views and navigation (NAV)

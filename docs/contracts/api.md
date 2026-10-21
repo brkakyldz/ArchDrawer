@@ -263,8 +263,9 @@ A second `draw` run on a folder while one is running gets 409
 `A drawing of this folder is already being made`.
 
 The run makes three engine calls in order, each under the timeout, and a
-story call whose answer has a problem gets one repair turn in its own stage
-(drawing contract, *Problems and the repair turn*). A stage's
+story call whose answer has a problem gets one repair turn (drawing contract,
+*Problems and the repair turn*). The repair turn is no stage of its own: its
+progress lines carry the stage of the call it repairs. A stage's
 progress line (`Drawing the overview`, `Drawing the <channel>`) is emitted when
 its call starts, so a stage that fails still shows it; `Checking the facts`
 comes after the read's answer.
@@ -453,10 +454,18 @@ from the facts`, shown for every refine, a `parts` scope's included). Then
 engine lines (`Starting Claude Code`, `Reading <path>`,
 `Searching for “…”`, `Writing the diagram`, …), then `Checking the drawing`
 (story and post: `Checking the post`), then `Saved` or `Saved with <n>
-warning(s)`. A story answer with a problem adds `Fixing <n> problem(s) in the
-answer` and the repair turn's engine lines before it is checked again. A
-`draw` run's events carry `stage`: `read`, `overview` or `channel` (null on
-other kinds).
+warning(s)`. A `draw` run's events carry `stage`: `read`, `overview` or
+`channel` (null on other kinds).
+
+A story answer with a problem (story, post, a revise's story, a draw's
+overview or channel) adds, right after its own check line, `Fixing <n>
+problem(s) in the answer`, then the repair turn's engine lines, then its check
+line once more. A post with a repair turn so reads: engine lines, `Checking
+the post`, `Fixing 2 problems in the answer`, engine lines, `Checking the
+post`, `Saved with 1 warning`. A draw's overview call has no check line, so
+there the line follows its engine lines; the channel call's check line is
+`Checking the drawing`. Each of these lines carries the stage of the call it
+repairs.
 
 ### Change summary
 

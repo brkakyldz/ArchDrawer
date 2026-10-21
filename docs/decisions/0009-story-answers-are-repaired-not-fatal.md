@@ -43,17 +43,24 @@ Exact shapes are in `docs/contracts/` (diagram, api, testing).
   accepts it.
 - **One repair turn.** Code checks a story answer for every problem at once:
   each text over its hard limit and each relation violated. With any, the
-  engine gets one more call with no tools: its answer, the list of problems,
-  and the same schema. The second answer replaces the first and is checked
-  again. The engine still writes every word it can.
+  engine gets one more call: its answer and the list of problems, quoted as
+  data, and the same schema. Claude Code gets no tool; Codex, which has no
+  tool-free mode, stays in its read-only sandbox and is told to read nothing.
+  The call runs within the run's one deadline, with no time added. Every
+  story answer gets it: story, post, a draw's overview and channel, and a
+  revise's story (without the image). The second answer replaces the first
+  and is checked again in full. The engine still writes every word it can.
 - **A length never fails a run.** A text still over its limit after the repair
   turn is shortened with `…`, one warning each, as the repair of a
   full-drawing answer already does. A part with more than 12 rows keeps the
   first 12 with one warning, as now, also when the chips alone are more than
   12; that is not a problem for the repair turn.
-- **A relation still violated fails the run**, naming every violation and the
-  channel: `The engine's <channel> cannot be drawn: …`. Code does not guess a
-  story.
+- **A relation the second answer violates fails the run**, whether or not
+  the first answer did, naming every violation and the channel: `The engine's
+  <channel> cannot be drawn: …`. Code does not guess a story. That includes a
+  story over a view's 60 parts, which the repair of a full-drawing answer cuts
+  with a warning: cutting a part of a story breaks the spine, zones and
+  holders built around it.
 - An answer that does not match the schema's shape fails as before; the
   engines' structured output makes it rare.
 
@@ -73,10 +80,14 @@ Exact shapes are in `docs/contracts/` (diagram, api, testing).
   every answer.
 - **Cost:**
   - up to one more engine call per story answer: a draw makes three to five,
-    a story-route refine two to three, a post one or two (ADR 0007 counted
-    three and two);
+    a story-route refine two to three, a post, story or revise one or two
+    (ADR 0007 counted three and two);
+  - that call's time comes out of the run's one deadline, so a slow first
+    answer leaves less for the repair turn;
   - a story answer's checks collect problems instead of stopping at the first;
   - the fixture engine answers a repair turn, with two new markers;
-  - held-out scenarios on a post with a broken connection change.
+  - `runs.test.ts` and `intent.test.ts` change where they expect a broken
+    post to fail; no held-out scenario does. The independent author is needed
+    only for scenarios on `[fixture:overlong]` and `[fixture:stubborn]`.
 - **Cost to reverse:** low — a prompt section, a schema keyword and one extra
   call; the file format does not change.

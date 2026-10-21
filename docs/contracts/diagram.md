@@ -739,20 +739,30 @@ document fields:
 
 **Problems and the repair turn** (ADR 0009). Code checks a story answer for
 every relation below and every hard limit below at once, and lists each
-problem it finds. With none, the answer is converted. With any, the engine
-gets one more call, the *repair turn*: no tools, the same schema, and a prompt
-holding its answer and the list. Its answer replaces the first and is checked
-again; there is never a second repair turn. The repair turn is made under the
-same timeout and cancel as the call it repairs, and adds no warning: the
+problem it finds. An answer that does not match the schema's shape (*Story
+answers* above) fails the run at once, and gets no repair turn. With none, the answer is converted. With any, the engine
+gets one more call, the *repair turn*: the same schema, and a prompt holding
+its answer and the list, both quoted as data. Claude Code gets no tool; Codex,
+which has no tool-free mode, stays in its read-only sandbox and is told to
+read nothing. A revise's story answer gets it too, with no image. Its answer
+replaces the first and is checked again in full; there is never a second
+repair turn. The repair turn is one more call within the run's one deadline,
+with no time added, and cancel stops it as any call. It adds no warning: the
 engine wrote the answer.
 
-After the repair turn:
+After the repair turn, the second answer:
 
-- a relation still violated fails the run and nothing is saved:
+- fails the run, and nothing is saved, when it violates any relation, whether
+  or not the first answer did:
   `The engine's <overview | LinkedIn post | README drawing | presentation>
   cannot be drawn: <every violation, joined by "; ">`;
-- a hard limit still over is repaired as the hard limits below say, one
-  warning each.
+- otherwise has every hard limit still over repaired as the hard limits below
+  say.
+
+A relation is never repaired by code: a part over the 60 fails the run here,
+while the repair of a full-drawing answer cuts it with a warning, because
+cutting a part of a story would break the spine, zones and holders the story
+built around it.
 
 **Relations.**
 
@@ -775,7 +785,10 @@ A step's parts are not a relation: a wrong one is dropped with a warning
 with. The schema gives each text field its limit as `maxLength`, except in the
 schema written for Codex (ADR 0009). A text over its limit after the repair
 turn is shortened to the limit, ending with `…`: `Shortened <what> to <n>
-characters`, one warning each.
+characters`, one warning per text. `<what>` is `the title`, `the description`,
+`the label of zone "<id>"`, `the label of "<id>"`, `the sub-line of "<id>"`,
+`a chip of "<id>"`, `the label of <from> → <to>`, `the text of step <i>` or
+`the note of step <i>` (ids as the answer gave them, steps counted from 1).
 
 - title 120 chars; lede 240;
 - zone and part labels 48, sub-lines 60;
@@ -787,8 +800,11 @@ These are problems for the repair turn too, and are then repaired so:
 
 - an empty title: the drawing's title, `The <channel> has no title, kept
   "<title>"`;
-- in the presentation, a step with an empty text is dropped and more than 20
-  steps keep the first 20, one warning each.
+- in the presentation, a step with an empty text is dropped, `Step <i> has no
+  text and was dropped`, one warning per step, and it then gets no warning for
+  its parts;
+- in the presentation, more than 20 steps keep the first 20, `Kept the first
+  20 of the <n> steps`, one warning for the cut.
 
 More than 12 chips is no problem: the rows (held, chips, limits) are cut to
 12 in the conversion below.

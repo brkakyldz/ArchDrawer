@@ -1,5 +1,5 @@
 import {
-  COMPACT, GROUP, INSIDE, LABEL, labelWidth, layoutRects, measureNode, measureText, postOf, styleOf, textStyle,
+  COMPACT, GROUP, INSIDE, LABEL, LIMIT_ROW, labelWidth, layoutRects, measureNode, measureText, postOf, styleOf, textStyle,
   routeEdges, viewBounds, type EdgeRoute, type MeasureOptions, type Rect,
 } from "../geometry";
 import { iconOf, KINDS, type DiagramEdge, type DiagramNode, type DiagramText, type DiagramView, type Kind } from "../model";
@@ -144,10 +144,14 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
   if (box.items.length) {
     y += PANEL.listGap;
     const iw = r.w - PANEL.padX * 2;
+    const firstLimit = box.items.length - (box.limits ?? 0);
     box.items.forEach((t, i) => {
       const iy = y + i * (PANEL.itemH + PANEL.itemGap);
-      out.push(`<g${tid(o, "node-item")} class="item" data-index="${i}"><rect x="${n(r.x + PANEL.padX + 0.5)}" y="${n(iy + 0.5)}" width="${n(iw - 1)}" height="${PANEL.itemH - 1}" rx="7" fill="${P.surface2}" stroke="${P.line}" stroke-width="1"/>` +
-        `<text x="${n(r.x + PANEL.padX + PANEL.itemPad + 1)}" y="${n(baseline(iy, PANEL.itemH, T.item.size))}" font-size="${T.item.size}" fill="${P.ink}">${esc(t)}</text></g>`);
+      const limit = i >= firstLimit;
+      const tx = r.x + PANEL.padX + PANEL.itemPad + 1 + (limit ? LIMIT_ROW.icon + LIMIT_ROW.gap : 0);
+      out.push(`<g${tid(o, limit ? "node-limit" : "node-item")} class="${limit ? "limit" : "item"}" data-index="${i}"><rect x="${n(r.x + PANEL.padX + 0.5)}" y="${n(iy + 0.5)}" width="${n(iw - 1)}" height="${PANEL.itemH - 1}" rx="7" fill="${limit ? "none" : P.surface2}" stroke="${P.line}" stroke-width="1"${limit ? ' stroke-dasharray="3 3"' : ""}/>` +
+        (limit ? iconMarkup("timer", r.x + PANEL.padX + PANEL.itemPad + 1, iy + (PANEL.itemH - LIMIT_ROW.icon) / 2, LIMIT_ROW.icon, P.soft, 1.75) : "") +
+        `<text x="${n(tx)}" y="${n(baseline(iy, PANEL.itemH, T.item.size))}" font-size="${T.item.size}" fill="${limit ? P.muted : P.ink}">${esc(t)}</text></g>`);
     });
   }
   out.push(inside(r.x + r.w - 8 - INSIDE, r.y + 8));

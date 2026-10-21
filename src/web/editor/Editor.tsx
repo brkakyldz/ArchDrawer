@@ -505,7 +505,9 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   if (loadError) return <LoadError message={loadError} busy={loading} onRetry={() => { setLoadError(null); setLoading(true); setLoadRound((r) => r + 1); }} />;
   if (!doc || !stored || !view || !ctl) return <div className="app" />;
 
-  const blank = stored.channels[chan].views.length === 0;
+  // Until the editor edits each channel on its own (#50, #52, #53), README and presentation keep
+  // their empty stage even when the file holds a view for them.
+  const blank = stored.channels[chan].views.length === 0 || chan === "readme" || chan === "presentation";
   const outdated = blank ? 0 : stored.channels[chan].outdated.length;
   const crumbs = crumbsTo(doc, view.id);
   const sel1 = sel.edges.length === 1 && !sel.nodes.length && !sel.texts.length ? sel.edges[0] : null;

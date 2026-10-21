@@ -16,7 +16,7 @@ import {
 } from "./model";
 import {
   CHANNELS, assignConnectionIds, fillDefaults3, freeIdAmong, isChannel,
-  type Channel, type ChannelId, type ComponentFact, type Connection, type Document3, type File3, type Part, type RelationFact, type View3,
+  type Channel, type ChannelId, type ComponentFact, type Connection, type Document3, type File3, type LimitFact, type Part, type RelationFact, type Step, type View3,
 } from "./file3";
 
 const TEXT_FIELDS = ["label", "kind", "sub", "description"] as const;
@@ -28,9 +28,14 @@ const same = (a: readonly unknown[] | undefined, b: readonly unknown[] | undefin
   (a ?? []).length === (b ?? []).length && (a ?? []).every((x, i) => x === (b ?? [])[i]);
 const isSet = <T>(v: T | null | undefined): v is T => v !== null && v !== undefined;
 
-/** A part joined with its facts: the drawn content (contract, *What a channel draws*). */
-export function joinPart(p: Part, comps: Map<string, ComponentFact>): DiagramNode {
+/**
+ * A part joined with its facts: the drawn content (contract, *What a channel draws*). A panel's
+ * rows are its held mechanisms' labels, its shown items, then its limits' texts.
+ */
+export function joinPart(p: Part, comps: Map<string, ComponentFact>, limits: Map<string, LimitFact> = new Map()): DiagramNode {
   const single = p.facts.length === 1 ? comps.get(p.facts[0]) ?? null : null;
+  const rowsHeld = p.form === "panel" ? (p.held ?? []).map((id) => comps.get(id)?.label ?? id) : [];
+  const rowsLimits = p.form === "panel" ? (p.limits ?? []).map((id) => limits.get(id)?.text ?? id) : [];
   const files: string[] = [];
   for (const f of p.facts) for (const path of comps.get(f)?.files ?? []) if (!files.includes(path) && files.length < LIMITS.files) files.push(path);
   const n: DiagramNode = {
@@ -39,12 +44,14 @@ export function joinPart(p: Part, comps: Map<string, ComponentFact>): DiagramNod
     kind: p.kind ?? single?.kind ?? "service",
     form: p.form, icon: p.icon,
     sub: p.sub ?? single?.sub ?? "",
-    items: p.form === "panel" ? [...(p.items ?? single?.items ?? [])] : [],
+    items: p.form === "panel" ? [...rowsHeld, ...(p.items ?? single?.items ?? []), ...rowsLimits] : [],
     description: p.description ?? single?.description ?? "No description yet.",
     files, parent: p.parent, detail: p.detail, place: p.place,
     x: p.x, y: p.y, lane: p.lane ?? null, from: [], facts: [...p.facts],
     held: [...(p.items ?? single?.items ?? [])],
   };
+  if (p.form === "panel" && p.held?.length) n.heldIds = [...p.held];
+  if (p.form === "panel" && p.limits?.length) n.limitIds = [...p.limits];
   return n;
 }
 
@@ -63,6 +70,7 @@ export function joinConnection(c: Connection, rels: Map<string, RelationFact>): 
 const factMaps = (doc: Pick<Document3, "facts">) => ({
   comps: new Map(doc.facts.components.map((c) => [c.id, c])),
   rels: new Map(doc.facts.relations.map((r) => [r.id, r])),
+  lims: new Map((doc.facts.limits ?? []).map((l) => [l.id, l])),
 });
 
 /**
@@ -70,11 +78,11 @@ const factMaps = (doc: Pick<Document3, "facts">) => ({
  * that it measures and draws in the post style (contract, Geometry).
  */
 export function joinView(doc: Document3, channel: ChannelId, view: View3): DiagramView {
-  const { comps, rels } = factMaps(doc);
+  const { comps, rels, lims } = factMaps(doc);
   return {
     id: view.id, title: view.title, caption: { ...view.caption },
     postOf: channel === "linkedin" ? doc.channels.overview.views[0]?.id ?? null : null,
-    nodes: view.nodes.map((p) => joinPart(p, comps)),
+    nodes: view.nodes.map((p) => joinPart(p, comps, lims)),
     edges: view.edges.map((c) => joinConnection(c, rels)),
     texts: view.texts.map((t) => ({ ...t, size: t.size ?? TEXT_SIZE.default })),
   };
@@ -89,6 +97,7 @@ export function joinChannel(doc: Document3, channel: ChannelId): DiagramDocument
     views: ch.views.map((v) => joinView(doc, channel, v)),
     requests: doc.requests.map((r) => ({ ...r })),
     warnings: [...doc.warnings],
+    ...(ch.steps ? { steps: ch.steps.map((s) => ({ ...s, parts: [...s.parts] })) } : {}),
   };
 }
 
@@ -100,7 +109,7 @@ export function channelView(doc: Document3, channel: ChannelId, viewId?: string)
 }
 
 /** The new state of a channel, in the view-shaped form `joinChannel` returns. */
-export type ChannelState = Pick<DiagramDocument, "views"> & Partial<Pick<DiagramDocument, "title" | "theme" | "showSteps" | "requests" | "warnings" | "engine">>;
+export type ChannelState = Pick<DiagramDocument, "views"> & Partial<Pick<DiagramDocument, "title" | "theme" | "showSteps" | "requests" | "warnings" | "engine" | "steps">>;
 
 export type ApplyResult = { ok: true; doc: Document3 } | { ok: false; error: string };
 
@@ -124,6 +133,7 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
   const before = joinChannel(doc, channel);
   const comps = new Map(doc.facts.components.map((c) => [c.id, structuredClone(c)]));
   const rels = new Map(doc.facts.relations.map((r) => [r.id, structuredClone(r)]));
+  const lims = new Map((doc.facts.limits ?? []).map((l) => [l.id, structuredClone(l)]));
   const order = { comps: doc.facts.components.map((c) => c.id), rels: doc.facts.relations.map((r) => r.id) };
   const factIds = new Set<string>([...comps.keys(), ...rels.keys()]);
   const overview = channel === "overview";
@@ -177,13 +187,37 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
         }
       }
       for (const f of TEXT_FIELDS) if (n[f] !== drawn[f]) writeText(p, f, n[f]);
-      items(p, drawn, n);
+      const nr = rowsOf(n), dr = rowsOf(drawn);
+      rowEdits(nr, dr);
+      setRows(p, nr);
+      items(p, { ...drawn, items: dr.items }, { ...n, items: nr.items });
       files(p, drawn, n);
       return p;
     }),
     edges: [] as Connection[],
     texts: (v.texts ?? []).map((t) => ({ ...t })),
   }));
+
+  // A panel's rows (contract, What a channel draws): its held mechanisms', its items, its limits'.
+  function rowsOf(n: DiagramNode) {
+    const all = n.items;
+    const held = n.form === "panel" ? n.heldIds ?? [] : [], limits = n.form === "panel" ? n.limitIds ?? [] : [];
+    const k = Math.min(held.length, all.length), m = Math.min(limits.length, all.length - k);
+    return { held: held.slice(0, k), mech: all.slice(0, k), items: all.slice(k, all.length - m), limits: limits.slice(limits.length - m), texts: all.slice(all.length - m) };
+  }
+  // Renaming a held row renames the mechanism, a limit row's text edits the limit: in every channel.
+  function rowEdits(nr: ReturnType<typeof rowsOf>, dr: ReturnType<typeof rowsOf>) {
+    if (keep) return;
+    nr.held.forEach((id, i) => { const j = dr.held.indexOf(id), c = comps.get(id); if (c && j >= 0 && nr.mech[i] !== dr.mech[j]) c.label = nr.mech[i]; });
+    nr.limits.forEach((id, i) => { const j = dr.limits.indexOf(id), l = lims.get(id); if (l && j >= 0 && nr.texts[i] !== dr.texts[j]) l.text = nr.texts[i]; });
+  }
+  // Which mechanisms and limits a part draws is appearance; only ones it may draw are kept (rule 22).
+  function setRows(p: Part, nr: ReturnType<typeof rowsOf>) {
+    const held = nr.held.filter((id) => { const w = comps.get(id)?.within; return !!w && p.facts.includes(w); });
+    const limits = nr.limits.filter((id) => { const on = lims.get(id)?.on; return !!on && (p.facts.includes(on) || held.includes(on)); });
+    if (held.length) p.held = held; else delete p.held;
+    if (limits.length) p.limits = limits; else delete p.limits;
+  }
 
   function appearance(n: DiagramNode): Partial<Part> {
     return { form: n.form, icon: n.icon, parent: n.parent, detail: n.detail, place: n.place, lane: n.lane ?? null, x: n.x, y: n.y };
@@ -202,7 +236,9 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
     }
     const fact = shown.length === 1 ? comps.get(shown[0])! : null;
     for (const f of TEXT_FIELDS) if (!fact || fact[f] !== n[f]) (p as unknown as Record<string, unknown>)[f] = n[f];
-    if (n.form === "panel" && (!fact || !same(fact.items, n.items))) p.items = [...n.items];
+    const nr = rowsOf(n);
+    setRows(p, nr);
+    if (n.form === "panel" && (!fact || !same(fact.items, nr.items))) p.items = [...nr.items];
     return p;
   }
 
@@ -249,6 +285,13 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
     views[vi].nodes.forEach((p, i) => {
       const twice = p.facts.filter((f) => seen.has(f));
       p.facts.forEach((f) => seen.add(f));
+      const heldTwice = (p.held ?? []).filter((f) => seen.has(f) || p.facts.includes(f));
+      (p.held ?? []).forEach((f) => seen.add(f));
+      if (heldTwice.length) {
+        p.held = p.held!.filter((f) => !heldTwice.includes(f));
+        if (!p.held.length) delete p.held;
+        for (const f of heldTwice) repairs.push(`View "${v.id}": "${p.id}" no longer holds "${f}", which an earlier part shows or holds`);
+      }
       if (!twice.length) return;
       const n = v.nodes[i];
       p.facts = p.facts.filter((f) => !twice.includes(f));
@@ -328,24 +371,29 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
   const deletedFacts = new Set<string>(), deletedRels = new Set<string>();
   if (overview && !keep) {
     const shown = new Set<string>(), shownRels = new Set<string>();
-    for (const v of views) { for (const p of v.nodes) p.facts.forEach((f) => shown.add(f)); for (const c of v.edges) c.relations.forEach((r) => shownRels.add(r)); }
+    for (const v of views) { for (const p of v.nodes) [...p.facts, ...(p.held ?? [])].forEach((f) => shown.add(f)); for (const c of v.edges) c.relations.forEach((r) => shownRels.add(r)); }
     const keptParts = new Set(views.flatMap((v) => v.nodes.map((p) => p.id)));
     const keptConns = new Set(views.flatMap((v) => v.edges.map((c) => c.id)));
     for (const [id, p] of oldParts) if (!keptParts.has(id)) for (const f of p.facts) if (!shown.has(f)) deletedFacts.add(f);
     for (const [id, c] of oldConns) if (!keptConns.has(id)) for (const r of c.relations) if (!shownRels.has(r)) deletedRels.add(r);
   }
+  // A deleted component takes its mechanisms and its limits with it (contract, Edits).
+  for (const c of comps.values()) if (c.within && deletedFacts.has(c.within)) deletedFacts.add(c.id);
   for (const r of rels.values()) if (deletedFacts.has(r.from) || deletedFacts.has(r.to)) deletedRels.add(r.id);
+  for (const l of lims.values()) if (deletedFacts.has(l.on)) deletedRels.add(l.id);
 
-  const facts = {
+  const facts: Document3["facts"] = {
     components: order.comps.filter((id) => comps.has(id) && !deletedFacts.has(id)).map((id) => comps.get(id)!),
     relations: order.rels.filter((id) => rels.has(id) && !deletedRels.has(id)).map((id) => rels.get(id)!),
+    ...(doc.facts.limits !== undefined ? { limits: [...lims.values()].filter((l) => !deletedRels.has(l.id)) } : {}),
   };
 
   const channels = {} as Record<ChannelId, Channel>;
   for (const c of CHANNELS) {
     const ch = doc.channels[c];
+    const steps = c === "presentation" ? next.steps ?? ch.steps : undefined;
     channels[c] = c === channel
-      ? { views, showSteps: next.showSteps ?? ch.showSteps, outdated: [...ch.outdated] }
+      ? { views, showSteps: next.showSteps ?? ch.showSteps, outdated: [...ch.outdated], ...(steps ? { steps: steps.map((s) => ({ ...s, parts: [...s.parts] })) } : {}) }
       : structuredClone(ch);
   }
 
@@ -359,6 +407,7 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
     warnings: [...(next.warnings ?? doc.warnings), ...repairs],
   };
   cascade(result, deletedFacts, deletedRels);
+  pruneSteps(result);
   orient(result);
 
   // A fact added outside the overview gets a part in the overview's first view (rule 16).
@@ -389,6 +438,9 @@ function cascade(doc: Document3, deletedFacts: Set<string>, deletedRels: Set<str
   for (const c of CHANNELS) for (const v of doc.channels[c].views) {
     const gone = new Set<string>();
     for (const p of v.nodes) {
+      // Mechanisms and limits deleted with their component are no longer drawn.
+      if (p.held?.some((f) => deletedFacts.has(f))) { p.held = p.held.filter((f) => !deletedFacts.has(f)); if (!p.held.length) delete p.held; }
+      if (p.limits?.some((l) => deletedRels.has(l))) { p.limits = p.limits.filter((l) => !deletedRels.has(l)); if (!p.limits.length) delete p.limits; }
       if (!p.facts.some((f) => deletedFacts.has(f))) continue;
       p.facts = p.facts.filter((f) => !deletedFacts.has(f));
       if (p.facts.length === 0) gone.add(p.id);
@@ -410,12 +462,29 @@ function cascade(doc: Document3, deletedFacts: Set<string>, deletedRels: Set<str
       e.relations = e.relations.filter((r) => keptRels.has(r));
       return e.relations.length > 0;
     });
-    // A fact left with no items turns the panels that showed them into cards.
+    // A fact left with no items turns the panels that showed them, and nothing else, into cards.
     for (const p of v.nodes) {
       if (p.form !== "panel" || isSet(p.items) || p.facts.length !== 1) continue;
-      if ((comps.get(p.facts[0])?.items.length ?? 0) === 0) p.form = "card";
+      if ((comps.get(p.facts[0])?.items.length ?? 0) === 0 && !p.held?.length && !p.limits?.length) p.form = "card";
     }
   }
+}
+
+/**
+ * A step names parts of the presentation view: a part that left it leaves every step, and a step
+ * left with no part is removed, one warning each (contract, Edits, Steps).
+ */
+function pruneSteps(doc: Document3) {
+  const ch = doc.channels.presentation;
+  if (!ch.steps) return;
+  const parts = new Set(ch.views[0]?.nodes.map((p) => p.id) ?? []);
+  const kept: Step[] = [];
+  for (const s of ch.steps) {
+    const left = s.parts.filter((id) => parts.has(id));
+    if (left.length) kept.push(left.length === s.parts.length ? s : { ...s, parts: left });
+    else doc.warnings.push(`Step "${s.id}" had no part left and was removed`);
+  }
+  if (kept.length !== ch.steps.length || kept.some((s, i) => s !== ch.steps![i])) doc.channels.presentation = { ...ch, steps: kept };
 }
 
 /**
@@ -470,12 +539,14 @@ function clearEqualOwnTexts(doc: Document3) {
 
 /** What a channel shows: its facts and relations, and how each is shown. */
 function shows(ch: Channel) {
-  const facts = new Set<string>(), rels = new Set<string>();
+  const facts = new Set<string>(), rels = new Set<string>(), limits = new Set<string>();
   const indirect = new Map<string, Set<string>>(); // fact or relation id → fields not shown directly
   const add = (id: string, field: string) => { if (!indirect.has(id)) indirect.set(id, new Set()); indirect.get(id)!.add(field); };
   for (const v of ch.views) {
     for (const p of v.nodes) {
       p.facts.forEach((f) => facts.add(f));
+      p.held?.forEach((f) => facts.add(f));
+      p.limits?.forEach((l) => limits.add(l));
       if (p.facts.length > 1) for (const f of p.facts) for (const k of [...TEXT_FIELDS, "items"]) add(f, k);
       else if (p.facts.length === 1) {
         for (const k of TEXT_FIELDS) if (isSet(p[k])) add(p.facts[0], k);
@@ -488,7 +559,7 @@ function shows(ch: Channel) {
       else if (e.relations.length === 1) for (const k of EDGE_FIELDS) if (isSet(e[k])) add(e.relations[0], k);
     }
   }
-  return { facts, rels, indirect };
+  return { facts, rels, limits, indirect };
 }
 
 /**
@@ -521,6 +592,15 @@ export function markOutdated(before: Document3, after: Document3, madeIn: readon
       const changed = EDGE_FIELDS.filter((f) => a[f] !== b[f]);
       if (changed.some((f) => was.indirect.get(id)?.has(f) || now.indirect.get(id)?.has(f))) ids.push(id);
     }
+    // Limits: a new one on a fact it shows or holds, a deleted one it showed, and a changed text it
+    // does not show on a fact it shows or holds.
+    const bLims = new Map((before.facts.limits ?? []).map((l) => [l.id, l]));
+    for (const l of after.facts.limits ?? []) {
+      const b = bLims.get(l.id);
+      if (!b ? now.facts.has(l.on) : b.text !== l.text && now.facts.has(l.on) && !now.limits.has(l.id)) ids.push(l.id);
+    }
+    const aLims = new Set((after.facts.limits ?? []).map((l) => l.id));
+    for (const id of bLims.keys()) if (!aLims.has(id) && was.limits.has(id)) ids.push(id);
     const prev = after.channels[c].outdated;
     const merged = [...prev, ...ids.filter((id, i) => !prev.includes(id) && ids.indexOf(id) === i)];
     if (merged.length !== prev.length) out.channels[c] = { ...after.channels[c], outdated: merged };
@@ -530,7 +610,7 @@ export function markOutdated(before: Document3, after: Document3, madeIn: readon
 
 /** An outside write: the channels whose views changed made the change; the others get marks. */
 export function markOutside(before: Document3, after: Document3): Document3 {
-  const madeIn = CHANNELS.filter((c) => JSON.stringify(before.channels[c].views) !== JSON.stringify(after.channels[c].views));
+  const madeIn = CHANNELS.filter((c) => JSON.stringify([before.channels[c].views, before.channels[c].steps]) !== JSON.stringify([after.channels[c].views, after.channels[c].steps]));
   return markOutdated(before, after, madeIn);
 }
 

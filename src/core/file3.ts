@@ -1,41 +1,61 @@
 /**
  * The stored drawing file `archdraw/diagram@3` (docs/contracts/diagram.md, ADR 0006): a facts
- * list and four fixed channels whose parts point to facts. Shape, validity rules, defaults.
+ * list and four fixed channels whose parts point to facts, extended by ADR 0007 (evidence,
+ * mechanisms, limits, one README and one presentation view, steps). Shape, validity rules, defaults.
  * Pure: no Node or DOM APIs (invariant 4).
  */
 import {
   DOC_ID_RE, FORMS, ICONS, ID_RE, KINDS, LIMITS, SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, STYLES, TEXT_SIZE, THEMES,
   isRepoRelative,
-  type Caption, type DiagramSource, type DiagramText, type EdgeStyle, type EngineRef, type FileCheck, type Form,
+  type Caption, type DiagramSource, type DiagramStep, type DiagramText, type EdgeStyle, type EngineRef, type FileCheck, type Form,
   type IconName, type Kind, type Lane, type Place, type TextInput, type Theme,
 } from "./model";
 
 export const CHANNELS = ["overview", "linkedin", "readme", "presentation"] as const;
 export type ChannelId = (typeof CHANNELS)[number];
 export const CHANNEL_LABELS: Record<ChannelId, string> = { overview: "Overview", linkedin: "LinkedIn", readme: "README", presentation: "Presentation" };
-/** Views a channel may hold in this format version (rule 5). */
+/** Views a channel may hold (rule 5). */
 export const CHANNEL_VIEWS: Record<ChannelId, { min: number; max: number }> = {
-  overview: { min: 1, max: LIMITS.views }, linkedin: { min: 0, max: 1 }, readme: { min: 0, max: 0 }, presentation: { min: 0, max: 0 },
+  overview: { min: 1, max: LIMITS.views }, linkedin: { min: 0, max: 1 }, readme: { min: 0, max: 1 }, presentation: { min: 0, max: 1 },
 };
-export const FACT_LIMITS = { components: 1800, relations: 3600 } as const;
+export const FACT_LIMITS = { components: 1800, relations: 3600, limits: 600 } as const;
+/** Limit facts, evidence and presentation steps (contract, Limit fact, Evidence, Presentation steps). */
+export const FACT3_LIMITS = { limitText: 60, evidence: 8, steps: 20, stepText: 120, stepNote: 1000 } as const;
 export const isChannel = (c: unknown): c is ChannelId => typeof c === "string" && (CHANNELS as readonly string[]).includes(c);
 
-export interface ComponentFact { id: string; label: string; kind: Kind; sub: string; description: string; files: string[]; items: string[] }
-export interface RelationFact { id: string; from: string; to: string; label: string; style: EdgeStyle; both: boolean }
-export interface Facts { components: ComponentFact[]; relations: RelationFact[] }
+/** Where a fact comes from: a repository-relative file, and its lines when they matter. */
+export interface Evidence { file: string; lines: [number, number] | null }
+export interface ComponentFact {
+  id: string; label: string; kind: Kind; sub: string; description: string; files: string[]; items: string[];
+  /** A mechanism: the component fact that holds it (rule 20). */
+  within?: string | null;
+  evidence?: Evidence[];
+}
+export interface RelationFact { id: string; from: string; to: string; label: string; style: EdgeStyle; both: boolean; evidence?: Evidence[] }
+/** A guarantee of the component fact `on`, in one line (a deadline, a turn limit). */
+export interface LimitFact { id: string; on: string; text: string; evidence?: Evidence[] }
+/** Every field ADR 0007 added is optional, so a file written before it stays as it is. */
+export interface Facts { components: ComponentFact[]; relations: RelationFact[]; limits?: LimitFact[] }
 
 /** A part's own texts: null (or absent) = taken from its single fact. */
 export interface OwnTexts { label?: string | null; kind?: Kind | null; sub?: string | null; description?: string | null; items?: string[] | null }
 export interface Part extends OwnTexts {
   id: string; facts: string[]; form: Form; icon: IconName | null; parent: string | null; detail: string | null;
   place: Place | null; lane?: Lane | null; x: number; y: number;
+  /** Mechanisms within its facts, drawn as rows (rule 22); absent = none. */
+  held?: string[];
+  /** Limit facts on its facts or held mechanisms, drawn as rows; absent = none. */
+  limits?: string[];
 }
 export interface Connection {
   id: string; from: string; to: string; relations: string[]; step: number | null;
   label?: string | null; style?: EdgeStyle | null; both?: boolean | null;
 }
 export interface View3 { id: string; title: string; caption: Caption; nodes: Part[]; edges: Connection[]; texts: DiagramText[] }
-export interface Channel { views: View3[]; showSteps: boolean; outdated: string[] }
+/** A presentation step: the parts it highlights, its on-screen text and the speaker's note. */
+export type Step = DiagramStep;
+/** `steps` only on the presentation channel; absent = none. */
+export interface Channel { views: View3[]; showSteps: boolean; outdated: string[]; steps?: Step[] }
 export interface Request3 { id: string; text: string; channel: ChannelId; view: string; at: string }
 
 export interface Document3 {
@@ -51,11 +71,11 @@ export interface Document3 {
 export type PartInput = Omit<Part, "x" | "y"> & { x?: number; y?: number };
 export type ConnectionInput = Omit<Connection, "id" | "relations"> & { id?: string; relations?: string[] };
 export interface ViewInput3 { id: string; title: string; caption: Caption; nodes: PartInput[]; edges: ConnectionInput[]; texts?: TextInput[] }
-export interface ChannelInput { views?: ViewInput3[]; showSteps?: boolean; outdated?: string[] }
+export interface ChannelInput { views?: ViewInput3[]; showSteps?: boolean; outdated?: string[]; steps?: Step[] }
 export interface File3 {
   schema: typeof SCHEMA_V3; id?: string; title: string; theme?: Theme;
   source?: DiagramSource | null; engine?: EngineRef | null; createdAt?: string; updatedAt?: string;
-  facts: { components: ComponentFact[]; relations?: RelationFact[] };
+  facts: { components: ComponentFact[]; relations?: RelationFact[]; limits?: LimitFact[] };
   channels: { overview: ChannelInput & { views: ViewInput3[] } } & Partial<Record<Exclude<ChannelId, "overview">, ChannelInput>>;
   requests?: Request3[]; warnings?: string[];
 }
@@ -101,6 +121,21 @@ export function validateFile3(raw: unknown, check: FileCheck = {}): ValidationRe
     v.forEach((t, j) => str(t, `${path}[${j}]`, 1, LIMITS.item));
   };
   const own = (v: unknown, path: string, check: (v: unknown, path: string) => void) => { if (v !== undefined && v !== null) check(v, path); };
+  // Rule 23: evidence entries, their paths as `files` are (rule 14).
+  const evidence = (v: unknown, path: string) => {
+    if (v === undefined) return;
+    if (!Array.isArray(v)) return err(path, 'must be an array of {"file", "lines"} ([] when none)');
+    if (v.length > FACT3_LIMITS.evidence) err(path, `has ${v.length} entries; at most ${FACT3_LIMITS.evidence}`);
+    v.forEach((e, j) => {
+      const p = `${path}[${j}]`;
+      if (!isObj(e)) return err(p, 'must be {"file": path, "lines": [from, to] | null}');
+      if (typeof e.file !== "string" || !isRepoRelative(e.file)) err(`${p}.file`, `${q(e.file)} must be a repository-relative path (no leading /, drive letter or ..)`);
+      else if (check.fileExists && !check.fileExists(e.file.replace(/\\/g, "/"))) absent(`${p}.file`, `${q(e.file)} does not exist in the repository`);
+      const l = e.lines;
+      const ok = l === null || (Array.isArray(l) && l.length === 2 && l.every((x) => Number.isInteger(x)) && (l[0] as number) >= 1 && (l[0] as number) <= (l[1] as number));
+      if (!ok) err(`${p}.lines`, "must be null or [from, to] with whole numbers 1 ≤ from ≤ to");
+    });
+  };
 
   if (raw.id !== undefined && (typeof raw.id !== "string" || !DOC_ID_RE.test(raw.id))) err("id", "must look like d_xxxxxx (lower-case letters and digits)");
   str(raw.title, "title", 1, LIMITS.title);
@@ -134,6 +169,8 @@ export function validateFile3(raw: unknown, check: FileCheck = {}): ValidationRe
     str(c.sub, `${p}.sub`, 0, LIMITS.sub);
     str(c.description, `${p}.description`, 1, LIMITS.description);
     items(c.items, `${p}.items`);
+    if (c.within !== undefined && c.within !== null && typeof c.within !== "string") err(`${p}.within`, "must be null or the id of a component fact");
+    evidence(c.evidence, `${p}.evidence`);
     if (!Array.isArray(c.files)) err(`${p}.files`, "must be an array of repository-relative paths ([] when none)");
     else {
       if (c.files.length > LIMITS.files) err(`${p}.files`, `has ${c.files.length} paths; at most ${LIMITS.files}`);
@@ -162,12 +199,40 @@ export function validateFile3(raw: unknown, check: FileCheck = {}): ValidationRe
     str(r.label, `${p}.label`, 0, LIMITS.edgeLabel);
     oneOf(r.style, `${p}.style`, STYLES, "a style");
     if (typeof r.both !== "boolean") err(`${p}.both`, "must be true or false");
+    evidence(r.evidence, `${p}.evidence`);
     if (fromOk && toOk) {
       const k = `${r.from}>${r.to}`, back = `${r.to}>${r.from}`;
       if (relPairs.has(k)) err(p, `a second relation ${r.from} → ${r.to}; fold it into one`);
       else if (relPairs.has(back)) err(p, `${r.from} → ${r.to} reverses an earlier relation; make that one two-way ("both": true) instead`);
       relPairs.add(k);
     }
+  });
+
+  // Rule 20: a mechanism names another component fact, which is no mechanism itself.
+  comps.forEach((c, i) => {
+    if (!isObj(c) || typeof c.within !== "string") return;
+    const p = `facts.components[${i}].within`;
+    const holder = components.get(c.within);
+    if (c.within === c.id) err(p, "a component cannot be within itself");
+    else if (!holder) err(p, `${q(c.within)} is not a component fact`);
+    else if (typeof holder.within === "string") err(p, `${q(c.within)} is itself within ${q(holder.within)}; a mechanism is one level deep`);
+  });
+
+  // Limit facts (rules 2, 4, 21).
+  const limitFacts = new Map<string, Record<string, unknown>>();
+  const lims = facts.limits === undefined ? [] : Array.isArray(facts.limits) ? facts.limits : (err("facts.limits", "must be an array of limit facts"), []);
+  if (lims.length > FACT_LIMITS.limits) err("facts.limits", `has ${lims.length} limit facts; at most ${FACT_LIMITS.limits}`);
+  lims.forEach((l, i) => {
+    const p = `facts.limits[${i}]`;
+    if (!isObj(l)) return err(p, "must be an object");
+    if (idOk(l.id, `${p}.id`)) {
+      if (factIds.has(l.id as string)) err(`${p}.id`, `${q(l.id)} is used twice; fact ids are unique among facts`);
+      factIds.add(l.id as string);
+      limitFacts.set(l.id as string, l);
+    }
+    if (typeof l.on !== "string" || !components.has(l.on)) err(`${p}.on`, `${q(l.on)} is not a component fact`);
+    str(l.text, `${p}.text`, 1, FACT3_LIMITS.limitText);
+    evidence(l.evidence, `${p}.evidence`);
   });
 
   // Channels (rule 5).
@@ -191,17 +256,19 @@ export function validateFile3(raw: unknown, check: FileCheck = {}): ValidationRe
     const ch = channels[c];
     if (ch === undefined) { if (c === "overview" && isObj(raw.channels)) err(C, "is required"); continue; }
     if (!isObj(ch)) { err(C, "must be an object"); continue; }
-    for (const k of Object.keys(ch)) if (!["views", "showSteps", "outdated"].includes(k)) err(`${C}.${k}`, "is not a channel property; use views, showSteps and outdated");
+    const props = c === "presentation" ? ["views", "showSteps", "outdated", "steps"] : ["views", "showSteps", "outdated"];
+    for (const k of Object.keys(ch)) if (!props.includes(k)) err(`${C}.${k}`, `is not a property of this channel; use ${props.join(", ")}`);
     if (ch.showSteps !== undefined && typeof ch.showSteps !== "boolean") err(`${C}.showSteps`, "must be true or false");
     const views = ch.views === undefined ? (c === "overview" ? (err(`${C}.views`, "is required"), []) : []) : Array.isArray(ch.views) ? ch.views : (err(`${C}.views`, "must be an array"), []);
     const lim = CHANNEL_VIEWS[c];
     if (views.length < lim.min) err(`${C}.views`, `must hold at least ${lim.min} view`);
-    if (views.length > lim.max) err(`${C}.views`, lim.max === 0 ? "must be empty; this channel comes in 0.3" : `has ${views.length} views; at most ${lim.max}`);
+    if (views.length > lim.max) err(`${C}.views`, `has ${views.length} views; at most ${lim.max}`);
     if (ch.outdated !== undefined) {
       if (!Array.isArray(ch.outdated) || ch.outdated.some((id) => typeof id !== "string" || !ID_RE.test(id)) || new Set(ch.outdated).size !== ch.outdated.length) err(`${C}.outdated`, "must be distinct ids");
       else if (views.length === 0 && ch.outdated.length) err(`${C}.outdated`, "must be [] in a channel with no view");
     }
     const partIds = new Set<string>(), edgeIds = new Set<string>(), textIds = new Set<string>();
+    const viewParts = new Map<string, Set<string>>();
 
     views.forEach((v, vi) => {
       const P = `${C}.views[${vi}]`;
@@ -232,11 +299,31 @@ export function validateFile3(raw: unknown, check: FileCheck = {}): ValidationRe
           if (new Set(n.facts).size !== n.facts.length) err(`${p}.facts`, "lists a fact twice");
           n.facts.forEach((f, j) => {
             if (typeof f !== "string" || !components.has(f)) return err(`${p}.facts[${j}]`, `${q(f)} is not a component fact`);
-            if (shownHere.has(f)) err(`${p}.facts[${j}]`, `${q(f)} is already shown by another part of this view`);
+            if (shownHere.has(f)) err(`${p}.facts[${j}]`, `${q(f)} is already shown or held by another part of this view`);
             shownHere.add(f);
             if (c === "overview") shownInOverview.add(f);
           });
         }
+        // Rule 22: held mechanisms within its facts, limits on its facts or held mechanisms.
+        const own3 = new Set(Array.isArray(n.facts) ? (n.facts as string[]) : []);
+        const held = n.held === undefined ? [] : Array.isArray(n.held) ? n.held : (err(`${p}.held`, "must be an array of mechanism fact ids"), []);
+        if (new Set(held).size !== held.length) err(`${p}.held`, "lists a mechanism twice");
+        held.forEach((h, j) => {
+          const m = typeof h === "string" ? components.get(h) : undefined;
+          if (!m) return err(`${p}.held[${j}]`, `${q(h)} is not a component fact`);
+          if (typeof m.within !== "string" || !own3.has(m.within)) return err(`${p}.held[${j}]`, `${q(h)} is not a mechanism within a fact this part shows`);
+          if (shownHere.has(h as string)) err(`${p}.held[${j}]`, `${q(h)} is already shown or held by another part of this view`);
+          shownHere.add(h as string);
+          if (c === "overview") shownInOverview.add(h as string);
+        });
+        const heldSet = new Set(held.filter((h): h is string => typeof h === "string"));
+        const limits = n.limits === undefined ? [] : Array.isArray(n.limits) ? n.limits : (err(`${p}.limits`, "must be an array of limit fact ids"), []);
+        if (new Set(limits).size !== limits.length) err(`${p}.limits`, "lists a limit twice");
+        limits.forEach((l, j) => {
+          const lim = typeof l === "string" ? limitFacts.get(l) : undefined;
+          if (!lim) return err(`${p}.limits[${j}]`, `${q(l)} is not a limit fact`);
+          if (!own3.has(lim.on as string) && !heldSet.has(lim.on as string)) err(`${p}.limits[${j}]`, `${q(l)} is not on a fact this part shows or holds`);
+        });
         const single = Array.isArray(n.facts) && n.facts.length === 1;
         // Rule 7: no single fact → own label, kind and description.
         if (!single) for (const k of ["label", "kind", "description"] as const) {
@@ -249,11 +336,18 @@ export function validateFile3(raw: unknown, check: FileCheck = {}): ValidationRe
         own(n.items, `${p}.items`, items);
         oneOf(n.form, `${p}.form`, FORMS, "a form");
         if (n.icon !== null) oneOf(n.icon, `${p}.icon`, ICONS, "an icon (use null for the kind's default)");
-        // Rule 8: a panel shows at least one item; other forms keep `items` null.
+        // Rule 8: a panel shows at least one row (held, item or limit); other forms keep `items` null
+        // and hold or show nothing. Rule 22: at most 12 rows.
         if (n.form === "panel") {
           const shown = Array.isArray(n.items) ? n.items : single && typeof n.facts !== "undefined" ? (components.get((n.facts as string[])[0])?.items as unknown[] | undefined) ?? [] : [];
-          if (shown.length === 0) err(`${p}.items`, 'a panel shows what the part holds; give it items or use form "card"');
-        } else if (n.items !== undefined && n.items !== null && FORMS.includes(n.form as Form)) err(`${p}.items`, `only a panel shows items; set it to null or the form to "panel"`);
+          const rows = held.length + shown.length + limits.length;
+          if (rows === 0) err(`${p}.items`, 'a panel shows what the part holds; give it items or use form "card"');
+          else if (rows > LIMITS.items) err(p, `shows ${rows} rows (held, items and limits); at most ${LIMITS.items}`);
+        } else if (FORMS.includes(n.form as Form)) {
+          if (n.items !== undefined && n.items !== null) err(`${p}.items`, `only a panel shows items; set it to null or the form to "panel"`);
+          if (held.length) err(`${p}.held`, `only a panel holds mechanisms; set it to [] or the form to "panel"`);
+          if (limits.length) err(`${p}.limits`, `only a panel shows limits; set it to [] or the form to "panel"`);
+        }
         if (!("parent" in n)) err(`${p}.parent`, "is required (null for top level)");
         if (!("detail" in n)) err(`${p}.detail`, "is required (null when the part has no inside view)");
         else if (n.detail !== null) {
@@ -319,6 +413,7 @@ export function validateFile3(raw: unknown, check: FileCheck = {}): ValidationRe
         });
       });
 
+      viewParts.set(v.id as string, new Set(byId.keys()));
       const texts = v.texts === undefined ? [] : Array.isArray(v.texts) ? v.texts : (err(`${P}.texts`, "must be an array"), []);
       texts.forEach((t, i) => {
         const p = `${P}.texts[${i}]`;
@@ -332,11 +427,35 @@ export function validateFile3(raw: unknown, check: FileCheck = {}): ValidationRe
         if (t.size !== undefined && (!finite(t.size) || (t.size as number) < TEXT_SIZE.min || (t.size as number) > TEXT_SIZE.max)) err(`${p}.size`, `must be a number from ${TEXT_SIZE.min} to ${TEXT_SIZE.max}`);
       });
     });
+
+    // Rule 24: the presentation's steps name parts of its view.
+    if (c === "presentation" && ch.steps !== undefined) {
+      const steps = Array.isArray(ch.steps) ? ch.steps : (err(`${C}.steps`, "must be an array of steps"), []);
+      if (steps.length > FACT3_LIMITS.steps) err(`${C}.steps`, `has ${steps.length} steps; at most ${FACT3_LIMITS.steps}`);
+      if (steps.length && views.length === 0) err(`${C}.steps`, "must be [] in a channel with no view");
+      const parts = viewParts.values().next().value ?? new Set<string>();
+      const stepIds = new Set<string>();
+      steps.forEach((st, i) => {
+        const p = `${C}.steps[${i}]`;
+        if (!isObj(st)) return err(p, "must be an object");
+        if (idOk(st.id, `${p}.id`)) {
+          if (stepIds.has(st.id as string)) err(`${p}.id`, `${q(st.id)} is used twice; step ids are unique within a channel`);
+          stepIds.add(st.id as string);
+        }
+        if (!Array.isArray(st.parts) || st.parts.length < 1 || st.parts.length > LIMITS.nodesPerView) err(`${p}.parts`, `must name 1–${LIMITS.nodesPerView} parts of the view`);
+        else {
+          if (new Set(st.parts).size !== st.parts.length) err(`${p}.parts`, "lists a part twice");
+          st.parts.forEach((id, j) => { if (typeof id !== "string" || !parts.has(id)) err(`${p}.parts[${j}]`, `${q(id)} is not a part of the presentation view`); });
+        }
+        str(st.text, `${p}.text`, 1, FACT3_LIMITS.stepText);
+        str(st.note, `${p}.note`, 0, FACT3_LIMITS.stepNote);
+      });
+    }
   }
 
   // Rule 16: the overview is the complete map.
   if (isObj(channels.overview)) components.forEach((_, id) => {
-    if (!shownInOverview.has(id)) err(`facts.components[${comps.findIndex((c) => isObj(c) && c.id === id)}]`, `${q(id)} is shown by no part of the overview channel; draw it there or remove it`);
+    if (!shownInOverview.has(id)) err(`facts.components[${comps.findIndex((c) => isObj(c) && c.id === id)}]`, `${q(id)} is shown or held by no part of the overview channel; draw it there or remove it`);
   });
 
   // Rule 18: requests.
@@ -422,6 +541,7 @@ export function fillDefaults3(file: File3, ctx: { id?: string; now?: string; sou
       })),
       showSteps: ch.showSteps ?? false,
       outdated: ch.outdated ?? [],
+      ...(c === "presentation" && ch.steps !== undefined ? { steps: ch.steps } : {}),
     };
   };
   return {
@@ -433,7 +553,7 @@ export function fillDefaults3(file: File3, ctx: { id?: string; now?: string; sou
     engine: copy.engine ?? null,
     createdAt: copy.createdAt ?? now,
     updatedAt: copy.updatedAt ?? now,
-    facts: { components: copy.facts.components, relations: copy.facts.relations ?? [] },
+    facts: { components: copy.facts.components, relations: copy.facts.relations ?? [], ...(copy.facts.limits !== undefined ? { limits: copy.facts.limits } : {}) },
     channels: { overview: channel("overview"), linkedin: channel("linkedin"), readme: channel("readme"), presentation: channel("presentation") },
     requests: copy.requests ?? [],
     warnings: copy.warnings ?? [],

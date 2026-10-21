@@ -91,8 +91,8 @@ describe("validateFile3", () => {
     };
     expect(bad((f) => { f.facts.relations![0].id = "a"; })).toContain('facts.relations[0].id: "a" is used twice; fact ids are unique among facts');
     expect(bad((f) => { (f.channels as Record<string, unknown>).blog = { views: [] }; })).toContain('channels.blog: "blog" is not a channel; use one of overview, linkedin, readme, presentation');
-    expect(bad((f) => { f.channels.readme = { views: [structuredClone(f.channels.linkedin!.views![0])] }; })[0]).toBe("channels.readme.views: must be empty; this channel comes in 0.3");
-    expect(bad((f) => { f.channels.linkedin!.views![0].nodes[1].facts = ["a"]; })).toContain('channels.linkedin.views[0].nodes[1].facts[0]: "a" is already shown by another part of this view');
+    expect(bad((f) => { const v = structuredClone(f.channels.linkedin!.views![0]); f.channels.readme = { views: [v, { ...structuredClone(v), id: "readme-2" }] }; })[0]).toBe("channels.readme.views: has 2 views; at most 1");
+    expect(bad((f) => { f.channels.linkedin!.views![0].nodes[1].facts = ["a"]; })).toContain('channels.linkedin.views[0].nodes[1].facts[0]: "a" is already shown or held by another part of this view');
     expect(bad((f) => { f.channels.linkedin!.views![0].nodes[1].facts = []; })).toEqual(expect.arrayContaining([
       "channels.linkedin.views[0].nodes[1].kind: is required on a part that shows no fact or several",
       "channels.linkedin.views[0].nodes[1].description: is required on a part that shows no fact or several",
@@ -102,7 +102,7 @@ describe("validateFile3", () => {
     expect(bad((f) => { f.channels.linkedin!.views![0].nodes[0].detail = "overview"; })).toContain("channels.linkedin.views[0].nodes[0].detail: must be null outside the overview channel");
     expect(bad((f) => { f.channels.overview.views[0].edges[0].relations = ["r2"]; })).toContain('channels.overview.views[0].edges[0].relations[0]: "r2" does not join a fact of "a" with a fact of "b"');
     expect(bad((f) => { const e = f.channels.overview.views[0].edges[0]; [e.from, e.to] = [e.to, e.from]; })).toContain('channels.overview.views[0].edges[0].relations[0]: "r1" runs the other way; swap "from" and "to"');
-    expect(bad((f) => { f.channels.overview.views[0].nodes.pop(); f.channels.overview.views[0].edges.pop(); })).toContain('facts.components[2]: "c" is shown by no part of the overview channel; draw it there or remove it');
+    expect(bad((f) => { f.channels.overview.views[0].nodes.pop(); f.channels.overview.views[0].edges.pop(); })).toContain('facts.components[2]: "c" is shown or held by no part of the overview channel; draw it there or remove it');
     expect(bad((f) => { f.channels.linkedin!.outdated = ["a", "a"]; })).toContain("channels.linkedin.outdated: must be distinct ids");
     expect(bad((f) => { f.requests = [{ id: "q1", text: "x", channel: "linkedin", view: "overview", at: NOW }]; })).toContain('requests[0].view: view "overview" is not in the linkedin channel');
     expect(validateFile3({ schema: "archdraw/diagram@1" }).errors).toEqual(['schema: this is archdraw/diagram@1; run "archdrawer migrate <file>"']);

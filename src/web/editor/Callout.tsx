@@ -56,18 +56,35 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
   const inside = descendants(ctl.view, id);
   const groups = ctl.view.nodes.filter((n) => n.form === "group" && n.id !== id && !inside.has(n.id));
 
+  // A panel's rows: its held mechanisms first, its items, its limits last (diagram contract, What a
+  // channel draws). Renaming a held or limit row edits that fact; removing one only stops showing it.
+  const heldN = node.heldIds?.length ?? 0, limitN = node.limitIds?.length ?? 0;
+  const firstLimit = node.items.length - limitN;
+  const rowOf = (i: number) => (i < heldN ? "held" : i >= firstLimit ? "limit" : "item");
   const setItems = (items: string[]) => patch({ items });
+  const removeRow = (i: number) => {
+    const items = node.items.filter((_, j) => j !== i);
+    if (rowOf(i) === "held") patch({ items, heldIds: node.heldIds!.filter((_, j) => j !== i) });
+    else if (rowOf(i) === "limit") patch({ items, limitIds: node.limitIds!.filter((_, j) => j !== i - firstLimit) });
+    else setItems(items);
+  };
   const commitItem = (i: number, v: string) => {
     setEditItem(null);
     const t = v.trim().slice(0, LIMITS.item);
+    if (!t) return removeRow(i);
     const items = [...node.items];
-    if (!t) items.splice(i, 1); else items[i] = t;
+    items[i] = t;
     if (t !== node.items[i]) setItems(items);
   };
+  // A row moves only among rows of its own kind.
+  const canMove = (i: number, d: number) => i + d >= 0 && i + d < node.items.length && rowOf(i) === rowOf(i + d);
   const move = (i: number, d: number) => {
     const items = [...node.items];
     [items[i], items[i + d]] = [items[i + d], items[i]];
-    setItems(items);
+    const swap = (ids: string[], a: number, b: number) => { const x = [...ids]; [x[a], x[b]] = [x[b], x[a]]; return x; };
+    if (rowOf(i) === "held") patch({ items, heldIds: swap(node.heldIds!, i, i + d) });
+    else if (rowOf(i) === "limit") patch({ items, limitIds: swap(node.limitIds!, i - firstLimit, i + d - firstLimit) });
+    else setItems(items);
   };
   const close = () => ctl.setCallout(null);
   const keyStop = (e: React.KeyboardEvent) => e.stopPropagation();
@@ -148,7 +165,7 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
             <h4>What it holds</h4>
             <ul className="items" data-testid="callout-items">
               {node.items.map((t, i) => (
-                <li key={`${i}-${t}`} data-testid="callout-item">
+                <li key={`${i}-${t}`} data-testid="callout-item" data-row={rowOf(i)}>
                   {editItem === i ? (
                     <input type="text" autoFocus data-testid="callout-item-input" defaultValue={t} maxLength={LIMITS.item}
                       ref={(el) => el?.select()}
@@ -161,14 +178,14 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
                   ) : (
                     <span onDoubleClick={() => setEditItem(i)} title="Double-click to edit">{t}</span>
                   )}
-                  <button className="mini" data-testid="callout-item-up" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}><Icon name="up" size={13} /></button>
-                  <button className="mini" data-testid="callout-item-down" aria-label="Move down" disabled={i === node.items.length - 1} onClick={() => move(i, 1)}><Icon name="down" size={13} /></button>
-                  <button className="mini" data-testid="callout-item-remove" aria-label="Remove" onClick={() => setItems(node.items.filter((_, j) => j !== i))}><Icon name="close" size={13} /></button>
+                  <button className="mini" data-testid="callout-item-up" aria-label="Move up" disabled={!canMove(i, -1)} onClick={() => move(i, -1)}><Icon name="up" size={13} /></button>
+                  <button className="mini" data-testid="callout-item-down" aria-label="Move down" disabled={!canMove(i, 1)} onClick={() => move(i, 1)}><Icon name="down" size={13} /></button>
+                  <button className="mini" data-testid="callout-item-remove" aria-label="Remove" onClick={() => removeRow(i)}><Icon name="close" size={13} /></button>
                 </li>
               ))}
             </ul>
             {node.items.length < LIMITS.items && (
-              <button className="add" data-testid="callout-item-add" onClick={() => { setItems([...node.items, "New item"]); setEditItem(node.items.length); }}>+ Add an item</button>
+              <button className="add" data-testid="callout-item-add" onClick={() => { setItems([...node.items.slice(0, firstLimit), "New item", ...node.items.slice(firstLimit)]); setEditItem(firstLimit); }}>+ Add an item</button>
             )}
           </>
         )}

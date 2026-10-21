@@ -161,7 +161,7 @@ describe("writing a new drawing", () => {
   });
 
   it.skipIf(process.platform === "linux")("roots a drawing in an existing Docs folder at its parent, where the disk ignores case", () => {
-    const dir = makeFolder({ ".git/HEAD": "ref: refs/heads/main\n", "Docs/readme.md": "x\n" });
+    const dir = makeFolder({ "Docs/readme.md": "x\n" });
     writeNewDrawing(dir, JSON.stringify({ source: { kind: "local", path: dir } }));
     expect(repoRootOf(join(dir, "Docs", "architecture.archdraw.json"))).toBe(dir);
   });

@@ -90,7 +90,9 @@ export function useRunner({ doc, channel, vid, settle, onUpdated, onSaved }: Opt
   useEffect(() => () => source.current?.close(), []);
 
   const start = useCallback(async (req: RunRequest) => {
-    const { doc: d, channel } = live.current;
+    const { doc: d } = live.current;
+    // A simplification works on the overview, whichever channel the canvas shows (api contract, Run kinds).
+    const channel: ChannelId = req.kind === "simplify" ? "overview" : live.current.channel;
     const v = req.view ?? live.current.vid;
     const instruction = req.instruction.trim();
     if (!d || !v || (!instruction && req.kind !== "post")) return;

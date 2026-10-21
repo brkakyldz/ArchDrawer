@@ -359,7 +359,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const ctl: Ctl | null = doc && view ? {
     doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: hist.checkpoint,
     sel, setSel, callout, setCallout, tool, setTool, editing, setEditing, textSize, picker, setPicker,
-    toast, goView, changed, pinned, setPinned, found,
+    toast, goView, changed, pinned, setPinned, found, channel: stored ? drawnChannel(stored, chan) : "overview",
     changePart: (nid) => { setSel({ ...NOTHING, nodes: [nid] }); openAi("", "selection"); },
   } : null;
 
@@ -655,7 +655,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
           {ai && engines && (
             <AiPanel runner={runner} engines={engines} engine={engine} model={model} onEngine={pickEngine} onModel={pickModel}
               selected={sel.nodes} initial={ai} onClose={() => setAi(null)}
-              overview={doc.views[0].id} onOverview={() => { if (view?.id !== doc.views[0].id) goView(doc.views[0].id); }}
+              overview={stored.channels.overview.views[0].id} onOverview={() => { const first = stored.channels.overview.views[0].id; if (view?.id !== first) goView(first); }}
               nameOf={(id) => view?.nodes.find((n) => n.id === id)?.label ?? id} />
           )}
         </div>

@@ -239,11 +239,12 @@ with 400 and the first violation. Invalid files are never repaired.
 14. `files` are repository-relative: no leading `/` or `\`, no drive letter,
     no `..` segment. When a file is checked against its repository
     (`archdrawer validate`), each path must exist under the repository root,
-    symlinks resolved. Wherever a drawing is opened or saved (`archdrawer
-    open` and `svg`, and the server for a registered file) a missing path is
-    a warning instead, `<json path>: "<path>" does not exist in the
-    repository`, so a file deleted or renamed later never locks a drawing;
-    the editor marks it (ui contract, `callout-files`). The repository root
+    symlinks resolved. Where the command line opens a drawing (`archdrawer
+    open` and `svg`) a missing path is a warning instead, `<json path>:
+    "<path>" does not exist in the repository`, so a file deleted or renamed
+    later never locks a drawing. The server registers and saves such a file
+    without a warning; `check-files` names its missing paths (api contract)
+    and the editor marks them (ui contract, `callout-files`). The repository root
     is the nearest ancestor of the file's folder holding `.git`, else the
     file's folder; a registered drawing's `source` is always that root.
 15. At most 60 parts per view.

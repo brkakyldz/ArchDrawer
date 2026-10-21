@@ -192,7 +192,7 @@ export class RunManager {
     });
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the drawing");
-    let doc = answerToDocument(answer, { base: req.base, now: nowIso(), engine: { id: req.engine.id, model: req.model }, fileExists: repoFileChecker(root), scope, view: req.view });
+    let doc = answerToDocument(answer, { base: req.base, now: nowIso(), engine: { id: req.engine.id, model: req.model }, fileExists: repoFileChecker(root), scope, view: req.view, facts: req.stored.facts.components.map((c) => c.id) });
     if (simplify) doc = keepUnrelatedViews(req.base, doc).doc;
     // Never replace a readable drawing with one the store would refuse to read back.
     // The view shape is checked on its own: a LinkedIn view's `postOf` (its post style) names no view of its channel.
@@ -216,7 +216,8 @@ export class RunManager {
     const saved = this.store.put(req.base.id, split.doc, { base: req.base.updatedAt, announce: true });
     if (!saved) throw new EngineError("The drawing was removed while the instruction ran.");
     if (!saved.ok) throw new EngineError(saved.conflict ? "The drawing changed while the instruction ran." : `The drawing could not be saved: ${saved.error}`);
-    const added = doc.warnings.length - req.base.warnings.length;
+    // Counted from the saved file, so the split's own repairs are counted too.
+    const added = split.doc.warnings.length - req.stored.warnings.length;
     progress(added > 0 ? `Saved with ${added} warning${added === 1 ? "" : "s"}` : "Saved");
     // The report measures the saved result, with the format's default switches (api contract, Layout report).
     const format = req.format ?? "readme";

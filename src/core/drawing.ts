@@ -47,7 +47,8 @@ export function applyDrawing(doc: Document3, next: DiagramDocument, o: ApplyOpti
     const known = new Set(cur.facts.components.map((c) => c.id));
     const views: DiagramView[] = post ? [{
       ...post, postOf: null,
-      nodes: post.nodes.map((n) => ({ ...n, facts: n.facts ?? (n.from ?? []).filter((f) => known.has(f)) })),
+      // A part the editor added names no fact: it is new content and adds one (diagram contract, Edits).
+      nodes: post.nodes.map((n) => ({ ...n, facts: n.facts ?? (n.from?.length ? n.from.filter((f) => known.has(f)) : undefined) })),
     }] : [];
     const r = applyChannel(cur, "linkedin", { views, ...(post ? {} : { showSteps: false }) }, o);
     if (!r.ok) return r;

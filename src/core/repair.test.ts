@@ -13,6 +13,26 @@ const base = (): DiagramDocument => {
 const ctx = (b = base()) => ({ base: b, now: "2026-10-13T01:00:00.000Z", engine: { id: "fixture", model: null } });
 
 describe("engine answer repair", () => {
+  it("lets a part point to a fact of the drawing its channel does not show", () => {
+    const b = base();
+    const draft = documentToDraft(b) as { views: { nodes: Record<string, unknown>[] }[] };
+    draft.views[0].nodes.push({ ...draft.views[0].nodes[0], id: "ledger", label: "Ledger", facts: ["archive"], place: null });
+    expect(answerToDocument(draft, { ...ctx(b), facts: ["web", "api", "db", "archive"] }).views[0].nodes.find((n) => n.id === "ledger")!.from).toEqual(["archive"]);
+    // Without the drawing's facts, a name no part of the draft carries is none.
+    const blind = answerToDocument(draft, ctx(b));
+    expect(blind.views[0].nodes.find((n) => n.id === "ledger")!.from).toEqual([]);
+    expect(blind.warnings).toEqual(['Component "ledger": "archive" in its from is no component of the drawing, dropped']);
+  });
+
+  it("warns once when it restores a change to what a part outside the selection shows", () => {
+    const b = base();
+    const draft = documentToDraft(b) as { views: { nodes: Record<string, unknown>[] }[] };
+    draft.views[0].nodes.find((n) => n.id === "api")!.facts = ["api", "db"];
+    const doc = answerToDocument(draft, { ...ctx(b), scope: { kind: "parts", ids: ["web"] }, view: "overview" });
+    expect(doc.warnings).toEqual(['Kept "Order API" as it was: it is outside the selected parts']);
+    expect(doc.views[0].nodes.find((n) => n.id === "api")!.from ?? []).toEqual(b.views[0].nodes.find((n) => n.id === "api")!.from ?? []);
+  });
+
   it("round-trips the draft projection unchanged, keeping positions and texts", () => {
     const b = base();
     const doc = answerToDocument(documentToDraft(b), ctx(b));

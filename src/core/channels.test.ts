@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { applyChannel, channelView, channelWarnings, joinChannel, markOutside, normalizeFile3, clearOutdated, OVERVIEW_FULL } from "./channels";
 import { CONVERTED_V2, convertV2, readAnyFile } from "./convert";
-import { makeLinkedInView } from "./export/feed";
+import { applyDrawing, joinDrawing } from "./drawing";
+import { makeLinkedInView } from "./testkit";
 import { validateDocument3, validateFile3, type Document3, type File3 } from "./file3";
 import { layoutRects, routeEdges } from "./geometry";
 import { validateFile, type DiagramDocument, type DiagramFile, type DiagramView } from "./model";
@@ -298,6 +299,15 @@ describe("applyChannel", () => {
     expect(doc.channels.linkedin.outdated).toEqual(["a", "r1"]);
   });
 
+  it("deleting a fact in the overview drops the lane of a LinkedIn part anchored to the part that goes", () => {
+    const doc = edit(small((f) => {
+      f.facts.components.push({ id: "d", label: "Delta", kind: "data", sub: "", description: "D stores d.", files: [], items: [] });
+      f.channels.overview.views[0].nodes.push({ id: "d", facts: ["d"], form: "card", icon: null, parent: null, detail: null, place: { row: 1, col: 0 } });
+      f.channels.linkedin!.views![0].nodes.push({ id: "d", facts: ["d"], form: "card", icon: null, parent: null, detail: null, place: null, lane: { anchor: "b", side: "below" } });
+    }), "overview", (d) => { d.views[0].nodes = d.views[0].nodes.filter((n) => n.id !== "b"); d.views[0].edges = d.views[0].edges.filter((e) => e.from !== "b" && e.to !== "b"); });
+    expect(doc.channels.linkedin.views[0].nodes.map((p) => [p.id, p.lane])).toEqual([["a", { spine: 0 }], ["d", null]]);
+  });
+
   it("deleting a part elsewhere only leaves it out of that channel", () => {
     const doc = edit(small(), "linkedin", (d) => { d.views[0].nodes = d.views[0].nodes.filter((n) => n.id !== "b"); d.views[0].edges = []; });
     expect(fact(doc, "b")).toBeDefined();
@@ -332,6 +342,32 @@ describe("applyChannel", () => {
     });
     expect(doc.facts.components.map((c) => c.id)).toEqual(["a", "b", "c"]);
     expect(doc.channels.overview.views[0].nodes[0]).toMatchObject({ id: "ab", facts: ["a", "b"], label: "A and B" });
+  });
+
+  it("a kept part that comes to show several facts keeps what it drew as its own text, with or without keepFacts", () => {
+    for (const keepFacts of [false, true]) {
+      const j = joinChannel(small(), "overview");
+      const v = j.views[0];
+      // As an engine merges: `a` stays, now standing for `b` too, its text untouched.
+      v.nodes = [{ ...v.nodes[0], facts: ["a", "b"] }, v.nodes[2]];
+      v.edges = [{ id: "e9", from: "a", to: "c", label: "", style: "async", both: false, step: null, relations: ["r2"] }];
+      const r = applyChannel(small(), "overview", j, { keepFacts });
+      if (!r.ok) throw new Error(r.error);
+      const checked = validateDocument3(r.doc);
+      expect(checked.ok ? [] : checked.errors, `keepFacts ${keepFacts}`).toEqual([]);
+      expect(r.doc.channels.overview.views[0].nodes[0]).toMatchObject({ id: "a", facts: ["a", "b"], label: "Alpha", kind: "service", description: "A does a.", items: ["One", "Two"] });
+    }
+  });
+
+  it("a part the editor adds on the LinkedIn channel adds a fact and an overview part", () => {
+    const d = joinDrawing(small());
+    const post = d.views.find((v) => v.postOf)!;
+    post.nodes.push({ ...post.nodes[0], id: "queue", label: "Queue", facts: undefined, from: undefined, lane: null, x: 900, y: 0 });
+    const r = applyDrawing(small(), d);
+    if (!r.ok) throw new Error(r.error);
+    expect(fact(r.doc, "queue")).toMatchObject({ label: "Queue" });
+    expect(r.doc.channels.overview.views[0].nodes.some((n) => n.facts[0] === "queue")).toBe(true);
+    expect(r.doc.channels.linkedin.views[0].nodes.find((n) => n.id === "queue")!.facts).toEqual(["queue"]);
   });
 });
 

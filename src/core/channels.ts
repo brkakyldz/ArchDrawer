@@ -168,7 +168,14 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
       Object.assign(p, appearance(n));
       // The facts a part shows, named by the editor (`facts`) or by an engine's answer (`from`).
       const named = n.facts ?? (n.from?.length ? n.from : undefined);
-      if (named && !same(named, p.facts)) p.facts = [...new Set(named.filter((f) => comps.has(f)))];
+      if (named && !same(named, p.facts)) {
+        p.facts = [...new Set(named.filter((f) => comps.has(f)))];
+        // A part that no longer shows exactly one fact keeps what it drew as its own text (rule 7).
+        if (p.facts.length !== 1) {
+          for (const f of TEXT_FIELDS) if (!isSet(p[f])) (p as unknown as Record<string, unknown>)[f] = drawn[f];
+          if (drawn.form === "panel" && !isSet(p.items)) p.items = [...drawn.items];
+        }
+      }
       for (const f of TEXT_FIELDS) if (n[f] !== drawn[f]) writeText(p, f, n[f]);
       items(p, drawn, n);
       files(p, drawn, n);
@@ -393,6 +400,8 @@ function cascade(doc: Document3, deletedFacts: Set<string>, deletedRels: Set<str
         while (up && gone.has(up)) up = byId.get(up)?.parent ?? null;
         p.parent = up;
       }
+      // A side part anchored to a part that goes keeps no lane (rule 19).
+      for (const p of v.nodes) if (p.lane && "anchor" in p.lane && gone.has(p.lane.anchor)) p.lane = null;
       v.nodes = v.nodes.filter((p) => !gone.has(p.id));
       v.edges = v.edges.filter((e) => !gone.has(e.from) && !gone.has(e.to));
     }

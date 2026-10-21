@@ -90,7 +90,7 @@ export function AiPanel({ runner, engines, engine, model, onEngine, onModel, sel
             <input type="radio" name="ai-scope" data-testid="ai-scope-selection" checked={scope === "selection"} disabled={!selected.length} onChange={() => setScope("selection")} />
             {` Selected parts (${selected.length})`}
           </label>
-          <label><input type="radio" name="ai-scope" data-testid="ai-scope-all" checked={scope === "all"} onChange={() => setScope("all")} /> The whole drawing</label>
+          <label><input type="radio" name="ai-scope" data-testid="ai-scope-all" checked={scope === "all"} onChange={() => setScope("all")} /> The whole channel</label>
         </fieldset>
 
         <button className="btn wide" data-testid="simplify-overview" disabled={running} onClick={simplify}>

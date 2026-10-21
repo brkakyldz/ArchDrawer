@@ -67,7 +67,7 @@ export function LinkedInStart(p: Engine & { onPrepare: () => void }) {
           <button className="btn primary wide" data-testid="channel-draw" disabled={running} onClick={() => drawFromFacts(p, p.onPrepare)}>
             <Icon name="spark" size={15} /> Draw it
           </button>
-          <p className="hint">The engine tells the story from the facts already read; the code is not read again. Code places it and checks it.</p>
+          <p className="hint">The engine tells the story from the facts already read and is asked not to read the code again. Code places it and checks it.</p>
           <button className="btn wide" data-testid="design-post" disabled={running} onClick={() => designPost(p)}>Design the post</button>
           <p className="hint">The same, letting the engine check the code where it needs to.{p.engineLabel ? ` With ${p.engineLabel}.` : ""}</p>
         </>

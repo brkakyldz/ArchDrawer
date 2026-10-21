@@ -3,7 +3,7 @@ import { CHANNELS, freeIdAmong, validateDocument3, type Document3 } from "./file
 import { layoutView } from "./layout";
 import {
   allIds, ID_RE, KINDS, LIMITS, LINKEDIN_SUFFIX, validateDocument,
-  type DiagramDocument, type DiagramEdge, type DiagramView, type EdgeStyle, type Kind, type NodeInput,
+  type DiagramDocument, type DiagramEdge, type DiagramNode, type DiagramView, type EdgeStyle, type Kind, type NodeInput,
 } from "./model";
 import { STORY_LIMITS } from "./report";
 
@@ -208,9 +208,10 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
   const zoneOf = new Map(intent.zones.map((z) => [z.id, fresh(`zone-${z.id}`)]));
   const partOf = new Map(intent.parts.map((p) => [p.id, fresh(p.id)]));
 
-  // Parts take what they represent from the source components they name: by the facts they show
-  // when the source names them (a channel view), else by their ids.
-  const sourceNodes = new Map(doc.views.flatMap((v) => v.nodes).flatMap((n) => (n.facts?.length ? n.facts : [n.id]).map((f) => [f, n] as const)));
+  // Parts take what they represent from the source components they name: in a channel (`ids`) by the
+  // facts they show, so a part of no fact is no component; else by their facts or their ids.
+  const named = (n: DiagramNode) => (o.ids ? n.facts ?? [] : n.facts?.length ? n.facts : [n.id]);
+  const sourceNodes = new Map(doc.views.flatMap((v) => v.nodes).flatMap((n) => named(n).map((f) => [f, n] as const)));
   const nodes: NodeInput[] = intent.zones.map((z) => ({
     id: zoneOf.get(z.id)!, label: z.label, kind: "service", form: "group", icon: null, sub: "", items: [],
     description: o.ids ? "A group of components." : z.label, files: [], parent: null, detail: null, place: null, lane: null, from: [],

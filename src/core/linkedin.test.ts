@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { joinChannel, normalizeFile3 } from "./channels";
 import { readAnyFile } from "./convert";
 import { prepareLinkedIn } from "./export/feed";
-import { validateDocument3, type Document3 } from "./file3";
+import { validateDocument3, validateFile3, type Document3, type File3 } from "./file3";
 import { intentToChannel, type StoryIntent, type StoryPart } from "./intent";
 
 const NOW = "2026-10-21T00:00:00.000Z";
@@ -50,6 +50,25 @@ describe("the simple LinkedIn version (prepareLinkedIn)", () => {
       // A part showing several facts or none says what it is itself.
       for (const p of out.channels.linkedin.views[0].nodes.filter((x) => x.facts.length !== 1)) expect(p.label, `${f} ${p.id}`).toBeTruthy();
     }
+  });
+
+  it("drops the lane of a side part anchored inside a folded group, and never returns an invalid drawing", () => {
+    const comp = (id: string) => ({ id, label: id.toUpperCase(), kind: "service" as const, sub: "", description: `${id} works.`, files: [], items: [] });
+    const part = (id: string, extra: object) => ({ id, facts: [id], form: "card" as const, icon: null, parent: null, detail: null, place: null, ...extra });
+    const f: File3 = {
+      schema: "archdraw/diagram@3", title: "Lanes",
+      facts: { components: ["a", "g", "b", "c"].map(comp), relations: [{ id: "r1", from: "a", to: "b", label: "", style: "call", both: false }] },
+      channels: { overview: { views: [{ id: "overview", title: "Overview", caption: { title: "Lanes", lede: "" },
+        nodes: [part("a", { lane: { spine: 0 } }), part("g", { form: "group" }), part("b", { parent: "g", lane: { spine: 1 } }), part("c", { lane: { anchor: "b", side: "below" } })],
+        edges: [{ id: "e1", from: "a", to: "b", relations: ["r1"], step: 1 }] }] } },
+    };
+    const r = validateFile3(f);
+    expect(r.errors).toEqual([]);
+    const out = prepared(normalizeFile3(r.file!, { id: "d_lanes00001", now: NOW, source: null }));
+    const v = out.channels.linkedin.views[0];
+    expect(v.nodes.map((p) => p.id)).toEqual(["a", "g", "c"]);
+    expect(v.nodes.find((p) => p.id === "c")!.lane).toBeNull();
+    expect(validateDocument3(out).ok).toBe(true);
   });
 });
 
@@ -98,6 +117,16 @@ describe("a post answer as the LinkedIn channel (intentToChannel)", () => {
     expect(r.doc.facts).toEqual(d.facts);
     expect(r.doc.channels.overview).toEqual(d.channels.overview);
     expect(r.doc.channels.linkedin.outdated).toEqual([]);
+  });
+
+  it("warns when a part names an overview part that shows no fact", () => {
+    const d = load("tests/fixtures/shop.archdraw.json");
+    const ov = d.channels.overview.views[0];
+    const hub = { id: "hub", facts: [], label: "Hub", kind: "service" as const, description: "A frame.", form: "card" as const, icon: null, parent: null, detail: null, place: null, x: 1200, y: 0 };
+    const withHub: Document3 = { ...d, channels: { ...d.channels, overview: { ...d.channels.overview, views: [{ ...ov, nodes: [...ov.nodes, hub] }] } } };
+    const r = intentToChannel(withHub, { ...intent, parts: [...intent.parts, part("hubpart", { label: "Hub", spine: 3, from: ["hub"] })] }, { portrait: true });
+    expect(r.warnings).toContain('Dropped "hub" from what "hubpart" represents: no such component');
+    expect(r.doc.channels.linkedin.views[0].nodes.find((p) => p.id === "hubpart")!.facts).toEqual([]);
   });
 
   it("keeps the channel's view id when it already has a view", () => {

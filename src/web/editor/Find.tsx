@@ -89,7 +89,8 @@ export function Search({ doc, view, focusRound, onFound, onStep, onOpen, onClose
         <kbd>Esc</kbd>
       </div>
       {q.trim() && (elsewhere.length > 0 || !hits.length) && (
-        <ul role="listbox" aria-label="In other views">
+        // Leaving the list forgets the hovered result, so Enter in the field steps again (ui contract, Search).
+        <ul role="listbox" aria-label="In other views" onMouseLeave={() => setAt(-1)}>
           {elsewhere.length > 0 && <li className="head" role="presentation">In other views</li>}
           {elsewhere.map((h, i) => (
             <li key={`${h.view}/${h.id}`} role="option" aria-selected={i === at}>

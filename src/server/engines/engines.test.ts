@@ -366,6 +366,10 @@ describe("a refine's routing (AI-5)", () => {
     const log = JSON.parse(readFileSync(fake.log, "utf8"));
     expect(log.args[log.args.indexOf("--sandbox") + 1]).toBe("read-only");
     expect(log.stdin).toContain("you have no tools and must not read the repository");
+    await engine.run({ ...request(makeFolder({}), []), task: route() });
+    const asked = JSON.parse(readFileSync(fake.log, "utf8"));
+    expect(asked.args[asked.args.indexOf("--sandbox") + 1]).toBe("read-only");
+    expect(asked.stdin).toContain("Do not read, list or search any file");
   });
 });
 

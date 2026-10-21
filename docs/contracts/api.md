@@ -389,9 +389,12 @@ larger, another order, other emphasis)? It answers
 `{"route": "facts" | "story"}`; anything else is `facts`. The `facts` route is
 the refine above. The `story` route redraws the current channel from the
 facts with the instruction and no code: on LinkedIn, README or presentation a
-`story` run's call; on the overview a refine whose answer may change
-appearance only (content changes ignored, one warning each, as for simplify)
-and whose engine runs with no tools. A `parts` scope skips the question and
+`story` run's call; on the overview a refine whose engine runs with no tools
+and whose answer may change appearance only: where parts are, the group they
+sit in (one the view already has, or none), forms, icons, connection steps,
+texts, captions and view titles. Any other change — a new, removed or renamed
+part or connection, a new group, another inside view — is ignored with one
+warning each. A `parts` scope skips the question and
 takes the `facts` route. The run record and `done` carry `route`
 (`facts`, `story`, or null for other kinds), and progress says
 `Changing the facts` or `Redrawing this channel from the facts`.

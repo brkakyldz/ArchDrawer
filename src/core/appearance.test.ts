@@ -57,4 +57,39 @@ describe("a story on the overview changes appearance only", () => {
     expect(doc.title).toBe(base.title);
     expect(doc.warnings.slice(-warnings.length)).toEqual(warnings);
   });
+
+  it("lets a part into a group the view has and out again, but adds no group", () => {
+    const v0 = validateFile(file([node("zone", { form: "group", place: { row: 0, col: 0 } }), node("web", { place: { row: 0, col: 1 } }), node("api", { kind: "api", parent: "zone", place: { row: 0, col: 0 } })]));
+    if (!v0.ok) throw new Error(v0.errors.join("; "));
+    const base = normalizeFile(v0.file!, { id: "d_appear0002", now: NOW, source: null });
+    const answer = structuredClone(base);
+    const [v] = answer.views;
+    v.nodes.find((n) => n.id === "web")!.parent = "zone";
+    v.nodes.find((n) => n.id === "api")!.parent = null;
+    const { doc, warnings } = appearanceOnly(base, answer);
+    expect(warnings).toEqual([]);
+    expect(doc.views[0].nodes.map((n) => [n.id, n.parent])).toEqual([["zone", null], ["web", "zone"], ["api", null]]);
+    const grouped = structuredClone(base);
+    grouped.views[0].nodes.push({ ...structuredClone(grouped.views[0].nodes[0]), id: "backend", label: "Backend" });
+    grouped.views[0].nodes.find((n) => n.id === "web")!.parent = "backend";
+    const r = appearanceOnly(base, grouped);
+    expect(r.warnings).toEqual(['Ignored the new component "Backend": redrawing from the facts changes no content']);
+    expect(r.doc.views[0].nodes.find((n) => n.id === "web")!.parent).toBeNull();
+  });
+
+  it("a one-way connection turned round is one change, warned once; a two-way one turned round is no change", () => {
+    const base = shop();
+    const turned = structuredClone(base);
+    const e = turned.views[0].edges[0];
+    [e.from, e.to] = [e.to, e.from];
+    const one = appearanceOnly(base, turned);
+    expect(one.warnings).toEqual(["Ignored the change to the connection Web → Api: redrawing from the facts changes no content"]);
+    expect(one.doc.views[0].edges.map((x) => [x.from, x.to])).toEqual([["web", "api"]]);
+    const both = structuredClone(base);
+    both.views[0].edges[0].both = true;
+    const turnedBoth = structuredClone(both);
+    const t = turnedBoth.views[0].edges[0];
+    [t.from, t.to] = [t.to, t.from];
+    expect(appearanceOnly(both, turnedBoth).warnings).toEqual([]);
+  });
 });

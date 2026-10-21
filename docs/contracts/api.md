@@ -98,7 +98,10 @@ is given as `folder` in `POST /api/folders/check`, `POST /api/scans` and a
 
 A trailing separator is dropped and the path resolved, symlinks included.
 The **repository root** is the nearest ancestor of the folder (the folder
-included) that holds `.git`, else the folder itself. It is the engine's
+included) that holds `.git`, else the folder itself. A `.git` counts when it
+is a folder holding a `HEAD` file, or a file naming its git folder (`gitdir:
+<path>`, as a worktree or a submodule has); an empty or stray `.git` does not,
+so it never widens the root to the folders above. It is the engine's
 working directory and Codex's `-C` (AGENTS.md invariant 1). Facts' paths are
 relative to it. The folder is **in git** when `git rev-parse HEAD`, run in the
 root as an argument array, succeeds and `git rev-parse --show-toplevel` is the
@@ -249,7 +252,8 @@ The checks run in this order, each a 400:
    the scan);
 3. `Unknown focus: use {"kind": "option" | "whole" | "typed"}`;
 4. `Unknown focus option "<id>"`;
-5. `Say what to focus on: the focus is empty`, or a typed text over 300 chars:
+5. `Say what to focus on: the focus is empty` (a typed text is trimmed first),
+   or a typed text over 300 chars:
    `The focus is too long (300 characters at most)`;
 6. `Choose the channel: linkedin, readme or presentation`;
 7. the model and the engine, as for any run.
@@ -257,7 +261,10 @@ The checks run in this order, each a 400:
 A second `draw` run on a folder while one is running gets 409
 `A drawing of this folder is already being made`.
 
-The run makes three engine calls in order, each under the timeout.
+The run makes three engine calls in order, each under the timeout. A stage's
+progress line (`Drawing the overview`, `Drawing the <channel>`) is emitted when
+its call starts, so a stage that fails still shows it; `Checking the facts`
+comes after the read's answer.
 
 1. **Read** (`stage: "read"`). Tools: read-only (Claude Code
    `Read,Grep,Glob`, Codex read-only). The prompt holds the focus (the

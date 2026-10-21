@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { channelWarnings, normalizeFile3 } from "../core/channels";
 import { readAnyFile } from "../core/convert";
@@ -20,7 +20,7 @@ import { isV1 } from "../core/migrate";
 export function repoRootOf(file: string): string {
   const start = dirname(resolve(file));
   for (let dir = start; ; dir = dirname(dir)) {
-    if (existsSync(resolve(dir, ".git"))) return dir;
+    if (holdsGit(dir)) return dir;
     if (dirname(dir) === dir) break;
   }
   const parent = dirname(start);
@@ -36,6 +36,22 @@ const samePath = (a: string, b: string) => {
   const x = resolve(a), y = resolve(b);
   return process.platform === "win32" ? x.toLowerCase() === y.toLowerCase() : x === y;
 };
+
+/**
+ * Whether a folder holds a repository's `.git` (api contract, Folders): a folder with a `HEAD` file,
+ * or a file naming its git folder (`gitdir: …`, a worktree or submodule). An empty or stray `.git`
+ * is none, so it never widens a repository root to the folders above it.
+ */
+export function holdsGit(dir: string): boolean {
+  const g = resolve(dir, ".git");
+  try {
+    const st = statSync(g);
+    if (st.isDirectory()) return statSync(resolve(g, "HEAD")).isFile();
+    if (!st.isFile()) return false;
+    const m = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(g, "utf8").slice(0, 4096));
+    return !!m && statSync(resolve(dir, m[1])).isDirectory();
+  } catch { return false; }
+}
 
 /** True when a repository-relative path exists inside the root, symlinks resolved. */
 export function repoFileChecker(root: string): (rel: string) => boolean {

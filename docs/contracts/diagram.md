@@ -301,7 +301,8 @@ with 400 and the first violation. Invalid files are never repaired.
     later never locks a drawing. The server registers and saves such a file
     without a warning; `check-files` names its missing paths (api contract)
     and the editor marks them (ui contract, `callout-files`). The repository root
-    is the nearest ancestor of the file's folder holding `.git`. With none, it
+    is the nearest ancestor of the file's folder holding `.git` (as the api
+    contract's *Folders* counts one). With none, it
     is the file's folder, except for a file in a folder named `docs` whose
     `source` is that folder's parent, as a `draw` run writes a drawing of a
     folder outside git: then it is that parent. A registered drawing's
@@ -411,9 +412,11 @@ parts, text and note), and any of a part's or connection's own texts.
   limits: removing its last held row, or turning its panel into another form,
   deletes it. When an engine's answer does it, each deletion adds one warning:
   `View "<view>": "<part>" no longer holds "<m>"; the mechanism and its limits
-  were deleted`. An answer that names no row ids but draws as many rows as the
-  part had keeps them in place, so a changed row text edits that mechanism or
-  limit.
+  were deleted`. An answer that names no held or no limit ids keeps each drawn
+  held or limit row whose exact text it repeats, wherever the row now is (a
+  reordering only reorders them). When the rows it has left over are as many
+  as the drawn rows left over, they are taken in order, so a changed text edits
+  that mechanism or limit; any other row is an item of the part.
 - **Steps.** Deleting a part of the presentation view removes it from every
   step that names it; a step left with no part is removed, one warning each
   (`Step "<id>" had no part left and was removed`).

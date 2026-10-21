@@ -174,6 +174,33 @@ describe("edits of rows, mechanisms, limits and steps", () => {
     expect(dropped.warnings).toEqual(['View "overview": "agent" no longer holds "check"; the mechanism and its limits were deleted']);
   });
 
+  it("an answer's rows are matched one by one: only what it dropped goes, a reordering renames nothing", () => {
+    const answer = (change: (a: DiagramDocument["views"][number]["nodes"][number]) => void) => {
+      const j = joinChannel(doc(), "overview");
+      change(nodeOf(j, "agent"));
+      const r = applyChannel(doc(), "overview", j, { answer: true });
+      if (!r.ok) throw new Error(r.error);
+      expect(validateDocument3(r.doc).ok).toBe(true);
+      return r.doc;
+    };
+    const ids = (d: Document3) => d.facts.components.map((c) => [c.id, c.label]);
+    const agentPart = (d: Document3) => d.channels.overview.views[0].nodes.find((p) => p.id === "agent")!;
+    const noIds = (a: { heldIds?: string[]; limitIds?: string[] }) => { delete a.heldIds; delete a.limitIds; };
+    // One held row dropped: only that mechanism goes.
+    const dropped = answer((a) => { noIds(a); a.items = ["Propose a tool", "Stops after 12 turns"]; });
+    expect([ids(dropped), agentPart(dropped).held, agentPart(dropped).limits]).toEqual([[["app", "App"], ["agent", "Agent"], ["propose", "Propose a tool"]], ["propose"], ["turns"]]);
+    expect(dropped.warnings).toEqual(['View "overview": "agent" no longer holds "check"; the mechanism and its limits were deleted']);
+    // A row added above the rows: every mechanism and limit stays, the new row is an item.
+    const added = answer((a) => { noIds(a); a.items = ["Retries once", "Propose a tool", "Check the call", "Stops after 12 turns"]; });
+    expect([agentPart(added).held, agentPart(added).limits, added.facts.components.find((c) => c.id === "agent")!.items, added.warnings]).toEqual([["propose", "check"], ["turns"], ["Retries once"], []]);
+    // Rows reordered: the ids follow their texts, no mechanism is renamed.
+    const swapped = answer((a) => { noIds(a); a.items = ["Check the call", "Propose a tool", "Stops after 12 turns"]; });
+    expect([ids(swapped).slice(2), agentPart(swapped).held]).toEqual([[["propose", "Propose a tool"], ["check", "Check the call"]], ["check", "propose"]]);
+    // Held ids given, limits not: the limit row stays a limit, never an item.
+    const heldOnly = answer((a) => { delete a.limitIds; a.items = ["Propose a tool", "Check the call", "Stops after 12 turns"]; });
+    expect([agentPart(heldOnly).limits, heldOnly.facts.components.find((c) => c.id === "agent")!.items]).toEqual([["turns"], []]);
+  });
+
   it("a node that names no row ids keeps the held and limit rows it still draws", () => {
     // An engine's answer may echo the rows as items: they stay mechanisms and limits, not items.
     const d = edit(doc(), "overview", (j) => { const a = nodeOf(j, "agent"); delete a.heldIds; delete a.limitIds; a.sub = "Runs"; });

@@ -67,6 +67,23 @@ describe("the draw run", () => {
     expect((await json(await t.req(`/api/diagrams/${again.body.id}/check-files`, { method: "POST", json: { files: ["src/agent.ts", "src/app.ts"] } }))).body.missing).toEqual([]);
   });
 
+  it("an empty or stray .git above a folder does not widen its root (the engine reads only the folder)", async () => {
+    const outer = makeFolder({ "other/secret.txt": "x\n" });
+    mkdirSync(join(outer, ".git"));
+    const dir = join(outer, "project");
+    for (const [rel, text] of Object.entries(agentFiles)) { mkdirSync(join(dir, rel, ".."), { recursive: true }); writeFileSync(join(dir, rel), text); }
+    const t = makeApp();
+    expect((await json(await t.req("/api/folders/check", { method: "POST", json: { folder: dir } }))).body).toMatchObject({ root: dir, git: false });
+    const run = await draw(t, dir);
+    expect([run.status, t.store.rootOf(run.diagramId!)]).toEqual(["succeeded", dir]);
+    // A .git file naming a git folder (a worktree) still marks a root.
+    const wt = makeFolder({ "a.ts": "x\n" });
+    mkdirSync(join(wt, "gitdir"));
+    writeFileSync(join(wt, ".git"), `gitdir: ${join(wt, "gitdir")}\n`);
+    mkdirSync(join(wt, "sub"));
+    expect((await json(await t.req("/api/folders/check", { method: "POST", json: { folder: join(wt, "sub") } }))).body.root).toBe(wt);
+  });
+
   it("a failure at any stage writes nothing and leaves no docs folder", async () => {
     for (const marker of ["[fixture:fail]", "[fixture:fail:overview]", "[fixture:fail:channel]"]) {
       const dir = repo();

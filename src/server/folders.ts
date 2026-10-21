@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { closeSync, existsSync, openSync, readdirSync, readSync, realpathSync, statSync } from "node:fs";
+import { closeSync, existsSync, lstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { SCAN_BUDGET, SKIP_DIRS } from "../core/scan";
 import { repoFileChecker } from "./files";
@@ -39,10 +39,20 @@ export function rootOfFolder(folder: string): string {
  */
 export const GIT_SAFE = ["-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "--no-optional-locks"];
 
+/**
+ * The environment git runs with: none of the server's own `GIT_*` variables, which could point it at
+ * another repository (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, …) or add config.
+ */
+export function gitEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(process.env)) if (!/^GIT_/i.test(k)) env[k] = v;
+  return { ...env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" };
+}
+
 /** `git <args>` in `cwd`, as an argument array; null when git is missing or fails. */
 export function git(cwd: string, args: string[], maxBuffer = 16 * 1024 * 1024): Promise<string | null> {
   return new Promise((done) => {
-    execFile("git", [...GIT_SAFE, ...args], { cwd, windowsHide: true, maxBuffer, timeout: 20_000, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" } },
+    execFile("git", [...GIT_SAFE, ...args], { cwd, windowsHide: true, maxBuffer, timeout: 20_000, env: gitEnv() },
       (e, out) => done(e ? null : String(out)));
   });
 }
@@ -75,9 +85,9 @@ export async function listFolder(f: Folder, inGit: boolean): Promise<{ listing: 
   let all: string[] | null = null;
   if (inGit) {
     const out = await git(f.root, ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", f.rel || "."]);
-    // A listed path that is a symlink out of the root, or not a file, is no input (it would be quoted to the engine).
-    const inside = repoFileChecker(f.root);
-    if (out !== null) all = out.split("\0").filter(Boolean).map((p) => p.replace(/\\/g, "/")).filter((p) => inside(p) && isFile(join(f.root, p)));
+    // A listed path that is a symlink, or not a file, is no input (it could quote a file outside the
+    // root). One lstat per path: git lists no path through a symlinked folder, and readPart checks again.
+    if (out !== null) all = out.split("\0").filter(Boolean).map((p) => p.replace(/\\/g, "/")).filter((p) => isPlainFile(join(f.root, p)));
   }
   if (!all) all = walk(f.root, f.folder);
   all = [...new Set(all)].sort();
@@ -100,7 +110,7 @@ function walk(root: string, folder: string): string[] {
   return out;
 }
 
-const isFile = (p: string) => { try { return statSync(p).isFile(); } catch { return false; } };
+const isPlainFile = (p: string) => { try { return lstatSync(p).isFile(); } catch { return false; } };
 
 /**
  * A root-relative file's text, read no further than `max` characters need, and the length it has.

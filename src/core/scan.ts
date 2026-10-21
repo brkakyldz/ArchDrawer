@@ -58,7 +58,9 @@ export function namedEntries(depPath: string, text: string): string[] {
   } catch { return []; }
 }
 
-export interface ScanMaterial { listing: string[]; more: number; readme: { path: string; text: string } | null; deps: { path: string; text: string }[]; entries: { path: string; text: string }[] }
+/** An input file: its text as read, and the length the whole file has (when more than was read). */
+export interface ScanInput { path: string; text: string; length?: number }
+export interface ScanMaterial { listing: string[]; more: number; readme: ScanInput | null; deps: ScanInput[]; entries: ScanInput[] }
 
 /**
  * The inputs as quoted text within the budget, in this order: listing, README, dependency files,
@@ -67,17 +69,18 @@ export interface ScanMaterial { listing: string[]; more: number; readme: { path:
 export function scanText(m: ScanMaterial): string {
   let left = SCAN_BUDGET.total;
   const out: string[] = [];
-  const put = (head: string, body: string, own: number) => {
+  const put = (head: string, body: string, own: number, whole = body.length) => {
     if (left <= 0) return;
     const room = Math.min(own, left);
-    const text = body.length > room ? `${body.slice(0, room)}\n[… cut: ${body.length - room} more characters]` : body;
+    const size = Math.max(whole, body.length);
+    const text = size > room ? `${body.slice(0, room)}\n[… cut: ${size - Math.min(room, body.length)} more characters]` : body;
     out.push(`--- ${head} ---\n${text}`);
     left -= Math.min(body.length, room);
   };
   put("Files", m.listing.join("\n") + (m.more ? `\n… ${m.more} more` : ""), SCAN_BUDGET.total);
-  if (m.readme) put(`README ${m.readme.path}`, m.readme.text, SCAN_BUDGET.readme);
-  for (const d of m.deps) put(`Dependencies ${d.path}`, d.text, SCAN_BUDGET.dep);
-  for (const e of m.entries) put(`Entry point ${e.path}`, e.text, SCAN_BUDGET.entry);
+  if (m.readme) put(`README ${m.readme.path}`, m.readme.text, SCAN_BUDGET.readme, m.readme.length);
+  for (const d of m.deps) put(`Dependencies ${d.path}`, d.text, SCAN_BUDGET.dep, d.length);
+  for (const e of m.entries) put(`Entry point ${e.path}`, e.text, SCAN_BUDGET.entry, e.length);
   return out.join("\n\n");
 }
 

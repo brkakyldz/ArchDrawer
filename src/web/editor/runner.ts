@@ -7,7 +7,7 @@ import type { RunScope } from "../../core/repair";
 import { api, ApiError, type EngineInfo } from "../api";
 
 /** Where a run was started: each place shows its own error and summary; every place shows a run going. */
-export type RunOrigin = "ask" | "panel" | "linkedin";
+export type RunOrigin = "ask" | "panel" | "linkedin" | "story";
 
 export interface RunRequest {
   instruction: string;
@@ -20,7 +20,9 @@ export interface RunRequest {
   /** Edits the stored drawing once the run has succeeded (an undoable edit). */
   after?: (doc: DiagramDocument) => DiagramDocument;
   /** A post run draws the LinkedIn channel (api contract, Run kinds); its instruction may be empty. A simplify run makes the overview a map. */
-  kind?: "refine" | "post" | "simplify";
+  kind?: "refine" | "post" | "simplify" | "story";
+  /** The channel a story draws (README or presentation; api contract, Run kinds). */
+  channel?: ChannelId;
   format?: "feed" | "linkedin";
   /** A post drawn from the facts alone: the engine reads no file (STORY-1). */
   readCode?: boolean;
@@ -92,10 +94,10 @@ export function useRunner({ doc, channel, vid, settle, onUpdated, onSaved }: Opt
   const start = useCallback(async (req: RunRequest) => {
     const { doc: d } = live.current;
     // A simplification works on the overview, whichever channel the canvas shows (api contract, Run kinds).
-    const channel: ChannelId = req.kind === "simplify" ? "overview" : live.current.channel;
+    const channel: ChannelId = req.kind === "simplify" ? "overview" : req.channel ?? live.current.channel;
     const v = req.view ?? live.current.vid;
     const instruction = req.instruction.trim();
-    if (!d || !v || (!instruction && req.kind !== "post")) return;
+    if (!d || !v || (!instruction && req.kind !== "post" && req.kind !== "story")) return;
     if (busy.current) return;
     busy.current = true;
     cancelEarly.current = false;
@@ -116,7 +118,8 @@ export function useRunner({ doc, channel, vid, settle, onUpdated, onSaved }: Opt
     let id: string;
     try {
       // A post names the LinkedIn channel's view when there is one; the server designs it from the overview.
-      const sent = req.kind === "post" ? (channel === "linkedin" ? d.views[0]?.id ?? null : null) : v;
+      // A post or a story draws a channel's one view: the server designs it from the overview.
+      const sent = req.kind === "post" ? (channel === "linkedin" ? d.views[0]?.id ?? null : null) : req.kind === "story" ? null : v;
       id = await api.startRun(d.id, channel, sent, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format, readCode: req.readCode });
     } catch (e) {
       fail(e instanceof ApiError ? e.message : "Could not start the instruction");

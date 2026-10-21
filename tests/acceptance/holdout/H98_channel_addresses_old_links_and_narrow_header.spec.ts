@@ -51,7 +51,7 @@ test('H98 [NAV-2, NAV-1] the address names the channel and view and survives a r
   await expect((await header()).getByTestId('crumbs')).toBeVisible();
   await expect((await header()).getByTestId('channel-tab-overview')).toHaveAttribute('aria-current', 'true');
   await (await header()).getByTestId('channel-tab-readme').click(); await expect(editor).toHaveAttribute('data-channel', 'readme');
-  await expect(page.getByTestId('channel-empty')).toContainText('This channel comes in 0.3');
+  await expect(page.getByTestId('channel-empty')).toContainText('The README drawing is not drawn yet'); // the README channel has no drawing yet
   // Wide again: no menu button, the tabs are in the header itself.
   await page.setViewportSize({ width: 1600, height: 1000 });
   await expect(page.getByTestId('header-menu-button')).not.toBeVisible(); await expect(page.getByTestId('channel-tabs')).toBeVisible();

@@ -34,12 +34,39 @@ export function OutdatedBanner({ count, onKeep, onRedraw, busy = false }: { coun
   );
 }
 
+const NOT_DRAWN: Record<ChannelId, string> = {
+  overview: "The overview is not drawn yet", linkedin: "The LinkedIn post is not drawn yet",
+  readme: "The README drawing is not drawn yet", presentation: "The presentation is not drawn yet",
+};
+
+/**
+ * How the README or the presentation is drawn on its empty stage (ui contract, Channels): with an
+ * engine a story from the facts alone (`channel-draw`), without one the simple version (`channel-prepare`).
+ */
+export function ChannelStart({ engine, running, onDraw, onPrepare }: { engine: boolean; running: boolean; onDraw: () => void; onPrepare: () => void }) {
+  return (
+    <div className="li-flow li-start" data-testid="channel-start">
+      {engine ? (
+        <>
+          <button className="btn primary wide" data-testid="channel-draw" disabled={running} onClick={onDraw}>Draw it</button>
+          <p className="hint">The engine tells the story from the facts already read and is asked not to read the code again. Code places it and checks it.</p>
+        </>
+      ) : (
+        <>
+          <button className="btn primary wide" data-testid="channel-prepare" onClick={onPrepare}>Prepare the simple version</button>
+          <p className="hint" data-testid="post-engine-note">No engine available — prepared without AI</p>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** `channel-empty` (ui contract, Channels): the stage of a channel with no drawing, and how to draw it. */
 export function EmptyStage({ channel, children }: { channel: ChannelId; children?: React.ReactNode }) {
   return (
     <div className="channel-empty" data-testid="channel-empty">
       <div className="box">
-        <p role="status">{channel === "linkedin" ? "The LinkedIn post is not drawn yet" : "This channel comes in 0.3"}</p>
+        <p role="status">{NOT_DRAWN[channel]}</p>
         {children}
       </div>
     </div>

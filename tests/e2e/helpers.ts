@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONVERTED_V2, readAnyFile } from "../../src/core/convert";
-import { joinDrawing } from "../../src/core/drawing";
+import { joinChannel } from "../../src/core/channels";
 import type { Document3 } from "../../src/core/file3";
 import type { DiagramDocument } from "../../src/core/model";
 
@@ -63,7 +63,11 @@ export async function open(page: Page, file: Record<string, unknown> = shop()): 
 /** The stored file. */
 export const storedOnDisk = (path: string): Document3 => JSON.parse(readFileSync(path, "utf8"));
 /** The drawing in the file, as the editor draws it: the overview's views, then the LinkedIn post. */
-export const onDisk = (path: string): DiagramDocument => joinDrawing(storedOnDisk(path));
+/** The drawing on disk as the overview's views, then the LinkedIn channel's. */
+export const onDisk = (path: string): DiagramDocument => {
+  const d = storedOnDisk(path), o = joinChannel(d, "overview");
+  return { ...o, views: [...o.views, ...joinChannel(d, "linkedin").views] };
+};
 
 /** Wait until the file satisfies `ok` and the editor says Saved. */
 export async function savedWhen(page: Page, path: string, ok: (d: DiagramDocument) => boolean): Promise<DiagramDocument> {

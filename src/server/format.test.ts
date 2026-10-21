@@ -1,7 +1,7 @@
+import { joinChannel } from "../core/channels";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { joinDrawing } from "../core/drawing";
 import { runCli } from "../cli/main";
 import { fixtureAnswer, FixtureEngine } from "./engines/fixture";
 import type { Engine, EngineInfo, EngineRunRequest } from "./engines/types";
@@ -69,7 +69,7 @@ describe("@3 through the server (FILE-2)", () => {
     const after = t.store.get(id)!;
     expect(after.channels.linkedin.outdated).toEqual(["web"]);
     expect(after.channels.overview.outdated).toEqual([]);
-    expect(joinDrawing(after).views[0].nodes[0].label).toBe("Storefront");
+    expect(joinChannel(after, "overview").views[0].nodes[0].label).toBe("Storefront");
   });
 
   it("refuses a PUT that breaks an @3 rule, with its path", async () => {

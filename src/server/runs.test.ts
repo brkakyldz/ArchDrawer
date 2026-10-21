@@ -1,8 +1,9 @@
+import { joinChannel } from "../core/channels";
+import type { Document3 } from "../core/file3";
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { validateDocument3 } from "../core/file3";
 import type { DiagramDocument } from "../core/model";
-import { joinDrawing } from "../core/drawing";
 import { FixtureEngine } from "./engines/fixture";
 import { makeApp, makeFolder, shopRepo } from "./testkit";
 
@@ -14,10 +15,16 @@ async function setup(stepMs = 1) {
     const r = await t.req("/api/runs", { method: "POST", json: { diagramId: id, view: "overview", instruction, engine: "fixture", model: null, ...extra } });
     return { status: r.status, body: (await r.json()) as { runId?: string; error?: string } };
   };
-  const doc = (): DiagramDocument => joinDrawing(JSON.parse(readFileSync(file, "utf8")));
+  const doc = (): DiagramDocument => bothChannels(JSON.parse(readFileSync(file, "utf8")));
   const stored = () => JSON.parse(readFileSync(file, "utf8"));
   return { ...t, file, id, run, doc, stored };
 }
+
+/** The overview's views, then the LinkedIn channel's: both channels a refine or a post may write. */
+const bothChannels = (d: Document3): DiagramDocument => {
+  const o = joinChannel(d, "overview");
+  return { ...o, views: [...o.views, ...joinChannel(d, "linkedin").views] };
+};
 
 describe("instruction-box runs", () => {
   it("adds a component through the same pipeline, keeping positions, and reports progress", async () => {
@@ -87,7 +94,7 @@ describe("instruction-box runs", () => {
     writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), title: "Edited meanwhile" }, null, 2));
     const done = await runs.wait(body.runId!);
     expect(done).toMatchObject({ status: "failed", error: "The drawing changed while the instruction ran." });
-    const after = joinDrawing(JSON.parse(readFileSync(file, "utf8")));
+    const after = bothChannels(JSON.parse(readFileSync(file, "utf8")));
     expect(after.title).toBe("Edited meanwhile");
     expect(after.views[0].nodes.some((n: { id: string }) => n.id === "cache")).toBe(false);
   });
@@ -150,7 +157,7 @@ describe("instruction-box runs", () => {
     engine.run = (req) => { cwds.push(req.cwd); return run(req); };
     // A base naming another folder, where src/api.ts does not exist.
     const stored = { ...t.store.get(doc.id)!, source: { kind: "local" as const, path: makeFolder({}) } };
-    const done = await t.runs.wait(t.runs.start({ engine, model: null, instruction: "add Cache component", view: "overview", base: joinDrawing(stored), stored }));
+    const done = await t.runs.wait(t.runs.start({ engine, model: null, instruction: "add Cache component", view: "overview", base: joinChannel(stored, "overview"), stored }));
     expect(done).toMatchObject({ status: "succeeded" });
     expect(cwds).toEqual([root]);
     const after = t.store.get(doc.id)!;

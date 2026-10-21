@@ -24,12 +24,14 @@ export interface RunRequest {
   /** Edits the stored drawing once the run has succeeded (an undoable edit). */
   after?: (doc: DiagramDocument) => DiagramDocument;
   /** A post run draws the LinkedIn channel (api contract, Run kinds); its instruction may be empty. A simplify run makes the overview a map. */
-  kind?: "refine" | "post" | "simplify" | "story";
+  kind?: "refine" | "post" | "simplify" | "story" | "revise";
   /** The channel a story draws (README or presentation; api contract, Run kinds). */
   channel?: ChannelId;
   format?: "feed" | "linkedin";
   /** A post drawn from the facts alone: the engine reads no file (STORY-1). */
   readCode?: boolean;
+  /** A revise's image: the view's share PNG in base64 (ui contract, ai-look-again). */
+  image?: string;
 }
 
 export interface RunState {
@@ -162,7 +164,7 @@ export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSav
     const channel: ChannelId = req.kind === "simplify" ? "overview" : req.kind === "post" ? "linkedin" : req.channel ?? live.current.channel;
     const v = req.view ?? live.current.vid;
     const instruction = req.instruction.trim();
-    if (!d || !v || (!instruction && req.kind !== "post" && req.kind !== "story")) return;
+    if (!d || !v || (!instruction && req.kind !== "post" && req.kind !== "story" && req.kind !== "revise")) return;
     if (busy.current) return;
     busy.current = true;
     cancelEarly.current = false;
@@ -198,7 +200,7 @@ export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSav
       // A post or a story draws a channel's one view: the server designs it from the overview.
       // The canvas shows the overview behind a LinkedIn channel with no view: then the post names none.
       const sent = req.kind === "post" ? (live.current.channel === "linkedin" ? d.views[0]?.id ?? null : null) : req.kind === "story" ? null : v;
-      id = await api.startRun(d.id, channel, sent, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format, readCode: req.readCode });
+      id = await api.startRun(d.id, channel, sent, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format, readCode: req.readCode, image: req.image });
     } catch (e) {
       fail(e instanceof ApiError ? e.message : "Could not start the instruction");
       return;

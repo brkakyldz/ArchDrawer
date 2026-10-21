@@ -23,6 +23,7 @@ import { Canvas } from "./Canvas";
 import { addNode, addText, crumbsTo, deleteEdges, deleteNodes, deleteTexts, setNode, setText, viewOf } from "./ops";
 import { EdgeCallout, InlineInput, Picker, TextEditor, TextToolbar, Warnings } from "./Panels";
 import { ShareDialog } from "../share/ShareDialog";
+import { viewImage } from "../share/image";
 import type { Ctl, Editing, Selection, Tool } from "./types";
 import { NOTHING } from "./types";
 import { chooseEngine, ENGINE_KEY, engineName, modelKey, rememberedModel, ROUTE_SENTENCE, useRunner, type Done, type Outcome, type Route, type RunRequest, type TurnState } from "./runner";
@@ -409,6 +410,14 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   };
   const undo = () => { const no = refusal(); if (no) toast(no); else hist.undo(); };
   const redo = () => { const no = refusal(); if (no) toast(no); else hist.redo(); };
+  /** `ai-look-again` (LAYOUT-4): the current view's share image, sent with a second look at it. */
+  const lookAgain = async () => {
+    const d = docRef.current, v = view?.id;
+    if (!d || !v || !engine || running.current) return;
+    let image: string;
+    try { image = await viewImage(d, v, chanRef.current); } catch (e) { toast((e as Error).message || "The image could not be drawn"); return; }
+    await runner.start({ instruction: "", label: "Look at the drawing again", engine: engine.id, model: model || null, scope: { kind: "view" }, origin: "panel", kind: "revise", channel: chanRef.current, view: v, image });
+  };
   /** `ai-undo`: back to the drawing before the run, the same step as the ordinary undo; the autosave writes it. */
   const undoRun = () => { if (!previewRef.current) return; hist.undo(); endPreview("undone"); };
 
@@ -734,6 +743,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
               selected={blank ? [] : sel.nodes} initial={ai} text={aiText} setText={setAiText} blank={blank} onClose={() => setAi(null)}
               channel={chan} overview={stored.channels.overview.views[0].id}
               onOverview={() => { const first = stored.channels.overview.views[0].id; if (view.id !== first) goView(first); }}
+              onLookAgain={lookAgain}
               nameOf={(id) => view?.nodes.find((n) => n.id === id)?.label ?? id} />
           )}
         </div>

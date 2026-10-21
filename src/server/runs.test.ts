@@ -211,14 +211,14 @@ describe("post runs", () => {
     expect(readFileSync(file, "utf8")).toBe(snapshot);
   });
 
-  it("refuses a post's wrong scope, format, revision or view before any engine", async () => {
+  it("refuses a post's wrong scope, format, image or view before any engine", async () => {
     const { run } = await setup();
     expect(await run("", { kind: "post" })).toMatchObject({ status: 400, body: { error: 'Unknown view "overview"' } });
     expect((await run("", { kind: "post", scope: { kind: "all" } })).status).toBe(400);
     expect((await run("", { kind: "post", format: "readme" })).status).toBe(400);
     expect((await run("", { kind: "post", instruction: 3 })).status).toBe(400);
-    expect((await run("", { kind: "post", revise: true })).status).toBe(400);
-    expect((await run("", { kind: "post", revise: "no" })).status).toBe(400);
+    // An image is for a revise only (api contract, Runs).
+    expect(await run("", { kind: "post", view: undefined, image: "iVBORw0KGgo=" })).toMatchObject({ status: 400, body: { error: "An image is for a revise" } });
     expect((await run("")).status).toBe(400);
   });
 });

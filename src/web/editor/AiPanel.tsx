@@ -33,6 +33,8 @@ interface Props {
   /** The overview's first view, where `Simpler` runs; the editor goes there first. */
   overview: string;
   onOverview: () => void;
+  /** `ai-look-again`: render the view's share image and start a second look with it. */
+  onLookAgain: () => Promise<void>;
   onClose: () => void;
 }
 
@@ -86,8 +88,10 @@ function TurnView({ turn, latest, runner, nameOf }: { turn: Turn; latest: boolea
 }
 
 /** The AI panel (ui contract): the one place to type, the conversation of the open drawing, the engine, model and scope. Not modal. */
-export function AiPanel({ runner, engines, engine, model, onEngine, onModel, selected, initial, text, setText, blank, channel, overview, onOverview, onClose, nameOf }: Props) {
+export function AiPanel({ runner, engines, engine, model, onEngine, onModel, selected, initial, text, setText, blank, channel, overview, onOverview, onLookAgain, onClose, nameOf }: Props) {
   const [scope, setScope] = useState<ScopeChoice>(initial.scope);
+  /** The view's image is being rendered for a second look. */
+  const [looking, setLooking] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const thread = useRef<HTMLOListElement>(null);
   const { state, turns } = runner;
@@ -181,7 +185,10 @@ export function AiPanel({ runner, engines, engine, model, onEngine, onModel, sel
       </div>
 
       <footer>
-        <span className="hint"><kbd>Enter</kbd> to send · <kbd>Shift</kbd> <kbd>Enter</kbd> new line</span>
+        <button className="btn" data-testid="ai-look-again" disabled={running || blank || !engine || looking} title="Send the image of this view to the engine for one round of fixes"
+          onClick={() => { setLooking(true); void onLookAgain().finally(() => setLooking(false)); }}>
+          <Icon name="search" size={15} /> Look at the drawing again
+        </button>
         <button className="btn primary" data-testid="ai-send" disabled={!canSend} onClick={send}><Icon name="send" size={15} /> Send</button>
       </footer>
     </aside>

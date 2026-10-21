@@ -69,7 +69,7 @@ export class ClaudeEngine implements Engine {
     if (!this.cmd) throw new EngineError("Claude Code is not installed");
     const prompt = req.task?.prompt ?? instructionPrompt(req);
     const kind = req.task?.kind;
-    const parser = new ClaudeStreamParser(req.cwd, req.progress, kind === "scan" ? "Writing the card" : kind === "read" ? "Writing the facts" : kind === "route" ? "Choosing the way" : req.task ? "Writing the post" : "Writing the diagram");
+    const parser = new ClaudeStreamParser(req.cwd, req.progress, kind === "scan" ? "Writing the card" : kind === "read" ? "Writing the facts" : kind === "route" ? "Choosing the way" : kind === "post" ? "Writing the post" : kind === "story" ? "Writing the story" : "Writing the diagram");
     req.progress("Starting Claude Code");
     const r = await runProcess(this.cmd, this.args(req.model, req.task?.schema, req.task ? req.task.tools !== "none" : !req.appearance), {
       cwd: req.cwd, stdin: prompt, signal: req.signal, timeoutMs: req.timeoutMs, onLine: (l) => parser.line(l),

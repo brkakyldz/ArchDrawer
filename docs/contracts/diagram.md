@@ -233,7 +233,8 @@ invariant 5).
   item; a limit row is drawn in the muted colour after a `timer` icon. Any
   other form shows no row. In the joined view shape `items` holds every row's
   text, and `heldIds` and `limitIds` name the mechanisms of its first rows and
-  the limits of its last.
+  the limits of its last. Each row keeps its own fact's length: a held row up
+  to a label's 48 chars, a limit row up to a limit's 60, a shown item up to 44.
 - A connection's `label`, `style` and `both` are its own when not null, else
   its single relation's (`""`, `call`, `false` without one).
 - A part with no fact, or with several, has no single fact: it gives its own

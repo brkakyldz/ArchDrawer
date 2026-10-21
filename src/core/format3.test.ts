@@ -4,7 +4,7 @@ import { checkEvidence } from "./evidence";
 import { drawView } from "./export/svg";
 import { fillDefaults3, validateDocument3, validateFile3, type Document3, type File3 } from "./file3";
 import { LIMIT_ROW, measureNode } from "./geometry";
-import type { DiagramDocument } from "./model";
+import { validateDocument, type DiagramDocument } from "./model";
 import { PALETTES } from "./theme";
 
 // ADR 0007's additions to `archdraw/diagram@3` (diagram contract): evidence, mechanisms, limit facts,
@@ -68,6 +68,17 @@ describe("the format's ADR 0007 fields", () => {
     expect(validateDocument3(d).ok).toBe(true);
     expect(d.channels.presentation.steps).toHaveLength(2);
     expect(d.channels.readme.views).toHaveLength(1);
+  });
+
+  it("a limit as long as a limit may be (60) is a valid row of the drawn view, while an own item keeps the item limit", () => {
+    const long = "Each job tried once; the 3-try limit never comes into play";
+    const d = doc((f) => { f.facts.limits![0].text = long; });
+    const joined = joinChannel(d, "overview");
+    expect(nodeOf(joined, "agent").items.at(-1)).toBe(long);
+    expect(validateDocument(joined).ok).toBe(true);
+    const own = { ...joined, views: joined.views.map((v) => ({ ...v, nodes: v.nodes.map((n) => (n.id === "agent" ? { ...n, items: [...n.items.slice(0, 2), long, ...n.items.slice(2)] } : n)) })) };
+    const r = validateDocument(own);
+    expect(r.ok ? [] : r.errors).toEqual([expect.stringMatching(/items\[2\]: is 58 characters; at most 44/)]);
   });
 
   it("draws a panel's rows held first, then items, then limits, and names their facts", () => {

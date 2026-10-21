@@ -20,7 +20,7 @@ export const CHANNEL_VIEWS: Record<ChannelId, { min: number; max: number }> = {
 };
 export const FACT_LIMITS = { components: 1800, relations: 3600, limits: 600 } as const;
 /** Limit facts, evidence and presentation steps (contract, Limit fact, Evidence, Presentation steps). */
-export const FACT3_LIMITS = { limitText: 60, evidence: 8, steps: 20, stepText: 120, stepNote: 1000 } as const;
+export const FACT3_LIMITS = { limitText: LIMITS.limitText, evidence: 8, steps: 20, stepText: 120, stepNote: 1000 } as const;
 export const isChannel = (c: unknown): c is ChannelId => typeof c === "string" && (CHANNELS as readonly string[]).includes(c);
 
 /** Where a fact comes from: a repository-relative file, and its lines when they matter. */

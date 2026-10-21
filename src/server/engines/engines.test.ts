@@ -6,7 +6,7 @@ import { validateFile } from "../../core/model";
 import { normalizeFile } from "../../core/normalize";
 import { documentToDraft, DRAFT_JSON_SCHEMA } from "../../core/repair";
 import { makeFolder, shopFile2, tempDir } from "../testkit";
-import { ClaudeEngine, ClaudeStreamParser, extractJson } from "./claude";
+import { ClaudeEngine, ClaudeStreamParser, extractJson, writingLine } from "./claude";
 import { CodexEngine, CodexEventParser, describeCommand } from "./codex";
 import { engineEnv, resolveCommand, shimTarget } from "./process";
 import { postPrompt, readPrompt, ROUTE_SCHEMA, routePrompt, RULES_FILE, scanPrompt } from "./prompt";
@@ -246,6 +246,11 @@ describe("post task on both adapters", () => {
 });
 
 describe("parsers and helpers", () => {
+  it("Claude Code's answer line says what the call writes", () => {
+    expect([undefined, "scan", "read", "route", "post", "story"].map((k) => writingLine(k as Parameters<typeof writingLine>[0])))
+      .toEqual(["Writing the diagram", "Writing the card", "Writing the facts", "Choosing the way", "Writing the post", "Writing the story"]);
+  });
+
   it("ClaudeStreamParser ignores garbage lines", () => {
     const p = new ClaudeStreamParser("/r", () => {});
     p.line("not json");

@@ -214,20 +214,7 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .text-toolbar .sep { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--line-2); }
 .text-toolbar .btn[aria-pressed="true"] { background: var(--accent-soft, color-mix(in srgb, var(--accent) 14%, transparent)); color: var(--accent); }
 
-/* ---------- ask box ---------- */
-.ask { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(600px, calc(100% - 240px)); z-index: 14; }
-.ask form { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow), 0 16px 36px -22px rgba(16, 24, 40, .4); }
-.ask form:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
-.ask .spark { color: var(--k-llm); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--k-llm) 50%, transparent)); }
-.ask input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font-size: 14px; }
-.ask input::placeholder { color: var(--soft); }
-.ask .send { width: 32px; height: 32px; padding: 0; justify-content: center; }
-.ask .status { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ask .note-line { margin-top: 6px; padding: 7px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line-2); font-size: 13px; color: var(--muted); box-shadow: var(--shadow); display: flex; gap: 8px; align-items: center; }
-.ask .note-line.err { color: var(--k-llm); }
-.ask .note-line.err span { flex: 1; }
-.ask .expand { width: 32px; height: 32px; padding: 0; justify-content: center; border-color: transparent; background: none; color: var(--muted); }
-.ask .expand:hover { background: var(--surface-2); color: var(--ink); }
+/* ---------- side panels ---------- */
 /* A side panel (AI panel) is a column of its own: the canvas narrows, nothing is covered. */
 .app.with-side { grid-template-columns: minmax(0, 1fr) 368px; }
 .app.with-side > .bar { grid-column: 1 / -1; }
@@ -264,6 +251,15 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .ai-panel footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 12px 14px; border-top: 1px solid var(--line); }
 .ai-panel .hint { font-size: 12px; color: var(--soft); }
 .ai-panel kbd { font: 500 11px "Geist Mono", monospace; padding: 1px 5px; border: 1px solid var(--line-2); border-radius: 4px; }
+/* The conversation (ui contract, The conversation): one turn per run, the latest with its progress and result. */
+.ai-panel .thread { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; max-height: 46vh; overflow: auto; scrollbar-width: thin; }
+.ai-panel .thread:empty { display: none; }
+.ai-panel .turn { display: grid; gap: 6px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.ai-panel .turn-text { margin: 0; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ai-panel .turn-where { margin: -3px 0 0; font-size: 11.5px; color: var(--soft); }
+.ai-panel .turn-result { margin: 0; font-size: 12.5px; color: var(--muted); }
+.ai-panel .turn-result.err { color: var(--k-llm); }
+.ai-panel .turn.undone .turn-text, .ai-panel .turn.failed .turn-text, .ai-panel .turn.cancelled .turn-text { color: var(--muted); }
 
 /* A run's changes stay lit for a moment (ui-v2, data-changed). */
 .nd.changed .body { stroke: var(--accent); stroke-width: 2.5; }
@@ -476,7 +472,6 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
   .tools .sep, .tb .tip { display: none; }
   .tools { justify-self: center; }
   .btn .lbl { display: none; } .btn { padding: 0 9px; }
-  .ask { width: calc(100% - 24px); bottom: 12px; }
   .app.with-side { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr); }
   .zoom { top: 12px; bottom: auto; left: 12px; }
 }

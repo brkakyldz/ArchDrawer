@@ -249,13 +249,11 @@ components:
     rounded: "{rounded.pill}"
     padding: "0 9px"
     height: "26px"
-  ask-box:
+  ai-panel:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
     typography: "{typography.body}"
-    rounded: "{rounded.xl}"
-    padding: "6px 6px 6px 14px"
-    width: "min(600px, calc(100% - 240px))"
+    width: "368px"
   share-dialog:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
@@ -305,7 +303,7 @@ A cool-grey neutral scaffold, one saturated selection blue, ten kind hues that o
 - **Selection Blue** (accent; dark-accent in the dark theme): the only colour that means state or action. Selected component and group borders, the 3px soft selection ring (accent-soft), the active tool, toggled buttons, focus outlines, numbered step badges, the Share and Send buttons, the selected share format and the LinkedIn version block on a LinkedIn view. Its hue (221) is deliberately kept clear of every kind hue.
 
 ### Secondary
-- **Kind Hues** (k-actor slate, k-client cyan, k-api violet, k-service emerald, k-worker orange, k-llm rose, k-external stone, k-ops fuchsia, k-gate amber, k-data lime; dark-k-* are their bright siblings): one per component kind (Person, Client app, API, Service, Background job, AI agent, External, Monitoring, Check, Data store). Each paints the component's icon (with a drop-shadow glow), a radial tint at the top of the component, the under-glow, the hover border mix, the dot in a chip or colour key, and the gradient stroke of every edge, which runs from the source's hue to the target's. The AI-agent rose also marks the ask box's spark, because the ask box talks to the agent.
+- **Kind Hues** (k-actor slate, k-client cyan, k-api violet, k-service emerald, k-worker orange, k-llm rose, k-external stone, k-ops fuchsia, k-gate amber, k-data lime; dark-k-* are their bright siblings): one per component kind (Person, Client app, API, Service, Background job, AI agent, External, Monitoring, Check, Data store). Each paints the component's icon (with a drop-shadow glow), a radial tint at the top of the component, the under-glow, the hover border mix, the dot in a chip or colour key, and the gradient stroke of every edge, which runs from the source's hue to the target's. The AI-agent rose also marks the AI panel's spark, because the panel talks to the agent.
 
 ### Tertiary
 - **Brand Cyan** (brand; dark-brand, the brighter cyan of the logo, in the dark theme): the archdrawer mark and nothing else. It never marks state or a kind, and it never appears in an export.
@@ -313,7 +311,7 @@ A cool-grey neutral scaffold, one saturated selection blue, ten kind hues that o
 
 ### Neutral
 - **Canvas Grey** (canvas) with **Dot Grey** (dot): the working ground and its grid.
-- **Surface White** (surface): components, callouts, the top bar, the tools, the ask box, the share dialog.
+- **Surface White** (surface): components, callouts, the top bar, the tools, the AI panel, the share dialog.
 - **Well Grey** (surface-2) and **Pressed Grey** (surface-3): held items, chips, hover fills, the share preview well and the LinkedIn version block; surface-3 is chip hover.
 - **Hairline** (line) and **Firm Hairline** (line-2): line separates inside chrome (tools, edge labels, held items); line-2 is the component, callout, button and dialog border.
 - **Ink** (ink): titles and body. **Muted** (muted): sub-lines, crumbs, edge labels, caption lede. **Soft** (soft): metadata, mono sizes, group labels, close icons.
@@ -336,7 +334,7 @@ A cool-grey neutral scaffold, one saturated selection blue, ten kind hues that o
 - **Dialog title** (600, 18px): the share dialog's heading.
 - **Callout title** (600, 15px): the component name at the top of its explanation.
 - **Component title** (600, 14.5px; 13.5px in a compact): every component and group name on the canvas.
-- **Body** (400, 14px, 1.45): base text and the ask input.
+- **Body** (400, 14px, 1.45): base text and the AI panel's input.
 - **Explanation** (400, 13.5px, 1.55): callout prose and notes.
 - **UI** (500, 13.5px): buttons, crumbs, toggles, share options.
 - **Small** (400, 12.5px): sub-lines, held items, chips, the LinkedIn version hint.
@@ -352,13 +350,13 @@ A cool-grey neutral scaffold, one saturated selection blue, ten kind hues that o
 
 ## Layout
 
-The editor is a two-row grid: a top bar (logo, repository name in mono, view breadcrumb and a saved dot left; tools centred; theme, Steps and Share right), then a canvas that fills the rest. Overlays float on the canvas, never in a docked panel: zoom controls bottom left (14px inset), the ask box bottom centre (16px up, at most 600px wide), toasts top centre.
+The editor is a two-row grid: a top bar (logo, repository name in mono, view breadcrumb and a saved dot left; tools centred; theme, Steps and Share right), then a canvas that fills the rest. Overlays float on the canvas: zoom controls bottom left (14px inset), toasts top centre, and an AI result's Accept and Undo bar over the stage. Side panels (the AI panel, a pinned callout, the LinkedIn and steps panels) take a 368px column of their own, so the canvas narrows and nothing is covered.
 
-The canvas is infinite and transformed as a single world (translate plus scale). Fitting leaves 34px top, 56px sides and 96px bottom so the ask box never covers the drawing, and caps zoom at 115%. The drawing is two-dimensional: a main path with side paths above and below it, and groups that hold their own components.
+The canvas is infinite and transformed as a single world (translate plus scale). Fitting leaves 34px top, 56px sides and 96px bottom, and caps zoom at 115%. The drawing is two-dimensional: a main path with side paths above and below it, and groups that hold their own components.
 
 Spacing is a tight 4 / 6 / 8 / 12 / 14 / 18px ladder; gaps between chrome items are 2 to 10px. The export sits its drawing inside per-format margins (40 LinkedIn and square, 56 README, 64 slide, 52 LinkedIn feed).
 
-Below 760px the bar drops the repo name, breadcrumb, saved dot, undo/redo and tooltips, buttons lose their text labels, the zoom moves to the top left and the ask box spans the width less 24px.
+Below 760px the bar drops the repo name, breadcrumb, saved dot, undo/redo and tooltips, buttons lose their text labels, the zoom moves to the top left and a side panel stacks under the canvas.
 
 ### Named Rules
 **The Content Sizes the Node Rule.** A component's size is a function of its content, never of CSS. A card is 196 by 108, a compact 208 by 46, a panel's height is 24 + 22 for the header, + 17 with a sub-line, + 10 + 26 per held item + 4 between items. The editor and the SVG/PNG export draw from these same numbers through one geometry; when held items are hidden in the export, a panel shrinks around its own centre.
@@ -369,13 +367,13 @@ Below 760px the bar drops the repo name, breadcrumb, saved dot, undo/redo and to
 
 ## Elevation & Depth
 
-A hybrid. The chrome is nearly flat: hairline borders and a two-layer ambient shadow. Components add a coloured under-glow in their kind hue, which is the system's signature depth cue; it is depth by light rather than by lift. State raises it (hover strengthens the glow, dragging lifts the component 2px and scales it 1.01 with a darker shadow). Floating overlays (callout, ask box, toast, dialog) take progressively deeper, softer neutral shadows. The dark theme uses deeper neutral shadows and raises the edge glow from 0.12 to 0.18 opacity.
+A hybrid. The chrome is nearly flat: hairline borders and a two-layer ambient shadow. Components add a coloured under-glow in their kind hue, which is the system's signature depth cue; it is depth by light rather than by lift. State raises it (hover strengthens the glow, dragging lifts the component 2px and scales it 1.01 with a darker shadow). Floating overlays (callout, preview bar, toast, dialog) take progressively deeper, softer neutral shadows. The dark theme uses deeper neutral shadows and raises the edge glow from 0.12 to 0.18 opacity.
 
 ### Shadow Vocabulary
-- **Ambient** (`0 1px 2px rgba(16,24,40,.06), 0 6px 16px -10px rgba(16,24,40,.18)`; dark `0 1px 2px rgba(0,0,0,.4), 0 10px 24px -14px rgba(0,0,0,.7)`): components, zoom, ask box.
+- **Ambient** (`0 1px 2px rgba(16,24,40,.06), 0 6px 16px -10px rgba(16,24,40,.18)`; dark `0 1px 2px rgba(0,0,0,.4), 0 10px 24px -14px rgba(0,0,0,.7)`): components, zoom, the preview bar.
 - **Kind glow** (`0 10px 28px -12px color-mix(in srgb, kind 62%, transparent)`, 80% on hover and selection; dark 58% / 78%): under every card, compact and panel. Groups use `0 16px 44px -24px` at the same mix.
 - **Icon glow** (`drop-shadow(0 0 7px color-mix(in srgb, kind 65%, transparent))`): on the kind icon.
-- **Selection ring** (`0 0 0 3px accent-soft`): selected component, group, note, option, focused ask box.
+- **Selection ring** (`0 0 0 3px accent-soft`): selected component, group, note, option, focused AI input.
 - **Callout** (`0 2px 4px rgba(16,24,40,.06), 0 24px 48px -24px rgba(16,24,40,.45)`).
 - **Dialog** (`0 40px 90px -30px rgba(0,0,0,.55)`) over a 45% near-black backdrop with a 3px blur.
 
@@ -384,7 +382,7 @@ A hybrid. The chrome is nearly flat: hairline borders and a two-layer ambient sh
 
 ## Shapes
 
-Gently rounded rectangles throughout, radius rising with size: 6px for edge labels and tooltips, 7px for held items and tool buttons, 8px for buttons and options, 10px for the tool group, zoom, LinkedIn version block and toast, 12px for components, callouts and the ask box, 16px for the dialog, 18px for groups, full pills for chips and step badges. Notes are the one asymmetric shape: 4px corners with a 14px bottom-left tail. Icons are 24-unit line icons at 1.75 stroke (1.6 at 26px on cards), round caps and joins. Callouts carry a 10px rotated-square pointer on the side facing their component.
+Gently rounded rectangles throughout, radius rising with size: 6px for edge labels and tooltips, 7px for held items and tool buttons, 8px for buttons and options, 10px for the tool group, zoom, LinkedIn version block and toast, 12px for components, callouts and the preview bar, 16px for the dialog, 18px for groups, full pills for chips and step badges. Notes are the one asymmetric shape: 4px corners with a 14px bottom-left tail. Icons are 24-unit line icons at 1.75 stroke (1.6 at 26px on cards), round caps and joins. Callouts carry a 10px rotated-square pointer on the side facing their component.
 
 ## Components
 
@@ -427,15 +425,18 @@ Cubic curves leaving the side that faces the other end; several connections on o
 The explanation unfolds beside its component (see The Screen-Size Callout Rule). 296px wide, surface white, firm hairline, 12px corners, callout shadow, 220ms unfold from 96%. Header: kind icon, 15px title, "Kind · sub-line" in muted 12px, a close button. Body: explanation prose, then "Connected to" as chips (kind dot with glow, name, direction arrow: goes to, comes from, both ways) that jump to the other component, then "In the code" as mono paths. Footer, above a hairline: Open inside (primary, when the component has a view inside) and Ask about it.
 
 ### Chip
-26px pill, well-grey fill, hairline border, 12.5px ink text with a 7px kind dot; hover darkens to pressed grey. Also used for the ask box's suggestions.
+26px pill, well-grey fill, hairline border, 12.5px ink text with a 7px kind dot; hover darkens to pressed grey. Also used for the AI panel's suggestions, one row per channel.
 
-### Ask box
-Floats bottom centre: surface white, firm hairline, 12px corners, ambient plus a soft floating shadow. A rose spark (AI-agent hue, with glow) leads, the input reads "Ask Claude to change this drawing", a 32px primary Send button ends it. Focus turns the border blue with the soft ring and reveals suggestion chips above. While working, a 14px spinner (blue arc) and a plain status line ("Reading the code") replace the input.
+### AI panel
+The one place to type an instruction (ADR 0008). A 368px column beside the stage, surface white with a hairline left border, opened by the AI button and closed by its own close button or Escape; the canvas stays usable. A rose spark (AI-agent hue) leads its header. Under it the conversation: one turn per run on the open drawing, oldest first, each a hairline card with the instruction (or the control's name) in body text and "Channel · scope" in soft 11.5px. Only the latest turn holds the live parts: the mono progress lines with Cancel, the error with Try again, the summary on accent-soft, the route sentence and the layout report; an earlier turn keeps one muted result line. Then the suggestion chips, the input ("Ask Claude to change this drawing"; Enter sends, Shift+Enter breaks the line), the scope, the engine and model, the engine note, and a footer with Look at the drawing again and a primary Send.
+
+### Preview bar
+A run's result arrives as a preview: a 12px-rounded surface bar floats at the top of the stage with "The drawing was updated: …", the route sentence after a refine, and Accept (primary) and Undo. The parts the run added, changed or moved keep their changed glow until the user chooses.
 
 ### Share dialog
 A 16px-rounded modal (up to 1180 by 720) split into a preview well (surface-2) and a 300px side column. The preview shows the actual export frame scaled to fit, with its pixel size in mono bottom left. The side column, under "Share image / Laid out for where it will be seen.", stacks: **Where** (five options with their pixel sizes in mono: LinkedIn post 1200x900, LinkedIn feed 1080x1350, README 1600x900, Slide 1920x1080, Square post 1080x1080), the **LinkedIn version** block, **Theme** (Light / Dark), **Show** (title, description, what each part holds, numbered main path, connection labels, colour key, notes), and a readability meter. Actions sit on a hairline footer: Download PNG (primary, full width), Download SVG and Copy image. Selected options take the blue border and soft ring.
 
-**Built:** Download PNG, Download SVG and Copy image produce the real image; the ask box runs the instruction through a headless Claude Code or Codex when one is available and otherwise saves it in the file's `requests` for the next session.
+**Built:** Download PNG, Download SVG and Copy image produce the real image; the AI panel runs the instruction through a headless Claude Code or Codex when one is available and otherwise saves it in the file's `requests` for the next session.
 
 **Readability meter.** Reads the smallest text actually in the image (a held item at 12.5px, else a component name at 13.5px) at the size it is seen where it lands and at full size, and says the result in one plain sentence for the destination ("The text will be too small to read in the LinkedIn feed, even when the image is opened"), with a level dot; the pixel sizes sit behind a small Details toggle.
 

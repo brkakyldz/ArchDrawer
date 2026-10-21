@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { summarize } from "../../core/diff";
+import { summarize, type Changes } from "../../core/diff";
 import type { RunScope } from "../../core/repair";
-import { SIMPLIFY_INSTRUCTION } from "../../core/simplify";
 import type { EngineInfo } from "../api";
 import { Icon } from "../ui/Icon";
 import { LayoutReportLine } from "../ui/LayoutReport";
-import { engineName, ROUTE_SENTENCE, type Runner } from "./runner";
+import { engineName, ROUTE_SENTENCE, type Runner, type Turn } from "./runner";
 
 export type ScopeChoice = "view" | "selection" | "all";
 
@@ -20,53 +19,92 @@ interface Props {
   onModel: (id: string) => void;
   /** The components selected on the canvas (the `selection` scope). */
   selected: string[];
-  /** What the panel opens with: text moved from the ask box, or a component's "Change this part". */
-  initial: { text: string; scope: ScopeChoice; at: number };
-  /** The first view: a simplification always works on it, and the editor shows it. */
-  overview: string;
-  onOverview: () => void;
+  /** The scope the panel opens with (a component's "Change this part" chooses the selection); `at` marks each opening. */
+  initial: { scope: ScopeChoice; at: number };
+  /** What is typed in `ai-input`; the editor keeps it across channels. */
+  text: string;
+  setText: (t: string) => void;
+  /** The current channel has no view: nothing to change there (ui contract, ai-send). */
+  blank: boolean;
   onClose: () => void;
 }
 
-const FIXTURE_NOTE = "Test engine (no AI): it understands only add, remove, rename, hold, move and align, gives a canned post and a canned simplification, and changes nothing else";
+const FIXTURE_NOTE = "Test engine (no AI): it understands only add, remove, rename, hold, move and align, gives a canned post, a canned simplification and a canned second look, and changes nothing else";
 const SAVED = "Saved in the file for your next archdrawer session";
 
-/** The AI panel (ui contract): a longer instruction with the engine, model and scope chosen. Not modal. */
-export function AiPanel({ runner, engines, engine, model, onEngine, onModel, selected, initial, overview, onOverview, onClose, nameOf }: Props) {
-  const [text, setText] = useState(initial.text);
+/** The change summary with its counts (ui contract, ai-summary). */
+function Summary({ c }: { c: Changes }) {
+  return (
+    <div className="result ok" data-testid="ai-summary" role="status"
+      data-added={c.added.length} data-removed={c.removed.length} data-changed={c.changed.length} data-moved={c.moved.length}
+      data-edges-added={c.edgesAdded.length} data-edges-removed={c.edgesRemoved.length} data-edges-changed={c.edgesChanged.length}>
+      {summarize(c)}
+    </div>
+  );
+}
+
+const succeeded = (t: Turn) => t.state === "preview" || t.state === "accepted" || t.state === "undone" || t.state === "unchanged";
+
+/**
+ * One turn of the conversation (ui contract, The conversation): what was asked and where, its state,
+ * and its result. Only the latest turn holds the progress, the error with its retry, the summary, the
+ * route and the report; an earlier one keeps its result as one line.
+ */
+function TurnView({ turn, latest, runner, nameOf }: { turn: Turn; latest: boolean; runner: Runner; nameOf?: (id: string) => string }) {
+  const result = turn.state === "saved" ? SAVED : turn.error ?? (turn.changes ? summarize(turn.changes) : null);
+  return (
+    <li className={`turn ${turn.state}`} data-testid="ai-turn" data-state={turn.state} {...(turn.runId ? { "data-run-id": turn.runId } : {})}>
+      <p className="turn-text" data-testid="ai-turn-text">{turn.text}</p>
+      <p className="turn-where" data-testid="ai-turn-where">{turn.where}</p>
+      {!latest ? (result && <p className={`turn-result${turn.error ? " err" : ""}`} data-testid="ai-turn-result">{result}</p>) : <>
+        {turn.state === "running" && (
+          <div className="progress" data-testid="ai-progress" role="status">
+            <ol>{turn.lines.map((l, i) => <li key={`${i}-${l}`} data-testid="ai-progress-line">{l}</li>)}</ol>
+            <button className="btn small" data-testid="ai-cancel" onClick={runner.cancel}>Cancel</button>
+          </div>
+        )}
+        {(turn.state === "failed" || turn.state === "cancelled") && (
+          <div className="result err" data-testid="ai-error" role="alert">
+            <span>{turn.error}</span>
+            <button className="btn small" data-testid="ai-retry" onClick={runner.retry}>Try again</button>
+          </div>
+        )}
+        {succeeded(turn) && turn.changes && <Summary c={turn.changes} />}
+        {succeeded(turn) && turn.route && <div className="result route" data-testid="ai-route" data-route={turn.route}>{ROUTE_SENTENCE[turn.route]}</div>}
+        {succeeded(turn) && turn.layoutReport && <LayoutReportLine report={turn.layoutReport} nameOf={nameOf} />}
+        {turn.state === "saved" && <div className="result" data-testid="ai-saved">{SAVED}</div>}
+      </>}
+    </li>
+  );
+}
+
+/** The AI panel (ui contract): the one place to type, the conversation of the open drawing, the engine, model and scope. Not modal. */
+export function AiPanel({ runner, engines, engine, model, onEngine, onModel, selected, initial, text, setText, blank, onClose, nameOf }: Props) {
   const [scope, setScope] = useState<ScopeChoice>(initial.scope);
   const input = useRef<HTMLTextAreaElement>(null);
-  const { state } = runner;
-  const mine = state.req?.origin === "panel";
+  const thread = useRef<HTMLOListElement>(null);
+  const { state, turns } = runner;
   const running = state.status === "running";
   const available = engines.filter((e) => e.available);
 
   useEffect(() => {
-    setText(initial.text); setScope(initial.scope);
+    setScope(initial.scope);
     requestAnimationFrame(() => { const el = input.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
   }, [initial]);
   // The selection scope needs a selected component; losing it falls back to the view.
   useEffect(() => { if (scope === "selection" && !selected.length) setScope("view"); }, [scope, selected.length]);
+  // The latest turn stays in sight.
+  const last = turns[turns.length - 1];
+  useEffect(() => { const el = thread.current; if (el) el.scrollTop = el.scrollHeight; }, [turns.length, last?.state, last?.lines.length]);
 
   const toScope = (): RunScope => (scope === "selection" && selected.length ? { kind: "parts", ids: selected } : scope === "all" ? { kind: "all" } : { kind: "view" });
+  const canSend = !!text.trim() && !running && !blank;
   const send = () => {
-    const instruction = text.trim();
-    if (!instruction || running) return;
-    void runner.start({ instruction, engine: engine?.id ?? null, model: model || null, scope: toScope(), origin: "panel" });
+    if (!canSend) return;
+    void runner.start({ instruction: text.trim(), typed: true, engine: engine?.id ?? null, model: model || null, scope: toScope(), origin: "panel" });
   };
-  // The overview becomes a map; without an engine the instruction is saved for the overview.
-  const simplify = () => {
-    if (running) return;
-    setText(SIMPLIFY_INSTRUCTION); setScope("view"); onOverview();
-    void runner.start({ instruction: SIMPLIFY_INSTRUCTION, engine: engine?.id ?? null, model: model || null, scope: { kind: "view" }, origin: "panel", view: overview, kind: "simplify" });
-  };
-  // A successful run clears the instruction (ui contract); a failed one keeps it.
-  const done = useRef<string | null>(null);
-  useEffect(() => {
-    if (mine && state.status === "succeeded" && state.id && done.current !== state.id) { done.current = state.id; setText(""); }
-  }, [mine, state.status, state.id]);
-
-  const c = mine && state.status === "succeeded" ? state.changes : null;
+  const placeholder = !engine ? "Ask Claude to change this drawing"
+    : engine.test ? "Ask the test engine (no AI) to change this drawing" : `Ask ${engine.label} to change this drawing`;
 
   return (
     <aside className="ai-panel" data-testid="ai-panel" aria-label="Change the drawing with AI" onPointerDown={(e) => e.stopPropagation()}
@@ -78,10 +116,16 @@ export function AiPanel({ runner, engines, engine, model, onEngine, onModel, sel
       </header>
 
       <div className="bd">
-        <textarea ref={input} data-testid="ai-input" value={text} maxLength={4000} rows={5} aria-label="Instruction"
-          placeholder="Say what to change: add a cache between the API and the database, put the workers in one row…"
-          onChange={(e) => { setText(e.target.value); if (mine && !running) runner.clear(); }}
-          onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } }} />
+        <ol className="thread" data-testid="ai-thread" ref={thread} aria-label="Conversation">
+          {turns.map((t, i) => <TurnView key={t.key} turn={t} latest={i === turns.length - 1} runner={runner} nameOf={nameOf} />)}
+        </ol>
+
+        <textarea ref={input} data-testid="ai-input" value={text} maxLength={4000} rows={4} aria-label="Instruction" placeholder={placeholder}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter sends, Shift+Enter is a line break (ui contract, ai-input).
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
+          }} />
 
         <fieldset className="scope" disabled={running}>
           <legend>Change</legend>
@@ -92,10 +136,6 @@ export function AiPanel({ runner, engines, engine, model, onEngine, onModel, sel
           </label>
           <label><input type="radio" name="ai-scope" data-testid="ai-scope-all" checked={scope === "all"} onChange={() => setScope("all")} /> The whole channel</label>
         </fieldset>
-
-        <button className="btn wide" data-testid="simplify-overview" disabled={running} onClick={simplify}>
-          <Icon name="layers" size={15} /> Simplify the overview
-        </button>
 
         {engine && (
           <div className="pick">
@@ -118,34 +158,11 @@ export function AiPanel({ runner, engines, engine, model, onEngine, onModel, sel
           {!engine ? "No engine is available: the instruction is saved in the file for your next archdrawer session"
             : engine.test ? FIXTURE_NOTE : `${engine.label} reads the repository (read-only) and changes the drawing`}
         </p>
-
-        {running && (
-          <div className="progress" data-testid="ai-progress" role="status">
-            <ol>{state.lines.map((l, i) => <li key={`${i}-${l}`} data-testid="ai-progress-line">{l}</li>)}</ol>
-            <button className="btn small" data-testid="ai-cancel" onClick={runner.cancel}>Cancel</button>
-          </div>
-        )}
-        {mine && !running && state.error && (
-          <div className="result err" data-testid="ai-error" role="alert">
-            <span>{state.error}</span>
-            <button className="btn small" data-testid="ai-retry" onClick={runner.retry}>Try again</button>
-          </div>
-        )}
-        {c && (
-          <div className="result ok" data-testid="ai-summary" role="status"
-            data-added={c.added.length} data-removed={c.removed.length} data-changed={c.changed.length} data-moved={c.moved.length}
-            data-edges-added={c.edgesAdded.length} data-edges-removed={c.edgesRemoved.length} data-edges-changed={c.edgesChanged.length}>
-            {summarize(c)}
-          </div>
-        )}
-        {c && state.route && <div className="result route" data-testid="ai-route" data-route={state.route}>{ROUTE_SENTENCE[state.route]}</div>}
-        {mine && state.status === "succeeded" && state.layoutReport && <LayoutReportLine report={state.layoutReport} nameOf={nameOf} />}
-        {mine && state.status === "saved" && <div className="result" data-testid="ai-saved">{SAVED}</div>}
       </div>
 
       <footer>
-        <span className="hint"><kbd>Ctrl</kbd> <kbd>Enter</kbd></span>
-        <button className="btn primary" data-testid="ai-send" disabled={!text.trim() || running} onClick={send}><Icon name="send" size={15} /> Send</button>
+        <span className="hint"><kbd>Enter</kbd> to send · <kbd>Shift</kbd> <kbd>Enter</kbd> new line</span>
+        <button className="btn primary" data-testid="ai-send" disabled={!canSend} onClick={send}><Icon name="send" size={15} /> Send</button>
       </footer>
     </aside>
   );

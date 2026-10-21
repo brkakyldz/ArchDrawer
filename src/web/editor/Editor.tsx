@@ -11,7 +11,6 @@ import { navigate } from "../App";
 import { Icon } from "../ui/Icon";
 import { Logo } from "../ui/Logo";
 import { AiPanel, type ScopeChoice } from "./AiPanel";
-import { AskBox } from "./AskBox";
 import { Search, type Found, type Hit } from "./Find";
 import { ViewsMenu } from "./Views";
 import { ChannelStart, ChannelTabs, EmptyStage, OutdatedBanner } from "./Channels";
@@ -26,7 +25,7 @@ import { EdgeCallout, InlineInput, Picker, TextEditor, TextToolbar, Warnings } f
 import { ShareDialog } from "../share/ShareDialog";
 import type { Ctl, Editing, Selection, Tool } from "./types";
 import { NOTHING } from "./types";
-import { chooseEngine, ENGINE_KEY, engineName, modelKey, rememberedModel, ROUTE_SENTENCE, useRunner, type Route, type RunRequest } from "./runner";
+import { chooseEngine, ENGINE_KEY, engineName, modelKey, rememberedModel, ROUTE_SENTENCE, useRunner, type Done, type Outcome, type RunRequest } from "./runner";
 import { useAutosave } from "./useAutosave";
 import { useDocHistory, type ApplyOptions } from "./useDocHistory";
 import { FIT, fitView, reveal, zoomAt, zoomPercent, type Viewport } from "./viewport";
@@ -132,7 +131,9 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const [engines, setEngines] = useState<EngineInfo[] | null>(null);
   const [chosen, setChosen] = useState<string | null>(() => { try { return localStorage.getItem(ENGINE_KEY); } catch { return null; } });
   const [models, setModels] = useState<Record<string, string>>({});
-  const [ai, setAi] = useState<{ text: string; scope: ScopeChoice; at: number } | null>(null);
+  const [ai, setAi] = useState<{ scope: ScopeChoice; at: number } | null>(null);
+  /** What is typed in `ai-input`, kept while the user moves between channels. */
+  const [aiText, setAiText] = useState("");
   const [changed, setChanged] = useState<Set<string>>(new Set());
   const [searching, setSearching] = useState(false);
   const [searchRound, setSearchRound] = useState(0);
@@ -192,7 +193,10 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   }, []);
   const runner = useRunner({
     doc, channel: stored ? drawnChannel(stored, chan) : "overview", vid: vid ?? doc?.views[0].id ?? null, settle,
-    onUpdated: (d: Document3, c: Changes | null, req: RunRequest, route: Route | null) => {
+    // A typed instruction leaves `ai-input` as the run starts, and comes back to it if the run fails.
+    onStart: (req: RunRequest) => { if (req.typed) setAiText(""); },
+    onEnded: (req: RunRequest) => { if (req.typed) setAiText((t) => t || req.instruction); },
+    onUpdated: ({ stored: d, changes: c, req, route }: Done): Outcome => {
       // One undo step: the stored result and the edit made after it (a re-arrangement) together.
       save.markSaved(d);
       hist.apply(req.after ? splitEdit(d, channelOfView(d, req.view ?? "") ?? chanRef.current, req.after, toast) : d);
@@ -200,6 +204,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       toast(route ? `${said}. ${ROUTE_SENTENCE[route]}` : said);
       mark(c);
       if (req.after && req.view === vid) pendingFit.current = { view: req.view! };
+      return c && !touched(c).length && !c.removed.length && !c.edgesAdded.length && !c.edgesRemoved.length && !c.edgesChanged.length ? "unchanged" : "accepted";
     },
     onSaved: () => { if (doc) api.get(doc.id).then((d) => adopt(d, null), () => {}); },
   });
@@ -343,7 +348,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     const target = d.channels[c].views[0];
     setMenuOpen(false);
     if (target) { goView(target.id); return; }
-    setChan(c); setSel(NOTHING); setCallout(null); setEditing(null); setPicker(null); setAi(null); setSearching(false);
+    setChan(c); setSel(NOTHING); setCallout(null); setEditing(null); setPicker(null); setSearching(false);
     history.replaceState({}, "", `/d/${d.id}?channel=${c}`);
   }, [goView]);
   /** "Keep as it is": the channel's marks go, as one undoable edit (diagram contract, outdated). */
@@ -366,12 +371,13 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     const c = chanRef.current;
     if (c !== "readme" && c !== "presentation") return;
     if (!engine) { prepare(); return; }
-    void runner.start({ instruction: "", engine: engine.id, model: model || null, scope: { kind: "view" }, origin: "story", kind: "story", channel: c, readCode: false });
+    const label = stored?.channels[c].views.length ? "Redraw it" : "Draw it";
+    void runner.start({ instruction: "", label, engine: engine.id, model: model || null, scope: { kind: "view" }, origin: "story", kind: "story", channel: c, readCode: false });
   };
   const undo = () => { if (running.current) toast(PAUSED); else hist.undo(); };
   const redo = () => { if (running.current) toast(PAUSED); else hist.redo(); };
 
-  const openAi = (text: string, scope: ScopeChoice = "view") => setAi({ text, scope, at: Date.now() });
+  const openAi = (scope: ScopeChoice = "view") => setAi({ scope, at: Date.now() });
   // On the overview only, one line when it misses its targets; nothing changes by itself.
   const ctl: Ctl | null = doc && view ? {
     doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: hist.checkpoint,
@@ -379,7 +385,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     toast, goView, changed, pinned, setPinned, found, channel: stored ? drawnChannel(stored, chan) : "overview",
     // A step that is gone (undone, removed) lights nothing and dims nothing.
     step: ((cur) => (chan === "presentation" && cur ? new Set(cur.parts) : null))(doc.steps?.find((s) => s.id === curStep)),
-    changePart: (nid) => { setSel({ ...NOTHING, nodes: [nid] }); openAi("", "selection"); },
+    changePart: (nid) => { setSel({ ...NOTHING, nodes: [nid] }); openAi("selection"); },
   } : null;
 
   /* ---------- keyboard ---------- */
@@ -633,7 +639,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
             <Icon name="search" size={16} />
           </button>
           {!narrow && <>{themeEl}{stepsEl}</>}
-          <button className="btn" data-testid="ai-button" aria-pressed={!!ai} aria-label="Change with AI" disabled={blank} onClick={() => (ai ? setAi(null) : openAi(""))}>
+          <button className="btn" data-testid="ai-button" aria-pressed={!!ai} aria-label="Ask AI" onClick={() => (ai ? setAi(null) : openAi())}>
             <Icon name="spark" size={16} /><span className="lbl">AI</span>
           </button>
           <button className="btn primary" data-testid="share-button" aria-label="Share" disabled={blank} onClick={() => setSharing(true)}><Icon name="share" size={16} /><span className="lbl">Share</span></button>
@@ -654,7 +660,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
         </EmptyStage> : <>
         <Canvas ctl={ctl} steps={stepsOn} onDouble={onDouble} />
         {outdated > 0 && <OutdatedBanner count={outdated} onKeep={keep} busy={runner.state.status === "running"}
-          onRedraw={chan === "linkedin" ? () => drawFromFacts(engineProps, prepare) : story ? drawStory : undefined} />}
+          onRedraw={chan === "linkedin" ? () => drawFromFacts(engineProps, prepare, "Redraw it") : story ? drawStory : undefined} />}
         {story && !blank && <div className="story-run"><RunLine runner={runner} /></div>}
         {HINTS[tool] && <div className="tool-hint" data-testid="tool-hint" role="status">{HINTS[tool]}</div>}
         <div className="overlay">
@@ -673,7 +679,6 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
           <button className="tb" data-testid="zoom-fit" aria-label="Fit to screen" onClick={() => fitTo()}><Icon name="fit" /></button>
         </div>
         </>}
-        <AskBox runner={runner} engine={engine} model={model} onExpand={(t) => openAi(t)} disabled={blank} />
       </main>
       {side && (
         <div className="side-col">
@@ -683,8 +688,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
           {post && <LinkedInPanel {...engineProps} view={post} apply={apply} />}
           {ai && engines && (
             <AiPanel runner={runner} engines={engines} engine={engine} model={model} onEngine={pickEngine} onModel={pickModel}
-              selected={sel.nodes} initial={ai} onClose={() => setAi(null)}
-              overview={stored.channels.overview.views[0].id} onOverview={() => { const first = stored.channels.overview.views[0].id; if (view?.id !== first) goView(first); }}
+              selected={blank ? [] : sel.nodes} initial={ai} text={aiText} setText={setAiText} blank={blank} onClose={() => setAi(null)}
               nameOf={(id) => view?.nodes.find((n) => n.id === id)?.label ?? id} />
           )}
         </div>

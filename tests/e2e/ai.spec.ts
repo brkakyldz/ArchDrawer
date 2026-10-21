@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { onDisk, open, savedWhen, storedOnDisk } from "./helpers";
 
-// The ask box and the AI panel. Their journeys (model, scope, progress, summary, retry, cancel,
-// no engine, expand) are held-out H24, H25 and H30–H33; simplifying the overview has no held-out
-// scenario, since Simplify left the scope. What stays here is what those do not observe, or need a
-// faked engine list for, and that a new run never shows the previous report.
+// The AI panel, the one place to type. Its journeys (model, scope, progress, summary, retry, cancel,
+// no engine, the conversation) are held-out H24, H25, H30–H33 and H135–H137. What stays here is what
+// those do not observe, or need a faked engine list or a faked server answer for, and that a new run
+// never shows the previous report.
 
 test("a real engine is chosen over the test engine, and the choice is remembered", async ({ page }) => {
   await page.route("**/api/engines", (r) => r.fulfill({ json: { engines: [
@@ -13,14 +13,15 @@ test("a real engine is chosen over the test engine, and the choice is remembered
     { id: "codex", label: "Codex", available: false, version: null, detail: "not found", test: false, models: [] },
   ] } }));
   await open(page);
-  await expect(page.getByTestId("ask-input")).toHaveAttribute("placeholder", "Ask Claude Code to change this drawing");
   await page.getByTestId("ai-button").click();
+  await expect(page.getByTestId("ai-input")).toHaveAttribute("placeholder", "Ask Claude Code to change this drawing");
   await expect(page.getByTestId("ai-engine")).toHaveValue("claude");
   await expect(page.getByTestId("ai-engine").locator("option")).toHaveText(["Test engine (no AI)", "Claude Code"]);
   await page.getByTestId("ai-engine").selectOption("fixture");
-  await expect(page.getByTestId("ask-input")).toHaveAttribute("placeholder", "Ask the test engine (no AI) to change this drawing");
+  await expect(page.getByTestId("ai-input")).toHaveAttribute("placeholder", "Ask the test engine (no AI) to change this drawing");
   await page.reload();
-  await expect(page.getByTestId("ask-input")).toHaveAttribute("placeholder", "Ask the test engine (no AI) to change this drawing");
+  await page.getByTestId("ai-button").click();
+  await expect(page.getByTestId("ai-input")).toHaveAttribute("placeholder", "Ask the test engine (no AI) to change this drawing");
 });
 
 test("a selected-parts run sends that scope and moves only that part; undo puts it back", async ({ page }) => {
@@ -55,24 +56,6 @@ test("the panel cannot send an empty instruction, and Escape inside it closes it
   await expect(page.getByTestId("ai-panel")).toHaveCount(0);
 });
 
-test("the ask box says what changed, and a cancelled run gives the instruction back", async ({ page }) => {
-  const { path } = await open(page);
-  await page.getByTestId("ask-input").fill("add Cache component");
-  await page.getByTestId("ask-send").click();
-  await expect(page.getByTestId("toast")).toHaveText("The drawing was updated: 1 part added · 1 connection added. Changed the facts: every channel that shows them shows it");
-  await expect(page.getByTestId("ask-status")).toHaveCount(0);
-  const text = JSON.stringify((await savedWhen(page, path, (d) => d.views[0].nodes.some((n) => n.id === "cache"))).views);
-
-  await page.getByTestId("ask-input").fill("add Y [fixture:slow]");
-  await page.getByTestId("ask-send").click();
-  await expect(page.getByTestId("ask-status")).toBeVisible();
-  await page.getByTestId("ask-cancel").click();
-  await expect(page.getByTestId("ask-status")).toHaveCount(0, { timeout: 10_000 });
-  await expect(page.getByTestId("ask-error")).toContainText("Cancelled");
-  await expect(page.getByTestId("ask-input")).toHaveValue("add Y [fixture:slow]");
-  expect(JSON.stringify(onDisk(path).views)).toBe(text);
-});
-
 // After a run the panel shows the kept result's layout report.
 test("a finished run shows its layout report; a new run never shows the previous one", async ({ page }) => {
   await open(page);
@@ -104,11 +87,14 @@ test("a run whose progress stream is refused ends as failed and is stopped", asy
   await open(page);
   await page.route("**/api/runs/*/events", (r) => r.fulfill({ status: 404, contentType: "application/json", body: '{"error":"Run not found"}' }));
   const stopped = page.waitForRequest((r) => /\/api\/runs\/[^/]+\/cancel$/.test(r.url()) && r.method() === "POST");
-  await page.getByTestId("ask-input").fill("add Y [fixture:slow]");
-  await page.getByTestId("ask-send").click();
+  await page.getByTestId("ai-button").click();
+  await page.getByTestId("ai-input").fill("add Y [fixture:slow]");
+  await page.getByTestId("ai-send").click();
   await stopped;
-  await expect(page.getByTestId("ask-status")).toHaveCount(0);
-  await expect(page.getByTestId("ask-error")).toContainText("Lost the connection");
+  await expect(page.getByTestId("ai-progress")).toHaveCount(0);
+  await expect(page.getByTestId("ai-error")).toContainText("Lost the connection");
+  await expect(page.getByTestId("ai-turn")).toHaveAttribute("data-state", "failed");
+  await expect(page.getByTestId("ai-input")).toHaveValue("add Y [fixture:slow]");
 });
 
 // A second send while the first is still on its way (saving, starting) is ignored: the panel
@@ -140,9 +126,10 @@ test("a second send while the first run is starting is ignored, never shown as a
 test("edits are paused while an instruction runs and work again once it ends", async ({ page }) => {
   const { path } = await open(page);
   const before = JSON.stringify(onDisk(path));
-  await page.getByTestId("ask-input").fill("add Y [fixture:slow]");
-  await page.getByTestId("ask-send").click();
-  await expect(page.getByTestId("ask-status")).toBeVisible();
+  await page.getByTestId("ai-button").click();
+  await page.getByTestId("ai-input").fill("add Y [fixture:slow]");
+  await page.getByTestId("ai-send").click();
+  await expect(page.getByTestId("ai-progress")).toBeVisible();
   await page.getByTestId("tool-steps").click();
   await expect(page.getByTestId("toast")).toContainText("paused");
   await expect(page.getByTestId("tool-steps")).toHaveAttribute("aria-pressed", "false");
@@ -150,8 +137,8 @@ test("edits are paused while an instruction runs and work again once it ends", a
   await page.getByTestId("callout-delete").click();
   await expect(page.getByTestId("node-web")).toBeVisible();
   await expect(page.getByTestId("tool-undo")).toBeDisabled();
-  await page.getByTestId("ask-cancel").click();
-  await expect(page.getByTestId("ask-error")).toContainText("Cancelled");
+  await page.getByTestId("ai-cancel").click();
+  await expect(page.getByTestId("ai-error")).toContainText("Cancelled");
   expect(JSON.stringify(onDisk(path))).toBe(before);
   await page.getByTestId("tool-steps").click();
   await savedWhen(page, path, (d) => d.showSteps);

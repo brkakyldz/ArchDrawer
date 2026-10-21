@@ -45,14 +45,15 @@ export function RunLine({ runner }: { runner: Runner }) {
   return state.status === "saved" ? <div className="run" data-testid="share-run-saved">{SAVED}</div> : null;
 }
 
-const designPost = ({ runner, engine, model }: Engine, instruction = "", readCode = true) =>
-  void runner.start({ instruction, engine, model: model || null, scope: { kind: "view" }, origin: "linkedin", kind: "post", format: "feed", readCode });
+/** A post run; `label` names the control in the conversation (ui contract, The conversation). */
+const designPost = ({ runner, engine, model }: Engine, label: string, instruction = "", readCode = true) =>
+  void runner.start({ instruction, label, engine, model: model || null, scope: { kind: "view" }, origin: "linkedin", kind: "post", format: "feed", readCode });
 
 /**
  * Draw or redraw the channel from the facts alone (STORY-1): with an engine a post run that reads no
  * file; without one the simple version.
  */
-export const drawFromFacts = (p: Engine, prepare: () => void) => (p.engine ? designPost(p, "", false) : prepare());
+export const drawFromFacts = (p: Engine, prepare: () => void, label = "Draw it") => (p.engine ? designPost(p, label, "", false) : prepare());
 
 /**
  * On the LinkedIn channel's empty stage (ui contract, The LinkedIn flow): with an engine the post is
@@ -68,7 +69,7 @@ export function LinkedInStart(p: Engine & { onPrepare: () => void }) {
             <Icon name="spark" size={15} /> Draw it
           </button>
           <p className="hint">The engine tells the story from the facts already read and is asked not to read the code again. Code places it and checks it.</p>
-          <button className="btn wide" data-testid="design-post" disabled={running} onClick={() => designPost(p)}>Design the post</button>
+          <button className="btn wide" data-testid="design-post" disabled={running} onClick={() => designPost(p, "Design the post")}>Design the post</button>
           <p className="hint">The same, letting the engine check the code where it needs to.{p.engineLabel ? ` With ${p.engineLabel}.` : ""}</p>
         </>
       ) : (
@@ -105,8 +106,8 @@ export function LinkedInPanel(p: Engine & { view: DiagramView; apply: (fn: (d: D
       </label>
       <div className="flow-actions">
         <button className="btn" data-testid="arrange-feed" disabled={running} onClick={rearrange}>Re-arrange</button>
-        {p.engine && <button className="btn" data-testid="design-post" disabled={running} onClick={() => designPost(p)}>Design the post</button>}
-        <button className="btn primary wide" data-testid="explain-feed" disabled={running} onClick={() => designPost(p, REWRITE)}>
+        {p.engine && <button className="btn" data-testid="design-post" disabled={running} onClick={() => designPost(p, "Design the post")}>Design the post</button>}
+        <button className="btn primary wide" data-testid="explain-feed" disabled={running} onClick={() => designPost(p, "Rewrite it in plain words", REWRITE)}>
           <Icon name="spark" size={15} /> Rewrite it in plain words
         </button>
       </div>

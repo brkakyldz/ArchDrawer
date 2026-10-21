@@ -5,7 +5,7 @@ import { shop3, withLinkedIn, workspaceRaw, openDrawing, readDocument, persisted
 // AI-5 at the surface: after a refine the AI panel says which way it went (`ai-route`, `data-route`), and the preview carries
 // the same sentence. A story-route instruction on the overview may move parts but changes no content; a parts scope is
 // always the facts. From 0.4 there is one place to type (AI-2) and the one-click fold is the `Simpler` suggestion (AI-4).
-test('H130 [AI-5, AI-1, AI-2, AI-4, EDIT-4, STORY-6] the AI panel says whether an instruction changed the facts or redrew the channel from them, a story on the overview only moves things, a selection of parts always changes the facts, and Simpler names no route', async ({ page, request }) => {
+test('H130 [AI-5, AI-1, AI-2, AI-4, STORY-6] the AI panel says whether an instruction changed the facts or redrew the channel from them, a story on the overview only moves things, a selection of parts always changes the facts, and Simpler names no route', async ({ page, request }) => {
   test.setTimeout(240_000);
   const { file } = await workspaceRaw('routing-ui', withLinkedIn(shop3('Route shop')));
   await openDrawing(page, request, file);

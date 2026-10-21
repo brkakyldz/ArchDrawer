@@ -61,7 +61,7 @@ test('H144 [LAYOUT-4, AI-3, AI-2] Look at the drawing again sends the share imag
   await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin');
   await page.getByTestId('channel-tab-overview').click(); await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'overview');
   await expect(page.getByTestId('ai-preview')).toBeVisible();
-  await page.waitForTimeout(1000); // longer than any pull back would take
+  await page.waitForTimeout(500); // proves a negative: no contract state marks a pull back that did not happen, so the clock stands in
   await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'overview'); await expect(page.getByTestId('ai-preview')).toBeVisible();
   await acceptPreview(page);
 

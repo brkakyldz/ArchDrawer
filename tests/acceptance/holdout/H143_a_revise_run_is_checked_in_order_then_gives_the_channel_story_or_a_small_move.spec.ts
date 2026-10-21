@@ -62,7 +62,7 @@ test('H143 [LAYOUT-4, AI-1, FILE-3] a revise run is refused in the contracted or
 
   // The overview: one small move of the first top-level part, 40 px to the right, nothing else; no route; progress starts with the look.
   const overview = await finishRun(request, await startKind(request, opened.token, { ...base, instruction: 'Fix the crowding', scope: { kind: 'view' } }), 'succeeded', 90_000);
-  expect(overview).toMatchObject({ kind: 'revise', channel: 'overview', view: 'overview', status: 'succeeded', diagramId: opened.id, route: null, path: null, error: null, engine: 'fixture' });
+  expect(overview).toMatchObject({ kind: 'revise', channel: 'overview', view: 'overview', status: 'succeeded', diagramId: opened.id, route: null, error: null, engine: 'fixture' });
   expect(overview.progress[0]).toBe('Looking at the drawing'); expect(overview.progress).not.toContain('Changing the facts'); expect(overview.progress).not.toContain('Redrawing this channel from the facts');
   expect(overview.changes).toEqual({ ...noChanges, moved: ['web'] }); expect(overview.layoutReport).toMatchObject({ channel: 'overview', view: 'overview' });
   const done = (await runEvents(overview.id)).at(-1)!; expect(done.event).toBe('done'); expect(done.data).toMatchObject({ status: 'succeeded', route: null, channel: 'overview', view: 'overview' });

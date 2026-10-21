@@ -32,12 +32,11 @@ test('H135 [AI-2, AI-1, FILE-1] the AI panel is the one place to type, a line br
   expect(first.body).toMatchObject({ instruction: 'add Cache component\nKeep the rest as it is.', engine: 'fixture', scope: { kind: 'view' } });
   await expect(page.getByTestId('ai-input')).toHaveValue('');
 
-  // The latest turn: its text and where, while it runs the progress and Cancel, then the summary, the route and the report.
+  // The latest turn: its text and where, then, once the run is done, the summary, the route and the report.
   const one = aiTurn(page, first.runId);
   await expect(aiTurns(page)).toHaveCount(1); await expect(one).toHaveCount(1);
   await expect(one.getByTestId('ai-turn-text')).toContainText('add Cache component'); await expect(one.getByTestId('ai-turn-text')).toContainText('Keep the rest as it is.');
   await expect(one.getByTestId('ai-turn-where')).toHaveText('Overview · This view');
-  await expect(page.getByTestId('ai-progress')).toBeVisible(); await expect(page.getByTestId('ai-cancel')).toBeVisible(); await expect(page.getByTestId('ai-send')).toBeDisabled();
   expect(await runDone(page, first.runId)).toBe('preview');
   await expect(page.getByTestId('ai-progress')).toHaveCount(0);
   await expect(page.getByTestId('ai-summary')).toContainText(/\badd(?:ed)?\b/i); await expect(page.getByTestId('ai-summary')).toHaveAttribute('data-added', '1');

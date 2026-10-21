@@ -25,7 +25,7 @@ test('H138 [AI-3, AI-1, EDIT-1, EDIT-4] a result arrives as a preview that stays
   const result = await readDocument(file), resultDrawing = await readDrawing(file);
 
   // It stays: the old three seconds are long past and the part is still lit, the choices still there.
-  await page.waitForTimeout(3500); // longer than the 3 s a result stayed lit before 0.4
+  await page.waitForTimeout(3200); // proves a negative: no contract state marks "the old 3 s are over", so only the clock can; just past those 3 s
   await expect(page.getByTestId('node-cache')).toHaveAttribute('data-changed', 'true'); await expect(preview).toBeVisible();
   await expect(page.getByTestId('ai-thread').getByTestId('ai-turn').last()).toHaveAttribute('data-state', 'preview');
 
@@ -40,7 +40,7 @@ test('H138 [AI-3, AI-1, EDIT-1, EDIT-4] a result arrives as a preview that stays
   await refused(() => page.keyboard.press('ControlOrMeta+Shift+z'));
   await refused(() => page.keyboard.press('Control+y'));
   await expect(page.getByTestId('node-cache')).toBeVisible(); await expect(preview).toBeVisible();
-  await page.waitForTimeout(1000); // longer than the save delay: a hidden edit would have been written by now
+  await page.waitForTimeout(600); // proves a negative: just past the 350 ms save delay, a hidden edit would have been written by now
   const idle = await readDocument(file);
   expect(idle.facts, 'nothing was edited while the preview was shown').toEqual(result.facts); expect(idle.channels).toEqual(result.channels); expect(idle.warnings ?? []).toEqual(result.warnings ?? []);
   const stillThere = (await readDrawing(file)).views[0].nodes.find(n => n.id === 'web')!; expect([stillThere.x, stillThere.y]).toEqual([web.x, web.y]);

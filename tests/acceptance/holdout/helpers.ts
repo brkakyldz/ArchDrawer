@@ -865,10 +865,11 @@ export function shapeFor(kind: string, form: string): string {
   if (form === 'panel') return 'card';
   return shapeByKind[kind] ?? 'card';
 }
-// The `data-shape` of a part's outline (the element with class `body`) in the editor; null when there is none.
+// The `data-shape` of a part's own outline (the element with class `body`, directly under `node-<id>` or the node itself) in the editor;
+// null when there is none. A `body` nested deeper never counts.
 export async function editorShape(page: Page, id: string): Promise<string | null> {
   return await page.getByTestId(`node-${id}`).evaluate(el => {
-    const body = el.matches('[class~="body"]') ? el : el.querySelector('[class~="body"]');
+    const body = el.matches('[class~="body"]') ? el : el.querySelector(':scope > [class~="body"]');
     return body ? body.getAttribute('data-shape') : null;
   });
 }
@@ -877,13 +878,13 @@ export async function editorShapes(page: Page, ids: string[]) {
   for (const id of ids) shapes[id] = await editorShape(page, id);
   return shapes;
 }
-// The same in an exported image: every `g[data-node-id]` and the `data-shape` of its outline.
+// The same in an exported image: every `g[data-node-id]` and the `data-shape` of its outline (the `body` directly under the group).
 export async function svgShapes(page: Page, svg: string): Promise<Record<string, string | null>> {
   return await page.evaluate(text => {
     const xml = new DOMParser().parseFromString(text, 'image/svg+xml');
     const result: Record<string, string | null> = {};
     for (const group of Array.from(xml.querySelectorAll('g[data-node-id]'))) {
-      const body = group.querySelector('[class~="body"]');
+      const body = group.querySelector(':scope > [class~="body"]');
       result[group.getAttribute('data-node-id')!] = body ? body.getAttribute('data-shape') : null;
     }
     return result;

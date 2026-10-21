@@ -34,9 +34,10 @@ export interface EngineRunRequest {
   progress: (message: string) => void;
   /**
    * Another kind of answer than a refine draft (a post's story intent): its schema and its whole
-   * prompt. The engine runs with exactly the same read-only flags either way.
+   * prompt. The engine runs with the same read-only flags, or with no tools at all where it can when
+   * `tools` is `"none"` (a story from the facts alone; api contract, Engines).
    */
-  task?: { kind: "post"; schema: object; prompt: string };
+  task?: { kind: "post"; schema: object; prompt: string; tools?: "read" | "none" };
   /** A simplify run (api contract): the overview becomes a map, and its prompt says what may change. */
   simplify?: boolean;
 }

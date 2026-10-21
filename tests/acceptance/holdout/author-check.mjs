@@ -8,17 +8,19 @@ const here = new URL('.', import.meta.url);
 
 // Every requirement id of the product spec, with its status. A title may carry only ids that the product
 // does today ('today') or has but is changing ('change'); an id still 'build' has nothing to observe yet.
+// FILE-2, FILE-3, NAV-2 and STORY-1 are built in 0.2 (the batches A–F of the suite land with their steps), so
+// from this round on they may appear in titles.
 const requirements = {
   'START-1': 'change', 'START-2': 'build', 'START-3': 'today', 'START-4': 'build', 'START-5': 'today',
   'SCAN-1': 'build', 'SCAN-2': 'build', 'SCAN-3': 'build', 'SCAN-4': 'build',
   'READ-1': 'build', 'READ-2': 'build', 'READ-3': 'build',
-  'STORY-1': 'build', 'STORY-2': 'build', 'STORY-3': 'build', 'STORY-4': 'build', 'STORY-5': 'build', 'STORY-6': 'change',
+  'STORY-1': 'change', 'STORY-2': 'build', 'STORY-3': 'build', 'STORY-4': 'build', 'STORY-5': 'build', 'STORY-6': 'change',
   'LAYOUT-1': 'today', 'LAYOUT-2': 'today', 'LAYOUT-3': 'today', 'LAYOUT-4': 'build',
   'LOOK-1': 'today', 'LOOK-2': 'build', 'LOOK-3': 'change',
-  'FILE-1': 'today', 'FILE-2': 'build', 'FILE-3': 'build',
+  'FILE-1': 'today', 'FILE-2': 'change', 'FILE-3': 'change',
   'EDIT-1': 'today', 'EDIT-2': 'today', 'EDIT-3': 'today', 'EDIT-4': 'today',
   'AI-1': 'today', 'AI-2': 'change', 'AI-3': 'build', 'AI-4': 'build', 'AI-5': 'build',
-  'NAV-1': 'today', 'NAV-2': 'build', 'NAV-3': 'change', 'NAV-4': 'build',
+  'NAV-1': 'today', 'NAV-2': 'change', 'NAV-3': 'change', 'NAV-4': 'build',
   'PRES-1': 'build', 'PRES-2': 'build', 'PRES-3': 'build',
   'SHARE-1': 'today', 'SHARE-2': 'change', 'SHARE-3': 'change',
   'SAFE-1': 'today', 'SAFE-2': 'today', 'SAFE-3': 'today', 'SAFE-4': 'today', 'SAFE-5': 'today',
@@ -92,5 +94,17 @@ assert.deepEqual(verify.expected, [...verify.expected].sort(byNumber), 'verify.j
 assert.deepEqual([verify.runs, verify.perScenario, verify.overall, verify.timeoutMs], [3, 2, 0.9, 1800000]);
 assert.equal(verify.command, 'npx playwright test -c tests/acceptance/holdout');
 assert.equal(verify.format, 'playwright-json'); assert.equal(verify.report, 'test-results/holdout.json');
+
+// The written index agrees with the files: the scenario count, and a row for every scenario in COVERAGE.md.
+const coverage = await readFile(new URL('COVERAGE.md', here), 'utf8');
+assert.equal(Number(coverage.match(/The suite has (\d+) scenarios/)?.[1]), scenarios.length, 'COVERAGE.md states another scenario count');
+for (const id of scenarios) assert.ok(new RegExp(`^\\| ${id} \\|`, 'm').test(coverage), `COVERAGE.md has no row for ${id}`);
+const readme = await readFile(new URL('README.md', here), 'utf8');
+assert.equal(Number(readme.match(/The suite holds (\d+) Playwright/)?.[1]), scenarios.length, 'README.md states another scenario count');
+
+// The 0.2 helpers every batch relies on stay exported from the one helper file (no later batch may change it).
+const helpers = sources.get('helpers.ts');
+for (const name of ['readDocument', 'readDrawing', 'writeDrawing', 'workspace', 'workspaceRaw', 'joinView', 'fromLegacy', 'persistedDoc', 'exportOf', 'refusedRun', 'withLinkedIn', 'shop3'])
+  assert.ok(new RegExp(`export (async )?(function|const) ${name}\\b`).test(helpers), `helpers.ts no longer exports ${name}`);
 
 console.log(`author-check: ${scenarios.length} scenarios, ${used.size} requirement ids observed, ${sources.size} typed files parse, imports stay inside the suite: ok`);

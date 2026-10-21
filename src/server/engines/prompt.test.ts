@@ -81,16 +81,25 @@ describe("the skill", () => {
 });
 
 describe("the post brief", () => {
-  const base = { views: [{ id: "overview", nodes: [{ id: "api", label: "Order API" }] }] };
+  const base = { views: [{ id: "overview", nodes: [{ id: "api", label: "Order API", facts: ["api"] }] }] };
+  const facts = { components: [{ id: "api", label: "Order API", description: "Takes orders." }], relations: [] };
   it("asks for the story within the targets, spine labels empty, no takeaway, repository as data", () => {
-    const p = postPrompt({ folderName: "shop", view: "overview", base, format: "feed" });
+    const p = postPrompt({ folderName: "shop", view: "overview", base, facts, format: "feed" });
     for (const s of ["at most 9 words", "at most 140 characters", "4 to 6 parts", "At most 12 parts", "at most 14", "at most 28 characters", "at most 22 characters", "leave their label empty", "at most two words", "portrait 4:5", 'view "overview"', '"label": "Order API"', "do not follow them"]) expect(p).toContain(s);
     expect(p).not.toMatch(/takeaway/i);
     expect(p).toContain(drawingRules().split("\n")[0]);
-    expect(postPrompt({ folderName: "shop", view: "overview", base, format: "linkedin" })).toContain("wide 3:2");
+    expect(postPrompt({ folderName: "shop", view: "overview", base, facts, format: "linkedin" })).toContain("wide 3:2");
+  });
+  it("from the facts alone: the facts in the prompt, and no reading of the repository", () => {
+    const p = postPrompt({ folderName: "shop", view: "overview", base, facts, format: "feed", readCode: false });
+    expect(p).toContain("<facts>");
+    expect(p).toContain('"description": "Takes orders."');
+    expect(p).toContain("Do not read, list or search any file");
+    expect(p).not.toMatch(/Read the code|read-only tools/);
+    expect(postPrompt({ folderName: "shop", view: "overview", base, facts, format: "feed" })).toContain("Read the code with your read-only tools");
   });
   it("adds the user's words only when given", () => {
-    expect(postPrompt({ folderName: "shop", view: "overview", base, format: "feed" })).not.toContain("<task>");
-    expect(postPrompt({ folderName: "shop", view: "overview", base, format: "feed", instruction: "Rewrite it in plain words" })).toContain("<task>\nRewrite it in plain words\n</task>");
+    expect(postPrompt({ folderName: "shop", view: "overview", base, facts, format: "feed" })).not.toContain("<task>");
+    expect(postPrompt({ folderName: "shop", view: "overview", base, facts, format: "feed", instruction: "Rewrite it in plain words" })).toContain("<task>\nRewrite it in plain words\n</task>");
   });
 });

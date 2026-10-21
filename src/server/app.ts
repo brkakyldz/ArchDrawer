@@ -246,6 +246,8 @@ export function createApp(deps: AppDeps): Hono {
     // A report-driven revision round is not enabled yet: `revise: true` is refused.
     if (b.revise !== undefined && typeof b.revise !== "boolean") return err(c, 400, "revise must be true or false");
     if (b.revise === true) return err(c, 400, "Layout revision is not enabled");
+    if (b.readCode !== undefined && typeof b.readCode !== "boolean") return err(c, 400, "readCode must be true or false");
+    if (b.readCode !== undefined && kind !== "post") return err(c, 400, "readCode is for a post");
     if (kind !== "refine" && b.instruction !== undefined && typeof b.instruction !== "string") return err(c, 400, "instruction must be a string");
     if (kind !== "refine" && b.scope !== undefined && !(typeof b.scope === "object" && b.scope !== null && (b.scope as { kind?: unknown }).kind === "view" && Object.keys(b.scope).length === 1)) {
       return err(c, 400, kind === "post" ? 'A post designs one view: give no scope or {"kind": "view"}' : 'A simplification works on the overview: give no scope or {"kind": "view"}');
@@ -285,7 +287,7 @@ export function createApp(deps: AppDeps): Hono {
       if (!engine) return err(c, 400, "No engine is available: install and log in to Claude Code or Codex");
     }
     if (runs.runningOn(doc.id)) return err(c, 409, "An instruction is already running on this drawing");
-    const runId = runs.start({ engine, model, instruction, view, base: doc, stored, channel: kind === "post" ? "linkedin" : channel, scope: kind === "refine" ? scope : { kind: "view" }, format, kind });
+    const runId = runs.start({ engine, model, instruction, view, base: doc, stored, channel: kind === "post" ? "linkedin" : channel, scope: kind === "refine" ? scope : { kind: "view" }, format, kind, readCode: b.readCode as boolean | undefined });
     return c.json({ runId }, 202);
   });
 

@@ -20,12 +20,16 @@ export function ChannelTabs({ stored, current, onPick }: { stored: Document3; cu
   );
 }
 
-/** `channel-outdated` (ui contract, Channels): what changed in the facts since the channel was drawn. */
-export function OutdatedBanner({ count, onKeep }: { count: number; onKeep: () => void }) {
+/**
+ * `channel-outdated` (ui contract, Channels): what changed in the facts since the channel was drawn;
+ * keep it as it is, or (the LinkedIn channel) redraw it from the facts.
+ */
+export function OutdatedBanner({ count, onKeep, onRedraw, busy = false }: { count: number; onKeep: () => void; onRedraw?: () => void; busy?: boolean }) {
   return (
     <div className="channel-outdated" data-testid="channel-outdated" role="status">
       <span>{changes(count)} in the facts since this was drawn</span>
-      <button className="btn small" data-testid="channel-keep" onClick={onKeep}>Keep as it is</button>
+      {onRedraw && <button className="btn small primary" data-testid="channel-redraw" disabled={busy} onClick={onRedraw}>Redraw it</button>}
+      <button className="btn small" data-testid="channel-keep" disabled={busy} onClick={onKeep}>Keep as it is</button>
     </div>
   );
 }

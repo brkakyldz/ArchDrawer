@@ -17,7 +17,7 @@ import { AskBox } from "./AskBox";
 import { Search, type Found, type Hit } from "./Find";
 import { ViewsMenu } from "./Views";
 import { ChannelTabs, EmptyStage, OutdatedBanner } from "./Channels";
-import { LinkedInPanel, LinkedInStart } from "./LinkedIn";
+import { drawFromFacts, LinkedInPanel, LinkedInStart } from "./LinkedIn";
 import { LoadError } from "./LoadError";
 import { Callout } from "./Callout";
 import { Canvas } from "./Canvas";
@@ -618,7 +618,8 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       <main className="stage" ref={stageEl}>
         {blank ? <EmptyStage channel={chan}>{chan === "linkedin" && <LinkedInStart {...engineProps} onPrepare={prepare} />}</EmptyStage> : <>
         <Canvas ctl={ctl} steps={stepsOn} onDouble={onDouble} />
-        {outdated > 0 && <OutdatedBanner count={outdated} onKeep={keep} />}
+        {outdated > 0 && <OutdatedBanner count={outdated} onKeep={keep} busy={runner.state.status === "running"}
+          onRedraw={chan === "linkedin" ? () => drawFromFacts(engineProps, prepare) : undefined} />}
         {HINTS[tool] && <div className="tool-hint" data-testid="tool-hint" role="status">{HINTS[tool]}</div>}
         {miss && (
           <div className="overview-suggestion" data-testid="overview-suggestion" role="status">

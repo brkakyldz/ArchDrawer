@@ -45,12 +45,18 @@ function RunLine({ runner }: { runner: Runner }) {
   return state.status === "saved" ? <div className="run" data-testid="share-run-saved">{SAVED}</div> : null;
 }
 
-const designPost = ({ runner, engine, model }: Engine, instruction = "") =>
-  void runner.start({ instruction, engine, model: model || null, scope: { kind: "view" }, origin: "linkedin", kind: "post", format: "feed" });
+const designPost = ({ runner, engine, model }: Engine, instruction = "", readCode = true) =>
+  void runner.start({ instruction, engine, model: model || null, scope: { kind: "view" }, origin: "linkedin", kind: "post", format: "feed", readCode });
+
+/**
+ * Draw or redraw the channel from the facts alone (STORY-1): with an engine a post run that reads no
+ * file; without one the simple version.
+ */
+export const drawFromFacts = (p: Engine, prepare: () => void) => (p.engine ? designPost(p, "", false) : prepare());
 
 /**
  * On the LinkedIn channel's empty stage (ui contract, The LinkedIn flow): with an engine the post is
- * designed by a run; without one code prepares the simple version.
+ * drawn from the facts, or designed with a look at the code; without one code prepares the simple version.
  */
 export function LinkedInStart(p: Engine & { onPrepare: () => void }) {
   const running = p.runner.state.status === "running";
@@ -58,11 +64,12 @@ export function LinkedInStart(p: Engine & { onPrepare: () => void }) {
     <div className="li-flow li-start" data-testid="linkedin-flow">
       {p.engine ? (
         <>
-          <p className="hint">The engine designs one image for the post from the facts and the code: the story, the main path and what sits beside it. Code places it and checks it. The overview stays as it is.</p>
-          <button className="btn primary wide" data-testid="design-post" disabled={running} onClick={() => designPost(p)}>
-            <Icon name="spark" size={15} /> Design the post
+          <button className="btn primary wide" data-testid="channel-draw" disabled={running} onClick={() => drawFromFacts(p, p.onPrepare)}>
+            <Icon name="spark" size={15} /> Draw it
           </button>
-          {p.engineLabel && <p className="hint">With {p.engineLabel}</p>}
+          <p className="hint">The engine tells the story from the facts already read; the code is not read again. Code places it and checks it.</p>
+          <button className="btn wide" data-testid="design-post" disabled={running} onClick={() => designPost(p)}>Design the post</button>
+          <p className="hint">The same, letting the engine check the code where it needs to.{p.engineLabel ? ` With ${p.engineLabel}.` : ""}</p>
         </>
       ) : (
         <>

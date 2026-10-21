@@ -9,7 +9,7 @@ import { makeFolder, shopFile2, tempDir } from "../testkit";
 import { ClaudeEngine, ClaudeStreamParser, extractJson } from "./claude";
 import { CodexEngine, CodexEventParser, describeCommand } from "./codex";
 import { engineEnv, resolveCommand, shimTarget } from "./process";
-import { RULES_FILE } from "./prompt";
+import { postPrompt, RULES_FILE } from "./prompt";
 
 const draft = documentToDraft(normalizeFile(validateFile(shopFile2()).file!, { id: "d_fake000001", now: "2026-10-13T00:00:00.000Z", source: null }));
 
@@ -283,5 +283,42 @@ describe("parsers and helpers", () => {
   it("resolveCommand runs .js overrides through node", () => {
     const fake = fakeCli("codex", "ok");
     expect(resolveCommand("codex", { ARCHDRAW_CODEX_BIN: fake.bin })).toEqual({ file: process.execPath, prefix: [fake.bin] });
+  });
+});
+
+describe("a story from the facts alone (STORY-1)", () => {
+  const facts = { components: [{ id: "api", label: "Order API", description: "Takes orders.", files: ["src/api.ts"] }], relations: [] };
+  const story = () => ({
+    kind: "post" as const, schema: STORY_SCHEMA, tools: "none" as const,
+    prompt: postPrompt({ folderName: "shop", view: "overview", base: draft, facts, format: "feed", readCode: false }),
+  });
+
+  it("Claude Code gets the facts on stdin and no tool at all", async () => {
+    const fake = fakeCli("claude", "ok");
+    const engine = new ClaudeEngine({ ...process.env, ARCHDRAW_CLAUDE_BIN: fake.bin });
+    await engine.detect();
+    await engine.run({ ...request(makeFolder({}), []), task: story() });
+    const log = JSON.parse(readFileSync(fake.log, "utf8"));
+    const args: string[] = log.args;
+    expect(args[args.indexOf("--tools") + 1]).toBe("");
+    expect(args).not.toContain("--allowedTools");
+    expect(args.join(" ")).not.toMatch(/Read|Grep|Glob|Edit|Write|Bash|bypassPermissions|dangerously/);
+    expect(args[args.indexOf("--permission-mode") + 1]).toBe("dontAsk");
+    expect(JSON.parse(args[args.indexOf("--json-schema") + 1])).toEqual(STORY_SCHEMA);
+    expect(log.stdin).toContain("<facts>");
+    expect(log.stdin).toContain('"description": "Takes orders."');
+    expect(log.stdin).toContain("Do not read, list or search any file");
+    expect(log.stdin).not.toMatch(/Read the code|read-only tools/);
+  });
+
+  it("Codex, which has no tool-free mode, stays in its read-only sandbox and is told to read nothing", async () => {
+    const fake = fakeCli("codex", "ok");
+    const engine = new CodexEngine({ ...process.env, ARCHDRAW_CODEX_BIN: fake.bin });
+    await engine.detect();
+    await engine.run({ ...request(makeFolder({}), []), task: story() });
+    const log = JSON.parse(readFileSync(fake.log, "utf8"));
+    expect(log.args[log.args.indexOf("--sandbox") + 1]).toBe("read-only");
+    expect(log.stdin).toContain("<facts>");
+    expect(log.stdin).toContain("Do not read, list or search any file");
   });
 });

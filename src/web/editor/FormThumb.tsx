@@ -1,32 +1,15 @@
-import { useLayoutEffect, useRef, useState } from "react";
 import { outlineOf, shapeOf, type OutlineSize } from "../../core/export/svg";
-import { KINDS, type Form, type Kind } from "../../core/model";
+import type { Form, Kind } from "../../core/model";
 
 /** The thumb's outline measures, the drawing's own scaled to a 48 × 32 picture. */
 const THUMB: OutlineSize = { rad: 4, inset: 2, head: 3, headX: 8, ry: 2.5, cut: 4 };
 
-/** The kind chosen in the component picker around the thumb, read from its pressed `picker-kind-<kind>` button. */
-function pickedKind(el: Element | null): Kind | null {
-  const pressed = el?.closest('[data-testid="component-picker"]')?.querySelector('[data-testid^="picker-kind-"][aria-pressed="true"]');
-  const kind = pressed?.getAttribute("data-testid")?.slice("picker-kind-".length);
-  return kind && (KINDS as readonly string[]).includes(kind) ? (kind as Kind) : null;
-}
-
 /**
  * A small picture of a form (ui contract `form-thumb`): what a card, compact, panel or group looks like, a card or
- * compact drawn in the shape of the kind (diagram contract, Geometry, Shapes). Without a `kind` it takes the kind
- * chosen in the component picker it sits in, else the plain card.
+ * compact drawn in the shape of the kind (diagram contract, Geometry, Shapes); without a `kind`, the plain card.
  */
 export function FormThumb({ form, kind }: { form: Form; kind?: Kind }) {
-  const svg = useRef<SVGSVGElement>(null);
-  const [picked, setPicked] = useState<Kind | null>(null);
-  // The picker re-renders the thumb when its kind changes; the pressed button is read once that render is committed.
-  useLayoutEffect(() => {
-    if (kind) return;
-    const now = pickedKind(svg.current);
-    if (now !== picked) setPicked(now);
-  });
-  const shape = shapeOf({ form, kind: kind ?? picked ?? "service" });
+  const shape = shapeOf({ form, kind: kind ?? "service" });
   const box = { fill: "var(--surface)", stroke: "currentColor", strokeWidth: 1.2 } as const;
   const ink = { fill: "currentColor", opacity: 0.55 } as const;
   const outline = (x: number, y: number, w: number, h: number) => {
@@ -40,7 +23,7 @@ export function FormThumb({ form, kind }: { form: Form; kind?: Kind }) {
     );
   };
   return (
-    <svg ref={svg} className="form-thumb" data-testid="form-thumb" data-shape={shape} viewBox="0 0 48 32" width="48" height="32" aria-hidden="true">
+    <svg className="form-thumb" data-testid="form-thumb" data-shape={shape} viewBox="0 0 48 32" width="48" height="32" aria-hidden="true">
       {form === "card" && (
         <>
           {outline(9, 3, 30, 26)}

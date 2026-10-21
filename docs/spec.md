@@ -81,16 +81,16 @@ and its files, and a guided tour for learning a repository (ADR 0001).
   of parts they do not join.
 - **LAYOUT-3** (Today) A layout report counts crossings, connections over
   parts, cut text and the text size at the channel's display size.
-- **LAYOUT-4** (To build) On request, the model looks at the rendered image and
+- **LAYOUT-4** (Today) On request, the model looks at the rendered image and
   proposes one round of fixes.
 
 ### Drawing appearance (LOOK)
 
 - **LOOK-1** (Today) A clean, modern style in light and dark themes.
-- **LOOK-2** (To build) Some kinds of part have their own shape — an AI agent,
+- **LOOK-2** (Today) Some kinds of part have their own shape — an AI agent,
   a person, a data store, an external service, a check — while the others stay
   plain cards.
-- **LOOK-3** (To change) Held items inside a part are optional and used only
+- **LOOK-3** (Today) Held items inside a part are optional and used only
   where needed; a one-line description is the default.
 
 ### File and editing (FILE, EDIT)
@@ -113,11 +113,11 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 
 - **AI-1** (Today) An instruction changes the current view, the selected parts
   or the whole drawing, through the user's chosen engine and model.
-- **AI-2** (To change) There is one place to type instructions, shown as a
+- **AI-2** (Today) There is one place to type instructions, shown as a
   conversation of requests and results.
-- **AI-3** (To build) A result arrives as a preview — changed parts highlighted
+- **AI-3** (Today) A result arrives as a preview — changed parts highlighted
   — with Accept and Undo.
-- **AI-4** (To build) One-click suggestions for common changes ("simpler",
+- **AI-4** (Today) One-click suggestions for common changes ("simpler",
   "show the loop", "shorter for LinkedIn").
 - **AI-5** (Today) An instruction is routed to the facts or to the channel's
   story depending on whether it changes content or appearance.

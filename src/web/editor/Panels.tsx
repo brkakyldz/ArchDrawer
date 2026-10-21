@@ -96,7 +96,7 @@ export function Picker({ ctl, onAdd }: { ctl: Ctl; onAdd: (kind: Kind, form: For
       <h4>Form</h4>
       <div className="grid forms">
         {FORMS.map((f) => (
-          <button key={f} className="opt form-opt" data-testid={`picker-form-${f}`} aria-pressed={form === f} onClick={() => setForm(f)}><FormThumb form={f} />{FORM_LABELS[f]}</button>
+          <button key={f} className="opt form-opt" data-testid={`picker-form-${f}`} aria-pressed={form === f} onClick={() => setForm(f)}><FormThumb form={f} kind={kind} />{FORM_LABELS[f]}</button>
         ))}
       </div>
       <button className="btn primary" data-testid="picker-add" onClick={() => onAdd(kind, form)}>Add component</button>

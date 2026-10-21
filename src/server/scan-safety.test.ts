@@ -88,6 +88,15 @@ describe("scanning an untrusted repository", () => {
     expect(seen[0].task!.data!.listing).toEqual(["a.ts"]);
   });
 
+  it("leaves archdrawer's own drawing files out of the listing", async () => {
+    const dir = repo({ "a.ts": "x\n", "docs/architecture.archdraw.json": "{}\n", "b.ts": "y\n" });
+    const { engine, seen } = recorder();
+    const t = makeApp({ engines: [engine] });
+    const r = await json(await t.req("/api/scans", { method: "POST", json: { folder: dir } }));
+    await t.scans.wait(r.body.scanId);
+    expect(seen[0].task!.data!.listing).toEqual(["a.ts", "b.ts"]);
+  });
+
   it("lists a folder whose name starts with two dots: it is inside the root", async () => {
     const dir = repo({ "a.ts": "x\n", "..odd/b.ts": "y\n" });
     const { engine, seen } = recorder();

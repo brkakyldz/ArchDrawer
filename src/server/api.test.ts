@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { makeApp, PORT, shopFile, shopFile2, shopRepo } from "./testkit";
@@ -35,7 +36,7 @@ describe("drawings over HTTP", () => {
     const { req, file, id, url } = await opened();
     expect(url).toBe(`http://127.0.0.1:${PORT}/d/${id}`);
     const list = (await json(await req("/api/diagrams"))).body.diagrams;
-    expect(list).toEqual([{ id, title: "Sample Shop", path: file, updatedAt: expect.any(String) }]);
+    expect(list).toEqual([{ id, title: "Sample Shop", path: file, root: dirname(file), updatedAt: expect.any(String) }]);
     const doc = (await json(await req(`/api/diagrams/${id}`))).body;
     doc.facts.components[0].label = "Storefront";
     const put = await json(await req(`/api/diagrams/${id}`, { method: "PUT", json: doc, headers: { "If-Unmodified-Since-Version": doc.updatedAt } }));

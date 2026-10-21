@@ -339,7 +339,8 @@ Checked in this order, all 400 before any engine starts:
 `Unknown run kind <k>: use refine, story, post, simplify, revise or draw`;
 `Invalid format <f>; use one of …` (post, and story on LinkedIn: `feed` or
 `linkedin`; story on the README: `readme`; on the presentation: `slide`;
-others any share format); `readCode must be true or
+revise: absent or the channel's default (*Share*, ui contract); others any
+share format); `readCode must be true or
 false`; `readCode` on a run other than a story or a post → `readCode is for a
 story`; for a revise, a missing or non-string `image` → `A revise needs the
 drawing's image`, bytes that are not valid base64 or do not start with the
@@ -406,13 +407,18 @@ takes the `facts` route. The run record and `done` carry `route`
 **The second look (revise).** The request's `view` is the one drawn in
 `image` (the share image of that view in the channel's default format, as the
 browser renders it). The server writes the decoded PNG to `view.png` in a new
-private temporary folder (`<os temp>/archdraw-revise-<random>/`), named by the
-server alone, and removes the folder when the run ends — succeeded, failed,
-cancelled or timed out. The prompt names that file, gives the layout report
+folder `<ARCHDRAW_DATA_DIR>/revise/<random>/`, created with a random name by
+the server alone and readable only by the user (`mkdtemp`, mode 0700 where the
+system has modes). When the run ends — succeeded, failed, cancelled or timed
+out — the server removes the folder after the engine's process tree has
+exited (on Windows retrying while a file is still busy). At start-up the
+server empties `<ARCHDRAW_DATA_DIR>/revise/`, so an image left by a server
+that was killed does not stay. The prompt names that file, gives the layout report
 of the view, the facts and, on a story channel, the current view, plus the
 optional instruction, and asks for one round of fixes to what the reader sees
 (overlaps, crossings, cut or small text, crowding, an unclear order). The
-engine reads no code. Progress starts `Looking at the drawing`. The run then
+engine is asked to read nothing but the image (Claude Code's `Read` is not
+confined to the folders it is given). Progress starts `Looking at the drawing`. The run then
 goes as a refine's `story` route: a story answer on LinkedIn, README or
 presentation, an appearance-only draft on the overview (other changes ignored
 with one warning each). `route` is null.
@@ -530,6 +536,8 @@ when those were set, `ANTHROPIC_BASE_URL`. The server never reads an API key.
 - `<ARCHDRAW_DATA_DIR>/files.json`: registered files, `[{"id", "path"}]`.
 - `<ARCHDRAW_DATA_DIR>/diagrams/<id>.json`: imported documents.
 - `<ARCHDRAW_DATA_DIR>/scans/<key>.json`: cached scans (*Scans*).
+- `<ARCHDRAW_DATA_DIR>/revise/`: a running revise's image (*The second
+  look*); emptied at start-up.
 - `<ARCHDRAW_DATA_DIR>/server.json` and `server.log` (cli contract).
 - Every write goes to a temporary file and is renamed into place; a `draw`
   run's new file is linked into place instead (*The draw run*), so it never

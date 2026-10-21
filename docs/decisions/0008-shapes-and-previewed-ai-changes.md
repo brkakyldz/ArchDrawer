@@ -52,8 +52,9 @@ Exact shapes are in `docs/contracts/` (diagram, api, ui, testing).
 - **A second look is a run of its own.** The browser renders the current
   view's PNG, the same image the share dialog makes, and posts
   `{kind: "revise", image}`. The `revise` flag goes. The server checks that the
-  image is a PNG of at most 4 MB and writes it into a temporary folder it
-  creates and removes after the run. Claude Code gets `--tools Read
+  image is a PNG of at most 4 MB and writes it into a folder of its own under
+  the data directory, which it removes after the run and empties at start-up,
+  so a killed server leaves no picture of the user's system behind. Claude Code gets `--tools Read
   --allowedTools Read --add-dir <that folder>`, and the prompt names the file.
   Codex gets `-i <file>` with its read-only sandbox. The answer is one round,
   shaped like a refine's `story` route: it changes how the channel tells the
@@ -76,9 +77,11 @@ already knows how to make safe.
 
 A spike on 2026-10-22 ran Claude Code 2.1.303 with `-p`, `dontAsk`, the read
 tools and a PNG outside its working directory. It named the image's labels and
-its overlap both with `--add-dir` and without it. `--add-dir` is still passed:
-it states the intent and does not rely on how a future version treats paths
-outside the working directory.
+its overlap both with `--add-dir` and without it. So `Read` is not confined
+to the working directory or the added folders, and `--add-dir` only declares
+the intent. A revise, like every read-capable call, is *asked* to read
+nothing but the image; the guarantee is that it cannot write (invariant 2),
+not that it reads only one file.
 
 ## Alternatives considered
 

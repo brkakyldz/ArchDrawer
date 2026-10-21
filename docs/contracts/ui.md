@@ -104,7 +104,7 @@ Every icon-only button has an accessible name at every width.
 | `tool-component` | C | a click opens the component picker there |
 | `tool-connect` | E | drag from one component to another connects them |
 | `tool-text` | T | a click opens a new text there (or edits the text clicked) |
-| `tool-undo`, `tool-redo` | Ctrl/Cmd+Z; Ctrl/Cmd+Shift+Z or Ctrl+Y | disabled when there is nothing to undo/redo, and while a run is going |
+| `tool-undo`, `tool-redo` | Ctrl/Cmd+Z; Ctrl/Cmd+Shift+Z or Ctrl+Y | disabled when there is nothing to undo/redo, while a run is going and while a result is in preview (*Preview, Accept and Undo*); their keys then show the toast of that state |
 | `tool-theme` | — | toggles `theme` (saved; `aria-pressed` when dark) |
 | `tool-steps` | — | toggles the current channel's `showSteps` (saved; `aria-pressed`) |
 | `share-button` | — | opens `share-dialog` |
@@ -149,8 +149,8 @@ leaves it out of that channel. The current channel is never marked.
 
 | Test id | Element and behaviour |
 |---|---|
-| `channel-empty` | the stage of a channel with no view, instead of the canvas: `The <LinkedIn post / README drawing / presentation> is not drawn yet`. With an engine, `channel-draw` (`Draw it`) draws it from the facts alone as one undoable step: a `story` run whose request carries `readCode: false` (the engine is asked to read no file, and Claude Code runs with no tools; STORY-1). Without one, `channel-prepare` (`Prepare the simple version`; on LinkedIn `linkedin-prepare`) draws the simple version (*Simple versions*), and `post-engine-note` shows (`No engine available — prepared without AI`). LinkedIn also has the controls of *The LinkedIn flow*; its `channel-draw` may send the same run as a `post` with `readCode: false` (api contract: a post is a story on LinkedIn). Drawing tools and `share-button` are disabled there |
-| `channel-outdated` | on the stage of a channel other than the overview whose `outdated` is not empty: `<n> change(s) in the facts since this was drawn`. `channel-keep` (`Keep as it is`) empties `outdated` as one undoable edit. `channel-redraw` (`Redraw it`) redraws the channel from the facts as one undoable step: with an engine a `story` run whose request carries `readCode: false`, without one the simple version. On the overview only `channel-keep` shows. Both are disabled during a run |
+| `channel-empty` | the stage of a channel with no view, instead of the canvas: `The <LinkedIn post / README drawing / presentation> is not drawn yet`. With an engine, `channel-draw` (`Draw it`) draws it from the facts alone, as a preview that, once accepted, is one undoable step: a `story` run whose request carries `readCode: false` (the engine is asked to read no file, and Claude Code runs with no tools; STORY-1). Without one, `channel-prepare` (`Prepare the simple version`; on LinkedIn `linkedin-prepare`) draws the simple version (*Simple versions*), and `post-engine-note` shows (`No engine available — prepared without AI`). LinkedIn also has the controls of *The LinkedIn flow*; its `channel-draw` may send the same run as a `post` with `readCode: false` (api contract: a post is a story on LinkedIn). Drawing tools and `share-button` are disabled there |
+| `channel-outdated` | on the stage of a channel other than the overview whose `outdated` is not empty: `<n> change(s) in the facts since this was drawn`. `channel-keep` (`Keep as it is`) empties `outdated` as one undoable edit. `channel-redraw` (`Redraw it`) redraws the channel from the facts as one undoable step: with an engine a `story` run (a preview first) whose request carries `readCode: false`, without one the simple version. On the overview only `channel-keep` shows. Both are disabled during a run |
 
 ### Simple versions
 
@@ -387,10 +387,11 @@ every channel, until the user chooses:
 | `ai-accept` | `Accept`: keeps the result. The turn becomes `accepted`; `tool-undo` then returns to the drawing before the run, as one step |
 | `ai-undo` | `Undo`: returns to the drawing before the run, exactly as `tool-undo` would, and saves it; `tool-redo` brings the result back. The turn becomes `undone` |
 
-While a preview is shown, the editor shows the run's channel and view, and
-every component the run added, changed or moved has `data-changed="true"`;
-edits, `tool-undo` and `tool-redo` are refused with the toast `Accept or undo
-the AI's change first`. Going to other views and channels, search, zoom and
+When a preview starts, the editor goes once to the run's channel and view.
+While it is shown, every component the run added, changed or moved has
+`data-changed="true"`; edits are refused with the toast `Accept or undo the
+AI's change first`, and `tool-undo` and `tool-redo` are disabled (their keys
+show the same toast). Going to other views and channels, search, zoom and
 the share dialog still work. Starting another run (any control in *The
 conversation*) accepts the preview first. When the stored file changes
 outside the editor during a preview, the preview ends as accepted and the

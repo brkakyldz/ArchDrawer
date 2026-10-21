@@ -262,7 +262,9 @@ The checks run in this order, each a 400:
 A second `draw` run on a folder while one is running gets 409
 `A drawing of this folder is already being made`.
 
-The run makes three engine calls in order, each under the timeout. A stage's
+The run makes three engine calls in order, each under the timeout, and a
+story call whose answer has a problem gets one repair turn in its own stage
+(drawing contract, *Problems and the repair turn*). A stage's
 progress line (`Drawing the overview`, `Drawing the <channel>`) is emitted when
 its call starts, so a stage that fails still shows it; `Checking the facts`
 comes after the read's answer.
@@ -451,8 +453,10 @@ from the facts`, shown for every refine, a `parts` scope's included). Then
 engine lines (`Starting Claude Code`, `Reading <path>`,
 `Searching for “…”`, `Writing the diagram`, …), then `Checking the drawing`
 (story and post: `Checking the post`), then `Saved` or `Saved with <n>
-warning(s)`. A `draw` run's events carry `stage`: `read`, `overview` or
-`channel` (null on other kinds).
+warning(s)`. A story answer with a problem adds `Fixing <n> problem(s) in the
+answer` and the repair turn's engine lines before it is checked again. A
+`draw` run's events carry `stage`: `read`, `overview` or `channel` (null on
+other kinds).
 
 ### Change summary
 

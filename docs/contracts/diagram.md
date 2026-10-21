@@ -737,7 +737,24 @@ document fields:
   integer or null; `side` `"above"`, `"below"` or null.
 - `facts` names component facts, `held` mechanism facts, `limits` limit facts.
 
-**Relations.** A violation fails the run, and nothing is saved.
+**Problems and the repair turn** (ADR 0009). Code checks a story answer for
+every relation below and every hard limit below at once, and lists each
+problem it finds. With none, the answer is converted. With any, the engine
+gets one more call, the *repair turn*: no tools, the same schema, and a prompt
+holding its answer and the list. Its answer replaces the first and is checked
+again; there is never a second repair turn. The repair turn is made under the
+same timeout and cancel as the call it repairs, and adds no warning: the
+engine wrote the answer.
+
+After the repair turn:
+
+- a relation still violated fails the run and nothing is saved:
+  `The engine's <overview | LinkedIn post | README drawing | presentation>
+  cannot be drawn: <every violation, joined by "; ">`;
+- a hard limit still over is repaired as the hard limits below say, one
+  warning each.
+
+**Relations.**
 
 - Zone ids are unique, and so are part ids. A part's zone exists.
 - A part's `inside` names another part, never itself or one inside it.
@@ -749,19 +766,32 @@ document fields:
 - A zone's spine parts are consecutive on the spine and its side parts'
   anchors are inside it, or it holds only side parts of one anchor.
 - Connections join two parts, never a part to itself.
-- There is at least one part.
+- There is at least one part, and parts and zones together are at most 60.
 
 A step's parts are not a relation: a wrong one is dropped with a warning
 (see the presentation's row below).
 
-**Hard limits** fail the run and are never shortened:
+**Hard limits.** The prompt states each one, from the constants code checks
+with. The schema gives each text field its limit as `maxLength`, except in the
+schema written for Codex (ADR 0009). A text over its limit after the repair
+turn is shortened to the limit, ending with `…`: `Shortened <what> to <n>
+characters`, one warning each.
 
-- title 120 chars, never empty; lede 240;
-- labels 48, sub-lines 60;
-- at most 12 chips, each at most 44;
+- title 120 chars; lede 240;
+- zone and part labels 48, sub-lines 60;
+- chips 44 each;
 - connection labels 40;
-- in the presentation, step texts 120 and never empty, notes 1000, at most
-  20 steps.
+- in the presentation, step texts 120, notes 1000.
+
+These are problems for the repair turn too, and are then repaired so:
+
+- an empty title: the drawing's title, `The <channel> has no title, kept
+  "<title>"`;
+- in the presentation, a step with an empty text is dropped and more than 20
+  steps keep the first 20, one warning each.
+
+More than 12 chips is no problem: the rows (held, chips, limits) are cut to
+12 in the conversion below.
 
 **Briefs and targets per channel.** Each story call has its own brief
 (`src/server/engines/prompt.ts`). The checks in the last column are what code
@@ -769,7 +799,7 @@ does.
 
 | Channel | Brief | Code checks |
 |---|---|---|
-| overview | The complete map: every fact shown or held. A one-line sub-line on every part. Merged parts where many facts are alike. Zones as the system's real boundaries. Every mechanism held by its part; limits where they explain a part. No count target, within the 60 parts a view holds | Every fact drawn (below) |
+| overview | The complete map: every fact shown or held. A one-line sub-line on every part. Merged parts where many facts are alike. Zones as the system's real boundaries. Every mechanism held by its part; limits where they explain a part. No count target, within the 60 parts a view holds, each zone counted as a part | Every fact drawn (below) |
 | linkedin | One image for a phone: about 8–12 parts. A title of at most 9 words and one plain sentence. No held items or limits, no tuning numbers | The post targets below. A non-empty `held`, `limits` or `steps` is dropped, one warning each |
 | readme | A detailed drawing that renders on GitHub. A one-line sub-line on every part, the default description. Held mechanisms only on a part whose working the story is about; elsewhere none. Limits where they explain a guarantee | — |
 | presentation | One drawing and 3–8 ordered steps that tell it. A one-line sub-line on every part; held mechanisms as in the README. Each step highlights the parts it is about, says it on screen in one short sentence, and gives the speaker one to three sentences | Each step's parts exist. A wrong one is dropped with one warning; a step none of whose parts exist is dropped instead, with one warning |

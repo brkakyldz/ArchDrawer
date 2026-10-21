@@ -27,6 +27,16 @@ test("a scan whose server goes away ends with a sentence and the controls come b
   await expect(page.getByTestId("start-scan")).toBeEnabled();
 });
 
+test("a scan the server no longer knows (it restarted) ends at once with its own sentence", async ({ page }) => {
+  await page.route("**/api/scans/*/events", (r) => r.abort());
+  await page.route(/\/api\/scans\/s_[0-9a-f]+$/, (r) => r.fulfill({ status: 404, json: { error: "Scan not found" } }));
+  await page.goto("/");
+  await page.getByTestId("start-folder").fill(project());
+  await page.getByTestId("start-scan").click();
+  await expect(page.getByTestId("start-error")).toHaveText("The server restarted; scan again", { timeout: 5_000 });
+  await expect(page.getByTestId("start-scan")).toBeEnabled();
+});
+
 test("a draw whose server goes away ends in draw-error with Try again, and keeps every choice", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("start-folder").fill(project());

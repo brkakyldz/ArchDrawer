@@ -51,7 +51,11 @@ function follow(url: string, record: () => Promise<End>, onProgress: (data: { me
     const poll = () => {
       if (over) return;
       record().then((r) => { misses = 0; if (r.status !== "running") finish(r); else timer = setTimeout(poll, 1000); },
-        () => { if (++misses >= 3) finish({ status: "failed", error: UNREACHABLE }); else timer = setTimeout(poll, 1000); });
+        (e: unknown) => {
+          // The server answered: a scan or run it no longer knows (it restarted) ends the wait now.
+          if (e instanceof ApiError && e.status !== 0) return finish({ status: "failed", error: e.status === 404 ? "The server restarted; scan again" : e.message });
+          if (++misses >= 3) finish({ status: "failed", error: UNREACHABLE }); else timer = setTimeout(poll, 1000);
+        });
     };
     es.onerror = () => { if (over) return; es.close(); if (!timer) poll(); };
   });

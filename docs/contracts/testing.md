@@ -269,7 +269,8 @@ Their evidence is A for those ending in `app`, `store` or `ghost`, else B.
 Limits:
 
 - `turn-limit` on `agent`, `Stops after 12 turns`, B `[1, 1]`;
-- `ghost-limit` on `ghost`, `Answers within 2 s`, `fixture/ghost.ts`.
+- `ghost-limit` on `ghost`, `Answers within 2 s`, B `[1, 1]` (its evidence holds; it goes with
+  `ghost`).
 
 The evidence check then adds exactly these four warnings:
 

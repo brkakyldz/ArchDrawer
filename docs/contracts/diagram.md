@@ -231,8 +231,9 @@ invariant 5).
   its shown items (the part's `items` when not null, else its single fact's
   `items`), then the texts of its `limits`. Geometry counts every row as an
   item; a limit row is drawn in the muted colour after a `timer` icon. Any
-  other form shows no row. In the joined view shape `items` holds the
-  mechanisms' labels and the shown items, and `limits` the limit texts.
+  other form shows no row. In the joined view shape `items` holds every row's
+  text, and `heldIds` and `limitIds` name the mechanisms of its first rows and
+  the limits of its last.
 - A connection's `label`, `style` and `both` are its own when not null, else
   its single relation's (`""`, `call`, `false` without one).
 - A part with no fact, or with several, has no single fact: it gives its own
@@ -420,7 +421,8 @@ the id of:
   directly: its part or connection has its own value for it, or shows several
   facts;
 - a new limit on a fact it shows or holds; a deleted limit it showed; a limit
-  whose text changed, when it shows that limit nowhere.
+  whose text changed, on a fact it shows or holds, when it does not show that
+  limit.
 
 A change the channel shows directly adds nothing: a rename through the fact,
 a held mechanism renamed, a limit's text it shows, a longer label, new files,

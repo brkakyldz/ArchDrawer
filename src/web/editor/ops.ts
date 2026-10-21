@@ -180,7 +180,7 @@ export function deleteNodes(doc: DiagramDocument, vid: string, ids: Iterable<str
   });
 }
 
-export type NodePatch = Partial<Pick<DiagramNode, "label" | "kind" | "form" | "icon" | "sub" | "items" | "description" | "files" | "parent" | "detail">>;
+export type NodePatch = Partial<Pick<DiagramNode, "label" | "kind" | "form" | "icon" | "sub" | "items" | "description" | "files" | "parent" | "detail" | "heldIds" | "limitIds">>;
 
 /**
  * Change a component's fields with the form rules of the ui contract: becoming a panel without items adds

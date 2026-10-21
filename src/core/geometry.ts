@@ -60,7 +60,12 @@ export interface NodeBox {
   lines: string[];
   sub: string;
   items: string[];
+  /** How many of the last rows are limits (drawn muted after a timer icon). */
+  limits?: number;
 }
+
+/** A limit row's timer icon and the gap after it (diagram contract, What a channel draws). */
+export const LIMIT_ROW = { icon: 11, gap: 4 } as const;
 
 export interface MeasureOptions {
   /** false: panels drawn without their items (share toggle). Default true. */
@@ -73,7 +78,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 const ceil = (v: number) => Math.ceil(v);
 
 /** Size and text of a card, compact or panel (a group's size comes from its children: `layoutRects`). */
-export function measureNode(n: Pick<DiagramNode, "label" | "form" | "sub" | "items" | "detail">, o: MeasureOptions = {}): NodeBox {
+export function measureNode(n: Pick<DiagramNode, "label" | "form" | "sub" | "items" | "detail" | "limitIds">, o: MeasureOptions = {}): NodeBox {
   const { T, CARD, PANEL } = styleOf(o.post);
   const inside = n.detail ? 8 + INSIDE : 0;
   if (n.form === "card") {
@@ -94,11 +99,14 @@ export function measureNode(n: Pick<DiagramNode, "label" | "form" | "sub" | "ite
   }
   if (n.form === "panel") {
     const items = o.items === false ? [] : n.items;
+    // The last rows that are limits keep room for their timer icon.
+    const lim = Math.min(n.limitIds?.length ?? 0, items.length);
+    const mark = (i: number) => (i >= items.length - lim ? LIMIT_ROW.icon + LIMIT_ROW.gap : 0);
     const head = PANEL.padX * 2 + PANEL.icon + PANEL.gap + inside;
     const need = Math.max(
       head + widthOf(n.label, T.title),
       n.sub ? PANEL.padX * 2 + PANEL.icon + PANEL.gap + widthOf(n.sub, T.sub) : 0,
-      ...items.map((t) => PANEL.padX * 2 + PANEL.itemPad * 2 + 2 + widthOf(t, T.item)),
+      ...items.map((t, i) => PANEL.padX * 2 + PANEL.itemPad * 2 + 2 + mark(i) + widthOf(t, T.item)),
     );
     const w = clamp(ceil(need + 2), PANEL.minW, PANEL.maxW);
     const k = items.length;
@@ -107,7 +115,8 @@ export function measureNode(n: Pick<DiagramNode, "label" | "form" | "sub" | "ite
       w, h,
       lines: [fitLine(n.label, w - head, T.title)],
       sub: n.sub ? fitLine(n.sub, w - PANEL.padX * 2 - PANEL.icon - PANEL.gap, T.sub) : "",
-      items: items.map((t) => fitLine(t, w - PANEL.padX * 2 - PANEL.itemPad * 2 - 2, T.item)),
+      items: items.map((t, i) => fitLine(t, w - PANEL.padX * 2 - PANEL.itemPad * 2 - 2 - mark(i), T.item)),
+      ...(lim ? { limits: lim } : {}),
     };
   }
   // group: the header only; layoutRects adds the children.

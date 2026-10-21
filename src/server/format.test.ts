@@ -81,7 +81,7 @@ describe("@3 through the server (FILE-2)", () => {
     const r = await json(await t.req(`/api/diagrams/${id}`, { method: "PUT", json: doc }));
     expect(r.status).toBe(400);
     expect(r.body.error).toMatch(/^Invalid diagram — /);
-    expect(r.body.errors).toContain('facts.components[2]: "db" is shown by no part of the overview channel; draw it there or remove it');
+    expect(r.body.errors).toContain('facts.components[2]: "db" is shown or held by no part of the overview channel; draw it there or remove it');
   });
 
   it("imports @3, @2 and @1 documents", async () => {

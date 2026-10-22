@@ -34,23 +34,30 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **START-6** (Today) A draw that fails after its read keeps what it read,
   and `Try again` starts from the stage that did not finish, with no new
   read (ADR 0010).
+- **START-7** (To build) A draw of several choices draws them one after
+  another, one read each. A choice that fails or is cancelled keeps the
+  choices that finished; `Try again` starts from the first choice that did
+  not finish. Nothing is written until every choice is drawn (ADR 0015).
 
-### Scan and focus (SCAN)
+### Scan and choices (SCAN)
 
 - **SCAN-1** (Today) A scan of about a minute reads the README, the folder
   tree, dependency files and entry points, and produces a short repository card.
-- **SCAN-2** (Today) The scan proposes 3–5 focus options of three kinds —
-  a flow, an inner mechanism, the overview — each with a title, one sentence
-  and the files that back it. An option whose files do not exist is not shown.
-- **SCAN-3** (Today) The user can always pick "the whole system" or type a
-  focus in their own words.
+- **SCAN-2** (To change) The scan proposes 3–8 options of two kinds — a
+  section (a layer or part of the system: the back-end, the front-end, an API
+  layer) and a flow (a workflow) — each with a title, one sentence and the
+  files that back it. An option whose files do not exist is not shown
+  (ADR 0015).
+- **SCAN-3** (To change) The user ticks one or several choices: any of the
+  options, "The whole system", and "Something else" in their own words. One
+  draw makes every choice ticked, into one drawing file.
 - **SCAN-4** (Today) A scan is cached per commit; opening the same commit
   again does not rescan.
 
 ### Deep read and facts (READ)
 
-- **READ-1** (Today) After a focus is chosen, the engine reads the files the
-  focus needs and returns a facts list: components, the mechanisms inside
+- **READ-1** (Today) For each choice, the engine reads the files the
+  choice needs and returns a facts list: components, the mechanisms inside
   them, who calls whom and how, and limits that explain a guarantee.
 - **READ-2** (Today) Every fact names the files (and lines where useful)
   that support it; code checks the files exist and rejects facts without
@@ -61,8 +68,10 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 
 ### Channels and story (STORY)
 
-- **STORY-1** (Today) The user chooses a channel after the focus — LinkedIn,
-  README or presentation — and can switch channel without a new deep read.
+- **STORY-1** (To change) The user chooses one channel after the choices —
+  LinkedIn, README or presentation — and it is drawn for every choice. Each
+  choice has its own set of channels (overview, LinkedIn, README,
+  presentation) and can switch channel without a new deep read.
 - **STORY-2** (Today) LinkedIn: one image, about 8–12 parts, a title and one
   plain sentence, no held items, readable on a phone.
 - **STORY-3** (Today) README: a detailed drawing; one-line descriptions;
@@ -78,37 +87,70 @@ and its files, and a guided tour for learning a repository (ADR 0001).
   the user the run: every prompt states the limits code checks, a broken
   answer gets one repair turn, and a text still too long is shortened with a
   warning (ADR 0009).
+- **STORY-8** (To build) The whole system is drawn as a map of about 5–9
+  top-level parts; every other component is inside one of them, in a detail
+  view the draw writes at once. The map and its detail views together show
+  or hold every component fact (ADR 0015).
 
 ### Layout (LAYOUT)
 
 - **LAYOUT-1** (Today) Code places every part, routes every connection as a
   smooth curve and sizes every part from its content; editor and export draw
   from the same numbers.
-- **LAYOUT-2** (Today) Connections are never bent around anything: a
-  connection that meets a part or a group's name it does not join passes
-  behind it, and the layout report lists every part it passes behind. Code
-  places parts without a stored position so connections clear them where it
-  can; in a post, a straight line hidden behind parts turns out on one side.
+- **LAYOUT-2** (To change) Connections are never bent around anything: a
+  connection that meets a part it does not join passes behind it, and the
+  layout report lists every part it passes behind. A connection that crosses
+  a group's header passes over it, and the group's name stays readable on a
+  tight halo, so the line is broken only by the name's letters (ADR 0013).
+  Code places parts without a stored position so connections clear them
+  where it can; in a post, a straight line hidden behind parts turns out on
+  one side.
 - **LAYOUT-3** (Today) A layout report counts crossings, connections over
   parts, cut text and the text size at the channel's display size.
 - **LAYOUT-4** (Today) On request, the model looks at the rendered image and
   proposes one round of fixes.
+- **LAYOUT-5** (To build) A connection's sides count how many ends each side
+  already holds, not only where the other end lies; parts close together get
+  short handles, so no curve loops back; connections that arrive at one side
+  of a part from one direction share a trunk for their last stretch. While a
+  part is dragged its connections keep their sides until another pair is
+  clearly better; every stored drawing is routed without that memory
+  (ADR 0013).
+- **LAYOUT-6** (To build) The automatic layout orders the parts of each row
+  and column to cut crossings, keeping the main path's order and every
+  `place` hint, then closes the rows and columns left empty. Only parts
+  without a stored position move, and the layout report's crossings never go
+  up (ADR 0013).
 
 ### Drawing appearance (LOOK)
 
 - **LOOK-1** (Today) A clean, modern style in light and dark themes.
-- **LOOK-2** (Today) Some kinds of part have their own shape — an AI agent,
-  a person, a data store, an external service, a check — while the others stay
-  plain cards.
-- **LOOK-3** (Today) Held items inside a part are optional and used only
-  where needed; a one-line description is the default.
+- **LOOK-2** (To build) Every kind of part has its own outline, in cards and
+  in compact parts: a person's avatar, an app window, an API's pointed ends,
+  a service's top rule, a background job's stack, an AI agent's gradient, an
+  external service's cloud top, monitoring's pulse line, a check's shield and
+  a data store's stacked disks. A part is sized so its text stays inside its
+  outline (ADR 0014).
+- **LOOK-3** (To build) No part draws rows on the canvas or in an export:
+  the mechanisms, items and limits a part holds stay in the file and are
+  listed in its callout. Under its label a part shows a one-line sub-line; it
+  is on by default and can be switched off per view, and the share image
+  follows the view unless its own switch says otherwise (ADR 0014).
+- **LOOK-4** (To build) Calm connections: lines are drawn in one neutral
+  colour, and take their kind colours when they are numbered or in focus (a
+  hovered or selected part's lines, a selected line, the current step, search
+  matches). No start ring; dotted lines stay readable at fit zoom. A line
+  behind a part leaves a faint trace over it, and a label sits clear of other
+  lines. A part that four or more parts use is marked "used by N" and the
+  lines into it show on hover or selection (ADR 0013).
 
 ### File and editing (FILE, EDIT)
 
 - **FILE-1** (Today) A drawing is one JSON file in the user's repository; the
   editor saves into it and follows outside changes to it.
-- **FILE-2** (Today) The file holds the facts list and one drawing per
-  channel (ADR 0003).
+- **FILE-2** (To change) The file holds one or more choices, each with its
+  own facts list and one drawing per channel; an edit changes only its own
+  choice (ADR 0003, ADR 0015).
 - **FILE-3** (Today) Appearance edits change only their channel; content
   edits change the facts and mark the other channels "needs update".
 - **EDIT-1** (Today) Move, resize by content, rename in place, add parts by
@@ -118,6 +160,13 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **EDIT-3** (Today) Saving shows its real state; a failed save never shows
   "Saved".
 - **EDIT-4** (Today) While an AI instruction runs, edits to the drawing pause.
+- **EDIT-5** (To build) A drag moves only what it moves: the dragged parts
+  lift and their connections light up while every other label, badge and
+  group frame holds still. Guides show alignment and equal gaps and the part
+  snaps to them and to the 8 px grid during the drag, so release changes
+  nothing; Alt turns snapping off. The group a part will join is shown while
+  dragging, a drop never covers another part, and a drag is saved once, on
+  release (ADR 0013).
 
 ### Changing with AI (AI)
 
@@ -134,11 +183,16 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 
 ### Views and navigation (NAV)
 
-- **NAV-1** (Today) A part can open a detail view of its inside; detail views
-  nest.
-- **NAV-2** (Today) Tabs show the channels (overview, LinkedIn, README,
-  presentation) with a "needs update" mark; a breadcrumb shows the path into
-  detail views.
+- **NAV-1** (To change) A part can open a detail view of its inside; detail
+  views nest. A part with an inside shows a visible open mark, in the editor
+  and the export; a click on it without moving it, or Enter on it, goes into
+  its inside, and a drag moves it.
+- **NAV-2** (To change) A views panel beside the canvas lists the whole
+  system, each section and each flow of the drawing, with their detail views
+  under them, marks the current one and goes to any of them in one click;
+  below 900 px it folds into the header menu. Tabs show the current choice's
+  channels (overview, LinkedIn, README, presentation) with a "needs update"
+  mark; a breadcrumb shows the path into detail views.
 - **NAV-3** (Today) Search highlights matching parts on the canvas as the
   user types, dims the rest, shows the match count and steps through matches
   with Enter; the view moves only when a match is off screen.

@@ -2,10 +2,14 @@
 id: 0011
 title: "Connections pass behind parts: one cubic each, never bent around anything"
 date: 2026-10-22
-status: accepted
+status: accepted (amended by 0013: decision 2's clip superseded by a halo; traces over parts, marked hubs, neutral lines)
 deciders: [brkakyldz]
 supersedes: []
 ---
+
+Amended by ADR 0013: the clip of decision 2 is superseded by a text halo on
+a group's name, a line behind a part leaves a faint trace over it, and a part
+many parts use is marked instead of wired to each of them.
 
 ## Context
 

@@ -6,7 +6,8 @@ and the instruction engine write it; the CLI, the server and the editor read
 it. This file defines its shape, the rules that make it valid, how an edit is
 split between the facts and a channel, the warnings it can carry, how it is
 normalised, measured and laid out, and what an engine answers when it changes
-a drawing. Why the file is shaped this way: ADR 0003, ADR 0006 and ADR 0007.
+a drawing. Why the file is shaped this way: ADR 0003, ADR 0006, ADR 0007 and
+ADR 0015.
 
 Implemented by: `src/core/file3.ts` (the `@3` shape, validation, defaults),
 `src/core/channels.ts` (joining a channel view, splitting an edit, `outdated`,
@@ -19,22 +20,45 @@ warnings, normalisation), `src/core/convert.ts` (reading `@2`),
 
 ## Format identifier
 
-Every file carries `"schema": "archdraw/diagram@3"`. The string identifies
+Every file carries `"schema": "archdraw/diagram@4"`. The string identifies
 the file format and is checked exactly; it is not the product's version.
-Files with `archdraw/diagram@2` are converted when read (*Reading
-`archdraw/diagram@2`*); `archdraw/diagram@1` needs `archdrawer migrate`.
+Files with `archdraw/diagram@3` are converted when read (*Reading
+`archdraw/diagram@3`*), and files with `archdraw/diagram@2` through `@3`
+(*Reading `archdraw/diagram@2`*); `archdraw/diagram@1` needs `archdrawer
+migrate`. Whoever writes `@3` or `@2` (the plugin skill, an older session)
+keeps working: the server writes the file back as `@4`.
 
 ## Shape
 
 ```jsonc
 {
-  "schema": "archdraw/diagram@3",
+  "schema": "archdraw/diagram@4",
   "id": "d_k3j9x2ab",          // optional in a written file; ^d_[a-z0-9]{6,}$; `open` assigns one
   "title": "Sample Shop",       // the system's name, 1–120 chars
   "theme": "light",             // optional: "light" (default) | "dark"
   "source": { "kind": "local", "path": "C:/code/shop" },  // optional; the repository root, or null
   "engine": { "id": "claude", "model": null },            // optional; last instruction engine, or null
   "createdAt": "…", "updatedAt": "…",                     // optional ISO strings; the server keeps them
+  "choices": [ /* 1–12 choices (below); choices[0] is the one a drawing opens on */ ],
+  "requests": [],               // optional; instructions waiting for the next session
+  "warnings": []                // optional; one line per repair or conversion of the
+                                //   last change: a run that saves replaces the list
+                                //   with its own, so a clean run leaves it empty
+}
+```
+
+### Choice
+
+A choice is one thing the user chose to draw: the whole system, a section, a
+flow, or a focus in their own words (ADR 0015). It holds its own facts and
+its own four channels, in exactly the shape a format 3 file held them.
+
+```jsonc
+{
+  "id": "system",               // ^[A-Za-z0-9_-]{1,64}$, unique among the choices
+  "title": "The whole system",  // 1–80 chars: its name in the views panel and on the home screen
+  "kind": "system",             // "system" | "section" | "flow" | "custom"
+  "about": "",                  // optional, default "": 0–300 chars, what it draws (the option's sentence, the typed text)
   "facts": {
     "components": [ /* component facts, at most 1800 */ ],
     "relations": [ /* relation facts, at most 3600; optional, default [] */ ],
@@ -46,13 +70,24 @@ Files with `archdraw/diagram@2` are converted when read (*Reading
     "readme":       { "views": [ /* 0 or 1 view */ ], "showSteps": false, "outdated": [] },
     "presentation": { "views": [ /* 0 or 1 view */ ], "showSteps": false, "outdated": [],
                       "steps": [ /* the presentation's ordered steps; optional, default [] */ ] }
-  },
-  "requests": [],               // optional; instructions waiting for the next session
-  "warnings": []                // optional; one line per repair or conversion of the
-                                //   last change: a run that saves replaces the list
-                                //   with its own, so a clean run leaves it empty
+  }
 }
 ```
+
+| kind | made from | its overview (*Story answers*, briefs) |
+|---|---|---|
+| `system` | `The whole system` on the home screen; a converted `@3` file | the map: about 5–9 top-level parts, every other component in a detail view |
+| `section` | a scan option of kind `section`: a layer or part of the system | complete, in one view |
+| `flow` | a scan option of kind `flow`: a workflow | complete, in one view |
+| `custom` | `Something else`: the user's own words | complete, in one view |
+
+A file holds at most one `system` choice. Choices are in the order they were
+drawn; the views panel lists them by kind (ui contract). Everything below
+about facts, channels, views, parts, connections and steps holds within one
+choice: ids, references, `detail`, `outdated` and every rule. Nothing in one
+choice points into another, and the same component may be a fact of two
+choices with no link between them. View ids alone are unique across the
+whole file (rule 2), so a view id names its choice and its channel.
 
 **Facts** say what is true about the system; **channels** say how it is told.
 A channel is one of four fixed names. `showSteps` (optional, default false)
@@ -81,9 +116,10 @@ presentation's `steps`) is optional, so a file written before it stays valid.
 
 A component fact with `within` is a **mechanism**: a part of how the
 component it names works (an agent's tool loop, a retry policy, a cache
-lookup). A story draws it as a row of that component's part (`held`) or as a
-part of its own, often inside the component's part. Mechanisms and their
-holders are ordinary component facts for every other rule.
+lookup). A story holds it in that component's part (`held`, listed in the
+part's callout, never drawn as a row) or draws it as a part of its own, often
+inside the component's part. Mechanisms and their holders are ordinary
+component facts for every other rule.
 
 | kind | label | default icon | meaning |
 |---|---|---|---|
@@ -138,11 +174,22 @@ in a file it is optional, and only its paths are checked, as `files` are.
   "id": "overview",
   "title": "Overview",                       // breadcrumb name, 1–60 chars
   "caption": { "title": "How an order flows", "lede": "" },  // title 1–120, lede 0–240
+  "subLines": false,                         // optional, absent = true: parts draw their sub-line
   "nodes": [ /* parts, at most 60 */ ],
   "edges": [ /* connections */ ],
   "texts": [ /* free texts; optional, default [] */ ]
 }
 ```
+
+`subLines` is the view's sub-line switch (LOOK-3): absent or `true`, every
+part of the view draws its sub-line; `false`, none does, and every part is
+measured without it (*Geometry*). Any other value is invalid (rule 4). It is
+appearance: changing it changes only its channel (*Edits*). The editor writes
+`false` and removes the field when the switch is turned on again, and
+normalisation never adds it, so a file without it is valid and unchanged;
+`subLines` needs no format change of its own. A redraw or a simple version
+that replaces a channel's view keeps that view's `subLines`; engine answers
+neither see nor change it.
 
 ### Part (node)
 
@@ -157,8 +204,8 @@ in a file it is optional, and only its paths are checked, as `files` are.
   "place": { "row": 0, "col": 4 },    // grid hint, or null
   "lane": { "spine": 2 },             // optional, default null: relational layout hint
   "x": 1052, "y": 272,                // optional pair: top-left in canvas px; absent = lay it out
-  "held": ["approval-check"],         // optional, default []: mechanisms within its facts, drawn as rows
-  "limits": ["call-timeout"],         // optional, default []: limit facts on its facts or held facts, drawn as rows
+  "held": ["approval-check"],         // optional, default []: mechanisms within its facts, listed in its callout
+  "limits": ["call-timeout"],         // optional, default []: limit facts on its facts or held facts, listed in its callout
   // optional, absent or null = taken from the fact; a value = this channel's own text
   "label": null, "kind": null, "sub": null, "description": null, "items": null
 }
@@ -169,14 +216,14 @@ layers bell db chat loop book pen receipt inbox box cpu cog globe key lock mail
 file folder terminal code server queue search chart eye git plug`.
 
 Forms: `card` (icon, label, sub-line); `compact` (one row: icon, label,
-sub-line); `panel` (a card plus one row per held mechanism, shown item and
-limit — only a panel shows rows); `group` (a header and the parts whose
-`parent` it is — only a group may be a parent).
+sub-line); `panel` (a part that holds rows: held mechanisms, shown items and
+limits — only a panel holds them; it is drawn exactly like a `card` of its
+kind, and its rows are listed in its callout, never drawn); `group` (a header
+and the parts whose `parent` it is — only a group may be a parent).
 
-Shapes: a `card` or `compact` part of kind `llm`, `actor`, `data`, `external`
-or `gate` draws its own outline (*Geometry*, Shapes); every other part keeps
-the rounded rectangle. The shape comes from the kind alone; there is no shape
-field.
+Shapes: every `card`, `compact` and `panel` part draws the outline of its
+kind (*Geometry*, Shapes); a group draws its frame. The shape comes from the
+kind alone; there is no shape field.
 
 ### Connection (edge)
 
@@ -217,11 +264,11 @@ are appearance (*Edits*).
 ### Requests
 
 ```jsonc
-{ "id": "q1", "text": "Add the hotel board", "channel": "overview", "view": "overview", "at": "2026-10-13T12:00:00.000Z" }
+{ "id": "q1", "text": "Add the hotel board", "choice": "system", "channel": "overview", "view": "overview", "at": "2026-10-13T12:00:00.000Z" }
 ```
 
 An instruction typed in the editor when no engine could run it (1–4000 chars,
-an existing channel and one of its views). The next agent session that edits
+an existing choice, one of its channels and one of that channel's views). The next agent session that edits
 the file applies and removes it.
 
 ## What a channel draws
@@ -236,11 +283,12 @@ invariant 5).
   files in fact order, without repeats, at most 20.
 - A panel's rows are, in this order: the labels of its `held` mechanisms,
   its shown items (the part's `items` when not null, else its single fact's
-  `items`), then the texts of its `limits`. Geometry counts every row as an
-  item; a limit row is drawn in the muted colour after a `timer` icon. Any
-  other form shows no row. In the joined view shape `items` holds every row's
-  text, and `heldIds` and `limitIds` name the mechanisms of its first rows and
-  the limits of its last. Each row keeps its own fact's length: a held row up
+  `items`), then the texts of its `limits`. No form draws a row, on the
+  canvas or in any export, and geometry ignores them: the rows are listed in
+  the part's callout (ui contract, *Callout*). Any other form holds no row.
+  In the joined view shape `items` holds every row's text, and `heldIds`
+  and `limitIds` name the mechanisms of its first rows and the limits of its
+  last. Each row keeps its own fact's length: a held row up
   to a label's 48 chars, a limit row up to a limit's 60, a shown item up to 44.
 - A connection's `label`, `style` and `both` are its own when not null, else
   its single relation's (`""`, `call`, `false` without one).
@@ -254,15 +302,17 @@ A file breaking any rule is **invalid**. `archdrawer validate` lists every
 violation as `<json path>: <message>`; the server refuses an invalid document
 with 400 and the first violation. Invalid files are never repaired.
 
-1. `schema` is exactly `archdraw/diagram@3`. A file with
+1. `schema` is exactly `archdraw/diagram@4`. A file with
    `archdraw/diagram@1` gets the single error
    `schema: this is archdraw/diagram@1; run "archdrawer migrate <file>"`.
-   A file with `archdraw/diagram@2` is converted first and the result is
-   checked.
-2. Ids match `^[A-Za-z0-9_-]{1,64}$`. Fact ids (components and relations
-   together, one id space) are unique among facts; a part's id may equal a
-   fact's. View ids are unique across the file. Limit ids share the facts'
-   id space.
+   A file with `archdraw/diagram@3` or `archdraw/diagram@2` is converted
+   first and the result is checked. A violation's path starts at its choice:
+   `choices[1].channels.overview.views[0].nodes[3].form`.
+2. Ids match `^[A-Za-z0-9_-]{1,64}$`. Choice ids are unique among the
+   choices. Fact ids (components and relations together, one id space) are
+   unique among the facts of their choice; a part's id may equal a fact's.
+   View ids are unique across the file, every choice together. Limit ids
+   share the facts' id space.
    Part, connection, text and step ids are unique within their channel.
    Request ids are unique.
 3. Every component-fact and relation-fact property above is present. Every
@@ -273,8 +323,8 @@ with 400 and the first violation. Invalid files are never repaired.
 4. Lengths, list sizes and enumerations as stated above, for facts and for a
    part's or connection's own values alike. Required strings are non-empty
    after trimming.
-5. `channels` holds `overview` and may hold `linkedin`, `readme` and
-   `presentation`, no other key; each is an object with at most `views`,
+5. Each choice's `channels` holds `overview` and may hold `linkedin`,
+   `readme` and `presentation`, no other key; each is an object with at most `views`,
    `showSteps` and `outdated` (`views` required in the overview), and the
    presentation also `steps`. The overview holds 1–30 views; each other
    channel at most one.
@@ -287,7 +337,7 @@ with 400 and the first violation. Invalid files are never repaired.
 9. `parent` names a group part in the same view; no part is its own
    ancestor; nesting is at most three groups deep.
 10. `detail` is null outside the overview channel; in it, it names another
-    overview view.
+    overview view of the same choice.
 11. A relation's ends exist and differ. At most one relation per ordered
     pair; a pair joined both ways is one relation with `both: true`.
 12. A connection's ends exist in its view and differ. At most one connection
@@ -317,11 +367,13 @@ with 400 and the first violation. Invalid files are never repaired.
     when `docs` holds a `.git` of its own. A registered drawing's
     `source` is always that root.
 15. At most 60 parts per view.
-16. Every component fact is shown or held by at least one part of the
-    overview channel.
+16. Every component fact of a choice is shown or held by at least one part
+    of that choice's overview channel, in any of its views (for a `system`
+    choice: the map or one of its detail views).
 17. `outdated` lists distinct ids (any id syntax; a removed fact's id stays
     listed). An empty channel's `outdated` is `[]`.
-18. A request names an existing channel and one of its views.
+18. A request names an existing choice, one of its channels and one of that
+    channel's views.
 19. `lane` follows *Lane* below.
 20. A component fact's `within` names another component fact, never itself;
     the fact it names has no `within` (one level).
@@ -334,6 +386,10 @@ with 400 and the first violation. Invalid files are never repaired.
     `lines` null or `[from, to]` with `1 ≤ from ≤ to`.
 24. A presentation step names 1–60 distinct parts of the presentation view;
     a channel without a view has no steps.
+25. `choices` holds 1–12 choices. Each has `id`, `title` (1–80 chars),
+    `kind` (`system`, `section`, `flow` or `custom`), `facts` and `channels`,
+    and may have `about` (0–300 chars); no other key. At most one choice is
+    of kind `system`.
 
 ### Lane
 
@@ -354,14 +410,18 @@ because it has a lane.
 
 Every change to a document — an editor edit, a run's answer, a file written
 from outside — is the same pure split (`src/core/channels.ts`): content goes
-to the facts, appearance to the channel it was made in.
+to the facts, appearance to the channel it was made in. A change is made in
+one choice and changes only that choice, its facts and its channels: every
+other choice stays exactly as it was, and `outdated` marks only channels of
+the same choice (an outside write: of each choice it changed).
 
 **Appearance** changes only the channel it is made in: moving, a part's form,
 icon, `place`, `lane`, `parent` and `detail`, which items a panel shows (as
 the part's own `items`), which mechanisms it holds and which limits it shows
-(`held`, `limits`), a connection's step, texts, captions, view titles,
-`showSteps`, the presentation's steps (adding, removing, reordering, a step's
-parts, text and note), and any of a part's or connection's own texts.
+(`held`, `limits`), a connection's step, texts, captions, view titles, a
+view's `subLines`, `showSteps`, the presentation's steps (adding, removing,
+reordering, a step's parts, text and note), and any of a part's or
+connection's own texts.
 
 **Content** changes the facts:
 
@@ -460,8 +520,8 @@ A drawing without held items is not warned about (LOOK-3).
 - **Flat** — six or more top-level parts that all have a `place` on the same
   row, or none has a `place` and every one is an end of a numbered
   connection.
-- **Tuning number** (LinkedIn channel only) — a drawn label, sub-line or item
-  with a number and a unit of time, count or size (`6 turns`, `90 s`,
+- **Tuning number** (LinkedIn channel only) — a drawn label or sub-line with
+  a number and a unit of time, count or size (`6 turns`, `90 s`,
   `2 retries`, `5 MB`, `30%`). Elsewhere a number that explains a guarantee
   may show (STORY-5), best as a limit.
 - **No main path** — three or more connections and none has a step.
@@ -476,9 +536,11 @@ reads a file, and on import:
 - a missing document `id` is assigned (`d_` + 10 lower-case letters/digits);
 - `source` becomes `{"kind": "local", "path": <repository root>}` for a file
   in a repository; an imported document keeps its own `source`;
-- missing `theme`, `requests`, `warnings`, `facts.relations`, channels,
-  `showSteps`, `outdated`, `lane`, connection `relations`, `texts` and text
-  `size` get their defaults; `createdAt`/`updatedAt` are set when missing; a
+- a `@3` or `@2` file is converted to `@4` first (*Reading
+  `archdraw/diagram@3`*);
+- missing `theme`, `requests`, `warnings`, a choice's `about`,
+  `facts.relations`, channels, `showSteps`, `outdated`, `lane`, connection
+  `relations`, `texts` and text `size` get their defaults; `createdAt`/`updatedAt` are set when missing; a
   part's or connection's own text that is null is left out;
 - every connection without an id gets the next free `e<n>` of its channel;
 - every part without a position is laid out (*Layout*), and every group's
@@ -504,63 +566,178 @@ the font's own advance and no text is painted wider than it was measured.
 Without it, Chromium on Linux rounds every advance to a whole pixel, and a
 label measured to fit its part exactly can overrun it.
 
-- **card** 196 × 108; the label wraps to at most 3 lines, each extra line
-  adding 18.
-- **compact** 46 tall; as wide as icon, label and sub-line need, 140–320.
-- **panel** as wide as its widest row needs, 184–320; height
-  `24 + 22 + (sub ? 17 : 0) + (k ? 10 + 26k + 4(k − 1) : 0)` for `k` items.
+- **card** as wide as the plain card (196) plus its shape's extra width; as
+  tall as its shape's content box needs (*Shapes*): 108 for the plain card
+  with one label line and its sub-line row, each extra label line adding 18.
+  The label wraps to at most 3 lines within the content box's width.
+- **compact** one row: icon, label and sub-line; 46 tall for most shapes; as
+  wide as its shape's insets and the row need, 140–320 plus the shape's extra
+  width (*Shapes*).
+- **panel** measures and draws exactly as a `card` of its kind. Its rows are
+  never drawn, so they change no size.
 - **group** its children's bounding box plus 18 px at the sides and bottom
   and a 46 px header, at least as wide as its header text; a group with no
   children is 260 (or its header width) × 140 at its position.
 - Step badge radius 10.5; connection label box 22 tall.
 
-**Shapes** (LOOK-2). The outline of a part is the element with class `body`;
-it carries `data-shape`, the same in the editor's `node-<id>` and the
-export's `g[data-node-id]`:
+**Sub-lines.** With the view's `subLines` on (*View*), a card keeps its
+sub-line row whether or not its sub-line is empty, so its height never
+depends on that text. With it off, no part draws a sub-line and none is
+measured with one: a card loses its 18 px sub-line row (the plain card is 90
+tall), a compact part its sub-line text, and a group header its sub-line;
+the group header stays 46 px, so a group's box does not change.
 
-| Kind | `card` and `compact` outline | `data-shape` |
-|---|---|---|
-| `llm` (AI agent) | the rounded rectangle with a second outline 4 px inside it | `agent` |
-| `actor` (Person) | the rounded rectangle with a round head badge on its top edge, inside the box | `person` |
-| `data` (Data store) | a cylinder: straight sides, an ellipse at the top, a curved bottom | `store` |
-| `external` (External) | the rounded rectangle with a dashed outline | `external` |
-| `gate` (Check) | a rectangle with its four corners cut at 45° | `check` |
-| any other kind | the rounded rectangle | `card` |
+**The open mark** (NAV-1). A part whose `detail` is set draws the open mark:
+a filled circle 20 px across in the part's kind colour, holding the `layers`
+icon, 12 px, in the canvas colour. It sits 8 px inside the top-right corner
+of a card's or panel's front body (*Shapes*), 12 px inside the right end of a
+compact part's front body and centred on its height, and at the right end of
+a group's header, centred on it. The label row keeps `8 + 20` px for it (the
+14 px detail mark it replaces kept `8 + 14`). It is the element with class
+`open-mark`, the same in the editor's `node-<id>` (a group's in its
+`node-head-<id>`) and in the export's `g[data-node-id]` (a group's in its
+`<g data-group-head>`); that `g[data-node-id]` carries `data-open="true"`.
+The share image, the slides and `archdrawer svg` draw it as the editor does.
 
-A `panel` is `card` and a `group` is `group`, whatever their kind. Every
-shape lies inside the part's box, which is measured as above: no size, no
-position of the icon, label, sub-line or detail mark, and no route changes
-with the shape. The first `rect.box` stays the part's box (parity check).
-Selection, search and target rings stay box-shaped. The post style draws the
-same shapes.
+**Shapes** (LOOK-2, ADR 0014). The outline of a part is the element with
+class `body`; it carries `data-shape`, the same in the editor's `node-<id>`
+and the export's `g[data-node-id]`. The kind alone gives it; a `panel` takes
+its kind's shape as a card does, and a `group` is `group`, whatever its kind.
+
+| Kind | `data-shape` | Card outline | Compact outline |
+|---|---|---|---|
+| `actor` (Person) | `person` | an avatar circle, 40 px across (post 36), centred on the box's width with its top on the box's top; the body is a rounded rectangle whose top edge passes through the avatar's centre. The avatar holds the icon (22 px; post 20) | the left end is a circle as tall as the part (46 px) holding the icon (18 px); the body runs right from its centre |
+| `client` (Client app) | `window` | a rounded rectangle with a title bar across its top, 14 px tall (post 10), tinted in the kind colour, holding three dots (radius 2, 6 px apart, the first 10 px from the left) and an address capsule (6 px tall, 40 % of the width, centred) | a 6 px title bar across the top, no dots |
+| `api` (API) | `port` | a hexagon: straight top and bottom edges, the left and right ends coming to a point at the side midpoints, 14 px deep (post 12); a dot of radius 3 in the kind colour at each point | the same, 10 px deep, dots of radius 2.5 |
+| `service` (Service) | `card` | the rounded rectangle (radius 12) with a 3 px rule in the kind colour along the inside of its top edge, from 12 px to the width − 12 | the rule runs along the inside of the left edge, from 10 px to the height − 10 |
+| `worker` (Background job) | `stack` | the front card is the box less 8 px at the top and right; two outlines behind it, each 4 px right and 4 px up from the one in front | the same with 6 px and 3 px |
+| `llm` (AI agent) | `agent` | a rounded rectangle whose 1.5 px stroke is a gradient from the kind colour at the top left to the agent end colour at the bottom right; an inner outline 4 px inside at opacity 0.35; a spark (the `spark` icon, 10 px) 8 px inside the top-right corner | the same, inner outline 3 px inside, spark 8 px, 4 px inside the corner |
+| `external` (External) | `external` | a dashed outline (`6 4`) whose top edge is three cloud bumps 10 px tall (post 8); the rest is the rounded rectangle | the same, bumps 6 px tall |
+| `ops` (Monitoring) | `pulse` | the rounded rectangle with a pulse line in the kind colour inside its bottom inset: flat, with one spike up at 60 % of the width that stops 2 px short of the content box, and a faint kind fill (the tint opacity) between it and the bottom edge | the same within the 8 px bottom inset |
+| `gate` (Check) | `check` | a shield: a flat top with rounded corners, straight sides, and a bottom that curves from both sides to a point at the bottom middle; the sides end 18 px (post 14) above the box's bottom | the same with a shallow point: the sides end 8 px above the bottom |
+| `data` (Data store) | `store` | a cylinder of stacked disks: a lid ellipse (ry 8; post 6) tinted in the kind colour, three slabs of equal height, every second one a shade deeper (twice the tint), a 3 px notch in each side at every slab boundary, slab rims that fade out over the middle third of the width so no line crosses the text, and a bottom that is the lower half of an ellipse with the same ry | two slabs, lid ry 4 |
+
+The theme gives every colour: the kind colours (and the tint, glow and
+surface tokens) in light and dark. The one extra colour is the agent
+gradient's end, `agentEnd`: `#8b5cf6` light, `#c4b5fd` dark.
+
+**Content box.** Each shape has a content box, the area its icon, label and
+sub-line stay inside: the box less the insets below. A card's content is, top
+to bottom and centred across the content box, the icon (26 px) and an 8 px
+gap — not for `person`, whose icon is in its avatar —, its label lines (18 px
+each; post 20) and, with sub-lines on, the sub-line row (18 px). Its height is
+the top inset + that content + the bottom inset. Its width is the plain
+card's (196; in the post style 176, widening up to 204 for its sub-line) plus
+the shape's extra width. A compact part's content is one row centred
+vertically in the content box: the icon (18 px; not for `person`), 10 px, the
+label, then 10 px and the sub-line, right-aligned at the content box's right
+end. Its width is the left and right insets plus that row + 2, between 140
+and 320, plus the shape's extra width.
+
+| `data-shape` | Card insets: top / right / bottom / left (post style) | Card extra width | Compact height | Compact insets: top / right / bottom / left | Compact extra width |
+|---|---|---|---|---|---|
+| `card` | 19 / 12 / 19 / 12 (6 / 12 / 6 / 12) | 0 | 46 | 0 / 12 / 0 / 12 | 0 |
+| `person` | 48 / 12 / 24 / 12 (42 / 12 / 6 / 12) | 0 | 46 | 0 / 12 / 0 / 54 | 0 |
+| `window` | 19 / 12 / 19 / 12 (14 / 12 / 6 / 12) | 0 | 46 | 6 / 12 / 0 / 12 | 0 |
+| `port` | 19 / 26 / 19 / 26 (6 / 24 / 6 / 24) | 28 (24) | 46 | 0 / 22 / 0 / 22 | 20 |
+| `stack` | 27 / 20 / 19 / 12 (14 / 20 / 6 / 12) | 8 | 52 | 6 / 18 / 0 / 12 | 6 |
+| `agent` | 19 / 12 / 19 / 12 (6 / 12 / 6 / 12) | 0 | 46 | 0 / 12 / 0 / 12 | 0 |
+| `external` | 29 / 12 / 19 / 12 (14 / 12 / 6 / 12) | 0 | 52 | 6 / 12 / 0 / 12 | 0 |
+| `pulse` | 19 / 12 / 19 / 12 (6 / 12 / 16 / 12) | 0 | 46 | 0 / 12 / 8 / 12 | 0 |
+| `check` | 19 / 12 / 37 / 12 (6 / 12 / 20 / 12) | 0 | 54 | 0 / 12 / 8 / 12 | 0 |
+| `store` | 27 / 15 / 27 / 15 (12 / 15 / 12 / 15) | 0 | 54 | 8 / 12 / 4 / 12 | 0 |
+
+So a card with one label line and its sub-line is 108 tall as `card`,
+`person`, `window`, `port`, `agent` and `pulse`, 116 as `stack`, 118 as
+`external`, 124 as `store` and 126 as `check`; in the post style 84 as `card`,
+`port` and `agent`, 86 as `person`, 92 as `window`, `stack` and `external`, 94
+as `pulse`, 96 as `store` and 98 as `check`. The shield, the cylinder, the
+cloud top and the stack make a part taller than a plain card with the same
+text.
+
+- Every shape lies inside the part's box. The first `rect.box` stays the
+  part's box (parity check); selection, search and drop-target rings stay
+  box-shaped. The editor and every export draw from the same numbers
+  (invariant 5).
+- The open mark (20 px, *The open mark*) sits 8 px inside the top-right
+  corner of the outline's front body: the body under the avatar for `person`,
+  the front card for `stack`, the part below the bumps for `external`, the
+  part between the points for `port`, the box for the others. An agent's
+  spark then moves 6 px left of the open mark. In a compact part it sits
+  12 px inside the right end of the front body, centred on its height.
+- Connections take their sides and spread their ends on the box, as
+  *Connections* says. On the left and right sides of a `port`, every end
+  attaches at the point: those ends are not spread. Anywhere else, where the
+  outline lies inside the box at an end's place (beside the avatar, under a
+  cloud's dip, along the shield's curve, the cylinder's lid and bottom, the
+  stack's offset), the end moves straight in along its side's normal until it
+  meets the outline, so the arrowhead touches the part.
+- The post style draws the same shapes, with the numbers in parentheses.
 
 **Post style.** The LinkedIn channel's view measures and draws denser, in the
 editor and in exports alike: part and group names 16.5 px (compact names
-15 px), every other text at least 12.5 px; card 176 × 84, widening up to 204
-for its sub-line, each extra label line adding 20; panel 150–300 wide, height
-`14 + 22 + (sub ? 16 : 0) + (k ? 6 + 19k + (k − 1) : 0)`; badge radius 11.5.
+15 px), every other text at least 12.5 px; card 176 wide, widening up to 204
+for its sub-line, 84 tall as the plain card with one label line and its
+sub-line row, each extra label line adding 20; a panel measures as a card of
+its kind; badge radius 11.5.
 
 **Connections** are smooth curves: one cubic (`M … C …`, no `L`, `H` or
 `V`), its handles along the end sides' outward normals, each 0.42 × the
-distance between the ends, between 24 and 160 px. A connection leaves from
-the side of each part that faces the other end. Between a part and a group
-holding it, both ends use the side where the part lies nearest the group's
-border. When the facing curve would have no length or go inside one of its
-own two parts (parts that touch or overlap), both ends use the like sides
-whose curve stays out of both, the shortest, right first on a tie. Several
-connections on one side are spread up to 16 px apart, ordered by where the
-other end is; connections entering a member in a group's first row from
-above come in right of the group's name when the part leaves room, at least
-10 px apart.
+distance between the ends, between 24 and 160 px, and never longer than the
+gap when the two ends face each other across a short one (below). A
+connection in a trunk ends where its trunk starts (*Trunks*).
 
-A connection is never bent around anything (ADR 0011). Connections are drawn
-under parts, so a curve that meets a part other than its ends passes behind
-it, and the layout report lists it in `edgesOverParts`. A group's name text
-(from 3 px left of its icon to 5 % past its name box's right edge, within
-the group, 28 px tall round the header's middle; the 5 % covers a platform
-that paints the text a few percent wider than its metrics) is cut out of the connections' lines, in the editor and
-every export, so a curve passes behind a group's name too; labels, badges
-and the editor's hit area are not cut. One exception keeps a post's spine visible: in a post, a
+*Sides.* The *facing pair* is, as before, the pair of sides that face each
+other across the larger of the horizontal and vertical gaps between the two
+parts. Between a part and a group holding it, both ends use the side where
+the part lies nearest the group's border. When the facing pair's curve would
+have no length or go inside one of its own two parts (parts that touch or
+overlap), both ends use the like sides whose curve stays out of both, the
+shortest, right first on a tie. Otherwise each end takes the cheapest side of
+its part that faces the other end (LAYOUT-5):
+
+- a side *faces* the other end when its outward normal points towards the
+  other part's centre (a positive dot product with the vector between the two
+  centres); a part has one or two facing sides;
+- a side's cost is `1 − cos θ`, θ the angle between its outward normal and
+  the vector from its part's centre to the other part's centre, plus 0.25 for
+  every end of another connection the side holds;
+- every connection first takes its facing pair; then, in the view's order,
+  each connection takes for each end its cheapest facing side, counting the
+  ends the other connections hold at that moment. One pass. A tie (within
+  0.001) keeps the facing pair's side. A pair's cost is the sum of its two
+  sides' costs.
+
+This is stateless: one view always gives the same sides, in the editor and
+every export.
+
+*While dragging* (editor only, ADR 0013). While a pointer is down on a drag,
+a connection with an end among the dragged parts keeps the sides it had at
+the previous move unless the cheapest pair costs less than 0.8 × the kept
+pair's cost (both counted as above at this move), or a kept side no longer
+faces the other end. When an end's side or place changes during the drag, it
+glides there over 120 ms instead of jumping. On release every route is the
+stateless one the export draws, and an end may glide there once (120 ms).
+Exports, the layout report and every stored state never use held sides.
+
+*Ends.* Several connections on one side are spread up to 16 px apart,
+ordered by where the other end is; a trunk counts as one end. Connections
+entering a member in a group's first row from above come in right of the
+group's name when the part leaves room, at least 10 px apart. Shapes move
+some ends onto the outline (*Shapes*).
+
+*Short gaps.* When the two ends' sides face each other — a right side and a
+left side, or a bottom and a top — across a gap `g` (the distance between the
+two ends along the sides' normal), a handle is never longer than the larger
+of `g` and 8 px. So between close parts the curve never leaves the gap, and
+two ends in line give a straight line. The post's spine turn-out
+below keeps its own rule.
+
+A connection is never bent around anything (ADR 0011, ADR 0013). Groups are
+drawn first, then connections, then parts. A curve that meets a part other
+than its ends passes behind it, and the layout report lists it in
+`edgesOverParts`. A connection that crosses a group's frame or header band
+passes over it. One exception keeps a post's spine visible: in a post, a
 line straight down or up whose plain curve passes behind parts between its
 ends leaves and enters by the same side instead, as one cubic whose handles
 are the shortest (24 px upward in 8 px steps, at most 160) that clear every
@@ -570,11 +747,100 @@ passes behind a part placed automatically, the layout widens the gaps
 beside that part and routes again, at most three times, undoing a widening
 that does not clear it; stored positions never move.
 
-A label takes the free spot nearest the middle of its curve, 4 px clear of
-parts, group names, texts and earlier labels, with its box no further than
-10 px from the curve; with no such spot it is left out. A step badge takes
-the free spot nearest the middle, its radius + 3 px clear of all of those
-and of every label.
+*A group's name* (ADR 0013). A group is drawn in two layers: its frame
+(outline, fill and glow) under the connections, and its head — icon, name,
+sub-line and open mark (`open-mark`) — over the connections and under the
+parts. The name and the sub-line carry a halo: `stroke` in the header's colour,
+`stroke-width="4"`, `stroke-linejoin="round"`, `paint-order="stroke"`, so a
+line that crosses the header is hidden only under the letters and 2 px
+round them. The header's colour is the group's fill as painted, made solid:
+the kind colour at 5 % over the surface at 60 % over the canvas. Nothing is
+cut out of a line: there is no clip. In an export the head is
+`<g data-group-head="<group id>">`, after every connection and trunk and
+before the first non-group `<g data-node-id>`. Labels and badges keep off a
+group's name box as before.
+
+*Traces* (LOOK-4). Where a drawn connection passes behind a part it does not
+join (a part the layout report lists it over in `edgesOverParts`), the same
+path is drawn again over that part: `<path class="trace"
+data-edge-of="<connection id>">` inside the part's `<g data-node-id>`, after
+its outline and before its icon and text, clipped to the part's box, in
+the line's colour (*Colour*) at opacity 0.25, 1 px wide, with its style's
+dash, no glow and no arrowhead. A connection that passes behind nothing has
+no trace; a hidden connection (*Parts many parts use*) has none while it is
+hidden.
+
+*Colour* (LOOK-4, ADR 0013). A connection is drawn in the theme's neutral
+colour `edge` — `#848b98` light, `#636a77` dark — line and arrowheads alike,
+with no glow. It is drawn in its kind colours — a gradient from its `from`
+part's kind colour to its `to` part's, each arrowhead in the kind colour of
+the part it points at, and the glow (opacity `edgeGlow`, never on `dep`) —
+when it has a step, in the editor and every export, and in the editor while
+it is in focus (ui contract, *Connections in focus*). Exports colour only
+connections with a step. Every `<g data-edge-id>`, and the editor's
+`edge-<id>`, carries `data-tone`: `kind` when coloured, else `neutral`.
+
+- One arrowhead at the `to` end; a two-way connection has one at each end. A
+  one-way connection draws nothing at its start: its `<g data-edge-id>`
+  holds no `circle` other than its step badge's.
+- `call` is solid and `async` dashed (`6 5`), both 1.75 px; `dep` is dotted,
+  1.9 px, `stroke-dasharray="2 5"` with round caps.
+
+*Labels.* Labels are placed once every route is known. A label takes the free
+spot nearest the middle of its curve, 4 px clear of parts, group names, the
+`used by` marks, texts and earlier labels, with its box no further than 10 px
+from the curve. Among those spots it takes the nearest whose box, grown by
+2 px, touches no other drawn connection's line or trunk, when there is one,
+else the nearest free one; with no free spot it is left out. Its box's border
+is the `line` colour on a neutral connection and its `to` part's kind colour
+on a coloured one. A step badge takes the free spot nearest the middle, its
+radius + 3 px clear of all of those and of every label.
+
+*Trunks* (LAYOUT-5). Connections share a trunk when they arrive (their `to`
+end) on the same side of the same part with the same style, and come from the
+same direction: sorted by the angle from that side's middle to the centre of
+each one's other part, a trunk is a run whose first and last angles are at most 30°
+apart, taken greedily from the smallest angle; a run of one is no trunk. A
+hidden connection is in no trunk. A trunk is one end of its side, ordered
+among the others by the mean position of its members' other ends. Its split
+point lies 32 px (post 24) out from the
+port along the side's normal, or a third of the shortest distance from the
+port to a member's start when that is less. Each member's curve runs from its
+start to the split point, its handle there along the side's normal (lengths
+as above, the distance being from its start to the split point). The trunk is
+one straight cubic from the split point to the port, drawn once, with one
+arrowhead: `<g data-trunk="<part id>:<side>" data-edges="<ids in view
+order, space-separated>">` after the connections' groups, holding a `path`
+(two trunks on one side differ by `data-edges`).
+It is coloured (in its part's kind colour) while any member is, else
+neutral. Labels and badges stay on the members' own stretches. Two members
+that meet only at their split point do not cross.
+
+*Parts many parts use* (LOOK-4, ADR 0013). A part other than a group is a
+*hub* when four or more other parts use it: each has a connection into it
+(its `to` is the hub) or a two-way connection with it. In every view, in the
+editor and every export:
+
+- A hub's connections from its users that have no step are *hidden*: not
+  drawn, with no label, badge or trace, and no port, label spot or room of
+  their own. The view is routed as if they were not there; they are then
+  routed after it by the same rules, so showing one moves nothing.
+- A connection with a step is never hidden.
+- The hub carries the mark `used by <n>`, `n` its users, step connections
+  included: a pill 18 px tall, its text 11 px, weight 500, in the muted
+  colour, 7 px padding each side, filled with `surface2` and edged with
+  `line`, centred on the box's bottom edge. It is `<g data-used-by="<n>">`
+  inside the hub's `<g data-node-id>`, drawn after its text. The drawing's
+  bounds include it and labels and badges keep 4 px clear of it.
+- In the editor a hidden connection shows while one of its ends is hovered,
+  selected or dragged (ui contract). An export never draws it, and the layout
+  report never counts it.
+
+The facts are unchanged: this is appearance only.
+
+*The layout report counts what is drawn.* Its crossings and connections over
+parts are measured on the drawn lines: each connection's own stretch and each
+trunk, never a hidden connection (api contract, *Layout report*).
 
 ## Layout
 
@@ -600,14 +866,45 @@ the widest part of each column and the tallest of each row.
 - Portrait posts: more than three spine units form two bands, up to three
   left-to-right, the rest right-to-left. Wide posts keep spine order
   left-to-right.
-- Hidden connection labels reserve no gap. Parts that already have a
-  position keep it; new ones are placed beside them on an 8 px grid without
-  overlapping anything.
+- Hidden connection labels, and hidden connections (*Parts many parts
+  use*), reserve no gap. Parts that already have a position keep it; new
+  ones are placed beside them on an 8 px grid without overlapping anything.
+
+**Fewer crossings** (LAYOUT-6, ADR 0013). After the cells are assigned and
+before cells become pixels, the order of parts within rows and columns is
+improved, with and without lanes, in each grid (the top level, and each
+group's own) separately:
+
+1. *Movable parts* are those this layout places (no stored position) that
+   have no `place`, are not an end of a numbered connection and are not a
+   spine part. A side part moves only among side parts of the same anchor and
+   side. Every other part keeps its cell.
+2. *Barycentre sweeps.* A row sweep visits the grid's rows in order and sorts
+   the movable parts of each row by the mean column of the parts they connect
+   to in the same grid (a part inside a group of that grid counts as the
+   group's cell; connections leaving the grid and hidden connections do not
+   count); a part with none keeps its column, and ties keep the current order.
+   The sorted parts take the cells the movable parts of that row held. A
+   column sweep does the same for columns, by mean row. One round is: rows
+   top to bottom, rows bottom to top, columns left to right, columns right to
+   left.
+3. After each round the crossings of the straight segments between connected
+   parts' cell centres are counted. A round that does not lower the count is
+   undone and ends the sweeps; there are at most 4 rounds.
+4. *Compaction.* Rows and columns left holding no part are removed, keeping
+   the order of the rest, and a group reserves only the cells its box needs.
+   A `place` value is never rewritten; only the pixels it leads to move.
+5. The reordered layout is kept only when the view's layout report counts no
+   more crossings with it than without steps 2–4; otherwise the layout
+   without them is used.
+
+It is pure and deterministic. Only parts without a stored position move
+(LAYOUT-2); the main path keeps its step order.
 
 ## Engine answers (refine and simplify)
 
-The engine receives a **draft** of the run's channel: `title` and every view
-of the channel as channel views (`id`, `title`, `caption`, parts with their
+The engine receives a **draft** of the run's channel, in the run's choice:
+`title` and every view of the channel as channel views (`id`, `title`, `caption`, parts with their
 drawn content, connections with their drawn label, style and two-way flag)
 without document metadata, texts, requests, warnings, connection ids or
 relation ids, with each part's `facts`, `held`, `limits` and current `box`
@@ -626,8 +923,10 @@ panel's empty items are dropped and more than 12 are cut; an unknown icon or
 style becomes the default; a part or view id is cleaned to letters, digits,
 `-` and `_`, an empty one becomes `component-<n>` or `view-<n>`, an invalid
 one is replaced and a duplicate is renamed `<id>-2` (one warning per id); a
-second copy of a view is ignored; an empty label becomes the id, an empty
-description `No description yet.`, and an empty view title, caption title or
+new view id that another view of the file already has, in any choice, is
+renamed `<id>-2` (`-3`, …; one warning per id); a second copy of a view is
+ignored; an empty label becomes the id, an empty description
+`No description yet.`, and an empty view title, caption title or
 drawing title the stored one; a `place` beyond ±20 is clamped and one that is
 not two integers is dropped; a `step` that is not a positive integer is
 dropped; a dangling `parent` or `detail` is cleared; parent loops and
@@ -683,8 +982,8 @@ shown by no part fails the run with
 
 ## Read answers (facts)
 
-The deep read of a `draw` run (api contract) answers the facts in the strict
-schema dialect, with no layout:
+The deep read of each choice of a `draw` run (api contract) answers that
+choice's facts in the strict schema dialect, with no layout:
 
 ```json
 { "components": [{ "id": "", "label": "", "kind": "service", "sub": "", "description": "",
@@ -838,12 +1137,18 @@ does.
 
 | Channel | Brief | Code checks |
 |---|---|---|
-| overview | The complete map: every fact shown or held. A one-line sub-line on every part. Merged parts where many facts are alike. Zones as the system's real boundaries. Every mechanism held by its part; limits where they explain a part. No count target, within the 60 parts a view holds, each zone counted as a part | Every fact drawn (below) |
+| overview of a `system` choice: the map | A map of the system's main groups: about 5–9 top-level parts, zones or holders. Every other component inside one of them, never at top level beside them. A one-line sub-line on every part. Every fact shown or held, on the map or inside a group. Every mechanism held by its part; limits where they explain a part. Within the 60 parts an answer holds, each zone counted as a part | Every fact drawn, then *The map* (below). The layout report's `parts` target is 9 on the map (api contract) |
+| overview of a `section`, `flow` or `custom` choice | The complete map: every fact shown or held. A one-line sub-line on every part. Merged parts where many facts are alike. Zones as the system's real boundaries. Every mechanism held by its part; limits where they explain a part. No count target, within the 60 parts a view holds, each zone counted as a part | Every fact drawn (below) |
 | linkedin | One image for a phone: about 8–12 parts. A title of at most 9 words and one plain sentence. No held items or limits, no tuning numbers | The post targets below. A non-empty `held`, `limits` or `steps` is dropped, one warning each |
 | readme | A detailed drawing that renders on GitHub. A one-line sub-line on every part, the default description. Held mechanisms only on a part whose working the story is about; elsewhere none. Limits where they explain a guarantee | — |
 | presentation | One drawing and 3–8 ordered steps that tell it. A one-line sub-line on every part; held mechanisms as in the README. Each step highlights the parts it is about, says it on screen in one short sentence, and gives the speaker one to three sentences | Each step's parts exist. A wrong one is dropped with one warning; a step none of whose parts exist is dropped instead, with one warning |
 
 A non-empty `steps` outside the presentation is ignored, with one warning.
+
+No brief asks for panels or rows (LOOK-3): a prompt names `held`, `limits`
+and `chips` as what a part holds, listed in its callout, never as rows drawn
+on the part. The post brief asks for `chips: []` on every part; chips it
+still gives are converted as below.
 
 **Post targets** (LinkedIn only) are kept whole, with one warning each:
 
@@ -896,9 +1201,11 @@ view):
 
 **The view.**
 
-- Its id is kept when the channel already has a view. Otherwise it is the
-  channel's name (`linkedin`, `readme`, `presentation`; for the overview,
-  `overview`), or `<name>-2`, `-3`, … when another view has that id.
+- Its id is kept when the channel already has a view. Otherwise, in the
+  file's first choice, it is the channel's name (`linkedin`, `readme`,
+  `presentation`; for the overview, `overview`), and in any other choice
+  `<choice id>-<channel name>` (`back-end-readme`, `back-end-overview`); with
+  `-2`, `-3`, … when another view of the file has that id.
 - Its title is `LinkedIn`, `README`, `Presentation` or `Overview`, and its
   caption is the intent's title and lede. It has no texts.
 - It is laid out by its lanes: portrait for the LinkedIn feed format, wide
@@ -921,13 +1228,82 @@ out, one warning each:
 - A relation between two parts that each show one fact, which no connection
   shows, is added as a connection.
 
+**The map** (the overview of a `system` choice). After *Every fact drawn*,
+code splits the overview's one view into the map and its detail views. The
+split adds no warning: it is how the map is drawn, not a repair of what the
+engine said.
+
+- **Map parts with an inside.** Each top-level group of the view (a zone's
+  `zone-<id>`, or a holder) that holds at least one part stays on the map,
+  holding nothing there, and its `detail` names a new overview view, its
+  **detail view**, which holds the parts that were inside it with everything
+  inside them.
+  - Its form becomes a panel when it holds mechanisms or shows limits, else a
+    card. A zone's part keeps no fact: its own label is the zone's, its kind
+    `service`, its description `A group of components.` A holder keeps its
+    facts, `held` and `limits`.
+  - Its lane is `{"spine": <n>}`, `<n>` the lowest spine order among the
+    parts it held, when one of them had a spine lane; otherwise it has none.
+- **Detail views.** Id `<part id>-inside` (`-2`, `-3`, … when another view of
+  the file has it); title and caption title the part's label, lede `""`, no
+  texts. The parts directly inside the group are its top-level parts, keeping
+  their lanes and the groups inside them; a side lane whose anchor is not in
+  the view is dropped. It is laid out by its lanes, wide.
+- **Plain map parts.** A top-level part that held nothing stays on the map as
+  it was, with no inside. A side lane whose anchor went into a detail view is
+  dropped.
+- **Connections.** A connection whose two ends are in one view (the map or
+  one detail view) stays there. Any other is **lifted** to the map: each end
+  becomes the map part that holds it (or itself, when it is on the map). One
+  whose two ends lift to the same map part is left out. Connections lifted
+  onto the same pair, in either direction, become one map connection with
+  id `<from>-<to>`:
+  - it keeps those of their relations that join a fact of one end with a
+    fact of the other (rule 12); without one relation it has its own label,
+    style and two-way flag;
+  - when exactly one connection lifts onto the pair, it keeps that one's
+    label, style and step; when several do, it has no label, the style they
+    share (else `call`), the lowest of their steps, and is two-way when they
+    run both ways.
+
+  Steps on the map and in each detail view are then numbered 1, 2, 3 … in
+  their order, silently.
+- The map keeps the view's id, title and caption, and is laid out again by
+  its lanes, wide. The map and its detail views together show or hold every
+  component fact (rule 16), since every part went to exactly one of them.
+- An overview holds at most 30 views (rule 5). Groups past the 29th that
+  would get a detail view, in the order of the view's `nodes`, stay groups on
+  the map, holding their parts, with one warning: `Kept <n> groups on the map:
+  an overview holds at most 30 views`.
+
 The result must pass validation before it is saved.
+
+## Reading `archdraw/diagram@3`
+
+Opening, importing, following an outside change and `archdrawer migrate`
+convert a file with `"schema": "archdraw/diagram@3"`, and the server writes
+it back as `@4`. Nothing is lost and the conversion adds no warning:
+
+- the file's `facts` and `channels` become its one choice,
+  `{"id": "system", "title": "The whole system", "kind": "system",
+  "about": "", "facts": …, "channels": …}`, unchanged: every fact, view and
+  view id, part, connection, text, step, own text, `showSteps` and
+  `outdated` stays as it was (ADR 0006 made the overview the complete map of
+  the file's facts, so the file's one choice is the whole system);
+- `id`, `title`, `theme`, `source`, `engine`, `createdAt`, `updatedAt`,
+  `requests` and `warnings` stay on the document;
+- every request gets `"choice": "system"`.
+
+A file that is invalid as `@3` is invalid and not converted. Read back, the
+`@4` file draws exactly what the `@3` file drew: in the editor, in every
+export and in `archdrawer svg`.
 
 ## Reading `archdraw/diagram@2`
 
 Opening, importing, following an outside change and `archdrawer migrate`
-convert a file with `"schema": "archdraw/diagram@2"` and the server writes it
-back as `@3`. The conversion adds the warning `Converted from
+convert a file with `"schema": "archdraw/diagram@2"` to `@3` as below, then
+to `@4` (*Reading `archdraw/diagram@3`*), and the server writes it back as
+`@4`. The conversion adds the warning `Converted from
 archdraw/diagram@2` and one warning per change of meaning below; a file that
 is invalid as `@2` is invalid and not converted.
 
@@ -975,7 +1351,7 @@ is invalid as `@2` is invalid and not converted.
 ## Reading `archdraw/diagram@1`
 
 `archdrawer migrate` and import convert a file with
-`"schema": "archdraw/diagram@1"` to `@2`, then to `@3` as above: one view
+`"schema": "archdraw/diagram@1"` to `@2`, then to `@3` and `@4` as above: one view
 `overview` (title `Overview`, caption from the old title and subtitle); nodes
 keep id, label, files and position, `tech` becomes `sub`, kind `ui` becomes
 `client`, a missing description becomes `No description yet.`, form `card`;

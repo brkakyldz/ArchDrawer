@@ -16,12 +16,16 @@ Views, LoadError, ops, runner, useAutosave, useDocHistory, viewport),
 
 ## Routes
 
-- `/` — **Library**. `/d/<id>` — **Editor** on the overview channel's first
-  view; `/d/<id>?channel=<channel>&view=<viewId>` opens that channel and view
-  (`view` defaults to the channel's first view). Going to a channel or view
-  updates the URL. Reloading shows the same thing. An older link with only
-  `?view=<viewId>` opens the channel holding that view (view ids are unique
-  in the file); an unknown channel or view opens the overview.
+- `/` — **Library**. `/d/<id>` — **Editor** on the first choice's overview
+  channel, its first view;
+  `/d/<id>?choice=<choiceId>&channel=<channel>&view=<viewId>` opens that
+  choice, channel and view (`channel` defaults to `overview`, `view` to the
+  channel's first view, `choice` to the choice holding `view` when one is
+  given, else the first choice). Going to a choice, channel or view updates
+  the URL. Reloading shows the same thing. An older link with only
+  `?view=<viewId>` or `?channel=<channel>&view=<viewId>` opens the choice and
+  channel holding that view (view ids are unique in the file); an unknown
+  choice, channel or view opens the first choice's overview.
 - Unknown id: `not-found` (`This drawing is not in the library.` and a link
   `Back to the drawings` to `/`).
 - Never a blank page: when the drawing cannot be loaded, when the server's
@@ -44,15 +48,16 @@ Views, LoadError, ops, runner, useAutosave, useDocHistory, viewport),
 | `library-open` | opens `/d/<id>` |
 | `library-menu` | button `⋯`, accessible name `More actions for <title>`; opens `library-menu-list` (Escape or a click elsewhere closes it) |
 | `library-forget` | `Remove from list` (registered file) or `Delete` (imported); asks `confirm()` (`Remove "<title>" from this list? The file stays where it is.` / `Delete the imported drawing "<title>"?`) |
-| `import-input` | file input (`.json`): a valid `@3`, `@2` or `@1` document is imported and opened (`@2` and `@1` converted, drawing contract); otherwise `form-error` shows the server's message and up to 8 violations, or `Not a JSON file: <message>` |
+| `import-input` | file input (`.json`): a valid `@4`, `@3`, `@2` or `@1` document is imported and opened (`@3`, `@2` and `@1` converted, drawing contract); otherwise `form-error` shows the server's message and up to 8 violations, or `Not a JSON file: <message>` |
 | `library-example` | `Open the example drawing`: `POST /api/example`, then opens it; shown when the list is empty, beside the start flow |
 
 ### Starting a drawing from a folder
 
 `start` sits above the list, whether the library is empty or full (START-4).
-It moves through four choices, each kept while the user goes on: folder,
-focus, channel, draw. Every control is reachable by keyboard in that order.
-Enter in a field acts as its button.
+It moves through four steps, each kept while the user goes on: folder, what
+to draw (one or several choices), channel, draw. Every control is reachable
+by keyboard in that order. Enter in a field acts as its button; Space ticks a
+checkbox.
 
 | Test id | Element and behaviour |
 |---|---|
@@ -64,37 +69,44 @@ Enter in a field acts as its button.
 | `start-engine` | the engine and model a scan and a draw use, as `ai-engine` and `ai-model` choose them and sharing their stored choice (*Choosing the engine*) |
 | `scan-progress` | while the scan runs: its latest progress line, and `scan-cancel` (`Cancel`). A cancelled scan shows `start-error` `Cancelled` and keeps the folder |
 | `scan-card` | the repository card: `scan-card-name`, `scan-card-sentence`, `scan-card-type` (`AI agent project`, `Backend service`, `Full-stack app`, `Other project`, with `data-type`), `scan-card-languages`, `scan-card-entry` (one per entry point). A cached scan adds `scan-cached` (`Scanned before at <short commit>`) and `scan-again` (`Scan again`: `refresh: true`) |
-| `focus-option` | one per option, a radio with `data-option` (`o1` …) and `data-kind`. It shows the title, the sentence and `focus-option-files`, one line per file |
-| `focus-whole` | radio `The whole system`, always there (SCAN-3) |
-| `focus-typed` | radio `Something else`, always there. Choosing it focuses `focus-text`, a text field of at most 300 chars (`What should the drawing explain?`) |
-| `channel-choice-linkedin`, `channel-choice-readme`, `channel-choice-presentation` | radios `LinkedIn post`, `README drawing`, `Presentation`, shown once a focus is chosen. None is chosen at first (STORY-1) |
-| `draw-start` | `Draw it`, enabled once a focus and a channel are chosen (and `focus-text` is not empty for a typed focus). It starts the `draw` run (api contract, The draw run) |
-| `draw-progress` | while the run goes: `draw-stage` per stage, in order, with `data-stage` (`read`, `overview`, `channel`) and `data-state` (`waiting`, `running`, `done`). The texts are `Reading the code`, `Drawing the overview` and `Drawing the <LinkedIn post / README drawing / presentation>`. Also `draw-line` (the latest progress line) and `draw-cancel` |
-| `draw-error` | after a failed or cancelled draw: the error, and `draw-retry` (`Try again`, the same choices; it starts from the first stage that did not finish, api contract *What a failed draw keeps*: a reused stage shows `running` with its `Using …` line in `draw-line`, then `done` once the next stage starts). Folder, card, focus and channel stay chosen; nothing was written |
+| `focus-list` | after a successful scan: `What should it draw?`, then the choices as checkboxes (SCAN-3), in this order: `focus-whole`, `focus-sections`, `focus-flows`, `focus-typed`. None is ticked at first; any number may be ticked |
+| `focus-whole` | checkbox `The whole system`, always there, `data-kind="system"`, with the line `A map of the main parts; open each one for its inside` |
+| `focus-sections` | `Sections`: one `focus-option` per option of kind `section`, in option order. Absent when the scan gave none |
+| `focus-flows` | `Flows`: one `focus-option` per option of kind `flow`, in option order. Absent when the scan gave none |
+| `focus-option` | one per option, a checkbox with `data-option` (`o1` …) and `data-kind` (`section` or `flow`). It shows the title, the sentence and `focus-option-files`, one line per file |
+| `focus-typed` | checkbox `Something else`, always there, `data-kind="custom"`. Ticking it shows and focuses `focus-text`, a text field of at most 300 chars (`What should the drawing explain?`); unticking hides it and keeps its text |
+| `focus-none` | when the scan gave no option: `The scan found no sections or flows. Draw the whole system, or say what to draw.` |
+| `focus-count` | once a choice is ticked: `<n> chosen` |
+| `channel-choice-linkedin`, `channel-choice-readme`, `channel-choice-presentation` | radios `LinkedIn post`, `README drawing`, `Presentation`, shown once a choice is ticked. None is chosen at first. The one chosen is drawn for every choice (STORY-1) |
+| `draw-start` | `Draw it` with one choice ticked, `Draw all <n>` with several; enabled once a choice is ticked and a channel chosen (and `focus-text` is not empty when `focus-typed` is ticked). It starts the `draw` run (api contract, The draw run) with `choices` in the order of `focus-list`: the whole system, the sections, the flows, then the typed text |
+| `draw-progress` | while the run goes: one `draw-choice` per choice, in the order drawn, then `draw-line` (the latest progress line) and `draw-cancel` |
+| `draw-choice` | one choice of the run: `data-choice` (its id, as the run record lists it), `data-kind` and `data-state` (`waiting`, `running`, `done`, `failed`, `cancelled`, the record's `status`). It shows `draw-choice-title` (the choice's title) and one `draw-stage` per stage, in order, with `data-stage` (`read`, `overview`, `channel`) and `data-state` (`waiting`, `running`, `done`, or `failed` for the stage a failed or cancelled choice ended in). The stage texts are `Reading the code`, `Drawing the overview` (for the whole system `Drawing the map`) and `Drawing the <LinkedIn post / README drawing / presentation>` |
+| `draw-error` | after a failed or cancelled draw: the error, with the `draw-choice` rows still shown as the run ended (earlier choices `done`, the one it ended in `failed` or `cancelled`, later ones `waiting`), and `draw-retry` (`Try again`, the same choices and channel). It starts from the first choice that did not finish, at its first unfinished stage (api contract *What a failed draw keeps*): a reused stage shows `running` with its `Using …` line in `draw-line`, then `done` once the next stage starts, so the choices that finished go `done` without an engine call. Folder, card, ticked choices and channel stay chosen and may be changed before `draw-start`; nothing was written |
 
-On success the editor opens on the new drawing at the chosen channel
-(`/d/<id>?channel=<channel>`), and the drawing is in the list. While a scan or
-a draw runs, the folder, focus and channel controls are disabled.
+On success the editor opens on the new drawing at the first choice and the
+chosen channel (`/d/<id>?choice=<choiceId>&channel=<channel>`), and the
+drawing is in the list. While a scan or a draw runs, the folder, choice and
+channel controls are disabled.
 
 
 ## Editor frame
 
 | Test id | Element and behaviour |
 |---|---|
-| `editor` | root; `data-theme` `light`/`dark`; `data-channel` the current channel; `data-view` the current view id |
+| `editor` | root; `data-theme` `light`/`dark`; `data-choice` the current choice's id; `data-channel` the current channel; `data-view` the current view id |
 | `repo-name` | the document `title` |
-| `channel-tabs` | four tabs in this order: `channel-tab-overview` (`Overview`), `channel-tab-linkedin` (`LinkedIn`), `channel-tab-readme` (`README`), `channel-tab-presentation` (`Presentation`); the current one `aria-current="true"`; a tab whose channel's `outdated` is not empty has `data-outdated="<n>"` and shows `channel-outdated-<channel>`, a dot with the accessible name `Needs update: <n> change(s)`; choosing a tab goes to that channel's first view |
-| `crumbs` | overview channel only: the path of views from its first view to the current one, following `detail` links; earlier views are buttons `crumb-<viewId>`, the current one is text. Absent in the other channels |
+| `channel-tabs` | the current choice's channels, four tabs in this order: `channel-tab-overview` (`Overview`), `channel-tab-linkedin` (`LinkedIn`), `channel-tab-readme` (`README`), `channel-tab-presentation` (`Presentation`); the current one `aria-current="true"`; a tab whose channel's `outdated` is not empty has `data-outdated="<n>"` and shows `channel-outdated-<channel>`, a dot with the accessible name `Needs update: <n> change(s)`; choosing a tab goes to that channel's first view |
+| `crumbs` | overview channel only: the path of views from the current choice's first overview view to the current one, following `detail` links; earlier views are buttons `crumb-<viewId>`, the current one is text. Absent in the other channels |
 | `save-status` | `Saved` when the file has the latest edit; `Saving…` while one is pending (edits are saved 350 ms after the last change, one request at a time, always the latest document); on failure the error and `save-retry` (`Retry`), never `Saved`; on 409 `The file changed outside the editor` and `save-reload` (`Load the file's version`), which loads the stored document |
 | `canvas` | the drawing surface; `data-detail`, `data-tool`. Wheel zooms around the pointer (Ctrl+wheel and pinch faster); drag pans with the pan tool, or with any tool while Space is held or with the middle or right button; dragging empty canvas with the select tool box-selects; a drag never selects page text |
 | `zoom-in`, `zoom-out`, `zoom-fit` | ×1.2 / ÷1.2 around the centre, zoom 15–300 %; fit shows the whole view at most 115 %. `zoom-level` shows the whole percent (`100%`) |
 | `toast` | a message for about 2.6 s |
 | `warnings` | shown when the document has `warnings`: `<n> warning(s) from the last change` and the list; a run that saves replaces them with its own, so after a clean run the banner is gone; `warnings-dismiss` clears them from the document |
-| `views-button` | overview channel only, when it holds more than one view: opens `views-menu`: `view-item-<viewId>` for every overview view in file order (`data-kind` `Overview`/`Detail`), the current one `aria-current="true"`; choosing one goes there |
+| `views-panel` | the views panel (*Choices and the views panel*). There is no `views-button`, `views-menu` or `view-item-<viewId>` any more |
 | `search-button` | also `/` or Ctrl/Cmd+K when no text input has focus: opens `search` with `search-input` focused (`/` or Ctrl/Cmd+K focuses it again when it is already open). A component matches when its label contains the typed text, case-insensitively. As you type, the matches on the current view are lit on the canvas (`node-<id>` `data-match="true"`, a ring drawn around the part) and every other component dims (`data-dim="true"` on `node-<id>`, and on every `edge-<id>` that does not join two matches); nothing moves and no part changes size. `search-count` shows `<n> match(es)`, `<i> of <n>` once stepped, or `No match in this view`; any typing in `search-input`, even of the same text, ends the stepping (no current match). Enter steps to the next match on this view and Shift+Enter to the previous one, wrapping (also `search-next`, `search-prev`): the match becomes `data-match="current"` and the only selected component, and the view moves, at the same zoom, only when that part is not wholly on screen or is behind the search panel (it is then centred below the panel). Matches in other views are listed under `In other views` (at most 50): `search-result` with `data-view` and `data-node-id`, label and view title; a click, or the arrow keys then Enter, goes to that view (fitted, then moved the same way only if the part is still off screen or behind the panel) with that match selected and current; with no match on this view, Enter opens the first listed one. `No component is called that` when no view has a match. Search stays open until Escape (in it, or anywhere outside a text input), which closes it, ends the highlight and dimming and keeps the selection |
 | `ai-button` | toggles `ai-panel` |
 | `present-start`, `tour-start` | presentation channel only: `Present` and `Tour` open `present` (*Presenting and the tour*). Disabled, with the title `Add a step first`, when the channel has no view or no step. They stay in the header at every width (icon-only, with these accessible names, below 900 px wide); `header-menu` is unchanged |
-| `header-menu-button` | only below 900 px wide: opens `header-menu`, which then holds `repo-name`, `channel-tabs`, `crumbs`, `tool-undo`, `tool-redo`, `tool-theme`, `tool-steps` |
+| `header-menu-button` | only below 900 px wide: opens `header-menu`, which then holds `repo-name`, `channel-tabs`, `crumbs`, `views-panel` (when there is one), `tool-undo`, `tool-redo`, `tool-theme`, `tool-steps`, `tool-sublines` |
 
 Every icon-only button has an accessible name at every width.
 
@@ -108,6 +120,7 @@ Every icon-only button has an accessible name at every width.
 | `tool-undo`, `tool-redo` | Ctrl/Cmd+Z; Ctrl/Cmd+Shift+Z or Ctrl+Y | disabled when there is nothing to undo/redo, while a run is going and while a result is in preview (*Preview, Accept and Undo*); their keys then show the toast of that state |
 | `tool-theme` | — | toggles `theme` (saved; `aria-pressed` when dark) |
 | `tool-steps` | — | toggles the current channel's `showSteps` (saved; `aria-pressed`) |
+| `tool-sublines` | — | `Sub-lines`: toggles the current view's sub-line switch (`subLines`, drawing contract *View*; `aria-pressed` when on). One undoable edit, saved, changing only the current channel. Off, no `node-sub` is drawn in the view and every part shrinks to its icon and label (drawing contract, *Sub-lines*); on again, the field is removed from the view. Disabled on a channel with no view |
 | `share-button` | — | opens `share-dialog` |
 
 Tools have `aria-pressed` on the active one. Tool keys do nothing while a text
@@ -132,11 +145,62 @@ a drag is one step.
 
 **Semantic zoom.** `canvas` `data-detail` is `full` at ≥ 75 %, `outline` from
 50 % to under 75 %, `overview` below 50 %. Sizes, positions and paths never
-change with it. In `outline` the text of every `node-item` and the contents of
-every `edge-label-<id>` have opacity 0 (the item's row shape stays at 0.5); in
-`overview` also every `node-sub`, and connections without a step are at 0.3.
+change with it. In `outline` the contents of every `edge-label-<id>` have
+opacity 0; in `overview` also every `node-sub`, and connections without a
+step are at 0.3.
 The component whose callout is open, and labels of its connections, stay at
 full opacity. Faded elements stay clickable.
+
+### Choices and the views panel
+
+A drawing holds one or more choices (drawing contract, *Choice*); the editor
+shows one at a time, the **current choice**. `channel-tabs`, `crumbs`, the
+canvas, search, the AI panel and its runs, the steps panel, presenting, the
+tour and the share dialog with its downloads all act on the current choice
+alone, and an edit changes only it (drawing contract, *Edits: facts or
+channel*). Search looks in the current choice only. Undo and redo cover the
+edits of every choice.
+
+`views-panel` (`<nav>`, accessible name `Views`) lists every overview view
+of every choice (NAV-2):
+
+- It shows when the drawing has more than one choice, or its one choice's
+  overview holds more than one view; otherwise it is absent.
+- At 900 px wide and over, it sits left of the stage, 240 px wide and as
+  tall as the stage, which narrows so nothing is covered. `views-collapse`
+  (`aria-expanded`, accessible name `Hide views` while open, `Show views`
+  while folded) folds it to a 40 px strip holding only that button, and back;
+  the browser remembers it for every drawing.
+- Below 900 px wide it is not beside the stage: `header-menu` holds it, with
+  the same test ids, and choosing an entry closes the menu.
+
+It lists, in this order: the `system` choice; `views-heading-section`
+(`Sections`) and each `section` choice; `views-heading-flow` (`Flows`) and
+each `flow` choice; `views-heading-custom` (`Your own`) and each `custom`
+choice. Choices of a kind are in file order, and a heading shows only when
+its kind has a choice. Each choice is `views-choice-<choiceId>`, with
+`data-kind`, holding its entries:
+
+- `views-entry-<viewId>` for its overview's first view, `data-depth="0"`,
+  showing the choice's title;
+- under it, `views-entry-<viewId>` for each other view of its overview,
+  showing the view's title: first the views `detail` links reach from the
+  first view, depth first, each after the view that links to it, in the order
+  of the linking parts in that view's `nodes`, with `data-depth` 1, 2, 3 …
+  and indented 16 px per level; then the views no link reaches, at depth 1,
+  in file order.
+
+Every entry is a button with `data-choice`, `data-view` and `data-depth`.
+In the overview channel the current view's entry has `aria-current="true"`;
+in any other channel the current choice's first entry has it. One click on
+an entry goes to that view, in the overview channel of its choice, fitted;
+the URL follows (*Routes*) and `crumbs` show its path. Going there is not an
+edit, and it works during a run and a preview as going to a view always does.
+
+Keyboard: every entry is in the tab order, after the header and before
+`canvas`. Up and Down move the focus to the entry above or below (not
+wrapping), Home and End to the first and the last; Enter or Space goes to
+the entry's view.
 
 ## Channels
 
@@ -156,10 +220,12 @@ leaves it out of that channel. The current channel is never marked.
 ### Simple versions
 
 Without an engine, `channel-prepare` (and `linkedin-prepare` on LinkedIn) and
-`channel-redraw` draw a channel from the overview channel's first view in
+`channel-redraw` draw a channel from the overview channel's first view (for a `system` choice the map and its detail views in `views-panel` order, skipping parts with a `detail`) in
 code. It is one undoable edit that replaces what the channel held and empties
 its `outdated`. The view keeps its id when the channel already has one, else
-it is named after the channel. It is titled `LinkedIn`, `README` or
+it is named as a story's new view is (drawing contract, *The view*: the
+channel's name, such as `readme`, or `<choice id>-readme` outside the file's
+first choice, `-2`, … when taken). It is titled `LinkedIn`, `README` or
 `Presentation`, and its caption is copied from the overview's first view.
 
 - **LinkedIn:** as *The LinkedIn flow* says.
@@ -204,30 +270,114 @@ un-dims the parts. The steps are presented, toured and exported as slides
 
 | Test id | Element |
 |---|---|
-| `node-<id>` | one per component of the view; `data-kind`, `data-form`, `data-parent` (id or empty), `data-selected`, `data-changed="true"` while a run's result that added, changed or moved it is in preview (*Preview, Accept and Undo*); `data-dim="true"` while dimmed (an open callout or a search); `data-match` while search lights it (`true`, or `current` for the one stepped to); contains the outline with `data-shape` (drawing contract, *Geometry*, Shapes), `node-label`, `node-sub` (when non-empty), `node-item` per held item (`data-index`), `node-inside` (when `detail` is set; a click goes to that view) |
+| `node-<id>` | one per component of the view; `data-kind`, `data-form`, `data-parent` (id or empty), `data-selected`, `data-changed="true"` while a run's result that added, changed or moved it is in preview (*Preview, Accept and Undo*); `data-dim="true"` while dimmed (an open callout or a search); `data-match` while search lights it (`true`, or `current` for the one stepped to); `data-lifted="true"` while it is dragged, `data-drag-dim="true"` while other parts are dragged, and on a group `data-drop-target="true"` while a dragged part would join it on release (*Dragging*); contains the outline with `data-shape` (drawing contract, *Geometry*, Shapes), `node-label`, `node-sub` (when drawn: non-empty and the view's sub-lines on), `node-inside` (when `detail` is set; a click goes to that view) and, on a part four or more parts use, `node-used-by` (*Parts many parts use*). No part draws an item, held or limit row. A group's `node-label`, `node-sub` and `node-inside` are in its `node-head-<id>` instead |
+| `node-head-<id>` | a group's head, drawn over the connections and under the parts (drawing contract, *A group's name*): its icon, `node-label` and `node-sub` with their halo, and `node-inside`. Double-clicking its label renames the group as `node-label` does elsewhere |
+| `node-used-by` | inside a hub's `node-<id>`: the mark `used by <n>`, `data-count="<n>"` (drawing contract, *Parts many parts use*). Hovering it is hovering the part |
 | `port-<id>-<t\|r\|b\|l>` | four ports on the hovered component; dragging from one onto another component connects them |
-| `edge-<id>` | `data-style`, `data-both`, `data-step` (number or empty), `data-selected`, `data-dim="true"` while dimmed (an open callout, a search, or numbered steps on and the connection has no step) |
-| `edge-label-<id>` | the label when drawn (a label without room is left out, never drawn over a component) |
+| `edge-<id>` | `data-style`, `data-both`, `data-step` (number or empty), `data-selected`, `data-dim="true"` while dimmed (an open callout, a search, or numbered steps on and the connection has no step); `data-tone` `kind` or `neutral` and `data-focus="true"` while in focus (*Connections in focus*); `data-hidden="true"` while a hub hides it; `data-drag-dim="true"` while parts it does not touch are dragged |
+| `edge-label-<id>` | the label when drawn (a label without room is left out, never drawn over a component); its border takes its line's colour while the line is coloured. Hovering it puts its connection in focus, as hovering the line does |
+| `trunk` | one per shared trunk (drawing contract, *Trunks*): `data-part` (the part it arrives at), `data-side` (`t`, `r`, `b`, `l`), `data-edges` (the ids of its connections in view order, space-separated) and `data-tone`. Hovering it is hovering none of its connections |
 | `step-badge-<id>` | while steps are on, on each connection with a step; never intersects a drawn label, also in `share-preview` and SVG downloads |
 | `text-<id>` | `data-size`, `data-selected`; the text as real `<text>` |
 
 The canvas draws the same markup and numbers as the share image: at 100 %
 zoom, a `node-<id>` box has the size of the first `rect` of
-`[data-node-id="<id>"]` in the exported SVG.
+`[data-node-id="<id>"]` in the exported SVG, and once no pointer is down every
+`edge-<id>` line has the path of the `<g data-edge-id>` line in the export.
+The marks of focus, dragging, guides and the drop target are the editor's
+alone: no export, share preview or slide draws them.
+
+### Connections in focus
+
+Connections are drawn in one neutral colour (drawing contract, *Colour*). A
+connection is *in focus* — `data-focus="true"`, `data-tone="kind"`, drawn in
+its kind colours with its label's border in its colour — while:
+
+- one of its ends is hovered (the pointer over its `node-<id>`) or selected,
+  which includes the component whose callout is open;
+- it is selected, or the pointer is over it or over its `edge-label-<id>`;
+- one of its ends is being dragged;
+- on the presentation channel with a step current, both its ends are in that
+  step's parts;
+- while search lights matches, both its ends match.
+
+A connection with a step is always `data-tone="kind"`, with `data-focus` only
+while in focus. Every other connection is `neutral`. Focus moves nothing and
+changes no size.
+
+**Parts many parts use.** A connection a hub hides (drawing contract, *Parts
+many parts use*) is in the canvas as `edge-<id>` with `data-hidden="true"`:
+not visible, taking no pointer input, with no label, badge or trace drawn.
+While one of its ends is hovered, selected or dragged it shows: `data-hidden`
+is absent, it is in focus, and its label, badge and trace are drawn where the
+routing put them; nothing else moves. The hub's `callout-link-<otherId>`
+chips list every connection, hidden or not.
 
 ### Selecting and moving
 
 - A click on a component, text or connection selects it; Shift+click toggles
   it in the selection; a box drag selects what it touches.
-- Dragging moves the selection (a group with everything inside); connections
-  follow every frame; on release positions snap to 8 px. A moved component
-  whose centre lands inside a group becomes its child (as deep as nesting
-  allows); outside every group it becomes top level.
+- Dragging moves the selection (a group with everything inside), as
+  *Dragging* says. A moved component whose centre lands inside a group
+  becomes its child (as deep as nesting allows); outside every group it
+  becomes top level.
 - A click on a component also opens its callout, a second click closes it.
   A click on empty canvas clears the selection and callouts.
 - After every edit, lanes stay valid: a component whose spine order is taken
   among its new siblings loses its lane, and a side lane whose anchor is gone,
   no longer a spine part, or inside the component is dropped.
+
+### Dragging
+
+EDIT-5, ADR 0013. A drag of components with the select tool:
+
+- **What moves.** On every pointer move only the dragged components and the
+  connections with an end among them are routed again (their sides held as
+  the drawing contract's *While dragging* says, their ends gliding over
+  120 ms), with their own labels and badges. Every other connection keeps its
+  path, its `edge-label-<id>` box and its `step-badge-<id>`, and every
+  group's `node-<id>` keeps its box, the dragged components' own groups too,
+  until release. On release everything is measured, routed and placed again
+  once, as the export draws it.
+- **Lifted look.** Each dragged component has `data-lifted="true"`: a
+  stronger shadow, with no scale and no size change (its box is the same
+  during and after the drag). Its connections are in focus and drawn above
+  every other connection, still under the components. Every other
+  `node-<id>` and `edge-<id>` has `data-drag-dim="true"` and opacity 0.6. On
+  release all of these go.
+- **The target group.** While dragging, the group the piece under the pointer
+  would join on release (by the rule above, its centre) has
+  `data-drop-target="true"` and a box-shaped ring in the accent colour. Over
+  no group, no component has it; after release none has it.
+- **Guides and snapping.** The dragged components' bounding box is compared
+  with the box of every other component that does not hold one of them: its
+  left, centre and right with theirs, and its top, middle and bottom with
+  theirs. Within 6 screen px (6 ÷ zoom in drawing px) it snaps to the nearest
+  such line in each axis, and a `drag-guide` shows that line from the other
+  box to the dragged one, with `data-axis` (`x` for a vertical line, `y` for
+  a horizontal one) and `data-at` (its drawing coordinate). When the box
+  lies between two components in a row — the nearest one each side whose
+  boxes overlap it vertically — and the two gaps differ by at most 6 screen
+  px, it snaps so they are equal, and one `drag-gap` marks each gap
+  (`data-axis="x"`, `data-size` the gap in drawing px); likewise in a column
+  (`data-axis="y"`). Where both would snap in one axis, the nearer wins, a
+  guide on a tie. In an axis with no snap, every dragged component's
+  position snaps to the 8 px grid during the drag. Positions are whole
+  pixels, so release changes none of them.
+- **Alt.** While Alt is held, no guide or gap mark shows and nothing snaps:
+  the components follow the pointer, in whole pixels.
+- **A drop never covers.** On release, a moved top-level piece (a group with
+  everything inside) whose box overlaps a component that is neither moving
+  nor one of the piece's new ancestors moves, with what it holds, to the
+  nearest free spot: on the 8 px grid, searched ring by ring from where it
+  was dropped, 24 px clear of every such component, and with the frames of
+  its new groups, grown around it, clear of the components outside them, as
+  *Adding a component* places a new one. It keeps the parent its drop gave
+  it. A drop that overlaps nothing, inside a group's empty area too, stays
+  exactly where it was released.
+- **One save.** A drag is one edit and one undo step, saved once after
+  release: one `PUT` per drag, and `save-status` does not show `Saving…`
+  before release.
 
 ### Callout
 
@@ -245,27 +395,28 @@ every component until unpinned.
 | `callout-form` | the form; opens `form-menu` with `form-option-<form>`, each a `form-thumb` and its name. Choosing `panel` shows the fact's items, or adds `New item` when it has none; leaving `panel` hides the items and keeps them in the fact (drawing contract, *Edits: facts or channel*); leaving `group` moves its members to its parent |
 | `callout-icon` | opens `icon-menu`: `icon-option-default` (`Kind's icon`) and `icon-option-<name>` |
 | `callout-description` | double-click: `callout-description-input` (Ctrl/Cmd+Enter or blur commits, Escape cancels, empty keeps the old text) |
-| `callout-items` | (panel) `callout-item` each: double-click gives `callout-item-input` (Enter/blur commits, Escape cancels, emptied removes it), `callout-item-up`, `callout-item-down`, `callout-item-remove`; `callout-item-add` (`+ Add an item`, hidden at 12) appends `New item` and edits it; removing the last item makes it a card |
+| `callout-items` | (panel) `What it holds`: the part's rows in the file's order (drawing contract, *What a channel draws*), the only place they show, since no part draws them on the canvas or in an export (LOOK-3). One `callout-item` each, with `data-row` `held` (a held mechanism's label), `item` (a shown item) or `limit` (a limit's text, in the muted colour after a timer icon). Double-click gives `callout-item-input` (Enter/blur commits — a held row renames its mechanism and a limit row edits its limit, in every channel —, Escape cancels, emptied removes it); `callout-item-up`, `callout-item-down` (a row moves only among rows of its own `data-row`); `callout-item-remove` (a held or limit row only stops being held, drawing contract *Mechanisms and limits*); `callout-item-add` (`+ Add an item`, hidden at 12 rows) adds `New item` before the limits and edits it; removing the last row makes it a card |
 | `callout-link-<otherId>` | a chip per connected component, `data-direction` `to`/`from`/`both`; a click selects it and opens its callout |
 | `callout-files` | absent for a part that shows no fact; `callout-file` each with `callout-file-remove` (which removes it from every fact of the part that lists it); `callout-file-add` gives `callout-file-input` (Enter adds a repository-relative path, at most 20; a path outside the repository toasts `Use a path inside the repository, like src/app.ts`; Escape or blur cancels). A path that does not exist in the repository (`check-files`, api contract) still saves; its `callout-file` has `data-missing="true"` and shows `callout-file-missing` `not in the repository` |
 | `callout-parent` | `<select>`: `""` (`Top level`) and every group of the view except the component and what it holds; choosing one moves it inside that group at a free spot |
 | `callout-open-inside` | (`detail` set) `Open inside`: goes to that view |
-| `callout-create-inside` | (`detail` null, on the overview: the other channels hold one view each) `Draw its inside`: adds a view titled after the component holding one copy of it (a group copied as a card), pointing to the same facts (a group with no fact copied with its drawn label, kind and description as its own), sets `detail`, goes there |
+| `callout-create-inside` | (`detail` null, on the overview: the other channels hold one view each) `Draw its inside`: adds a view titled after the component, id `<part id>-inside` (`-2`, `-3`, … when any view of the file has it), holding one copy of it (a group copied as a card), pointing to the same facts (a group with no fact copied with its drawn label, kind and description as its own), sets `detail`, goes there |
 | `callout-ask` | `Change this part`: selects the component and opens `ai-panel` with `ai-scope-selection` chosen and `ai-input` focused |
 | `callout-delete` | deletes the component, its connections, and moves a group's members to its parent; in the overview its facts go too, elsewhere it is only left out of this channel (*Channels*) |
 | `callout-close` | closes |
 
 On the canvas: double-click a label → `node-label-input`; a sub-line →
-`node-sub-input` (below the label of a component without one adds one); a held
-item → `node-item-input`. Enter or blur commits, Escape cancels; an empty label
-is refused, an emptied item is removed.
+`node-sub-input` (below the label of a component without one adds one; with
+the view's sub-lines off there is none to edit). Enter or blur commits,
+Escape cancels; an empty label is refused. Rows are edited in the callout.
 
 ### Adding a component
 
 `tool-component`, then a click on empty canvas opens `component-picker`:
 `picker-kind-<kind>` (default `service`), `picker-form-<form>` (default
-`card`, each with a `form-thumb` drawn in the chosen kind's shape, with its
-`data-shape`), `picker-add` (`Add component`). Adding
+`card`, each with a `form-thumb`: a card, compact or panel drawn in the
+chosen kind's shape, with its `data-shape`, and a group as `group`),
+`picker-add` (`Add component`). Adding
 places `New component` (id `new-component`, `-2`, …) of that kind and form
 centred on the click, moved to the nearest free spot, inside the group
 clicked in; a panel starts with `New item`, a group empty. `node-label-input`
@@ -303,10 +454,32 @@ blur commits, Escape resets), `edge-style-call|async|dep` (`aria-pressed`),
 
 ### Views and steps
 
-`node-inside` and `callout-open-inside` go to the component's `detail` view;
-`crumbs` lead back; going to a view fits it. A view removed by undo or a run
-falls back to the first. With `tool-steps` on, `step-badge-<id>` appear and
-connections without a step dim; off, no badges.
+`node-inside`, `callout-open-inside` and a click on a part with an inside
+(below) go to the component's `detail` view; `crumbs` and `views-panel` lead
+back; going to a view fits it. A view removed by undo or a run falls back to
+the first view of its choice. With `tool-steps` on, `step-badge-<id>` appear
+and connections without a step dim; off, no badges.
+
+**Opening a part's inside** (NAV-1, ADR 0015). A part whose `detail` is set
+is a **part with an inside**, in any overview view of any choice, whatever
+its form. Its `node-<id>` has `data-open="true"`, and it draws the open mark
+(drawing contract, *Geometry*, The open mark): `node-inside` is that mark, and
+the share image and every export draw it the same. With the select tool, in
+place of what *Selecting and moving* says of a click on a component:
+
+- a click on it (press and release with less than 3 screen px of movement
+  between them, and no modifier key) goes to its `detail` view, fitted. It
+  selects nothing, opens no callout and is not an edit;
+- a drag of it moves it as any part is moved, and goes nowhere;
+- Shift+click toggles it in the selection, as on any part, and opens its
+  callout when it is then the only part selected; there `callout-title`
+  renames it and `callout-open-inside` goes in. A box drag selects it too;
+- it is focusable (`tabindex="0"`, `role="button"`, accessible name `Open
+  <label>`), in the order of the view's `nodes`, after `canvas` in the tab
+  order; Enter on it goes in.
+
+A part with no inside behaves as before: a click selects it and opens its
+callout.
 
 ## AI panel
 
@@ -325,18 +498,20 @@ name `Ask AI`) opens and closes it.
 | `ai-engine-note` | `<label> reads the repository (read-only) and changes the drawing`; for the test engine `Test engine (no AI): it understands only add, remove, rename, hold, move and align, gives a canned post, a canned simplification and a canned second look, and changes nothing else`; without engine `No engine is available: the instruction is saved in the file for your next archdrawer session` |
 | `ai-scope-view`, `ai-scope-selection`, `ai-scope-all` | radios `This view`, `Selected parts (<n>)`, `The whole channel`; default view; selection disabled (and falls back to view) without a selected component |
 | `ai-send` | disabled while `ai-input` is empty, while a run is going, and on a channel with no view (`ai-button` still opens the panel there; the suggestions and `ai-look-again` are disabled too) |
-| `ai-look-again` | `Look at the drawing again` (LAYOUT-4): renders the current view as the share image in the channel's default format with its starting switches (*Share*), at 1×, as PNG, and starts a `revise` run for the current channel and view with that image (api contract, *The second look*). Disabled during a run, on a channel with no view and without an engine |
+| `ai-look-again` | `Look at the drawing again` (LAYOUT-4): renders the current view as the share image in the channel's default format with its starting switches (*Share*), at 1×, as PNG, and starts a `revise` run for the current choice, channel and view (`choice`, `channel`, `view`) with that image (api contract, *The second look*). Disabled during a run, on a channel with no view and without an engine |
 
 Sending first waits until every edit is saved (else fails with
 `Your last edit is not saved yet; the instruction was not sent`). With an
-engine it starts `POST /api/runs` for the current channel and view, the scope
-`{"kind":"view"}`, `{"kind":"parts","ids":[…]}` or `{"kind":"all"}`, and the
-chosen engine and model (`null` for `Default`); `ai-input` is then cleared.
-Without an engine it posts to `/api/diagrams/:id/requests` (current channel
-and view). If the run's event stream closes for good, the run is cancelled
-and fails with `Lost the connection to the instruction, so it was stopped`.
-Only one run at a time; the AI panel, the channel stages, the LinkedIn panel
-and the share dialog share it.
+engine it starts `POST /api/runs` for the current choice, channel and view
+(`choice`, `channel`, `view`), the scope `{"kind":"view"}`,
+`{"kind":"parts","ids":[…]}` or `{"kind":"all"}`, and the chosen engine and
+model (`null` for `Default`); `ai-input` is then cleared. Without an engine it
+posts to `/api/diagrams/:id/requests` for the current choice, channel and view
+(`choice`, `channel`, `view`). If the run's event stream closes for good, the
+run is cancelled and fails with
+`Lost the connection to the instruction, so it was stopped`. Only one run at a
+time; the AI panel, the channel stages, the LinkedIn panel and the share
+dialog share it.
 
 **Choosing the engine**: the one last chosen in this browser if available;
 else the document's `engine` if available and not the test engine; else the
@@ -503,7 +678,7 @@ part (SHARE-2).
 |---|---|
 | `format-feed`, `format-readme`, `format-slide`, `format-square` | `Where will you share it?` (`aria-pressed`): `LinkedIn` 1080×1350, `README` 1600×900, `Slide` 1920×1080, `Square post` 1080×1080. `format-feed` is also pressed for the wide post. Default `format-feed` on the LinkedIn channel, `format-slide` on the presentation, else `format-readme` |
 | `share-theme-light`, `share-theme-dark` | the image theme (default the drawing's) |
-| `share-advanced-toggle` | `Advanced options` (`aria-expanded`); shows `share-advanced`: `format-linkedin` (`Landscape LinkedIn post`, 1620×1080) and checkboxes `show-title`, `show-lede`, `show-items`, `show-steps`, `show-labels`, `show-legend`, `show-texts`. Starting toggles (reset when the format changes): on the LinkedIn channel, or with `format-feed`, title, description, held items, numbered path, labels and texts on, colour key off; Square: title, description, numbered path and texts on, held items, labels and colour key off; otherwise title, held items, numbered path, labels, colour key and texts on, description off |
+| `share-advanced-toggle` | `Advanced options` (`aria-expanded`); shows `share-advanced`: `format-linkedin` (`Landscape LinkedIn post`, 1620×1080) and checkboxes `show-title`, `show-lede`, `show-sub` (`Sub-lines`), `show-steps`, `show-labels`, `show-legend`, `show-texts`. Starting toggles (reset when the format changes): on the LinkedIn channel, or with `format-feed`, title, description, numbered path, labels and texts on, colour key off; Square: title, description, numbered path and texts on, labels and colour key off; otherwise title, numbered path, labels, colour key and texts on, description off; in every format `show-sub` starts as the view's sub-line switch (`tool-sublines`). There is no `show-items`: no part draws rows |
 | `share-actions` | always visible: `readability`, `layout-report`, `download-png`, `download-svg`, `copy-image`; on the presentation channel also `download-slides-pdf` and `download-slides-png` |
 | `readability` | `data-level` `good`/`ok`/`warn`; one plain sentence for the chosen destination with at most one suggestion, and no numbers (Readability, below); `readability-details-toggle` (`Details`, `aria-expanded`, closed when the dialog opens) shows `readability-details`: `Names <a> px and text <b> px <where>, <c> px opened.` |
 | `share-clipped` | when component text is shortened with `…`: `Shortened in this image:` and `share-clipped-item` per text (`<label>: <full text>`) |
@@ -525,8 +700,8 @@ disabled and the one pressed says `Making slides…`; a failure shows the toast
 `<slug>`: the title lower-cased, accents removed, non-alphanumerics → `-`,
 trimmed (`diagram` when empty).
 
-Suggestion: none at `good`; with held items shown,
-`hiding what each part holds would help`; else on a LinkedIn or Square format
+Suggestion: none at `good`; with sub-lines shown,
+`hiding the sub-lines would help`; else on a LinkedIn or Square format
 and not on the LinkedIn channel, `the LinkedIn version would help`; else
 `a larger format would help`.
 
@@ -545,6 +720,15 @@ controls below.
   (`Prepare the simple version`) and `post-engine-note`
   (`No engine available — prepared without AI`). Choosing a channel never
   starts a run.
+- With an engine, `linkedin-flow` also holds `stage-engine` (a `<select>` of
+  the available engines, value id and text label, as `ai-engine`) and
+  `stage-model` (a `<select>`, `""` `Default` then the engine's models, as
+  `ai-model`). They show and change the engine and model `channel-draw` and
+  `design-post` use. Their choice is the one `ai-engine` and `ai-model` store
+  (*Choosing the engine*): a change in either place shows in the other at
+  once, and in `start-engine`. They are disabled during a run and absent
+  without an engine. The rest of the empty stage stays as `channel-empty`
+  says: drawing tools, `ai-send` and `share-button` stay disabled.
 - Beside the drawn LinkedIn channel, `linkedin-panel` (`LinkedIn post`):
   `share-caption-title` and `share-caption-lede` edit its caption
   (undoable); `arrange-feed` (`Re-arrange`) places its parts again by their
@@ -564,9 +748,11 @@ controls below.
   orientation without writing anything.
 
 **Without an engine**, `linkedin-prepare` draws the LinkedIn channel's view
-from the overview channel's first view as one undoable edit, replacing what
+from the overview channel's first view (for a `system` choice the map and its detail views in `views-panel` order, skipping parts with a `detail`) as one undoable edit, replacing what
 the channel held and emptying its `outdated`. The view's id is kept when the
-channel already has a view, else `linkedin`; its title `LinkedIn`, its caption copied from the overview's first view:
+channel already has a view, else it is named as a story's new view is
+(drawing contract, *The view*: `linkedin`, or `<choice id>-linkedin` outside
+the file's first choice, `-2`, … when taken); its title `LinkedIn`, its caption copied from the overview's first view:
 
 - groups fold into one part each (members not drawn); texts are left out;
   connections inside one group disappear; two connections between the same
@@ -576,10 +762,10 @@ channel already has a view, else `linkedin`; its title `LinkedIn`, its caption c
   (at most 4), +2 if it holds something (items, or a folded group's
   members), +1 if its description is not `No description yet.`; ties by
   main-path order, then view order;
-- the open parts — score ≥ 5, at most 4 — are panels listing up to 5 entries
-  (a longer list ends `+ <n> more`), or cards when they hold nothing; other
-  main-path parts are cards; the rest compact; a card whose sub-line would be
-  shortened becomes compact;
+- the open parts — score ≥ 5, at most 4 — are panels whose own `items` are
+  up to 5 entries (a longer list ends `+ <n> more`), shown in the callout, or
+  cards when they hold nothing; other main-path parts are cards; the rest
+  compact; a card whose sub-line would be shortened becomes compact;
 - the main path runs along a grid of three columns (two when that reads more
   than 8 % larger), turning back at each row; other parts sit beside what they
   connect to; columns use their own widest part;
@@ -614,17 +800,23 @@ The same image comes from the preview, the downloads, `archdrawer svg` and
   feed 32, slide 40). No editor chrome, no `<foreignObject>`, no `<script>`,
   and no product mark: the text `archdrawer` appears nowhere.
 - One `<g data-node-id>` per drawn component (`data-kind`, `data-form`), one
-  `<g data-edge-id>` per drawn connection holding its line, label and badge,
-  `<g data-text-id>` per text; labels as real `<text>`.
+  `<g data-edge-id>` per drawn connection holding its line, label and badge
+  (`data-tone`; a connection a hub hides has none), one `<g data-trunk>` per
+  trunk, one `<g data-group-head>` per group, `<g data-text-id>` per text;
+  labels as real `<text>` (drawing contract, *Connections*).
 - `show-title` draws `caption.title`, `show-lede` `caption.lede`,
   `show-legend` one key entry (dot and kind label) per kind present. README,
   slide and square place caption and key in a free corner (together if they
   fit), else in a strip under the drawing (title left, key right). Both post
   formats put title and description across the top and nothing under the
   drawing; a key goes in a free corner or is left out.
-- Caption text wraps and is never shortened. `show-items` off draws panels
-  without items (shrunk around their centre); `show-steps` draws badges;
-  `show-labels` off hides connection labels; `show-texts` off hides texts.
+- Caption text wraps and is never shortened. `show-sub` off draws every
+  part without its sub-line, measured without it (drawing contract,
+  *Sub-lines*) and shrunk around its own centre, and on draws every part with
+  it, grown around its centre, when the view's switch is off; matching the
+  view's switch, parts are drawn as the view places them. `show-steps` draws
+  badges; `show-labels` off hides connection labels; `show-texts` off hides
+  texts.
 - Caption sizes in image px (title / description / key): wide post 36/28/27,
   README 32/20/18, slide 38/24/21, square 30/19/18, feed 36/22/21.
 
@@ -653,7 +845,7 @@ made from the presentation view. It is the share image of the `slide` format
   22 px on as many as it needs) and the counter `<i> / <n>` (`data-slide-count`, mono 24 px,
   right-aligned on the last line's baseline). The drawing is fitted into the
   margins above the band.
-- Badges, labels, held items, texts and the key follow the toggles given.
+- Badges, labels, sub-lines, texts and the key follow the toggles given.
 
 ### Readability
 

@@ -2,10 +2,14 @@
 id: 0008
 title: "Shapes by kind, held items where needed, one AI conversation whose results are previewed, and a second look at the image"
 date: 2026-10-22
-status: accepted
+status: accepted (shapes and held items superseded by 0014)
 deciders: [brkakyldz]
 supersedes: []
 ---
+
+The decisions *Shapes follow the kind* and *Held items only where needed* are
+superseded in part by ADR 0014: every kind has an outline that may size its
+part, and no part draws rows. The other decisions stand.
 
 ## Context
 

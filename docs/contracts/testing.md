@@ -83,9 +83,32 @@ check) and register them with `POST /api/files` or `archdrawer open
 }
 ```
 
+This is a format 3 file: it opens as one choice, `system`, and is written
+back as `@4` with nothing else changed (drawing contract, *Reading
+`archdraw/diagram@3`*). The same drawing in format 4, beside a second
+choice:
+
+```jsonc
+{
+  "schema": "archdraw/diagram@4",
+  "title": "Sample Shop",
+  "choices": [
+    { "id": "system", "title": "The whole system", "kind": "system",
+      "facts": { /* the facts above */ }, "channels": { /* the channels above */ } },
+    { "id": "checkout", "title": "Checkout", "kind": "flow", "about": "How an order is placed.",
+      "facts": { "components": [
+        { "id": "web", "label": "Web app", "kind": "client", "sub": "React", "description": "The shop's pages.", "files": [], "items": [] } ] },
+      "channels": { "overview": { "views": [
+        { "id": "checkout-overview", "title": "Overview", "caption": { "title": "How an order is placed", "lede": "" },
+          "nodes": [ { "id": "web", "facts": ["web"], "form": "card", "icon": null, "parent": null, "detail": null, "place": null } ],
+          "edges": [] } ] } } }
+  ]
+}
+```
+
 The same drawing as an `archdraw/diagram@2` file (one `views` list at the top
 level, each component carrying its content) is still accepted: it is
-converted when read and written back as `@3` (drawing contract, *Reading
+converted when read and written back as `@4` (drawing contract, *Reading
 `archdraw/diagram@2`*).
 
 ## The fixture engine
@@ -222,28 +245,42 @@ The answer is built from the inputs code gathered:
   1. `flow`, `How a request moves through the project` (`Follows one
      request from the entry point to the store.`), with the listing's first
      two files;
-  2. `mechanism`, `The agent loop` (`How the agent proposes and runs a
+  2. `section`, `The agent loop` (`How the agent proposes and runs a
      tool.`), with the listing's third file (else its first);
-  3. `overview`, `The whole architecture` (`Every part and how they
-     connect.`), with the listing's first file;
+  3. `section`, `The server side` (`The code that serves requests and keeps
+     state.`), with the listing's first file;
   4. `flow`, `A path that is not there` (`Backed by a file that does not
      exist.`), with `fixture/missing-file.ts`.
 
   Option 4 is always left out, with one warning. A folder with no file leaves
   out all four, so the scan succeeds with no option.
+- `[fixture:many]` in the folder's last segment adds, after option 4, six
+  options with the listing's first file and the sentence `One more part.`:
+  `Part 5` to `Part 10`, of kind `section` except `Part 5`, whose kind is
+  `mechanism`. Nine options then pass the file check: `Part 5` becomes a
+  `flow` with one warning, and `Part 10` is left out with one warning (at
+  most 8 options).
 
 ### Draw
 
-A `draw` run makes the three calls of the api contract, and a repair turn
-after a story call when its answer has a problem.
+A `draw` run makes the three calls of the api contract for each choice, and a
+repair turn after a story call when its answer has a problem.
 
-**Markers** come from the folder's last segment and the typed focus:
+**Markers** come from the folder's last segment, where they act on every
+choice, and from a typed choice's text, where they act on that choice only:
 
 - `[fixture:fail]` fails the read;
 - `[fixture:fail:overview]` fails the overview call, and
   `[fixture:fail:channel]` the channel call, after the earlier calls
   succeeded;
 - `[fixture:slow]` slows the read;
+- `[fixture:fail:second]` fails the read of the run's second choice (in
+  request order), every time;
+- `[fixture:slow:second]` slows only the read of the run's second choice
+  (for cancelling a draw in its second choice);
+- `[fixture:flaky:second]` fails the read of the run's second choice with
+  `Fixture failure requested` the first time this server process makes a
+  second choice's read for the folder, and answers as usual every later time;
 - `[fixture:partial]` makes the overview story leave out `store`;
 - `[fixture:overlong]` and `[fixture:stubborn]` act on the overview call as
   above;
@@ -256,7 +293,7 @@ after a story call when its answer has a problem.
 Each call has the fixture's progress lines.
 
 **Read.** Let A be the listing's first file and B its second (else A). The
-answer is always the following.
+answer is always the following, for every choice.
 
 Components:
 
@@ -313,6 +350,21 @@ no-fact error.
 - Connections: `app → agent` (step 1, `asks`) and `agent → store`.
 - `[fixture:partial]` leaves `store` out, so code adds it with one warning.
 
+For a section, flow or custom choice the answer is converted into one view
+as above. For the whole system (`system`) code then splits it into the map
+(drawing contract, *The map*):
+
+- the map, view `overview` in the file's first choice (else
+  `system-overview`), holds `app` (spine 0) and `zone-runtime`, a card with
+  no fact (label `Agent runtime`, kind `service`, lane `{"spine": 1}`) whose
+  `detail` is `zone-runtime-inside`, and the connection `app → zone-runtime`
+  (`asks`, step 1), which shows no relation;
+- the detail view `zone-runtime-inside` (title `Agent runtime`) holds `agent`
+  and `store`, anchored below it, and the connection `agent → store`.
+
+With `[fixture:partial]`, `store` is added inside `runtime` before the split,
+so it is drawn in `zone-runtime-inside` too.
+
 **Channel story.** As for a `story` run (below), on the overview just drawn.
 
 ### Story
@@ -321,7 +373,9 @@ These are the answers of a `story` run, a `draw` run's channel call, and the
 `story` route of a refine (*Routing*).
 
 - **LinkedIn:** the post intent above.
-- **README.** Code builds the intent from the overview channel's first view:
+- **README.** Code builds the intent from the overview channel's first view,
+  and for a `system` choice from the map and its detail views in
+  `views-panel` order, skipping parts with a `detail`:
   - title: its caption title; lede: `A detailed drawing made by the test
     engine.`; no zones;
   - parts: one per part that is not a group and shows a fact, in view order,
@@ -331,6 +385,12 @@ These are the answers of a `story` run, a `draw` run's channel call, and the
   - edges: the connections between those parts, with their drawn label,
     style and step;
   - steps: `[]`.
+
+  For the whole system (`system`) of the fixture's draw that gives the parts
+  `app`, `agent` and `store` (`zone-runtime` has a `detail` and is skipped)
+  and one edge, `agent → store`: the map's `app → zone-runtime` ends at a
+  skipped part. A section, flow or custom choice gives the same three parts
+  with both connections.
 - **Presentation:** the README intent, with steps added:
   - one step for each of the first three parts:
     `{ "parts": ["<id>"], "text": "Step <n>: <label>", "note": "The test

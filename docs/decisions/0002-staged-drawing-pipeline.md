@@ -2,7 +2,7 @@
 id: 0002
 title: A drawing is made in stages; the model decides content, code decides geometry
 date: 2026-10-19
-status: accepted
+status: accepted (amended by 0015: 3–8 options, several choices per draw)
 deciders: [brkakyldz]
 supersedes: []
 ---

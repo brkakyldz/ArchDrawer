@@ -32,6 +32,7 @@ const fs = require("fs");
 const args = process.argv.slice(2);
 if (args.includes("--version")) { console.log("${kind === "claude" ? "2.1.303 (Claude Code)" : "codex-cli 0.160.1"}"); process.exit(0); }
 if (args.includes("--help")) { console.log("${kind === "claude" ? "--json-schema --safe-mode --restricted --strict-mcp-config --no-session-persistence" : "--output-schema --ephemeral"}"); process.exit(0); }
+if (args[0] === "debug") { console.log('{"models":[]}'); process.exit(0); }
 let stdin = "";
 process.stdin.on("data", (d) => (stdin += d));
 process.stdin.on("end", () => {
@@ -299,13 +300,46 @@ describe("a starting server removes a dead server's images, never a live one's",
   });
 });
 
+describe("a server stopped during a revise leaves no image behind (#129)", () => {
+  it.each(["claude", "codex"] as const)("%s: stop removes the revise folder and the engine's own temporary folder, after the engine", async (kind) => {
+    const fake = fakeCli(kind, "hang");
+    const data = tempDir("archdraw-data-");
+    const port = await freePort();
+    const server = startServer(data, port, { ARCHDRAW_ENGINES: kind, [`ARCHDRAW_${kind.toUpperCase()}_BIN`]: fake.bin });
+    try {
+      for (let i = 0; i < 300 && !server.out().includes("listening on"); i++) await wait(50);
+      const { token } = JSON.parse(readFileSync(join(data, "server.json"), "utf8")) as { token: string };
+      const post = (path: string, body: unknown) => fetch(`http://127.0.0.1:${port}${path}`, { method: "POST", headers: { "content-type": "application/json", "x-archdraw-token": token }, body: JSON.stringify(body) });
+      const { file } = shopRepo();
+      const { id } = (await (await post("/api/files", { path: file })).json()) as { id: string };
+      const r = await post("/api/runs", { diagramId: id, kind: "revise", view: "overview", image: TINY_PNG, engine: kind, model: null });
+      expect(r.status, await r.clone().text()).toBe(202);
+      // The engine is running, with its child, and the image is in its folder.
+      for (let i = 0; i < 300 && !existsSync(`${fake.log}.child`); i++) await wait(50);
+      const child = Number(readFileSync(`${fake.log}.child`, "utf8"));
+      const { args } = JSON.parse(readFileSync(fake.log, "utf8")) as { args: string[] };
+      const scratch = kind === "codex" ? join(args[args.indexOf("--output-schema") + 1], "..") : null;
+      expect(readdirSafe(reviseRoot(data))).toHaveLength(1);
+      if (scratch) expect(existsSync(scratch)).toBe(true);
+      expect((await post("/api/shutdown", {})).status).toBe(200);
+      const code = await new Promise<number | null>((res) => (server.child.exitCode !== null ? res(server.child.exitCode) : server.child.on("exit", res)));
+      expect(code).toBe(0);
+      expect(readdirSafe(reviseRoot(data))).toEqual([]);
+      if (scratch) expect(existsSync(scratch)).toBe(false);
+      expect(alive(child)).toBe(false);
+    } finally {
+      if (server.child.exitCode === null) server.child.kill();
+    }
+  }, 60_000);
+});
+
 const freePort = () => new Promise<number>((res) => { const s = createServer(); s.listen(0, "127.0.0.1", () => { const p = (s.address() as { port: number }).port; s.close(() => res(p)); }); });
 
 /** The real server (`src/server/main.ts`) on a data directory and port, with no engine; its output so far. */
-function startServer(data: string, port: number) {
+function startServer(data: string, port: number, env: Record<string, string> = {}) {
   const child = spawn(process.execPath, ["--import", "tsx", join(APP_ROOT, "src", "server", "main.ts")], {
     cwd: APP_ROOT, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, PORT: String(port), ARCHDRAW_DATA_DIR: data, ARCHDRAW_ENGINES: "", ARCHDRAW_NO_OPEN: "1" },
+    env: { ...process.env, PORT: String(port), ARCHDRAW_DATA_DIR: data, ARCHDRAW_ENGINES: "", ARCHDRAW_NO_OPEN: "1", ...env },
   });
   let out = "";
   child.stdout.on("data", (d) => (out += d));

@@ -14,8 +14,8 @@ import { startSwitches, type FormatId } from "../core/export/share";
 import { documentToDraft } from "../core/repair";
 import { focusText, postPrompt, readPrompt, storyPrompt, type DrawFocus } from "./engines/prompt";
 import { EngineError, type Engine } from "./engines/types";
-import { docText, repoFileChecker } from "./files";
-import { headCommit, listFolder, type Folder } from "./folders";
+import { docText } from "./files";
+import { headCommit, listFolder, repoFile, type Folder } from "./folders";
 import type { DrawStage, StoryChannel } from "./runs";
 import { nowIso, type Store } from "./store";
 import { storyAnswer } from "./story-turn";
@@ -100,7 +100,7 @@ export async function runDraw(req: DrawRequest, ctx: {
   }
   ctx.progress("Checking the facts", "read");
   const repaired = repairRead(read);
-  const checked = checkEvidence(repaired.facts, { exists: repoFileChecker(root), lineCount: (p) => lineCount(join(root, p)) });
+  const checked = checkEvidence(repaired.facts, { exists: repoFile(root), lineCount: (p) => lineCount(join(root, p)) });
   if (!checked.facts.components.length) throw new DrawError(NO_FACT);
   done.read = read;
   const skeleton = fillDefaults3({

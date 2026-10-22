@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { EngineError } from "./engines/types";
@@ -16,6 +17,8 @@ function gitRepo(files: Record<string, string>): string {
   g("init", "-q"); g("add", "-A"); g("commit", "-q", "-m", "one");
   return dir;
 }
+/** Whether the system's temporary folder is on a file system that ignores letter case (Windows, macOS). */
+const caseInsensitive = tmpdir().toUpperCase() !== tmpdir() && existsSync(tmpdir().toUpperCase());
 const FILES = { "README.md": "# Shop\nSells things.\n", "package.json": '{"main": "src/server.ts"}', "src/server.ts": "// server\n", "src/agent.ts": "// agent\n" };
 
 async function scanOf(t: ReturnType<typeof makeApp>, folder: string, extra: object = {}) {
@@ -101,6 +104,22 @@ describe("scans", () => {
     expect((await slow.scans.wait(started.body.scanId))!.status).toBe("cancelled");
     expect(existsSync(join(slow.dataDir, "scans"))).toBe(false);
     expect((await json(await t.req("/api/scans/s_nope"))).status).toBe(404);
+  }, 20_000);
+
+  it.runIf(caseInsensitive)("one folder typed in another letter case is one folder: one cache entry, and a second scan is refused", async () => {
+    const dir = gitRepo(FILES);
+    const t = makeApp();
+    const first = await scanOf(t, dir);
+    expect(first.cached).toBe(false);
+    const again = await scanOf(t, dir.toUpperCase());
+    expect([again.cached, again.folder, again.root]).toEqual([true, first.folder, first.root]);
+    const slow = makeApp({ engines: [{ id: "fixture", label: "Fixture (test)", detect: async () => ({ id: "fixture", label: "Fixture (test)", available: true, version: "1", detail: "", test: true, models: [] }),
+      run: (r) => new Promise((_, no) => r.signal.addEventListener("abort", () => no(new Error("aborted")))) }] });
+    const started = await json(await slow.req("/api/scans", { method: "POST", json: { folder: dir.toLowerCase() } }));
+    expect(started.status).toBe(202);
+    expect((await json(await slow.req("/api/scans", { method: "POST", json: { folder: dir.toUpperCase() } }))).status).toBe(409);
+    await slow.scans.cancelAll();
+    await slow.scans.wait(started.body.scanId);
   }, 20_000);
 
   it("a failing engine fails the scan and caches nothing", async () => {

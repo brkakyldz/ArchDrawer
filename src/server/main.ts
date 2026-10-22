@@ -12,7 +12,7 @@ import { Store } from "./store";
 import { ClaudeEngine } from "./engines/claude";
 import { CodexEngine } from "./engines/codex";
 import { FixtureEngine } from "./engines/fixture";
-import { sweepReviseFolders } from "./engines/revise";
+import { isRunning, sweepReviseFolders } from "./engines/revise";
 import type { Engine } from "./engines/types";
 
 const config = loadConfig();
@@ -32,19 +32,35 @@ for (const id of config.engines) {
 const token = randomBytes(24).toString("hex");
 const infoFile = serverFile(config.dataDir);
 
-const shutdown = () => {
-  runs.cancelAll();
-  scans.cancelAll();
+/** How long a stop waits for cancelled runs and scans to end before it exits anyway. */
+const SETTLE_MS = 5_000;
+let stopping = false;
+
+const shutdown = async () => {
+  if (stopping) return;
+  stopping = true;
+  // No new request or run once stopping: `archdrawer stop` sees the server gone while it settles.
+  server.close();
+  server.closeIdleConnections();
+  // A cancelled run removes its image (and Codex its temporary folder) once its engine has exited, so
+  // the process waits for that, briefly. Whatever is left of this server's images then goes here
+  // (api contract, The second look: removed however the run ends).
+  let limit: NodeJS.Timeout | undefined;
+  await Promise.race([
+    Promise.all([runs.cancelAll(), scans.cancelAll()]),
+    new Promise((r) => { limit = setTimeout(r, SETTLE_MS); }),
+  ]);
+  clearTimeout(limit);
+  sweepReviseFolders(config.dataDir, (pid) => pid !== process.pid && isRunning(pid));
   store.close();
   try {
     // Remove server.json only when it is still ours (a newer server may have replaced it).
     if (JSON.parse(readFileSync(infoFile, "utf8")).pid === process.pid) rmSync(infoFile, { force: true });
   } catch { /* already gone */ }
-  server.close();
   process.exit(0);
 };
 
-const app = createApp({ config, store, runs, scans, engines, token, onShutdown: shutdown });
+const app = createApp({ config, store, runs, scans, engines, token, onShutdown: () => void shutdown() });
 
 // The envelope's Host/Origin check runs before the adapter: a Host such as "127.0.0.1:4317.evil.example"
 // is not a valid URL authority, and the adapter would answer 400 instead of the contract's 403.
@@ -71,5 +87,5 @@ server.on("error", (e: NodeJS.ErrnoException) => {
   process.exit(1);
 });
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+process.on("SIGINT", () => void shutdown());
+process.on("SIGTERM", () => void shutdown());

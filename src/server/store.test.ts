@@ -144,6 +144,26 @@ describe("file-backed store", () => {
     expect(store.missingFiles(bare.id, ["src/nowhere.ts"])).toEqual([]);
   });
 
+  it("keeps another store's registrations on one data folder (two servers)", () => {
+    const dataDir = tempDir();
+    const first = new Store(dataDir), second = new Store(dataDir);
+    const c = shopRepo(), d = shopRepo(), e = shopRepo();
+    const cid = first.register(c.file).id;
+    const did = second.register(d.file).id;
+    const paths = () => (read(join(dataDir, "files.json")) as { path: string }[]).map((x) => x.path).sort();
+    expect(paths()).toEqual([c.file, d.file].sort());
+    // The first store's next registration keeps the second's entry, and the same path gets the same id.
+    first.register(e.file);
+    expect(paths()).toEqual([c.file, d.file, e.file].sort());
+    expect(first.register(d.file).id).toBe(did);
+    // A removal through one store is not undone by the other's next write.
+    expect(second.delete(cid)).toBe(true);
+    expect(paths()).toEqual([d.file, e.file].sort());
+    const f = shopRepo();
+    first.register(f.file);
+    expect(paths()).toEqual([d.file, e.file, f.file].sort());
+  });
+
   it("imports v1 and v2 documents under new ids and forgets or deletes", () => {
     const store = new Store(tempDir());
     const v2 = store.import({ ...shopFile(), id: "d_whatever1" });

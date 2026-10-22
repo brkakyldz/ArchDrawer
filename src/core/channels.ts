@@ -150,7 +150,8 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
   const rels = new Map(doc.facts.relations.map((r) => [r.id, structuredClone(r)]));
   const lims = new Map((doc.facts.limits ?? []).map((l) => [l.id, structuredClone(l)]));
   const order = { comps: doc.facts.components.map((c) => c.id), rels: doc.facts.relations.map((r) => r.id) };
-  const factIds = new Set<string>([...comps.keys(), ...rels.keys()]);
+  // Limit ids share the facts' id space (rule 2): a new fact or relation takes none of them.
+  const factIds = new Set<string>([...comps.keys(), ...rels.keys(), ...lims.keys()]);
   const overview = channel === "overview";
   const keep = o.keepFacts === true;
 
@@ -419,6 +420,24 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
     });
   });
 
+  // A connection shows only relations that join what its ends show: after the rule-6 repair took a
+  // fact from a part, a relation its ends no longer join is dropped, one warning each, and the
+  // connection keeps what it drew as its own text.
+  next.views.forEach((v, vi) => {
+    const parts = new Map(views[vi].nodes.map((p) => [p.id, p]));
+    views[vi].edges.forEach((c, k) => {
+      const a = parts.get(c.from), b = parts.get(c.to);
+      if (!a || !b) return;
+      const joins = (r: RelationFact) => (a.facts.includes(r.from) && b.facts.includes(r.to)) || (b.facts.includes(r.from) && a.facts.includes(r.to));
+      const off = c.relations.filter((r) => { const rel = rels.get(r); return !!rel && !joins(rel); });
+      if (!off.length) return;
+      const e = v.edges[k];
+      for (const f of EDGE_FIELDS) if (!isSet(c[f])) (c as unknown as Record<string, unknown>)[f] = e[f];
+      c.relations = c.relations.filter((r) => !off.includes(r));
+      for (const r of off) repairs.push(`View "${v.id}": the connection "${c.id}" no longer shows "${r}", which does not join what its ends show`);
+    });
+  });
+
   function newConnection(e: DiagramEdge): Connection {
     const c: Connection = { id: e.id, from: e.from, to: e.to, relations: [], step: e.step };
     const given = [...new Set((e.relations ?? []).filter((r) => rels.has(r)))];
@@ -493,7 +512,6 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
   };
   cascade(result, deletedFacts, deletedRels);
   pruneSteps(result);
-  orient(result);
 
   // A fact added outside the overview gets a part in the overview's first view (rule 16).
   if (!overview) {
@@ -505,6 +523,9 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
     }
   }
   clearEqualOwnTexts(result);
+  // After the equal own texts are cleared: a two-way flag cleared there leaves a connection that
+  // follows its relation (rule 12).
+  orient(result);
   return { ok: true, doc: markOutdated(doc, result, [channel]) };
 }
 
@@ -532,11 +553,14 @@ function cascade(doc: Document3, deletedFacts: Set<string>, deletedRels: Set<str
     }
     if (gone.size) {
       const byId = new Map(v.nodes.map((p) => [p.id, p]));
+      const moved: Part[] = [];
       for (const p of v.nodes) if (p.parent && gone.has(p.parent)) {
         let up: string | null = p.parent;
         while (up && gone.has(up)) up = byId.get(up)?.parent ?? null;
         p.parent = up;
+        if (!gone.has(p.id)) moved.push(p);
       }
+      freeSpines(v.nodes.filter((p) => !gone.has(p.id)), moved);
       // A side part anchored to a part that goes keeps no lane (rule 19).
       for (const p of v.nodes) if (p.lane && "anchor" in p.lane && gone.has(p.lane.anchor)) p.lane = null;
       v.nodes = v.nodes.filter((p) => !gone.has(p.id));
@@ -547,11 +571,30 @@ function cascade(doc: Document3, deletedFacts: Set<string>, deletedRels: Set<str
       e.relations = e.relations.filter((r) => keptRels.has(r));
       return e.relations.length > 0;
     });
-    // A fact left with no items turns the panels that showed them, and nothing else, into cards.
+    // A panel left with no row to show (rule 8) — a fact left with no items, a deleted mechanism or
+    // limit — turns into a card, whether its items are the fact's or its own empty ones.
     for (const p of v.nodes) {
-      if (p.form !== "panel" || isSet(p.items) || p.facts.length !== 1) continue;
-      if ((comps.get(p.facts[0])?.items.length ?? 0) === 0 && !p.held?.length && !p.limits?.length) p.form = "card";
+      if (p.form !== "panel" || p.held?.length || p.limits?.length) continue;
+      const items = p.items ?? (p.facts.length === 1 ? comps.get(p.facts[0])?.items : undefined) ?? [];
+      if (!items.length) { p.form = "card"; delete p.items; }
     }
+  }
+}
+
+/**
+ * Members a removed group moved up to its parent (contract, Lane): spine orders stay unique among
+ * siblings. When one would take an order a sibling has, the moved members of each new parent take
+ * the next free orders after their new siblings', in the order they had.
+ */
+function freeSpines(nodes: Part[], moved: Part[]) {
+  const spine = (p: Part) => (p.lane && "spine" in p.lane ? p.lane.spine : null);
+  for (const parent of new Set(moved.map((p) => p.parent))) {
+    const mine = moved.filter((p) => p.parent === parent && spine(p) !== null).sort((a, b) => spine(a)! - spine(b)!);
+    const others = nodes.filter((p) => p.parent === parent && !mine.includes(p)).map(spine).filter((s): s is number => s !== null);
+    const orders = mine.map(spine);
+    if (orders.every((s, i) => !others.includes(s!) && orders.indexOf(s) === i)) continue;
+    let next = Math.max(-1, ...others) + 1;
+    for (const p of mine) p.lane = { spine: next++ };
   }
 }
 

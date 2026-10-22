@@ -975,3 +975,292 @@ export const DEFAULT_IMAGE: Record<Channel, { width: number; height: number }> =
   overview: { width: 1600, height: 900 }, linkedin: { width: 1080, height: 1350 }, readme: { width: 1600, height: 900 }, presentation: { width: 1920, height: 1080 },
 };
 export const noChanges = { added: [], removed: [], changed: [], moved: [], edgesAdded: [], edgesRemoved: [], edgesChanged: [] };
+
+// ---------------------------------------------------------------------------------------------------------------
+// 0.5: the slide image, presenting (PRES-1), the tour (PRES-2) and the slide exports (PRES-3).
+// Nothing above this line changed. These helpers only read the surfaces the contracts name; the presenting and tour
+// helpers are used by the present lane's files, the PDF, zip and pixel helpers by the share lane's.
+// ---------------------------------------------------------------------------------------------------------------
+// A presentation of four parts, one of them a group holding two others, with a text and three steps:
+//   web (Storefront) · zone (Backend zone, a group) holding api (Order desk) and cache (Price cache) · db (Order ledger)
+//   e1 web → api (step 1), e2 api → cache, e3 api → db (step 2), and the text `t1`.
+// The steps light: s1 web + api, s2 the group zone + db, s3 api + db. Plain rectangles only (no shaped kinds), so a part's
+// first `rect` is its box. The facts are the shop's and the files exist in `repo()`; the relations are r1 web → api
+// and r2 api → db (and r3 api → cache), but the facts carry no items: `withLinkedIn` adds `intake` as a panel over `api`, and a
+// panel shows at least one row (diagram contract, rule 8), so a caller that adds the LinkedIn channel passes `{ intakeItems: [...] }`.
+export const SLIDE_STEPS: Step[] = [
+  { id: 's1', parts: ['web', 'api'], text: 'The shopper clicks buy', note: 'Say who is asking.\nThen show the click.' },
+  { id: 's2', parts: ['zone', 'db'], text: 'The backend zone takes the order and the ledger keeps it, so a shopper never pays twice or loses one', note: '' },
+  { id: 's3', parts: ['api', 'db'], text: 'The desk writes the ledger', note: 'One line only.' },
+];
+export function slideShop(title: string, opts: { theme?: string; steps?: Step[] } = {}): Doc3 {
+  const doc: Doc3 = { schema: 'archdraw/diagram@3', title, ...(opts.theme ? { theme: opts.theme } : {}),
+    facts: {
+      components: [
+        fact('web', { label: 'Storefront', kind: 'client', description: 'The shop pages.', files: ['src/web.ts'] }),
+        fact('api', { label: 'Order desk', kind: 'api', description: 'Takes orders.', files: ['src/api.ts'] }),
+        fact('cache', { label: 'Price cache', kind: 'service', description: 'Keeps recent prices.', files: ['src/extra.ts'] }),
+        fact('db', { label: 'Order ledger', kind: 'worker', description: 'Keeps every order.', files: ['src/db.ts'] }),
+      ],
+      relations: [
+        { id: 'r1', from: 'web', to: 'api', label: 'buy', style: 'call', both: false },
+        { id: 'r2', from: 'api', to: 'db', label: 'write', style: 'call', both: false },
+        { id: 'r3', from: 'api', to: 'cache', label: 'price', style: 'call', both: false },
+      ],
+    },
+    channels: { overview: { showSteps: false, outdated: [], views: [{ id: 'overview', title: 'Overview',
+      caption: { title: `Selling with ${title}`, lede: 'From a click to a stored order.' },
+      nodes: [part('web', { place: { row: 0, col: 0 } }),
+        part('zone', { facts: [], form: 'group', label: 'Backend zone', kind: 'service', description: 'Where orders are handled.', place: { row: 0, col: 1 } }),
+        part('api', { parent: 'zone' }), part('cache', { parent: 'zone' }), part('db', { place: { row: 0, col: 2 } })],
+      edges: [{ id: 'e1', from: 'web', to: 'api', relations: ['r1'], step: 1 }, { id: 'e2', from: 'api', to: 'cache', relations: ['r3'], step: null },
+        { id: 'e3', from: 'api', to: 'db', relations: ['r2'], step: 2 }],
+      texts: [] }] } } };
+  withPresentation(doc, { steps: opts.steps ?? SLIDE_STEPS.map(s => structuredClone(s)) });
+  doc.channels.presentation!.views![0].texts = [{ id: 't1', text: 'Mind the price cache', x: 40, y: 40, size: 20 }];
+  return doc;
+}
+// A presentation whose parts name files and cite lines, so the tour's `tour-file` text is known exactly. The presentation
+// view is the overview's: storefront, desk (a panel holding the mechanism `retry`), ledger (no file at all) and gateway
+// (a merged part of two facts). Steps: s1 desk + storefront (listed in that order), s2 ledger + gateway (no note), s3 desk.
+// Per part, `tour-file` reads (the ranges of a path are all on the one fact that lists the path or cites it first):
+//   storefront  src/web.ts:1
+//   desk        src/api.ts:3–9, 20–24 (see TOUR_DESK_FIRST) · src/db.ts:2 · src/extra.ts:40–52
+//   ledger      (no file: `No files recorded`)
+//   gateway     src/db.ts · src/web.ts · src/extra.ts
+export function tourShop(title: string): Doc3 {
+  const at = (file: string, lines: [number, number] | null): Evidence => ({ file, lines });
+  const doc: Doc3 = { schema: 'archdraw/diagram@3', title,
+    facts: {
+      components: [
+        fact('web', { label: 'Storefront', kind: 'client', description: 'The shop pages.', files: ['src/web.ts'], evidence: [at('src/web.ts', [1, 1])] }),
+        fact('api', { label: 'Order desk', kind: 'api', description: 'Takes orders.', files: ['src/api.ts'],
+          evidence: [at('src/api.ts', [3, 9]), at('src/db.ts', [2, 2]), at('src/api.ts', [20, 24])] }),
+        fact('retry', { label: 'Retry check', kind: 'gate', description: 'Refuses a repeated order.', within: 'api', files: ['src/extra.ts'], evidence: [at('src/extra.ts', [40, 52])] }),
+        fact('db', { label: 'Order ledger', kind: 'worker', description: 'Keeps every order.' }),
+        fact('gw1', { label: 'Gateway in', kind: 'service', description: 'Takes the first half.', files: ['src/db.ts', 'src/web.ts'] }),
+        fact('gw2', { label: 'Gateway out', kind: 'service', description: 'Sends the second half.', files: ['src/web.ts', 'src/extra.ts'] }),
+      ],
+      relations: [
+        { id: 'r1', from: 'web', to: 'api', label: 'buy', style: 'call', both: false },
+        { id: 'r2', from: 'api', to: 'db', label: 'write', style: 'call', both: false },
+        { id: 'r3', from: 'db', to: 'gw1', label: 'hand over', style: 'call', both: false },
+      ],
+    },
+    channels: { overview: { showSteps: false, outdated: [], views: [{ id: 'overview', title: 'Overview',
+      caption: { title: `Learning ${title}`, lede: 'Where each step lives in the code.' },
+      nodes: [part('storefront', { facts: ['web'], place: { row: 0, col: 0 } }),
+        part('desk', { facts: ['api'], form: 'panel', held: ['retry'], place: { row: 0, col: 1 } }),
+        part('ledger', { facts: ['db'], place: { row: 0, col: 2 } }),
+        part('gateway', { facts: ['gw1', 'gw2'], label: 'Gateway', kind: 'service', description: 'Both halves of the gateway.', place: { row: 1, col: 1 } })],
+      edges: [{ id: 'e1', from: 'storefront', to: 'desk', relations: ['r1'], step: 1 }, { id: 'e2', from: 'desk', to: 'ledger', relations: ['r2'], step: 2 },
+        { id: 'e3', from: 'ledger', to: 'gateway', relations: ['r3'], step: 3 }],
+      texts: [] }] } } };
+  return withPresentation(doc, { steps: [
+    { id: 's1', parts: ['desk', 'storefront'], text: 'The shopper reaches the desk', note: 'Start with the click.\nThen the desk takes over.' },
+    { id: 's2', parts: ['ledger', 'gateway'], text: 'The ledger feeds the gateway', note: '' },
+    { id: 's3', parts: ['desk'], text: 'The desk retries safely', note: 'Only the desk repeats work.' },
+  ] });
+}
+// The contract writes the ranges of a path as `:<from>–<to>` "joined by `, `": read literally the second range keeps its colon.
+// Whether the product writes `src/api.ts:3–9, :20–24` or `src/api.ts:3–9, 20–24` is open, and both are accepted.
+export const TOUR_DESK_FIRST = /^src\/api\.ts:3–9, :?20–24$/;
+
+// Opens the presentation channel and waits for its steps panel.
+export async function toPresentation(page: Page) {
+  await page.getByTestId('channel-tab-presentation').click();
+  await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'presentation');
+  await expect(page.getByTestId('steps-panel')).toBeVisible();
+}
+// Presses `present-start` (or `tour-start`) and waits for the layer in that mode.
+export async function openLayer(page: Page, mode: 'present' | 'tour' = 'present') {
+  await page.getByTestId(mode === 'present' ? 'present-start' : 'tour-start').click();
+  const layer = page.getByTestId('present');
+  await expect(layer).toBeVisible(); await expect(layer).toHaveAttribute('data-mode', mode); return layer;
+}
+// What the slide shown draws (ui contract, The slide image). `dim` is `data-dim="true"`, `opacity` the group's attribute.
+export interface SlideMark { id: string; dim: boolean; opacity: string | null }
+export interface SlideRead {
+  slide: string | null; format: string | null; theme: string | null; width: string | null; height: string | null; viewBox: string | null;
+  nodes: (SlideMark & { ratio: number })[]; edges: SlideMark[]; texts: SlideMark[];
+  band: boolean; bandText: string | null; bandCount: string | null; words: string[];
+}
+export async function slideRead(page: Page): Promise<SlideRead> {
+  return await page.getByTestId('present-slide').evaluate(el => {
+    const svg = (el.tagName.toLowerCase() === 'svg' ? el : el.querySelector('svg')) as SVGSVGElement;
+    const flat = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
+    const mark = (g: Element, attribute: string) => ({ id: g.getAttribute(attribute) ?? '', dim: g.getAttribute('data-dim') === 'true', opacity: g.getAttribute('opacity') });
+    // The step's text may be one element or one per line: every outermost `[data-slide-text]`, in document order.
+    const texts = Array.from(svg.querySelectorAll('[data-slide-text]')).filter(t => !t.parentElement?.closest('[data-slide-text]'));
+    const count = svg.querySelector('[data-slide-count]');
+    return {
+      slide: svg.getAttribute('data-slide'), format: svg.getAttribute('data-format'), theme: svg.getAttribute('data-theme'),
+      width: svg.getAttribute('width'), height: svg.getAttribute('height'), viewBox: svg.getAttribute('viewBox'),
+      nodes: Array.from(svg.querySelectorAll('g[data-node-id]')).map(g => {
+        const rect = g.querySelector('rect'); const w = Number(rect?.getAttribute('width')), h = Number(rect?.getAttribute('height'));
+        return { ...mark(g, 'data-node-id'), ratio: h > 0 ? w / h : 0 };
+      }),
+      edges: Array.from(svg.querySelectorAll('g[data-edge-id]')).map(g => mark(g, 'data-edge-id')),
+      texts: Array.from(svg.querySelectorAll('g[data-text-id]')).map(g => mark(g, 'data-text-id')),
+      band: !!svg.querySelector('g[data-slide-band]'), bandText: texts.length ? flat(texts.map(t => flat(t.textContent)).join(' ')) : null, bandCount: count ? flat(count.textContent) : null,
+      words: Array.from(svg.querySelectorAll('text')).map(t => flat(t.textContent)),
+    };
+  });
+}
+// A slide is 1920 × 1080: the SVG shown is scaled to fit, so either its `viewBox` or its own `width` and `height` say so.
+export function slideSized(read: SlideRead) {
+  return (read.viewBox ?? '').trim().split(/[\s,]+/).join(' ') === '0 0 1920 1080' || (read.width === '1920' && read.height === '1080');
+}
+// Where the slide itself is drawn on the page: the corners (0,0) and (1920,1080) of its coordinates through the SVG's screen
+// matrix. The `present-slide` element may be larger than the slide (an SVG letterboxing its drawing, or a wrapper).
+export async function slideBox(page: Page) {
+  return await page.getByTestId('present-slide').evaluate(el => {
+    const svg = (el.tagName.toLowerCase() === 'svg' ? el : el.querySelector('svg')) as SVGSVGElement;
+    const m = svg.getScreenCTM()!, a = new DOMPoint(0, 0).matrixTransform(m), b = new DOMPoint(1920, 1080).matrixTransform(m);
+    return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) };
+  });
+}
+// The ids a slide draws at full strength and the ids it dims, per kind of element.
+export function slideDimming(read: SlideRead) {
+  const split = (items: SlideMark[]) => ({ lit: items.filter(i => !i.dim).map(i => i.id).sort(), dim: items.filter(i => i.dim).map(i => i.id).sort() });
+  return { nodes: split(read.nodes), edges: split(read.edges), texts: split(read.texts) };
+}
+// A dimmed group says `opacity="0.25"` as well as `data-dim="true"`, and a lit one says neither.
+export function dimsAgree(read: SlideRead) {
+  return [...read.nodes, ...read.edges, ...read.texts].every(m => m.dim ? Number(m.opacity) === 0.25 : Number(m.opacity ?? 1) !== 0.25);
+}
+export const squeezed = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, '');
+// The lines of an element's text as the user sees them (a note keeps its newlines, whichever markup makes them).
+export async function textLines(locator: Locator) { return (await locator.innerText()).split(/\r?\n/).map(line => line.trim()).filter(Boolean); }
+// The layer's `data-fullscreen` against the browser's own full-screen element: they agree once the request has been answered.
+// Returns whether the layer is full screen. A refused or unsupported request is a valid answer.
+export async function fullscreenAgrees(page: Page): Promise<boolean> {
+  const layer = page.getByTestId('present');
+  // The request is answered a moment after the layer opens (a grant, a refusal, or nothing at all), and `false` with no full-screen
+  // element agree from the first instant. So wait out a short period first, then until the two agree and have stayed the same
+  // for several samples in a row.
+  await page.waitForTimeout(1000);
+  let last = '', steady = 0;
+  await expect.poll(async () => {
+    const attribute = await layer.getAttribute('data-fullscreen'), real = await layer.evaluate(el => document.fullscreenElement === el), now = `${attribute}/${real}`;
+    steady = now === last ? steady + 1 : 0; last = now;
+    return attribute === String(real) && steady >= 3;
+  }, { timeout: 10_000, intervals: [150] }).toBe(true);
+  return (await layer.getAttribute('data-fullscreen')) === 'true';
+}
+// Focus stays inside the element with this test id through `presses` presses of a key (Tab, Shift+Tab).
+export async function focusStaysIn(page: Page, testId: string, key = 'Tab', presses = 12) {
+  for (let i = 0; i < presses; i++) {
+    await page.keyboard.press(key);
+    expect(await page.getByTestId(testId).evaluate(el => el.contains(document.activeElement)), `${key} ${i + 1}: focus left ${testId}`).toBe(true);
+  }
+}
+// Every toast that shows from now on, in order (a toast lasts 2.6 s, so polling `toast` can miss one).
+export async function watchToasts(page: Page) {
+  await page.evaluate(() => {
+    const seen: string[] = ((window as any).__toasts = []);
+    const look = () => {
+      for (const t of Array.from(document.querySelectorAll('[data-testid="toast"]'))) {
+        const text = (t.textContent ?? '').trim(); if (text && seen[seen.length - 1] !== text) seen.push(text);
+      }
+    };
+    new MutationObserver(look).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true }); look();
+  });
+}
+export async function toastsSeen(page: Page): Promise<string[]> { return await page.evaluate(() => [...(((window as any).__toasts as string[]) ?? [])]); }
+// A session's write to the stored document (atomic, with a later version each time, as an agent session's is).
+export async function sessionWrite(file: string, change: (doc: Doc3) => void): Promise<Doc3> {
+  const doc = await readDocument(file); change(doc);
+  doc.updatedAt = new Date(Math.max((Date.parse(doc.updatedAt ?? '') || 0) + 60_000, Date.UTC(2098, 0, 1))).toISOString();
+  await outsideWrite(file, doc); return doc;
+}
+
+// ui contract, Share: `<slug>`, the title lower-cased, accents removed, non-alphanumerics → `-`, trimmed (`diagram` when empty).
+export function slugOf(title: string) {
+  return title.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'diagram';
+}
+// Presses a download button and keeps the file: its suggested name, where it was saved and its bytes.
+export async function downloaded(page: Page, testId: string, timeout = 120_000) {
+  const dir = await mkdtemp(join(tmpdir(), 'archdrawer-slides-'));
+  const waiting = page.waitForEvent('download', { timeout }); await page.getByTestId(testId).click();
+  const result = await waiting, name = result.suggestedFilename(), path = join(dir, name.replace(/[\\/]/g, '_'));
+  await result.saveAs(path); expect(await result.failure()).toBeNull();
+  return { name, path, bytes: await readFile(path) };
+}
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+export function crc32Of(bytes: Uint8Array) { let c = 0xffffffff; for (const b of bytes) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+// testing contract, Test suites: a zip whose entries are stored; the end-of-central-directory record gives the count.
+export interface ZipEntry { name: string; method: number; size: number; stored: number; crcOk: boolean; data: Buffer }
+export function readZip(bytes: Buffer): { count: number; entries: ZipEntry[] } {
+  const eocd = bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (eocd < 0) throw new Error('No end-of-central-directory record');
+  const count = bytes.readUInt16LE(eocd + 10), entries: ZipEntry[] = []; let at = bytes.readUInt32LE(eocd + 16);
+  for (let i = 0; i < count; i++) {
+    if (bytes.readUInt32LE(at) !== 0x02014b50) throw new Error(`Central directory entry ${i} is missing`);
+    const method = bytes.readUInt16LE(at + 10), crc = bytes.readUInt32LE(at + 16), stored = bytes.readUInt32LE(at + 20), size = bytes.readUInt32LE(at + 24);
+    const nameLength = bytes.readUInt16LE(at + 28), extraLength = bytes.readUInt16LE(at + 30), commentLength = bytes.readUInt16LE(at + 32), local = bytes.readUInt32LE(at + 42);
+    const name = bytes.subarray(at + 46, at + 46 + nameLength).toString('utf8');
+    if (bytes.readUInt32LE(local) !== 0x04034b50) throw new Error(`Local header of ${name} is missing`);
+    const start = local + 30 + bytes.readUInt16LE(local + 26) + bytes.readUInt16LE(local + 28), data = bytes.subarray(start, start + stored);
+    entries.push({ name, method, size, stored, crcOk: crc32Of(data) === crc, data });
+    at += 46 + nameLength + extraLength + commentLength;
+  }
+  return { count, entries };
+}
+// testing contract, Test suites: a PDF of uncompressed objects, read as Latin-1 text (one character per byte).
+export interface PdfRead {
+  starts: boolean; ends: boolean; count: number | null; pages: { mediaBox: boolean }[];
+  images: { width: number; height: number; dct: boolean; jpeg: boolean; bytes: Buffer }[]; pageImages: Buffer[];
+}
+export function readPdf(bytes: Buffer): PdfRead {
+  const text = bytes.toString('latin1');
+  const objects = [...text.matchAll(/(\d+)\s+0\s+obj/g)].map(m => {
+    const start = m.index! + m[0].length, end = text.indexOf('endobj', start), stream = text.indexOf('stream', start);
+    const hasStream = stream >= 0 && stream < end;
+    let data = -1; if (hasStream) { data = stream + 6; if (text[data] === '\r') data++; if (text[data] === '\n') data++; }
+    return { n: Number(m[1]), dict: text.slice(start, hasStream ? stream : end), data };
+  });
+  const pagesObject = objects.find(o => /\/Type\s*\/Pages(?![A-Za-z])/.test(o.dict));
+  const pageObjects = objects.filter(o => /\/Type\s*\/Page(?![A-Za-z])/.test(o.dict));
+  const images = objects.filter(o => /\/Subtype\s*\/Image/.test(o.dict)).map(o => {
+    const end = text.indexOf('endstream', o.data), body = o.data >= 0 && end >= 0 ? bytes.subarray(o.data, end) : Buffer.alloc(0);
+    return { n: o.n, width: Number(o.dict.match(/\/Width\s+(\d+)/)?.[1] ?? 0), height: Number(o.dict.match(/\/Height\s+(\d+)/)?.[1] ?? 0),
+      dct: /\/Filter\s*(\[\s*)?\/DCTDecode/.test(o.dict), jpeg: body.length > 2 && body[0] === 0xff && body[1] === 0xd8, bytes: body };
+  });
+  // The pages in the order of /Kids; each page's image by its /XObject reference, else the images in file order.
+  const kids = [...(pagesObject?.dict.match(/\/Kids\s*\[([^\]]*)\]/)?.[1] ?? '').matchAll(/(\d+)\s+0\s+R/g)].map(m => Number(m[1]));
+  const ordered = kids.map(n => objects.find(o => o.n === n)).filter((o): o is NonNullable<typeof o> => !!o);
+  const byRef = ordered.map(o => { const ref = o.dict.match(/\/XObject\s*<<[^>]*?(\d+)\s+0\s+R/)?.[1]; return images.find(i => String(i.n) === ref)?.bytes; });
+  const pageImages = byRef.length === images.length && byRef.every(Boolean) && new Set(byRef).size === byRef.length ? byRef as Buffer[] : images.map(i => i.bytes);
+  return { starts: text.startsWith('%PDF-1.4'), ends: text.trimEnd().endsWith('%%EOF'), count: pagesObject ? Number(pagesObject.dict.match(/\/Count\s+(\d+)/)?.[1] ?? NaN) : null,
+    pages: pageObjects.map(o => ({ mediaBox: /\/MediaBox\s*\[\s*0\s+0\s+960\s+540\s*\]/.test(o.dict) })),
+    images: images.map(({ width, height, dct, jpeg, bytes: body }) => ({ width, height, dct, jpeg, bytes: body })), pageImages };
+}
+// A PNG's size from its IHDR, and its signature.
+export function pngSize(bytes: Buffer) {
+  return { png: bytes.length >= 24 && bytes.subarray(0, 8).equals(PNG_SIGNATURE), width: bytes.length >= 24 ? bytes.readUInt32BE(16) : 0, height: bytes.length >= 24 ? bytes.readUInt32BE(20) : 0 };
+}
+// Images (PNG or JPEG bytes) decoded by the browser and shrunk to a grid of grey levels, so two slides can be compared
+// without a library and without fixing a colour: the same slide in two encodings is near, two other slides are not.
+export async function pixelGrids(page: Page, images: { bytes: Buffer; mime: string }[], columns = 192, rows = 108): Promise<number[][]> {
+  const holder = await page.context().newPage();
+  try {
+    await holder.setContent('<!doctype html><html><body></body></html>');
+    return await holder.evaluate(async ({ items, columns, rows }) => {
+      const grids: number[][] = [];
+      for (const item of items) {
+        const binary = atob(item.data), array = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+        const bitmap = await createImageBitmap(new Blob([array], { type: item.mime }));
+        const canvas = document.createElement('canvas'); canvas.width = columns; canvas.height = rows;
+        const context = canvas.getContext('2d')!; context.imageSmoothingQuality = 'high'; context.drawImage(bitmap, 0, 0, columns, rows);
+        const data = context.getImageData(0, 0, columns, rows).data, grid: number[] = [];
+        for (let i = 0; i < data.length; i += 4) grid.push(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+        grids.push(grid);
+      }
+      return grids;
+    }, { items: images.map(i => ({ data: i.bytes.toString('base64'), mime: i.mime })), columns, rows });
+  } finally { await holder.close(); }
+}
+export const gridDistance = (a: number[], b: number[]) => a.reduce((sum, value, i) => sum + Math.abs(value - b[i]), 0) / a.length;
+export const gridMean = (a: number[]) => a.reduce((sum, value) => sum + value, 0) / a.length;

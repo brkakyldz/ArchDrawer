@@ -81,8 +81,10 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
     warnings.push(`Component "${id}": its lane is not a spine order or an anchor with a side, dropped`);
     return null;
   };
+  // A kept part's facts are the answer's (diagram contract, Writing the answer back): a split or a
+  // fact moved to another part takes effect. Only an answer that names none keeps what it had.
   const fromOf = (raw: unknown, id: string, kept: readonly string[]): string[] => {
-    const out = [...kept];
+    const out = raw === undefined || raw === null ? [...kept] : [];
     if (raw !== undefined) for (const f of arr(raw).map(str)) {
       if (!known.has(f)) { warnings.push(`Component "${id}": "${f}" in its from is no component of the drawing, dropped`); continue; }
       if (!out.includes(f)) out.push(f);

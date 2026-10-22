@@ -1,12 +1,15 @@
 # Held-out coverage
 
-The suite has 99 scenarios. A requirement id appears in a scenario title only
+The suite has 112 scenarios. A requirement id appears in a scenario title only
 when the scenario observes it; an id the spec marks *To build* appears only
 once a step has built something to observe (the 0.3 round: START-4, SCAN-1 to
 SCAN-4, READ-1 to READ-3, STORY-2 to STORY-5 and AI-5, with STORY-1 and
 STORY-6 changed; the 0.4 round: LOOK-2, AI-3, AI-4 and LAYOUT-4, with LOOK-3 and
 AI-2 changed; the story-limits round: STORY-7 and START-6; the ADR 0011 round:
-LAYOUT-2 changed). Ids are the requirement ids of the product spec.
+LAYOUT-2 changed; the 0.5 round, ADR 0012: PRES-1, PRES-2 and PRES-3, which
+`spec.md` keeps as *To build* until the integration marks them Today, so
+`author-check.mjs` lets a title carry them as `landing`). Ids are the
+requirement ids of the product spec.
 
 Since 0.2 the suite lands in batches, each with the step that makes it pass
 (`batches/MANIFEST.md` lists the files). The *Lands in* column says which. The
@@ -57,12 +60,31 @@ The story-limits round (ADRs 0009 and 0010) is one batch:
 | Batch | Lands with | Scenarios |
 |---|---|---|
 | story-limits | the repair turn of a story answer (STORY-7) and a failed draw that keeps its read (START-6) | H145–H151 (new); `COVERAGE.md`, `verify.json`, `README.md`. No helper and no earlier scenario changed |
+| story-limits-2 | the same two requirements, the contract sentences H145–H151 left unobserved (issue #97) | H154–H157 (new); `COVERAGE.md`, `verify.json`, `README.md`. No helper, no `author-check.mjs` and no earlier scenario changed |
 
 The ADR 0011 round (connections pass behind parts) is one batch:
 
 | Batch | Lands with | Scenarios |
 |---|---|---|
 | edges-behind | one cubic per connection, behind parts, a group's name cut out, a post's hidden spine line turned out (LAYOUT-2) | H84, H86 (rewritten), H152, H153 (new); `helpers-svg-parity.ts` (helpers added, none changed), `COVERAGE.md`, `verify.json`, `README.md`. H85 and every other scenario unchanged |
+
+The 0.5 round (ADR 0012: the slide image, presenting, the tour and the slide exports). 0.5 is built by two lanes at the same time,
+on two branches merged at the end; each lane runs only its own batches until then, and every file also passes after the merge. The
+present lane has no `download-slides-*`; the share lane has no `present`, `present-*` or `tour-*`. Its scenarios are numbered from
+H158, after the story-limits round's H154–H157:
+
+| Batch | Lane | Lands with | Scenarios |
+|---|---|---|---|
+| 0-helpers (0.5) | both | the first commit of each lane | `helpers.ts` (the 0.5 helpers, nothing above them changed); `helpers-svg-parity.ts` is unchanged |
+| A-present | present | #110, presenting (PRES-1) | H158–H161 |
+| B-tour | present | #111, the tour (PRES-2) | H162, H163 |
+| C-slides | share | #112, the slide exports (PRES-3) | H164–H166 |
+| Z-index (0.5) | last | the merge | `COVERAGE.md`, `verify.json`, `README.md`, `author-check.mjs` |
+
+No earlier scenario changed in 0.5: none of them asserted an exact list of header controls (H36 and H98 look at the narrow header menu
+and at buttons with no text on the overview and other channels, where `present-start` and `tour-start` are not), a count of the
+buttons in `share-actions` (H28, H38, H39, H63 and H115 look up controls by test id), the absence of a presenting control, or a toast
+after an outside change while a layer is open (H26, H95, H140 are on the overview and the editor, with no layer).
 
 H100 (Design the post) is unchanged: its result now arrives as a preview, and nothing it does afterwards (the share dialog, the tabs)
 is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no engine, which only the ai lane's finished product has.
@@ -170,6 +192,19 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 | H151 | story-limits | a draw failing at the channel stage, a file the read cites deleted from the folder with no new scan, the same draw again: `Using the facts already read` then `Checking the facts`, no engine line in the read stage, the overview drawn by a call (no `Using the overview already drawn`), a written drawing whose facts no longer cite the deleted file (nor hold the facts only it backed), with a warning naming it; another focus with the same scan reads again |
 | H152 | edges-behind | a connection level with a group's name, in the readme and the square image: the name is cut out of the line (no pixel differs from the same drawing without the line), the line is drawn left of the group, in it beyond the name and right of it, as one cubic with its label and badge, the report lists no part, and nothing moves |
 | H153 | edges-behind | three stored parts in a column and a line from the first to the third: the overview draws it straight down behind the middle part, under it, and lists that part; the LinkedIn post turns it out on one side as one cubic clear of the part by 8 px with 24 px handles and lists nothing, its other two lines stay straight on facing sides, its label stays within 10 px, nothing moves |
+| H154 | story-limits-2 | six draws that all fail at the channel, one scan: another model and then another focus (and the other model again) each read the code again (`Reading the code`, `Checking the facts`, overview drawn by a call, no `Using …` line); the same trimmed focus and model with another channel, twice, reuses the read and the overview with no engine line; nothing is written and nothing is registered |
+| H155 | story-limits-2 | a post answer with two problems (`[fixture:invalid][fixture:overlong]`): one repair turn announced `Fixing 2 problems in the answer` right after the first check line, saved without `ghost` and with the engine's own description and no `Shortened` warning; with `[fixture:stubborn]` too, the same plural line once, the run fails naming the LinkedIn post and `ghost`, the file is as it was |
+| H156 | story-limits-2 | a draw from the home screen whose overview answer stays over 240 characters after its repair turn (`[fixture:overlong][fixture:stubborn]`): one `Fixing 1 problem in the answer` in the overview stage and no second, an editor and no `draw-error`, the file written and registered, the overview lede 240 characters ending in `…` with exactly one `Shortened the description to 240 characters`, the read's four warnings first, the post not cut |
+| H157 | story-limits-2 | a draw failing at the overview call, then `draw-retry` on the home screen: the screen is recorded; the read stage shows `running` with `Using the facts already read`, `done` once the overview is `running`, no stage starts before the one before is done, the overview is drawn by a call, the drawing opens and is written once with the four read warnings |
+| H158 | A-present | `present-start` and `tour-start` exist on the presentation channel only, stay in the header at 820 px with their names and out of `header-menu`, are off with the title `Add a step first` with no drawing or no step; Present opens `present` in `present` mode on the opening slide in the drawing's theme (dark, then light after `tool-theme`) with focus on the layer and Tab held inside, asks for full screen and `data-fullscreen` agrees with `document.fullscreenElement`, the layer fills the window, the browser's own exit (when granted) or Escape leaves with focus on `present-start` and no step current; nothing saved and no run |
+| H159 | A-present | Right, Down, Space, PageDown, Left, Up, PageUp, Home, End and a click on `present-slide` walk the opening slide and three steps, never past either end; `present-status` `Step <i> of <n>: <text>` and the caption title on the opening slide; the band's text (whole) and `<i> / <n>`; the opening slide dims nothing and has no band, a step slide dims the parts outside the step (a group even with a part in it lit), every edge unless both ends are in the step, and the text, with `data-dim` and `opacity` 0.25; boxes keep their shape; the hint goes with the first change and stays gone |
+| H160 | A-present | `present-note-toggle` hidden on the opening slide and N doing nothing there, `aria-expanded` closed on entry, N or the button opens it, kept open or closed from step to step, the note with its newline or `No note for this step`; Space and Enter on the focused button toggle without moving; Escape, `Exit` and Enter on a focused `Exit` leave with focus on `present-start`, the step shown current and lit in the steps panel; Delete, Backspace, tool keys, `/`, Ctrl+K, Ctrl+Z and a click on another part's place reach nothing: selection, tool, search and file unchanged |
+| H161 | A-present | an outside write while presenting redraws the slide with no `Updated from the file` toast (a text and a part's name; a reorder follows the step by its id; a removal shows the last step; a new caption on the opening slide which stays); no step left closes the layer with `The presentation has no steps any more` and turns the buttons off; with the layer closed the usual toast is back |
+| H162 | B-tour | `tour-start` opens `tour` mode on the first step, `data-fullscreen` `false`, with no hint and no note button; `tour-note` with its newline or `No note for this step`; one `tour-part` per lit part in the order of the view's parts with `data-node-id` and label; `tour-file` text per path once, facts then held facts, a fact's files then its evidence files, ranges `:<from>–<to>` or `:<from>`, merged parts listing each path once; `No files recorded`; `tour-copy` copying the path alone with `Copied the path`; no write and no file check |
+| H163 | B-tour | the tour's keys (no opening slide; N does nothing; Home first, End last) and a click on the slide, never past either end; `tour-panel` beside the slide at 1600 px and under it at 820 px with `tour-start` still in the header; `Exit` and Escape leave with focus on `tour-start` and the step shown current; nothing saved; then Tab and Shift+Tab stay inside the layer, and an outside write re-renders the slide shown, with no toast |
+| H164 | C-slides | the share dialog on the presentation channel downloads `<slug>-slides.pdf` (`%PDF-1.4`, `%%EOF`, `/Count` 4, four pages of `/MediaBox [0 0 960 540]`, four 3840 × 2160 `DCTDecode` images starting `FF D8`) and `<slug>-slides.zip` (four stored entries `-slide-00.png` … `-03.png`, 3840 × 2160, checksums right) whose slides are the PDF's pages in the same order (decoded by the browser and matched); one file per click; `download-png` still gives the slide at twice the size; the drawing is untouched |
+| H165 | C-slides | the dialog's theme reaches the zip and the PDF (light and dark differ slide by slide, a dark PDF is nearer the dark slides); the title off or the description on changes the opening slide and no other; texts off changes every slide; the square format keeps the entries and the 3840 × 2160 size and changes the slides through its toggles |
+| H166 | C-slides | no slide download in the dialog of the overview, README or LinkedIn channel; an accented title with `!` is `creme-brulee-cafe`; eleven steps are twelve pages and entries `-00` to `-11`; one step is two; the last step removed turns both buttons off with `Add a step first` and nothing downloads, undo turns them on |
 
 ## Requirement map
 
@@ -178,34 +213,34 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 | START-1 | H29 | The plugin manifests and the `archdrawer` launcher exist and parse. Only static packaging; the plugin's command opening the app is not observable. |
 | START-2 | — | To build. |
 | START-3 | H123 | With no engine the screen says `To draw a project, install Claude Code or Codex and sign in to it.` with both install commands (H123). Limit: signed out or too old are not observable with the fixture, which is always available. |
-| START-4 | H41, H110–H113, H117–H123, H148, H149, H151 | The folder start: the field with the library's folders, the folder check, the card and options, the focus, the channel, the draw with its stages, the offer of an existing drawing, the keyboard path, a failed draw, no engine. Fixture engine only. |
+| START-4 | H41, H110–H113, H117–H123, H148, H149, H151, H154, H156, H157 | The folder start: the field with the library's folders, the folder check, the card and options, the focus, the channel, the draw with its stages, the offer of an existing drawing, the keyboard path, a failed draw, no engine. Fixture engine only. |
 | START-5 | H15, H16, H17, H25, H27, H41, H44, H84, H88, H89, H90, H91, H106–H109, H123 | `validate`, `open`, `svg` (with `--channel`), `migrate` (`@1`, `@2`, `@3`), `status`, `stop`: exit codes, output lines, same id and URL on reopen, nothing written by `validate`, the path and message of every `@3` violation, the 0.3 rules (H107). |
-| START-6 | H149, H150, H151 | A draw that fails after its read keeps it in memory only: a later draw with the same scan, focus, engine and model starts from the first stage that did not finish. After a channel-stage failure `Try again` shows `Using the facts already read`, `Checking the facts`, then `Drawing the overview` and `Using the overview already drawn`, makes no scan and no engine line before the channel, and its warnings equal a never-failed draw's (H149). After an overview-stage failure another channel reuses the read and draws the overview by a call (H150). A success removes what was kept: the next draw reads again (H150). The kept read answer's evidence is checked again against the folder as it is now, with no new commit or scan: a file the read cites, deleted after the failure, is dropped on `Try again` with the facts only it backed, the overview is then drawn by a call, and the drawing cites no deleted file; another focus with the same scan reads again (H151). Limit: the one-hour expiry, another engine or model reading again, a cancel or timeout keeping the read, and the 409 of a second draw are not exercised (the expiry has no clock surface). |
+| START-6 | H149, H150, H151, H154, H157 | A draw that fails after its read keeps it in memory only: a later draw with the same scan, focus, engine and model starts from the first stage that did not finish. After a channel-stage failure `Try again` shows `Using the facts already read`, `Checking the facts`, then `Drawing the overview` and `Using the overview already drawn`, makes no scan and no engine line before the channel, and its warnings equal a never-failed draw's (H149). After an overview-stage failure another channel reuses the read and draws the overview by a call (H150). A success removes what was kept: the next draw reads again (H150). The kept read answer's evidence is checked again against the folder as it is now, with no new commit or scan: a file the read cites, deleted after the failure, is dropped on `Try again` with the facts only it backed, the overview is then drawn by a call, and the drawing cites no deleted file; another focus with the same scan reads again (H151). Another model, and another focus, with the entry still standing after failed draws, read again (`Reading the code`, `Checking the facts`, the overview drawn by a call), while the same trimmed focus, engine and model with another channel reuses it, which pins the keys (H154). After an overview-stage failure `draw-retry` on the home screen shows the read stage `running` with `Using the facts already read`, then `done` once the overview starts, the overview drawn by a call, and the drawing opens (H157, the stage list recorded in the page). Limit: the one-hour expiry, another engine reading again (the fixture is the only engine), a cancel or timeout keeping the read, and the 409 of a second draw are not exercised (the expiry has no clock surface). |
 | SCAN-1 | H110, H111, H112, H113, H121 | A scan reads the folder in code (listing from git or a walk that skips `node_modules` and its kin, the files named by the dependency files) and answers a card. The size budget and the README and dependency-file reading are not observable from the fixture's answer. |
 | SCAN-2 | H110, H121 | Options of the three kinds, each with title, sentence and files; the option whose file is missing is left out with one warning; fewer than three is a success; paths are relative to the repository root. Limit: "3–5 options" depends on the engine; the fixture gives three. |
 | SCAN-3 | H110, H120, H121, H122 | "The whole system" and a typed focus are never options, always offered, and accepted by the draw. |
 | SCAN-4 | H111, H112, H113, H122 | Cached per commit (cache file count, `cached: true`, `Scanned before at`), the same entry for a tree with uncommitted changes, `refresh`, a new commit, a folder outside git or without a commit never cached, a failed or cancelled scan caches nothing. |
 | READ-1 | H117, H119, H121, H123 | After a focus the read returns components, mechanisms, relations and a limit; a failure at the read, overview or channel writes nothing. Limit: what a real engine reads is not observable; the facts are the fixture's. |
-| READ-2 | H106, H107, H117, H118, H151 | Every fact in a draw carries evidence, `files` are the evidence files, evidence that points nowhere is dropped with the contracted warnings and a fact left with none goes, with what depended on it; a kept read answer is checked again against the folder as it is (H151). In a file only paths are checked. |
+| READ-2 | H106, H107, H117, H118, H151, H154, H157 | Every fact in a draw carries evidence, `files` are the evidence files, evidence that points nowhere is dropped with the contracted warnings and a fact left with none goes, with what depended on it; a kept read answer is checked again against the folder as it is (H151). In a file only paths are checked. |
 | READ-3 | H117 | The agent's loop is five mechanisms within the agent, the check around execution a gate, wherever the fixture answers it. Whether a real engine asks for the loop only when the card says `agent` is not observable. |
 | STORY-1 | H97, H102, H103, H116, H117, H119, H120, H121, H122, H124, H125, H126, H128 | A channel is chosen after the focus and drawn from the facts without reading again, on its own tab, as one undoable step; switching channel starts no run. |
 | STORY-2 | H114, H116, H153 | LinkedIn: no held items or limits on the post, no tuning-number warning outside it, count targets only on it; the post style's own line rule for a hidden straight line (H153). Limit: "about 8–12 parts", a title of nine words and readability on a phone are the model's work and not observable. |
 | STORY-3 | H106, H109, H124, H125 | The README is a drawing of its own that holds held mechanisms and limits as rows, counted in the panel's height. Limit: "one-line descriptions" and "held items only on the few parts that matter" are the model's choice. |
-| STORY-4 | H106, H107, H126, H127, H128 | The presentation is one drawing and ordered steps with a text and a note each; steps are lit and dimmed in the editor, edited, reordered, undone, and follow a deleted part. Full-screen presenting is PRES-1, not built. |
+| STORY-4 | H106, H107, H126, H127, H128, H158–H166 | The presentation is one drawing and ordered steps with a text and a note each; steps are lit and dimmed in the editor, edited, reordered, undone, and follow a deleted part. Presenting, touring and exporting them as slides (PRES-1 to PRES-3) are listed under those ids. |
 | STORY-5 | H16, H106, H107, H109, H114, H124 | A number that explains a guarantee (`Stops after 12 turns`) is a limit fact drawn as a row outside LinkedIn and is no warning there. |
 | STORY-6 | H114, H115, H116, H119, H129, H130 | The overview has no caps, no count targets, no size warning and no suggestion; Simplify stays. Limit: that the model decides what to draw and its rough place has no contract surface the fixture can exercise. |
-| STORY-7 | H145, H146, H147, H148 | A story answer with a problem gets one repair turn: `Fixing <n> problem(s) in the answer` between the two check lines (post and story, H145, H146, H147) or in the overview stage of a draw (H148); the engine's second answer is saved as it is, with no `Shortened` warning (H145, H148); a still over-long description is cut to 240 characters ending in `…` with exactly one `Shortened the description to 240 characters` warning and the run does not fail (H146); a violated relation is repaired by the engine's second answer or fails the run `The engine's LinkedIn post cannot be drawn: …` naming the connection, writing nothing (H147). Limit: prompt wording and the schema's `maxLength` are not observable with the fixture; the other `Shortened <what>` forms, the 60-part relation, the presentation's empty-step and 20-step repairs, a revise's repair turn, a channel call's repair turn in a draw and the overview's failure message (no marker reaches them) are not exercised. |
+| STORY-7 | H145, H146, H147, H148, H155, H156 | A story answer with a problem gets one repair turn: `Fixing <n> problem(s) in the answer` between the two check lines (post and story, H145, H146, H147) or in the overview stage of a draw (H148); the engine's second answer is saved as it is, with no `Shortened` warning (H145, H148); a still over-long description is cut to 240 characters ending in `…` with exactly one `Shortened the description to 240 characters` warning and the run does not fail (H146); a violated relation is repaired by the engine's second answer or fails the run `The engine's LinkedIn post cannot be drawn: …` naming the connection, writing nothing (H147); two problems in one answer are one repair turn announced `Fixing 2 problems in the answer`, also with a stubborn engine, whose run then fails (H155); a draw whose overview answer stays over its limit after the repair turn is shortened with one warning and still writes and registers its drawing (H156). Limit: prompt wording and the schema's `maxLength` are not observable with the fixture; the other `Shortened <what>` forms, the 60-part relation, the presentation's empty-step and 20-step repairs, a revise's repair turn, a channel call's repair turn in a draw and the overview's failure message (no marker reaches them) are not exercised. |
 | LAYOUT-1 | H15, H17, H24, H28, H32, H34, H44, H63, H84, H86, H87, H109 | Parts are placed once and keep their place, sizes follow the contracted geometry (a panel's rows included, H109), and editor, preview, download and `archdrawer svg` draw the same numbers. Limit: sizes and path equality are measured at 0.3 drawing px. |
 | LAYOUT-2 | H84, H86, H152, H153 | ADR 0011. Every connection is one `M … C …` cubic, never an arc, a chain or a straight command, in the editor and the image (H84, H86, H152, H153); a connection that meets a part it does not join passes behind it, is drawn under it, and is listed in `edgesOverParts`, the run's report and the share dialog agreeing with an independent measurement of the exported image, and nothing a line passes behind is missing or invented (H84, H86, H153); a group's name is cut out of the line in two exported images and the line is drawn everywhere else (H152); in a post a straight line hidden behind the part between its ends turns out on one side as one cubic, clear of it by 8 px with 24 px handles, while the overview draws the same line behind the part (H153); labels lie within 10 px of their curve or are left out (H84, H153); stored positions never move (H84, H86, H152, H153). Limit: that code places parts without a stored position so lines clear them where it can (and the widening of gaps, at most three times) is not asserted, since no fixture makes the outcome certain; the cut-out of a group's name is measured by pixels in two exports, not in the editor; which side a post's line turns out on (right on a tie) and the 0.42 handle length are not asserted; the editor's hit area not being cut is not observable. |
 | LAYOUT-3 | H28, H38, H39, H63, H64, H84, H85, H86, H114, H115, H152, H153 | The report counts parts, zones, connections, cut text, crossings and connections over parts; its numbers equal an independent measurement of the exported image (H84, H86, H152, H153); count targets only on LinkedIn (H114, H115). |
 | LAYOUT-4 | H97, H143, H144 | The `revise` run: its request checks in their contracted order (format, `readCode`, image missing / not a PNG / too large, an image on another kind, instruction, scope, drawing, view, channel, engine, no drawing), the fixture's answers (the overview's first part 40 px right and nothing else; the channel's story elsewhere; a lone group changes nothing), `route` null, progress starting `Looking at the drawing`, a failed run writing nothing (H143); `ai-look-again` posting the view's PNG in the channel's default format at 1x, ending in a preview, off during a run and on an empty channel (H144), off with no engine (H137). Limit: that the image shows what the reader sees, that the revise folder under the data directory is made and removed, and what a real engine does with the picture are not observable with the fixture engine. |
-| LOOK-1 | H20, H36, H41, H131 | Light and dark themes switch, persist and keep the library legible at the contracted contrast; the shapes are the same in both (H131). No judgement of style. |
+| LOOK-1 | H20, H36, H41, H131, H158, H165 | Light and dark themes switch, persist and keep the library legible at the contracted contrast; the shapes are the same in both (H131). No judgement of style. |
 | LOOK-2 | H131, H132, H133 | A card or compact part of kind `llm`, `actor`, `data`, `external` or `gate` names its outline in `data-shape` (`agent`, `person`, `store`, `external`, `check`), every other kind, a panel and a group as `card` / `card` / `group`; the same in the editor and in `export.svg`; no size or place changes with it, also in the post style; the picker's card and compact buttons show the chosen kind's shape; changing a kind in the callout changes the shape only. Limit: what the outlines look like (a second outline, a head badge, a cylinder, dashes, cut corners) is not observable from `data-shape`; the picker's panel and group buttons and the callout's form menu thumbnails are not asserted. |
 | LOOK-3 | H16, H134 | A drawing of six or more parts with no panel gets no *No held items* warning from `validate` or `open`, also on the README, while Flat, No main path and Repeated label stay (H16, H134). Limit: that the briefs ask for a one-line sub-line and held mechanisms only where the story is about them is a prompt matter, not observable with the fixture engine. |
-| FILE-1 | H15, H16, H18, H19, H20, H21, H22, H23, H24, H25, H26, H27, H30, H35, H36, H40, H41, H88, H90, H94, H95, H97, H108, H118 | The drawing is one file; edits are saved into it; an outside edit is followed; reloads show the stored state; a channel or view change writes nothing (H97); an older file gains no new field (H108); a draw writes one new file and never overwrites, whatever sits at a name, and a draw whose file cannot be written leaves the folder as it was (H118, H119). |
-| FILE-2 | H15, H16, H27, H88, H89, H90, H91, H92, H93, H96, H99, H100, H104, H105, H106, H107, H108, H109, H126 | The file holds the facts and one drawing per channel: the shape and its defaults, every validity rule's path, `@2` and `@1` read as `@3`, channel on exports and requests, parts that point at facts; from 0.3 mechanisms, limits, evidence, held rows, a README view, a presentation view with steps (H106–H109). Limit: how an `@2` post must look to be valid `@2` is no longer in the contracts (see *Contract gaps*). |
+| FILE-1 | H15, H16, H18, H19, H20, H21, H22, H23, H24, H25, H26, H27, H30, H35, H36, H40, H41, H88, H90, H94, H95, H97, H108, H118, H161 | The drawing is one file; edits are saved into it; an outside edit is followed; reloads show the stored state; a channel or view change writes nothing (H97); an older file gains no new field (H108); a draw writes one new file and never overwrites, whatever sits at a name, and a draw whose file cannot be written leaves the folder as it was (H118, H119). |
+| FILE-2 | H15, H16, H27, H88, H89, H90, H91, H92, H93, H96, H99, H100, H104, H105, H106, H107, H108, H109, H126, H162 | The file holds the facts and one drawing per channel: the shape and its defaults, every validity rule's path, `@2` and `@1` read as `@3`, channel on exports and requests, parts that point at facts; from 0.3 mechanisms, limits, evidence, held rows, a README view, a presentation view with steps (H106–H109). Limit: how an `@2` post must look to be valid `@2` is no longer in the contracts (see *Contract gaps*). |
 | FILE-3 | H92, H93, H94, H95, H101, H103, H104, H105, H108, H115, H124, H125, H127, H128, H129 | A rename or a new part in the overview reaches the facts and every channel that draws them; `outdated` is marked exactly for a new fact, a deleted fact or relation, a relation between two shown facts, and a field a part keeps its own text for; never for the current channel or an empty one; undo restores the marks. A session's write is split the same way (H95). Steps and a README rename are appearance (H125, H127). The routes of a refine mark or do not mark by the same rules (H129). |
-| EDIT-1 | H18, H19, H20, H21, H22, H23, H30, H31, H32, H36, H40, H85, H87, H92, H93, H94, H96, H99, H101, H103, H125, H127, H128 | Move, rename in place, add by kind and form, connect by dragging, free text, undo and redo across views and channels, now also steps. |
+| EDIT-1 | H18, H19, H20, H21, H22, H23, H30, H31, H32, H36, H40, H85, H87, H92, H93, H94, H96, H99, H101, H103, H125, H127, H128, H160 | Move, rename in place, add by kind and form, connect by dragging, free text, undo and redo across views and channels, now also steps. |
 | EDIT-2 | H18, H22, H34, H36, H40 | The callout shows purpose, connections and files and edits them. |
 | EDIT-3 | H26 | A stale save shows the conflict and the reload offer, never `Saved`. Limit: an unwritable folder is exercised only on POSIX. |
 | EDIT-4 | H30, H138 | A drag during a run is refused with the contracted toast and moves nothing; from 0.4 the same refusal, with its own toast, while a result is a preview (H138). |
@@ -215,12 +250,14 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 | AI-4 | H97, H115, H130, H141, H142 | The suggestions of each channel with their labels, sent as routed instructions that leave the input alone, disabled during a run and on a channel with no view (H97), `Simpler` as the canned simplification of the overview's first view from a detail view, saved as requests with no engine; `simplify-overview` gone. Limit: that no model chooses the suggestions is a design fact, not observable. |
 | AI-5 | H129, H130 | An instruction is routed to the facts or the channel's story: `route` in the record and `done`, the progress sentences, `ai-route` and the toast, marks only on the facts route, a story on the overview changes appearance only, a `parts` scope is the facts (its route line shown too), a simplify run shows no `ai-route`. Limit: the routing question's answer is the fixture's marker, given at once with no progress line and acted on by no other marker; how a real engine decides is not observable, and that `ai-route` goes when another run starts is not asserted. |
 | NAV-1 | H20, H35, H98 | A part opens its inside, detail views nest, a view is reachable from the menu, the breadcrumb and a link, a search result opens its view, and the address keeps the view across a reload. |
-| NAV-2 | H96, H97, H98, H99, H101, H102, H126, H127 | Four tabs in the contracted order with the current one, marks with their counts and accessible names, Keep as it is, the stages of an empty channel with the tools off, the breadcrumb and views menu in the overview only, the address with channel and view, an old `?view=` link, the narrow header; the steps panel on the presentation tab. |
+| NAV-2 | H96, H97, H98, H99, H101, H102, H126, H127, H158, H163 | Four tabs in the contracted order with the current one, marks with their counts and accessible names, Keep as it is, the stages of an empty channel with the tools off, the breadcrumb and views menu in the overview only, the address with channel and view, an old `?view=` link, the narrow header; the steps panel on the presentation tab. |
 | NAV-3 | H35 | Slash and the search button open search; `data-match` and `data-dim` while typing, the count texts, Enter / Shift+Enter with wrap, no part resized and no view move while typing, a match in another view, Escape ending the highlight, and the file untouched. Limit: the order of matches is not pinned; Ctrl/Cmd+K and the 50-result cap are not exercised. |
 | NAV-4 | — | To build. |
-| PRES-1 – PRES-3 | — | To build (0.5). |
-| SHARE-1 | H15, H23, H28, H38, H63, H85, H87, H91, H100, H109, H152, H153 | PNG and SVG at twice the size, copy, light and dark, all four sizes, no product mark, real text, the same image from preview, download, HTTP and the command, for a named channel, now also README and presentation images (H109). |
-| SHARE-2 | H39, H100, H124, H125, H126 | The modal keeps focus, closes back to its button, and carries preview, report and meter, and downloads; none of the old simplify and share-one-part controls. On the LinkedIn channel the dialog defaults to the feed, on the README channel to the README size, on the presentation to the slide, each with that channel's own view. |
+| PRES-1 | H158, H159, H160, H161 | ADR 0012. `present-start` on the presentation channel only, off with the title `Add a step first`, in the header at every width; the layer `present` in `present` mode on the opening slide (`data-index` 0), in the drawing's theme, a dialog that holds the focus; full screen asked for and `data-fullscreen` equal to `document.fullscreenElement`, a refused request leaving the layer open and filling the window (H158); every key of the table, a click as next, no step passed at either end, `present-status` and the slide image's band, the dimming rules of *The slide image*, the hint until the index first changes (H159); the speaker note, Escape / `Exit` / a focused `Exit` leaving with the focus back and the step shown current, an editor that takes no key or click under the layer (H160); an outside change re-rendering the slide with no toast, the step followed by its `id`, the last step when it was removed, the opening slide kept, the layer closed with its toast when no step is left (H161). Limit: whether the browser grants full screen is not assumed, so the browser-exit leg (H158) runs only when it did, and a refusal is observed only if the browser refuses; the layout inside a slide, the hint's position, the layer's colours and the `Exit` button's place are not asserted; arrow keys with a button focused are not asserted (the contract says no other key *acts on* the button, not whether it still moves the slide); that the opening slide's state of the note is kept across it is not asserted. |
+| PRES-2 | H162, H163 | `tour-start` opens `tour` mode on the first step, never full screen, with no hint or note button; `tour-panel` beside the slide at 900 px or more and under it below; `tour-note`, one `tour-part` per lit part in the view's order, `tour-file` per path once in the contracted order with its ranges, `No files recorded`, `tour-copy` copying the path alone with its toast; the tour's keys, a click as next, leaving with the focus back; no request writes or checks a file while touring (H162, H163). Limit: the second range of a path is read as `src/api.ts:3–9, :20–24` or `src/api.ts:3–9, 20–24` (the contract's "joined by `, `" allows both); a range cited by a fact other than the one that lists the path is not asserted (the contract does not say whose ranges a path shows); `Copying is not allowed here` is accepted where a browser refuses the clipboard; no surface shows that the tour opens no file beyond the requests seen. |
+| PRES-3 | H164, H165, H166 | ADR 0012. `download-slides-pdf` and `download-slides-png` in `share-actions` on the presentation channel only, `<slug>-slides.pdf` and `<slug>-slides.zip`; the PDF read as the testing contract says (`%PDF-1.4`, `%%EOF`, `/Count` = steps + 1, that many pages of `/MediaBox [0 0 960 540]`, each one 3840 × 2160 `DCTDecode` image starting `FF D8`); the zip's stored entries, counted by the end-of-central-directory record, `<slug>-slide-00.png` … in two digits, each a PNG of 3840 × 2160 with a right checksum; the pages and the entries the same slides in the same order (decoded by the browser and matched without fixing a colour); the dialog's theme and toggles reaching them, the title and description on the opening slide only, the format never changing a slide's size; the accented slug; off with `Add a step first` without a step (H164, H165, H166). Limit: `Making slides…` and the failure toast are not asserted (no surface makes slides slow or fail); that notes are not in the exports is not asserted; a slide's drawing (dimming, band) is observed through the presenter (H159), not through the downloaded pixels, since the contracts fix no colour. |
+| SHARE-1 | H15, H23, H28, H38, H63, H85, H87, H91, H100, H109, H152, H153, H159, H164, H165 | PNG and SVG at twice the size, copy, light and dark, all four sizes, no product mark, real text, the same image from preview, download, HTTP and the command, for a named channel, now also README and presentation images (H109); the slide image the presenter and the slide downloads show (H159, H164, H165). |
+| SHARE-2 | H39, H100, H124, H125, H126, H166 | The modal keeps focus, closes back to its button, and carries preview, report and meter, and downloads; none of the old simplify and share-one-part controls. On the LinkedIn channel the dialog defaults to the feed, on the README channel to the README size, on the presentation to the slide, each with that channel's own view. |
 | SHARE-3 | H39, H64 | The `readability` line is the contracted one-sentence wording for its level and destination, with no digit. |
 | SAFE-1 | H25, H29 | Text typed into an instruction is data, and model names that look like options or shell words are refused. Folder and scan checks refuse a malformed model the same way (H113, H120). |
 | SAFE-2 | — | See *Not covered*. |
@@ -233,8 +270,31 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 
 ## Not covered
 
-**To build** (nothing to observe yet): START-2, NAV-4, PRES-1 to PRES-3, QUAL-1,
-QUAL-3. (LAYOUT-4, LOOK-2, AI-3 and AI-4 left this list with 0.4.)
+**To build** (nothing to observe yet): START-2, NAV-4, QUAL-1, QUAL-3. (LAYOUT-4,
+LOOK-2, AI-3 and AI-4 left this list with 0.4. PRES-1 to PRES-3 are observed by H158–H166
+from 0.5 and stay *To build* in `spec.md` until the integration marks them Today.)
+
+**0.5, not testable from the contracts** (a part of the 0.5 contract no scenario can
+exercise, and why):
+
+- `Making slides…` and the failure toast `The slides could not be made` (ui contract,
+  *Share*): no contract-named surface makes the rasterising slow or fail, and the time it takes
+  is not contracted.
+- The look of a slide: the band's font sizes (34 / 28 / 22 px), its 1640 px width and weight, the
+  counter's mono 24 px and right alignment, the fit into the margins above the band, and the caption
+  sizes are layout inside the slide that the contract leaves to the renderer and that the presenter
+  shows as an SVG. H159 reads the band's text and count, the caption's presence and the dimming;
+  the downloaded pixels are compared only with each other (their order, theme, toggles), never with a colour.
+- Full screen as the browser's decision: whether the browser grants full screen is not
+  assumed. H158 and the leaving legs use `data-fullscreen` against `document.fullscreenElement`;
+  the legs that need a granted request (the browser's own exit leaving the layer) run only when it
+  was granted, so a browser that refuses never exercises them, and a refusal is exercised only by a
+  browser that refuses.
+- The pages of the PDF in the slides' order cannot be read from the PDF alone (the testing contract
+  points at the zip). H164 matches each page to the zip's slide of the same index by decoding both in the
+  browser, which assumes only that two different slides differ more than two encodings of one slide.
+- That the exports leave out the speaker notes and that the tour opens no file: a request log
+  (nothing written, nothing checked) is the only evidence (H162).
 
 **Today or changing, but not observable from the contracts** (a contract gap):
 
@@ -469,3 +529,101 @@ only what both readings share, or says here what it assumed.
 - **No scenario for the channel call's repair turn or a revise's.** The fixture's `overlong`
   and `stubborn` act on the overview call of a draw, on a post and on a story only; no marker
   makes a draw's channel call or a revise answer a problem.
+
+## Contract gaps found while writing the story-limits-2 scenarios (issue #97)
+
+- **The issue and the contracts agree.** Each of the four points was checked against api.md
+  (*Progress*, *What a failed draw keeps*), diagram.md (*Problems and the repair turn*, *Hard
+  limits*), ui.md (`draw-stage`, `draw-error`, `draw-retry`) and testing.md (*Markers*, *Draw*);
+  none needed a correction. All four points are scenarios (H154–H157); none is left out.
+- **H151 does not cover another focus.** Its other-focus draw comes after the retry that
+  succeeded, and a success removes the folder's entry, so that draw would read again with any
+  key. H154 therefore keeps the entry standing: every draw in it fails at the channel with
+  `[fixture:fail:channel]` (which fails every time, unlike `flaky`), another model and another
+  focus are each followed by a draw that reuses (the same trimmed focus and model, another
+  channel), and no draw succeeds.
+- **The model of the fixture.** testing.md names `fixture-fast` and `fixture-careful` and
+  accepts any valid model name; H154 uses those two, and reads `Using model fixture-careful` among
+  the progress lines of a fresh read as the sign that the model was sent. Another engine cannot be
+  tried: the fixture is the only engine of the suite.
+- **The plural line.** `[fixture:invalid][fixture:overlong]` on a post gives two problems (the
+  connection to `ghost`, the over-long description), as the issue and testing.md say; H155 pins
+  `Fixing 2 problems in the answer` exactly and the singular's absence. `Saved` is matched
+  without a warning count: the repair turn adds none, and the fixture's own warnings are not
+  this scenario's concern.
+- **A stubborn overview in a draw.** The shortened text is the overview view's caption lede
+  (`Shortened the description to 240 characters`, as for a post). Where the warning stands among
+  the draw's warnings is not pinned beyond "after the read's four", since warnings are in stage
+  order.
+- **What the screen shows for a reused stage (H157).** The ui contract says a reused stage shows
+  `running` with its `Using …` line in `draw-line`, then `done` once the next stage starts. The
+  reused read's `Using the facts already read` and `Checking the facts` follow each other with no
+  engine call between them, so the moment is short; H157 does not sleep or poll for it but records
+  every state the stage list and `draw-line` are in (a `MutationObserver` in the page) and asserts
+  on the recording. If a client drew only the last of several events that arrive together, this
+  moment would not be seen and H157 would fail; the contract sentence is the reason it is asserted.
+
+## Contract gaps found while writing the 0.5 scenarios
+
+Each is a place where the contracts leave a choice to the builder; the scenario asserts only what
+every reading shares, or says here what it assumed.
+
+- **The second range of a path in `tour-file`.** "`:<from>–<to>` … joined by `, `" read literally gives
+  `src/api.ts:3–9, :20–24`; a builder may write `src/api.ts:3–9, 20–24`. H162 accepts both
+  (`TOUR_DESK_FIRST`) and uses one path with two ranges only for that. Which fact's ranges a path shows
+  when two facts of the part cite it is not stated, so no scenario has a path cited by two facts.
+- **Is `tour-copy` inside `tour-file`?** The text of `tour-file` is "the path, then … ranges", and `tour-copy` is
+  "one per `tour-file`". H162 reads `tour-file`'s text with any `tour-copy` inside it removed (on a clone) and
+  whitespace-normalised, and the buttons as the part's `tour-copy` list; whether a space separates a path from
+  its ranges is open, so none is kept before a colon that follows the path.
+- **What `present-slide` is.** "The slide's SVG": the helpers read the element itself when it is an `svg`, else
+  its first `svg`, so a wrapper works. The slide must be inline SVG, not an image, since the dimming is read
+  from `g[data-node-id]`, `g[data-edge-id]`, `g[data-text-id]` and the band from `[data-slide-text]` and
+  `[data-slide-count]` (the ui contract names these as attributes of groups and elements in the SVG). The step's
+  text is the text of every `[data-slide-text]` element in document order (one element per line is a valid reading).
+  The SVG is "scaled to fit", so its `width`/`height` are not asserted: `slideSized` accepts `viewBox="0 0 1920 1080"`
+  or the attributes, and the 16:9, inside-the-layer and beside/under checks (H158, H163) run on the drawn slide,
+  `slideBox`: the corners (0,0) and (1920,1080) through the SVG's `getScreenCTM()`, not the element's own box, which
+  may be larger. The downloads keep their exact size checks.
+- **Whitespace in the band's text.** The band's text may be set on several lines, so it is compared with every
+  space removed (`squeezed`); its being whole (never shortened) is what is asserted.
+- **Keys with a button focused.** "Space and Enter on a focused button activate it and do not move; no other key acts
+  on a focused button" does not say whether an arrow still moves the slide then. H160, H162, H163 and H158 give the focus
+  back to the layer (`layer.focus()`) before an arrow key or Escape that follows a button's click or a Tab, and assert
+  keys only with the focus on the layer.
+- **The note across the opening slide.** `present-note-toggle` is "closed when the layer opens, and kept open or
+  closed from slide to slide". H160 asserts it between steps and not after going back through the opening slide.
+- **Leaving with a step current already.** "No step current after the opening slide" is read for a start with no step
+  current; H158 leaves the opening slide only when none was. H160 asserts no step current when it leaves on the opening
+  slide, and the step shown when it leaves on a step. Whether the part selected before presenting stays selected after
+  leaving is not asserted (the contract says only that the step shown becomes current); `tool-pan` is asserted not
+  `aria-pressed="true"`, since `aria-pressed` is given "on the active one" only.
+- **Leaving with Escape and the editor's own Escape.** The Escape that leaves the layer must not also clear the
+  editor's selection (the editor takes no key while the layer is open), but the selection is checked after leaving with
+  `Exit`, not with Escape, since which handler sees that keydown last is not contracted.
+- **Where the click lands.** "A click on `present-slide` is the next slide" is exercised at the element's centre. A
+  click on the layer outside the slide (the bars of a window that is not 16:9) is not contracted, so H160 reads the index
+  after clicking where another part sits under the layer and expects the matching step current.
+- **`tour-panel` after an outside write.** "While the layer is open, an outside change to the file … re-renders the slide
+  shown, with no toast" says nothing of the tour's panel. H163 observes the slide (its label, compared with `squeezed`
+  since a label may be drawn as several `tspan`s) and the absence of a toast, and asserts nothing about `tour-part` or
+  `tour-file` changing; the panel's ids at the step are checked, not that its labels follow the write.
+- **The index read after a click under the layer.** `data-index` may follow a click a frame later, so H160 reads it only
+  when two reads 250 ms apart agree, before leaving, and derives the current step from that value.
+- **Full screen.** Granted or refused is the browser's; see *Not covered*.
+- **The hint after the first change.** "Shown until `data-index` first changes" is read as gone for good once the index
+  has changed, also when it returns to 0 (H159).
+- **A step's `id` when the layer follows an outside change.** The outside writes of H161 only reorder, retext and remove
+  steps and change the caption; a step whose parts are renamed or removed by the write is not exercised.
+- **`updatedAt` of an outside write.** The session's write carries a later `updatedAt` than the stored one (`sessionWrite`),
+  as H26 and H95 do; whether the server needs it is not stated.
+- **The slide's pixels.** The contracts fix no colour, so the PNG and JPEG slides are compared with each other through
+  the browser (`pixelGrids`), never with an expected colour (which theme is darker is not asserted; the PDF made in dark is asserted nearer the dark
+  slides than the light ones), and a slide is matched to
+  its own index by nearest grey-level grid (192 × 108), which assumes two different slides of the talk differ more than a PNG
+  and a JPEG of the same slide.
+- **A disabled button's click.** H158 and H166 click disabled buttons with `force: true` to prove nothing starts; a browser
+  never fires a click on a disabled button, so the product need do nothing for that to hold, and the assertion is that the
+  layer stays closed and no file downloads.
+- **Slug of adjacent non-alphanumerics.** `non-alphanumerics → -` is read per run in neither scenario: the titles used
+  (`Crème Brûlée Café!`, `Slides Shop`, `Theme Shop`, `One Step Talk`) have none side by side.

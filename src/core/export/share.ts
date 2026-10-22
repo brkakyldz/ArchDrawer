@@ -99,12 +99,12 @@ export interface ShareImage {
   drawn: { view: DiagramView; rects: Map<string, Rect>; routes: Map<string, EdgeRoute> };
 }
 
-const EM = 14; // the caption's base em (spacing), as in the demo
+export const EM = 14; // the caption's base em (spacing), as in the demo
 /** Caption and steps wrap onto as many lines as they need: nothing in them is cut short. */
-const WHOLE = 1000;
+export const WHOLE = 1000;
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
-interface Block { w: number; h: number; draw: (x: number, y: number) => string }
+export interface Block { w: number; h: number; draw: (x: number, y: number) => string }
 
 function textBlock(view: DiagramView, f: Format, o: ShareOptions, P: Palette, width: number): Block | null {
   const parts: { lines: string[]; size: number; line: number; weight: 400 | 600; color: string; gap: number; tracking: number }[] = [];
@@ -129,7 +129,7 @@ function textBlock(view: DiagramView, f: Format, o: ShareOptions, P: Palette, wi
   };
 }
 
-function keyBlock(kinds: Kind[], f: Format, P: Palette, width: number, align: "start" | "end"): Block {
+export function keyBlock(kinds: Kind[], f: Format, P: Palette, width: number, align: "start" | "end"): Block {
   const kz = f.kz, dot = 0.55 * kz, gap = 0.5 * kz, hgap = 1.1 * kz, vgap = 0.4 * kz, line = kz * 1.45;
   const items = kinds.map((k) => ({ k, w: dot + gap + textWidth(KIND_INFO[k].label, kz) }));
   const rows: { k: Kind; w: number }[][] = [[]];
@@ -163,7 +163,7 @@ function keyBlock(kinds: Kind[], f: Format, P: Palette, width: number, align: "s
 }
 
 /** Panels without their items shrink around their own centre (ui contract, Share). */
-function shrinkPanels(view: DiagramView): DiagramView {
+export function shrinkPanels(view: DiagramView): DiagramView {
   const full = layoutRects(view, { items: true });
   const bare = layoutRects(view, { items: false });
   return {
@@ -297,9 +297,10 @@ export function renderShare(doc: Pick<DiagramDocument, "views">, viewId: string,
     }
     if (!placed) {
       // A strip under the drawing, title left and key right, above a firm hairline.
-      const sw = f.w - f.m * 2;
-      const t = wantText ? textBlock(source, f, o, P, Math.round(sw * 0.64)) : null;
-      const k = wantKey ? keyBlock(kinds, f, P, Math.round(sw * (t ? 0.48 : 1)), "end") : null;
+      // Both sit on the strip's bottom line, so the title wraps in what the key leaves of it.
+      const sw = f.w - f.m * 2, apart = 1.6 * EM;
+      const k = wantKey ? keyBlock(kinds, f, P, Math.round(sw * (wantText ? 0.48 : 1)), "end") : null;
+      const t = wantText ? textBlock(source, f, o, P, Math.floor(Math.min(sw * 0.64, sw - (k ? k.w + apart : 0)))) : null;
       const inner = Math.max(t?.h ?? 0, k?.h ?? 0);
       const pad = 0.9 * EM;
       const stripH = 1 + pad + inner;
@@ -316,7 +317,7 @@ export function renderShare(doc: Pick<DiagramDocument, "views">, viewId: string,
       `@font-face{font-family:"Geist Mono";font-weight:100 900;src:url(data:font/woff2;base64,${o.fonts.mono}) format("woff2")}</style>`
     : "";
   const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${f.w}" height="${f.h}" viewBox="0 0 ${f.w} ${f.h}" data-theme="${o.theme}" data-format="${f.id}" font-family="${esc(FONT_SANS)}">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${f.w}" height="${f.h}" viewBox="0 0 ${f.w} ${f.h}" data-theme="${o.theme}" data-format="${f.id}" font-family="${esc(FONT_SANS)}" text-rendering="geometricPrecision">` +
     `<defs>${fonts}${drawing.defs}</defs>` +
     `<rect width="${f.w}" height="${f.h}" fill="${P.canvas}"/>` +
     `<g transform="translate(${r1(place.tx)} ${r1(place.ty)}) scale(${Math.round(place.k * 10000) / 10000})">${drawing.body}</g>` +

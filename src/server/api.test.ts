@@ -29,6 +29,18 @@ describe("security envelope", () => {
     const html = await (await req("/d/d_anything")).text();
     expect(html).toContain('<meta name="archdraw-token" content="test-token">');
   });
+
+  it("serves the app for a path whose percent-encoding is broken, never a 500", async () => {
+    const { req } = makeApp();
+    for (const path of ["/%zz", "/assets/%E0%A4%A", "/d/%ZZ", "/d/d_anything%"]) {
+      const r = await req(path);
+      expect(r.status, path).toBe(200);
+      expect(await r.text(), path).toContain('<meta name="archdraw-token" content="test-token">');
+    }
+    const api = await req("/api/diagrams/%ZZ");
+    expect(api.status).toBe(404);
+    expect(api.headers.get("content-type")).toMatch(/^application\/json/);
+  });
 });
 
 describe("drawings over HTTP", () => {
@@ -78,6 +90,9 @@ describe("drawings over HTTP", () => {
     const svg = await (await req(`/api/diagrams/${id}/export.svg?format=feed&theme=dark`)).text();
     expect(svg).toMatch(/^<svg xmlns="http:\/\/www.w3.org\/2000\/svg" width="1080" height="1350"/);
     expect(svg).toContain('data-theme="dark"');
+    // The same fonts as the downloads and `archdrawer svg` (ui contract, The share image).
+    expect(svg).toContain("@font-face{font-family:Geist;");
+    expect(svg).toContain('@font-face{font-family:"Geist Mono";');
     expect((await req(`/api/diagrams/${id}/export.svg?format=poster`)).status).toBe(400);
     expect((await req(`/api/diagrams/${id}/export.svg?view=nope`)).status).toBe(400);
     expect(await (await req(`/api/diagrams/${id}/export.mmd`)).text()).toMatch(/^flowchart LR\n/);

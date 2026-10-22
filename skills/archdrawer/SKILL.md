@@ -22,7 +22,8 @@ If neither works, tell the user, and stop — do not draw anything:
 > archdrawer is not installed. Install the plugin (Claude Code:
 > `/plugin marketplace add <archdrawer repository>` then
 > `/plugin install archdrawer`; Codex: `codex plugin marketplace add
-> <archdrawer repository>`), or from a clone run `npm ci` and `npm link`.
+> <archdrawer repository>` then `codex plugin add archdrawer@archdrawer`),
+> or from a clone run `npm ci` and `npm link`.
 > It needs Node.js 20.19 or newer.
 
 ## 1. Ask before reading code

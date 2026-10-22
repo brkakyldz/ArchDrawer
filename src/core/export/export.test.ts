@@ -198,6 +198,11 @@ describe("share image", () => {
     expect(img.svg).toContain("@font-face{font-family:Geist;");
     expect(img.svg).toContain("base64,BBBB");
   });
+
+  it("draws its text at the font's own advances (diagram contract, Geometry)", () => {
+    const img = renderShare(shop(), "overview", { ...DEFAULT_SHARE, theme: "light" });
+    expect(img.svg).toMatch(/^<svg [^>]*\btext-rendering="geometricPrecision"/);
+  });
 });
 
 describe("LinkedIn version", () => {

@@ -55,6 +55,18 @@ describe("story runs", () => {
     expect((r as { layoutReport: { format: string } }).layoutReport.format).toBe("slide");
   });
 
+  it("a run's save replaces the warnings: a clean story or refine after one with warnings leaves none", async () => {
+    const { run, read } = await opened();
+    await run({ kind: "story", channel: "presentation" });
+    expect(read().warnings).toContain("Step 4 names no part and was dropped");
+    expect(await run({ kind: "story", channel: "readme" })).toMatchObject({ status: "succeeded", progress: expect.arrayContaining(["Saved"]) });
+    expect(read().warnings).toEqual([]);
+    await run({ kind: "story", channel: "presentation" });
+    expect(read().warnings).toEqual(["Step 4 names no part and was dropped"]);
+    expect(await run({ channel: "overview", view: "overview", instruction: "add Mailer component" })).toMatchObject({ status: "succeeded", progress: expect.arrayContaining(["Saved"]) });
+    expect(read().warnings).toEqual([]);
+  });
+
   it("on LinkedIn a story is a post, and a story's refusals come before any engine", async () => {
     const a = await opened(), b = await opened();
     await a.run({ kind: "story", channel: "linkedin" });

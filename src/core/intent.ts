@@ -143,7 +143,7 @@ export interface StoryRows { mechanisms: Map<string, { label: string; within: st
 export interface StoryOptions {
   portrait: boolean;
   /** With `ids` (a channel) the view's id is given and ids need only be unique in it. */
-  ids?: { view: string; taken?: Iterable<string> };
+  ids?: { view: string; taken?: Iterable<string>; groups?: Iterable<string> };
   /** The channel drawn; default LinkedIn (a post). */
   channel?: ChannelId;
   rows?: StoryRows;
@@ -343,7 +343,11 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
     used.add(out);
     return out;
   };
-  const zoneOf = new Map(intent.zones.map((z) => [z.id, fresh(`zone-${z.id}`)]));
+  // A zone's id gets `zone-` once: an id the view's own group already has, or one already prefixed
+  // (a story that carries the current view echoes them), is kept, so a redraw does not rename it.
+  const groups = new Set(o.ids?.groups ?? doc.views.find((v) => v.id === id)?.nodes.filter((n) => n.form === "group").map((n) => n.id));
+  const zoneId = (z: string) => (groups.has(z) || z.startsWith("zone-") ? z : `zone-${z}`);
+  const zoneOf = new Map(intent.zones.map((z) => [z.id, fresh(zoneId(z.id))]));
   const partOf = new Map(intent.parts.map((p) => [p.id, fresh(p.id)]));
 
   // Parts take what they represent from the source components they name: in a channel (`ids`) by the
@@ -575,7 +579,8 @@ function storyChannel(stored: Document3, intent: StoryIntent, portrait: boolean,
   const base = { ...joinChannel(stored, "overview"), views: [source], warnings: [] };
   const rows = storyRows(stored);
   const view = channel === "overview" ? stored.channels.overview.views[0]?.id ?? "overview" : channelViewId(stored, channel);
-  const r = intentToDocument(base, source.id, intent, { portrait, ids: { view }, channel, rows });
+  const groups = stored.channels[channel].views.find((v) => v.id === view)?.nodes.filter((n) => n.form === "group").map((n) => n.id);
+  const r = intentToDocument(base, source.id, intent, { portrait, ids: { view, groups }, channel, rows });
   const drawn = r.doc.views.find((v) => v.id === r.view)!;
   const cleared: Document3 = { ...stored, channels: { ...stored.channels, [channel]: { ...stored.channels[channel], views: [], ...(channel === "presentation" ? { steps: [] } : {}) } } };
   const split = applyChannel(cleared, channel, {

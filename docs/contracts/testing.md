@@ -383,6 +383,22 @@ fixture engine only, no browser opening, and `npm ci` done; downloads are read
 through Playwright's download API, and the clipboard needs the
 `clipboard-read`/`clipboard-write` permissions.
 
+The slide downloads (ui contract, *Share*) are written so a test reads them
+without a library:
+
+- **PDF.** Uncompressed objects, so the bytes read as Latin-1 text. It starts
+  with `%PDF-1.4` and ends with `%%EOF`. One `/Type /Pages` object has
+  `/Count <n>`, the number of slides (the steps + 1); there are exactly
+  `<n>` page objects (`/Type /Page` not followed by `s`), each with
+  `/MediaBox [0 0 960 540]` and one image XObject `/Width 3840 /Height 2160`
+  with `/Filter /DCTDecode`, whose stream starts with the JPEG marker
+  `FF D8`. The pages are in the slides' order; a test checks the order
+  through the zip.
+- **Zip.** Every entry stored (method 0), so each local header is followed by
+  the file's bytes as they are; the end-of-central-directory record gives the
+  entry count. Entry names in slide order; each entry starts with the PNG
+  signature, and its `IHDR` gives 3840 × 2160.
+
 The suite in `tests/acceptance/holdout/` is written from these contracts, not
 from the code. A failure there is fixed in the product, never by editing the
 suite.

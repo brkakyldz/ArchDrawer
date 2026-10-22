@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { applyChannel, clearOutdated, joinChannel } from "../../core/channels";
 import { prepareLinkedIn } from "../../core/export/feed";
-import { channelOfView, isChannel, type ChannelId, type Document3, type Step } from "../../core/file3";
+import { channelOfView, isChannel, validateDocument3, type ChannelId, type Document3, type Step } from "../../core/file3";
 import { layoutRects, routeEdges, viewBounds } from "../../core/geometry";
 import { LIMITS, TEXT_SIZE, viewById, type DiagramDocument, type DiagramView, type Form, type Kind } from "../../core/model";
 import { PALETTES } from "../../core/theme";
@@ -20,7 +20,7 @@ import { prepareChannel } from "../../core/simple";
 import { LoadError } from "./LoadError";
 import { Callout } from "./Callout";
 import { Canvas } from "./Canvas";
-import { addNode, addText, crumbsTo, deleteEdges, deleteNodes, deleteTexts, setNode, setText, viewOf } from "./ops";
+import { addNode, addText, crumbsTo, deleteEdges, deleteNodes, deleteTexts, reservedIds, setNode, setText, VIEW_FULL, viewOf } from "./ops";
 import { EdgeCallout, InlineInput, Picker, TextEditor, TextToolbar, Warnings } from "./Panels";
 import { ShareDialog } from "../share/ShareDialog";
 import { viewImage } from "../share/image";
@@ -83,6 +83,19 @@ function splitEdit(d: Document3, channel: ChannelId, fn: (d: DiagramDocument) =>
   const r = applyChannel(d, c, { views, title, theme, requests, warnings, engine, showSteps, ...(steps ? { steps } : {}) });
   if (!r.ok) { toast(r.error); return d; }
   return r.doc;
+}
+
+/**
+ * An edit the file would refuse is refused here, so no save is ever stuck on it (ui contract,
+ * `save-status`). The editor refuses each limit it knows of up front with its own toast; this is the
+ * last check. A document that was already invalid does not hold up later edits.
+ */
+function refusedByFile(before: Document3, next: Document3, toast: (m: string) => void): boolean {
+  if (next === before) return false;
+  const v = validateDocument3(next);
+  if (v.ok || !validateDocument3(before).ok) return false;
+  toast(v.error);
+  return true;
 }
 
 /**
@@ -180,11 +193,17 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   }, []);
 
   /* ---------- load, outside changes ---------- */
-  const adopt = useCallback((d: Document3, message: string | null, fresh = false) => {
+  /**
+   * The file's version becomes the editor's: on `load`; on `outside` (a session or the CLI wrote the
+   * file, or the user loaded the file's version on a conflict), which starts a new history, so undo
+   * never writes the editor's older version over the outside change (ui contract, External changes);
+   * on `request`, a request the server just saved, which is one undo step.
+   */
+  const adopt = useCallback((d: Document3, message: string | null, how: "load" | "outside" | "request") => {
     // The file changed outside the editor: the preview ends as accepted (the file holds the result).
-    if (!fresh) endPreview("accepted");
+    if (how !== "load") endPreview("accepted");
     save.markSaved(d);
-    if (fresh) hist.reset(d); else hist.apply(d);
+    if (how === "request") hist.apply(d); else hist.reset(d);
     if (message) toast(message);
   }, [hist, save, toast, endPreview]);
 
@@ -230,7 +249,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       goTo.current = at;
       return "preview";
     },
-    onSaved: () => { if (doc) api.get(doc.id).then((d) => adopt(d, null), () => {}); },
+    onSaved: () => { if (doc) api.get(doc.id).then((d) => adopt(d, null, "request"), () => {}); },
   });
   settleTurn.current = runner.settleTurn;
   // A run's own write is announced before the run ends; the run hands its result over itself.
@@ -248,7 +267,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       }
       return api.get(id);
     })().then(
-      (d) => { if (!live) return; setLoading(false); setLoadError(null); adopt(d, null, true); document.title = `${d.title} · archdrawer`; },
+      (d) => { if (!live) return; setLoading(false); setLoadError(null); adopt(d, null, "load"); document.title = `${d.title} · archdrawer`; },
       (e: unknown) => {
         if (!live) return;
         setLoading(false);
@@ -269,7 +288,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     es.addEventListener("changed", (ev) => {
       const { updatedAt } = JSON.parse((ev as MessageEvent).data) as { updatedAt: string };
       if (running.current || !clean() || docRef.current?.updatedAt === updatedAt) return;
-      api.get(id).then((d) => { if (!running.current && clean() && d.updatedAt !== docRef.current?.updatedAt) adoptRef.current(d, "Updated from the file"); }, () => {});
+      api.get(id).then((d) => { if (!running.current && clean() && d.updatedAt !== docRef.current?.updatedAt) adoptRef.current(d, "Updated from the file", "outside"); }, () => {});
     });
     return () => es.close();
   }, [id, clean]);
@@ -358,13 +377,15 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     if (!viewById(doc, vid)) goView(doc.views[0].id);
   }, [doc, stored, vid, chan, goView]);
 
-  // When a preview starts, the editor goes once to the run's channel and view (ui contract).
+  // When a preview starts, the editor goes once to the run's channel and view (ui contract). A channel
+  // with no drawing keeps the overview's first view behind its stage, so the channel is compared too.
   useEffect(() => {
     const v = goTo.current;
-    if (!v || !stored || !channelOfView(stored, v)) return;
+    const c = v && stored ? channelOfView(stored, v) : null;
+    if (!v || !c) return;
     goTo.current = null;
-    if (v !== vid) goView(v);
-  }, [stored, vid, goView]);
+    if (v !== vid || c !== chan) goView(v);
+  }, [stored, vid, chan, goView]);
 
   // A run pauses edits (api contract); an edit saved meanwhile would fail the run's version check and its
   // result would be thrown away. The run's own result goes through `hist.apply`.
@@ -375,7 +396,11 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     const no = refusal();
     if (no) { toast(no); return; }
     const c = chanRef.current;
-    histApply((d) => splitEdit(d, c, typeof next === "function" ? next : () => next, toast), opts);
+    histApply((d) => {
+      const out = splitEdit(d, c, typeof next === "function" ? next : () => next, toast);
+      // A live drag is checked when it is recorded.
+      return opts?.record !== false && refusedByFile(d, out, toast) ? d : out;
+    }, opts);
   }, [histApply, toast]); // eslint-disable-line react-hooks/exhaustive-deps
   /** A tab: the channel's first view, or its own stage when it has no drawing (not an edit). */
   const goChannel = useCallback((c: ChannelId) => {
@@ -426,6 +451,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const undoRun = () => { if (!previewRef.current) return; hist.undo(); endPreview("undone"); };
 
   const openAi = (scope: ScopeChoice = "view") => setAi({ scope, at: Date.now() });
+  const reserved = useMemo(() => (stored ? reservedIds(stored) : new Set<string>()), [stored]);
   // On the overview only, one line when it misses its targets; nothing changes by itself.
   const ctl: Ctl | null = doc && view ? {
     doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: () => { if (!refusal()) hist.checkpoint(); },
@@ -434,6 +460,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     // A step that is gone (undone, removed) lights nothing and dims nothing.
     step: ((cur) => (chan === "presentation" && cur ? new Set(cur.parts) : null))(doc.steps?.find((s) => s.id === curStep)),
     changePart: (nid) => { setSel({ ...NOTHING, nodes: [nid] }); openAi("selection"); },
+    reserved,
   } : null;
 
   /* ---------- keyboard ---------- */
@@ -457,6 +484,8 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       const mod = e.ctrlKey || e.metaKey;
       if (mod && !typing(e.target) && (e.key === "z" || e.key === "Z" || e.key === "y")) {
         e.preventDefault();
+        // The share dialog is a modal: the drawing behind it does not change (ui contract, Share).
+        if (sharing) return;
         if (e.key === "y" || e.shiftKey) redo(); else undo();
         return;
       }
@@ -559,8 +588,9 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
 
   const addFromPicker = (kind: Kind, form: Form) => {
     if (!ctl || !picker) return;
+    if (ctl.view.nodes.length >= LIMITS.nodesPerView) { toast(VIEW_FULL); setPicker(null); return; }
     let created = "";
-    ctl.apply((d) => { const r = addNode(d, ctl.vid, kind, form, picker.world); created = r.id; return r.doc; });
+    ctl.apply((d) => { const r = addNode(d, ctl.vid, kind, form, picker.world, ctl.reserved); created = r.id; return r.doc; });
     setPicker(null); setTool("select");
     setSel({ ...NOTHING, nodes: [created] });
     requestAnimationFrame(() => {
@@ -674,7 +704,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
           <span className="save" data-testid="save-status" data-state={save.status} role="status">
             <i />{save.status === "saved" ? "Saved" : save.status === "saving" ? "Saving…" : save.error}
             {save.status === "error" && <button className="btn" data-testid="save-retry" onClick={save.retry}>Retry</button>}
-            {save.status === "conflict" && <button className="btn" data-testid="save-reload" onClick={() => api.get(doc.id).then((d) => adopt(d, "Loaded the stored version"), (e: Error) => toast(e.message))}>Load the file's version</button>}
+            {save.status === "conflict" && <button className="btn" data-testid="save-reload" onClick={() => api.get(doc.id).then((d) => adopt(d, "Loaded the stored version", "outside"), (e: Error) => toast(e.message))}>Load the file's version</button>}
           </span>
         </div>
         <div className="tools" role="toolbar" aria-label="Tools">
@@ -746,7 +776,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
           {docked}
           {presenting && <StepsPanel steps={doc.steps ?? []} view={view} current={doc.steps?.some((s) => s.id === curStep) ? curStep : null}
             onPick={setCurStep} edit={editSteps} selected={sel.nodes} toast={toast} />}
-          {post && <LinkedInPanel {...engineProps} view={post} apply={apply} />}
+          {post && <LinkedInPanel {...engineProps} view={post} apply={apply} toast={toast} />}
           {ai && engines && (
             <AiPanel runner={runner} engines={engines} engine={engine} model={model} onEngine={pickEngine} onModel={pickModel}
               selected={blank ? [] : sel.nodes} initial={ai} text={aiText} setText={setAiText} blank={blank} onClose={() => setAi(null)}

@@ -4,6 +4,7 @@ import {
   allIds, descendants, LIMITS, slugify, TEXT_SIZE,
   type DiagramDocument, type DiagramEdge, type DiagramNode, type DiagramText, type DiagramView, type Form, type Kind,
 } from "../../core/model";
+import type { Document3 } from "../../core/file3";
 
 /**
  * Pure edits of a document (the editor's verbs, ui contract). Every function returns a new
@@ -73,9 +74,23 @@ export function syncGroups(v: DiagramView): DiagramView {
   return changed ? { ...v, nodes } : v;
 }
 
-/** Fresh id from a label, unique across the document. */
-export function freshId(doc: DiagramDocument, base: string): string {
+/**
+ * The ids a new part may not take besides those the channel draws: every fact's, limits included
+ * (diagram contract, rule 2), and the facts this channel leaves out.
+ */
+export function reservedIds(stored: Pick<Document3, "facts">): Set<string> {
+  const f = stored.facts;
+  return new Set([...f.components.map((c) => c.id), ...f.relations.map((r) => r.id), ...(f.limits ?? []).map((l) => l.id)]);
+}
+
+/** Why a part or a view cannot be added: the file's limits (diagram contract, validation). */
+export const VIEW_FULL = `A view holds at most ${LIMITS.nodesPerView} parts`;
+export const VIEWS_FULL = `The overview holds at most ${LIMITS.views} views`;
+
+/** Fresh id from a label, unique across the document and `reserved`. */
+export function freshId(doc: DiagramDocument, base: string, reserved: Iterable<string> = []): string {
   const used = allIds(doc);
+  for (const id of reserved) used.add(id);
   const root = slugify(base).slice(0, 48) || "item";
   let id = root;
   for (let i = 2; used.has(id); i++) id = `${root}-${i}`;
@@ -149,8 +164,8 @@ const takenRects = (v: DiagramView, except: Set<string> = new Set()): Rect[] => 
 };
 
 /** Add a component labelled "New component" centred at `at` (nudged to a free spot), inside the group there. */
-export function addNode(doc: DiagramDocument, vid: string, kind: Kind, form: Form, at: { x: number; y: number }): { doc: DiagramDocument; id: string } {
-  const id = freshId(doc, "new-component");
+export function addNode(doc: DiagramDocument, vid: string, kind: Kind, form: Form, at: { x: number; y: number }, reserved: Iterable<string> = []): { doc: DiagramDocument; id: string } {
+  const id = freshId(doc, "new-component", reserved);
   const next = mapView(doc, vid, (v) => {
     const base: DiagramNode = {
       id, label: "New component", kind, form, icon: null, sub: "", items: form === "panel" ? ["New item"] : [], description: "No description yet.",
@@ -290,11 +305,12 @@ export function moveTexts(doc: DiagramDocument, vid: string, ids: Iterable<strin
 }
 
 /** A new view for a component's inside: titled after it, holding one copy of it; the component links to it. */
-export function createInside(doc: DiagramDocument, vid: string, id: string): { doc: DiagramDocument; view: string } {
+export function createInside(doc: DiagramDocument, vid: string, id: string, reserved: Iterable<string> = []): { doc: DiagramDocument; view: string } {
   const src = viewOf(doc, vid).nodes.find((n) => n.id === id);
   if (!src) return { doc, view: vid };
-  const view = freshId(doc, `${src.label}-inside`);
-  const copyId = freshId({ ...doc, views: [...doc.views, { id: view, title: "", caption: { title: "", lede: "" }, postOf: null, nodes: [], edges: [], texts: [] }] }, src.id);
+  const taken = [...reserved];
+  const view = freshId(doc, `${src.label}-inside`, taken);
+  const copyId = freshId({ ...doc, views: [...doc.views, { id: view, title: "", caption: { title: "", lede: "" }, postOf: null, nodes: [], edges: [], texts: [] }] }, src.id, taken);
   const copy: DiagramNode = { ...src, id: copyId, parent: null, detail: null, place: { row: 0, col: 0 }, x: 40, y: 40, form: src.form === "group" ? "card" : src.form };
   const next: DiagramDocument = {
     ...doc,

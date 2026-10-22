@@ -8,7 +8,7 @@ import { api } from "../api";
 import { Icon } from "../ui/Icon";
 import { ROW_CAPS, rowOf as kindOf } from "./rows";
 import { FormThumb } from "./FormThumb";
-import { createInside, deleteNodes, setNode, type NodePatch } from "./ops";
+import { createInside, deleteNodes, setNode, VIEWS_FULL, type NodePatch } from "./ops";
 import type { Ctl } from "./types";
 import { NOTHING } from "./types";
 import { placeCallout, rectToScreen } from "./viewport";
@@ -40,6 +40,14 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
   const [addFile, setAddFile] = useState(false);
   const [editTitle, setEditTitle] = useState(false);
   useLayoutEffect(() => { if (box.current) setH(box.current.offsetHeight); });
+  // While a run's result is in preview its bar sits at the bottom of the stage, over the overlay: a
+  // floating callout ends above it, so its footer ("Change this part" is allowed then) stays in reach.
+  const [floor, setFloor] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const bar = docked ? null : box.current?.closest(".stage")?.querySelector("[data-testid=ai-preview]");
+    const top = bar ? Math.floor(bar.getBoundingClientRect().top - box.current!.closest(".stage")!.getBoundingClientRect().top) - 6 : null;
+    if (top !== floor) setFloor(top);
+  });
   const missing = useMissingFiles(ctl.doc.id, node?.files ?? []);
   if (!node) return null;
 
@@ -51,7 +59,8 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
   for (const e of ctl.view.edges) { if (e.from === id) near.add(e.to); if (e.to === id) near.add(e.from); }
   for (let p = node.parent; p; p = ctl.view.nodes.find((n) => n.id === p)?.parent ?? null) near.add(p);
   const avoid = [...near].filter((x) => rects.has(x)).map((x) => rectToScreen(ctl.vp, rects.get(x)!));
-  const pos = placeCallout(r, { w: 296, h }, ctl.stage, avoid);
+  const stage = floor === null ? ctl.stage : { w: ctl.stage.w, h: Math.min(ctl.stage.h, floor) };
+  const pos = placeCallout(r, { w: 296, h }, stage, avoid);
   const K = ctl.P.kinds[node.kind];
   const links = linksOf(ctl, node);
   const inside = descendants(ctl.view, id);
@@ -93,7 +102,7 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
 
   return (
     <div ref={box} className={docked ? "callout docked" : `callout ${pos.side}`} data-testid={`callout-${id}`} data-docked={String(docked)}
-      style={docked ? { ["--k" as string]: K } : { left: pos.x, top: pos.y, ["--k" as string]: K, [pos.side === "r" || pos.side === "l" ? "--ny" : "--nx"]: `${pos.pointer}px` }}
+      style={docked ? { ["--k" as string]: K } : { left: pos.x, top: pos.y, ...(floor === null ? {} : { maxHeight: Math.max(120, floor - 20) }), ["--k" as string]: K, [pos.side === "r" || pos.side === "l" ? "--ny" : "--nx"]: `${pos.pointer}px` }}
       onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onKeyDown={keyStop}>
       <header>
         <span className="ic"><Icon name={iconOf(node)} size={20} /></span>
@@ -248,7 +257,9 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
         {node.detail
           ? <button className="btn primary" data-testid="callout-open-inside" onClick={() => ctl.goView(node.detail!)}><Icon name="stack" size={15} /> Open inside</button>
           : ctl.channel === "overview" && <button className="btn" data-testid="callout-create-inside" onClick={() => {
-              const r = createInside(ctl.doc, ctl.vid, id);
+              // A 31st view is refused before anything changes (diagram contract, validation).
+              if (ctl.doc.views.length >= LIMITS.views) { ctl.toast(VIEWS_FULL); return; }
+              const r = createInside(ctl.doc, ctl.vid, id, ctl.reserved);
               ctl.apply(() => r.doc);
               ctl.goView(r.view, r.doc);
             }}><Icon name="stack" size={15} /> Draw its inside</button>}

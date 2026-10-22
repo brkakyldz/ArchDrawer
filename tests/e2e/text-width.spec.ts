@@ -87,3 +87,30 @@ test("every label is painted no wider than its part was measured for, in the edi
   await page.evaluate(() => document.fonts.ready);
   expectWithinMeasure(await paintedTexts(page.locator("#image-under-test > svg")), "image");
 });
+
+// A compact part's sub-line is drawn in Geist Mono on the canvas, as in the image and as measureNode
+// sizes it: a page style must not replace the font the drawing names (editor/export drift).
+test("a compact part's sub-line is painted in Geist Mono on the canvas, at the image's width", async ({ page }) => {
+  const wide = { id: "wide", label: "Gateway", kind: "api", form: "compact", sub: "WWWWWWWWWWWW", place: { row: 0, col: 0 } };
+  const { id } = await open(page, shop((f) => { f.views[0].nodes = [{ icon: null, items: [], description: "A part.", files: [], parent: null, detail: null, ...wide }]; f.views[0].edges = []; }));
+  await fullDetail(page);
+  const sub = (root: string) => page.evaluate((root) => {
+    const t = document.querySelector(`${root} [data-node-id="wide"] text.sub`) as SVGTextElement;
+    return { font: getComputedStyle(t).fontFamily, width: t.getComputedTextLength() };
+  }, root);
+  const canvas = await sub(".canvas svg.world");
+  const res = await page.request.get(`/api/diagrams/${id}/export.svg?view=overview&format=readme`);
+  await page.evaluate((svg) => {
+    const host = document.createElement("div");
+    host.id = "image-under-test";
+    host.style.cssText = "position:fixed;left:-10000px;top:0";
+    host.innerHTML = svg;
+    document.body.append(host);
+  }, await res.text());
+  await page.evaluate(() => document.fonts.ready);
+  const image = await sub("#image-under-test > svg");
+  expect(canvas.font).toMatch(/^"?Geist Mono"?/);
+  expect(image.font).toMatch(/^"?Geist Mono"?/);
+  expect(Math.abs(canvas.width - image.width)).toBeLessThan(0.5);
+  expect(canvas.width).toBeLessThanOrEqual(widthOf("WWWWWWWWWWWW", T.subMono) + 0.25);
+});

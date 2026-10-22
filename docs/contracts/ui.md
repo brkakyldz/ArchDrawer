@@ -365,7 +365,7 @@ Only the latest turn holds these, each while its state calls for it:
 | Test id | Element and behaviour |
 |---|---|
 | `ai-progress` | while running: `ai-progress-line` per message (last 12) and `ai-cancel` |
-| `ai-error` | after a failed or cancelled run: the error (`Cancelled`) and `ai-retry` (`Try again`, the same request again as a new turn); a typed instruction is back in `ai-input` |
+| `ai-error` | after a failed or cancelled run: the error (`Cancelled`) and `ai-retry` (`Try again`, the same request again as a new turn); a typed instruction is back in `ai-input`, unless the user typed another meanwhile |
 | `ai-summary` | after success: e.g. `1 part added · 2 connections changed · 3 parts moved` (zeros left out; `Nothing changed`), with `data-added`, `data-removed`, `data-changed`, `data-moved`, `data-edges-added`, `data-edges-removed`, `data-edges-changed` |
 | `ai-route` | after a refine succeeded: which way the instruction went (api contract, Routing), `data-route` `facts` or `story`: `Changed the facts: every channel that shows them shows it` or `Redrew this channel from the facts, without reading the code`. A run of another kind shows none |
 | `layout-report` | after success, the run's report (below) |

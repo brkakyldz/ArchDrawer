@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { APP_ROOT } from "../config";
-import { drawingRules, instructionPrompt, postPrompt, RULES_FILE } from "./prompt";
+import { drawingRules, instructionPrompt, postPrompt, readPrompt, RULES_FILE, storyPrompt } from "./prompt";
 
 const skillDir = join(APP_ROOT, "skills", "archdrawer");
 const skill = readFileSync(join(skillDir, "SKILL.md"), "utf8");
@@ -49,6 +49,32 @@ describe("one rule set for the skill and the engine", () => {
     expect(view).toContain('Change only the view "overview". Return every other view exactly as it is.');
     const parts = instructionPrompt({ instruction: "x", folderName: "shop", view: "overview", base, scope: { kind: "parts", ids: ["api"] }, parts: ["Order API"] });
     expect(parts).toContain('Change only these components of the view "overview": "Order API" (id api)');
+  });
+});
+
+describe("held items only where needed (LOOK-3)", () => {
+  const facts = { components: [], relations: [], limits: [] };
+  const story = (channel: "overview" | "readme" | "presentation") => storyPrompt({ channel, folderName: "shop", facts });
+  it("asks every story for a one-line sub-line on every part", () => {
+    for (const c of ["overview", "readme", "presentation"] as const) expect(story(c), c).toMatch(/one-line sub-line in plain words/);
+    expect(story("readme")).toMatch(/- sub: on every part, one line in plain words/);
+  });
+  it("holds every mechanism in the overview, and in the README and presentation only where the story is about that part", () => {
+    expect(story("overview")).toMatch(/every mechanism in "held" of the part showing the component it is within/);
+    expect(story("readme")).toMatch(/Hold mechanisms only on a part whose working the story is about, and on no other part/);
+    expect(story("presentation")).toMatch(/Hold mechanisms as a README does: only on a part whose working the story is about/);
+    expect(story("readme")).not.toMatch(/the few parts whose mechanism matters/);
+  });
+  it("tells the read where mechanisms are drawn and asks for a one-line sub", () => {
+    const p = readPrompt({ folderName: "shop", rel: "", card: {}, focus: { kind: "whole" }, agent: false });
+    expect(p).toMatch(/The overview draws every mechanism as a row of its component; the README and the presentation draw one only where their story is about how that component works/);
+    expect(p).toMatch(/sub one plain line of at most 60 saying what it does/);
+  });
+  it("the rules ask for a sub-line on every part and hold mechanisms only where the story needs them", () => {
+    const r = drawingRules();
+    expect(r).toMatch(/Every part says what it does in one line/);
+    expect(r).toMatch(/the overview holds every\s+mechanism/);
+    expect(r).toMatch(/LinkedIn post holds none/);
   });
 });
 

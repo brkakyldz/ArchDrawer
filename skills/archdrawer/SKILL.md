@@ -79,7 +79,7 @@ engine could run them), apply each one to the channel and view it names, then se
 Run `archdrawer validate docs/architecture.archdraw.json`. Every `ERROR` line
 names a path and a reason: fix the file and run it again, until it prints
 `valid` (exit code 0). Read `WARN` lines and fix the ones about depth (flat
-view, no held items, no main path, tuning numbers, repeated labels) unless
+view, no main path, tuning numbers, repeated labels) unless
 the user asked for an overview.
 
 ## 6. Open it

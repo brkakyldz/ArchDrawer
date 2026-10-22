@@ -10,6 +10,8 @@ async function presentation(page: Page) {
   await page.getByTestId("channel-tab-presentation").click();
   await page.getByTestId("channel-draw").click();
   await expect(page.getByTestId("step-item")).toHaveCount(3, { timeout: 30_000 });
+  // The drawn presentation arrives as a preview; kept, its steps are edited like any.
+  await page.getByTestId("ai-accept").click();
   return opened;
 }
 

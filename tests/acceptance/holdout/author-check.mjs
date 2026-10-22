@@ -10,17 +10,18 @@ const here = new URL('.', import.meta.url);
 // does today ('today') or has but is changing ('change'); an id still 'build' has nothing to observe yet.
 // FILE-2, FILE-3, NAV-2 and STORY-1 were built in 0.2. The 0.3 round (batches A–H of the suite, landing with their
 // steps) builds START-4, SCAN-1–4, READ-1–3, STORY-2–5 and AI-5 (STORY-6 and STORY-1 change with it), so from this
-// round on they may appear in titles. PRES-1–3, LAYOUT-4, LOOK-2, AI-3, AI-4, NAV-4, START-2 and QUAL-1/3 stay 'build'.
+// round on they may appear in titles. The 0.4 round (batches A–F) builds LOOK-2, LOOK-3, AI-2, AI-3, AI-4 and LAYOUT-4, so
+// from it on they may appear too. PRES-1–3, NAV-4, START-2 and QUAL-1/3 stay 'build'.
 const requirements = {
   'START-1': 'change', 'START-2': 'build', 'START-3': 'today', 'START-4': 'change', 'START-5': 'today',
   'SCAN-1': 'change', 'SCAN-2': 'change', 'SCAN-3': 'change', 'SCAN-4': 'change',
   'READ-1': 'change', 'READ-2': 'change', 'READ-3': 'change',
   'STORY-1': 'change', 'STORY-2': 'change', 'STORY-3': 'change', 'STORY-4': 'change', 'STORY-5': 'change', 'STORY-6': 'change',
-  'LAYOUT-1': 'today', 'LAYOUT-2': 'today', 'LAYOUT-3': 'today', 'LAYOUT-4': 'build',
-  'LOOK-1': 'today', 'LOOK-2': 'build', 'LOOK-3': 'change',
+  'LAYOUT-1': 'today', 'LAYOUT-2': 'today', 'LAYOUT-3': 'today', 'LAYOUT-4': 'change',
+  'LOOK-1': 'today', 'LOOK-2': 'change', 'LOOK-3': 'change',
   'FILE-1': 'today', 'FILE-2': 'change', 'FILE-3': 'change',
   'EDIT-1': 'today', 'EDIT-2': 'today', 'EDIT-3': 'today', 'EDIT-4': 'today',
-  'AI-1': 'today', 'AI-2': 'change', 'AI-3': 'build', 'AI-4': 'build', 'AI-5': 'change',
+  'AI-1': 'today', 'AI-2': 'change', 'AI-3': 'change', 'AI-4': 'change', 'AI-5': 'change',
   'NAV-1': 'today', 'NAV-2': 'change', 'NAV-3': 'change', 'NAV-4': 'build',
   'PRES-1': 'build', 'PRES-2': 'build', 'PRES-3': 'build',
   'SHARE-1': 'today', 'SHARE-2': 'change', 'SHARE-3': 'change',
@@ -108,8 +109,21 @@ const helpers = sources.get('helpers.ts');
 for (const name of ['readDocument', 'readDrawing', 'writeDrawing', 'workspace', 'workspaceRaw', 'joinView', 'fromLegacy', 'persistedDoc', 'exportOf', 'refusedRun', 'withLinkedIn', 'shop3',
   'agent3', 'withReadme', 'withPresentation', 'gitRepo', 'plainFolder', 'gitWithoutCommit', 'markerFolder', 'markerRepo', 'writeExistingDrawing', 'scanCacheCount',
   'postJSON', 'checkFolder', 'startScan', 'finishScan', 'scanFolder', 'scanRecord', 'startDraw', 'refusedDraw', 'drawFolder', 'sseEvents', 'scanEvents', 'runEvents', 'listedDiagrams',
-  'tabTo', 'stepIds', 'litParts', 'nodeSizes', 'samePath', 'warnLines', 'errorLines'])
+  'tabTo', 'stepIds', 'litParts', 'nodeSizes', 'samePath', 'warnLines', 'errorLines',
+  // 0.4: shapes, the AI conversation, previews, suggestions and the second look.
+  'shapeFor', 'editorShape', 'editorShapes', 'svgShapes', 'thumbShapes', 'openAiPanel', 'aiTurns', 'aiTurn', 'turnStates', 'turnTexts', 'startedRun', 'sendInPanel',
+  'runDone', 'acceptPreview', 'noToast', 'paddedPng', 'pngInfo', 'TINY_PNG', 'SUGGESTIONS', 'SUGGESTION_TEXT', 'DEFAULT_IMAGE', 'REFUSED_WHILE_PREVIEW', 'noChanges'])
   assert.ok(new RegExp(`export (async )?(function|const) ${name}\\b`).test(helpers), `helpers.ts no longer exports ${name}`);
+
+// The ask box and the old one-click fold are gone (0.4): a scenario may name their test ids only to say they are not there.
+for (const [name, source] of sources) {
+  if (!/^H\d+_/.test(name)) continue;
+  for (const [i, line] of source.split(/\r?\n/).entries()) {
+    if (/^\s*(\/\/|const ASK_BOX)/.test(line)) continue;
+    if (/['"`](ask-(input|send|expand|status|cancel|error|retry|saved)|simplify-overview)['"`]/.test(line))
+      assert.ok(/toHaveCount\(0\)/.test(line), `${name}:${i + 1}: uses a control that 0.4 removed, other than to assert it is gone`);
+  }
+}
 
 // A fixture marker such as [fixture:slow] cannot be part of a Windows folder name (":"), so a scenario that creates a folder
 // with one must guard it, and keep the rest of its journey running on Windows.

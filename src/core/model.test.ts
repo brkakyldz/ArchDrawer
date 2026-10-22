@@ -105,21 +105,27 @@ describe("validateFile", () => {
 });
 
 describe("depth warnings", () => {
-  it("warns on a flat row, no held items, tuning numbers, no main path and a repeated label", () => {
+  it("warns on a flat row, tuning numbers, no main path and a repeated label", () => {
     const nodes = ["a", "b", "c", "d", "e", "f"].map((id, i) => node(id, { place: { row: 0, col: i }, sub: i === 0 ? "up to 6 turns" : "" }));
     const edges = [edge("a", "b", { label: "run" }), edge("b", "c", { label: "run" }), edge("c", "d", { label: "run" })];
     expect(depthWarnings(file(nodes, edges))).toEqual([
       expect.stringMatching(/all 6 top-level components share row 0 — a flat pipeline/),
-      expect.stringMatching(/no component lists what it holds/),
       expect.stringMatching(/no main path/),
       expect.stringMatching(/the label "run" repeats on 3 connections/),
     ]);
-    // A tuning number is a warning on LinkedIn only (STORY-5); the flat and held-item checks skip LinkedIn.
+    // A tuning number is a warning on LinkedIn only (STORY-5); the flat check skips LinkedIn.
     expect(depthWarnings(file(nodes, edges), { share: true })).toEqual([
       expect.stringMatching(/nodes\[0\]\.sub: "up to 6 turns" looks like a tuning number/),
       expect.stringMatching(/no main path/),
       expect.stringMatching(/the label "run" repeats on 3 connections/),
     ]);
+  });
+
+  it("does not ask for held items: six or more parts without a panel are not warned about (LOOK-3)", () => {
+    const nodes = ["a", "b", "c", "d", "e", "f", "g"].map((id, i) => node(id, { place: { row: i % 2, col: i } }));
+    const edges = [edge("a", "b", { step: 1 }), edge("b", "c", { step: 2 }), edge("c", "d")];
+    expect(nodes.some((n) => n.form === "panel")).toBe(false);
+    expect(depthWarnings(file(nodes, edges))).toEqual([]);
   });
 
   it("is quiet on a two-dimensional drawing with held items: the overview has no count target", () => {

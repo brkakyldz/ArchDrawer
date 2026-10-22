@@ -16,6 +16,7 @@ import type { RunManager } from "./runs";
 import type { ScanManager } from "./scans";
 import { checkFolder, headCommit } from "./folders";
 import type { DrawFocus } from "./engines/prompt";
+import { decodeImage, writeReviseImage } from "./engines/revise";
 import type { Engine, EngineInfo } from "./engines/types";
 
 export interface AppDeps {
@@ -325,25 +326,33 @@ export function createApp(deps: AppDeps): Hono {
     const body = await readJson(c);
     if (!body || typeof body !== "object") return err(c, 400, "Body must be a JSON object");
     const b = body as Record<string, unknown>;
-    const KINDS = ["refine", "story", "post", "simplify", "draw"];
-    if (b.kind !== undefined && !(typeof b.kind === "string" && KINDS.includes(b.kind))) return err(c, 400, `Unknown run kind ${typeof b.kind === "string" ? b.kind : JSON.stringify(b.kind)}: use refine, story, post, simplify or draw`);
-    const kind = (b.kind as "refine" | "story" | "post" | "simplify" | "draw" | undefined) ?? "refine";
+    const KINDS = ["refine", "story", "post", "simplify", "revise", "draw"];
+    if (b.kind !== undefined && !(typeof b.kind === "string" && KINDS.includes(b.kind))) return err(c, 400, `Unknown run kind ${typeof b.kind === "string" ? b.kind : JSON.stringify(b.kind)}: use refine, story, post, simplify, revise or draw`);
+    const kind = (b.kind as "refine" | "story" | "post" | "simplify" | "revise" | "draw" | undefined) ?? "refine";
+    // An image is for a revise only, a draw's included (api contract, Runs).
+    if (kind === "draw" && b.image !== undefined) return err(c, 400, "An image is for a revise");
     if (kind === "draw") return startDraw(c, b);
     // A story or post: a channel's one view; a post is a story on LinkedIn (api contract, Run kinds).
     const story = kind === "story" || kind === "post";
     const onLinkedIn = kind === "post" || (kind === "story" && b.channel === "linkedin");
-    // A story is measured in its channel's own format (api contract, Run kinds).
-    const formats: readonly string[] = onLinkedIn ? ["feed", "linkedin"] : kind === "story" && b.channel === "readme" ? ["readme"] : kind === "story" && b.channel === "presentation" ? ["slide"] : FORMAT_IDS;
+    // A story is measured in its channel's own format; a revise looks at its channel's default image (api contract, Run kinds).
+    const revise = kind === "revise";
+    const reviseFormat: FormatId = b.channel === "linkedin" ? "feed" : b.channel === "presentation" ? "slide" : "readme";
+    const formats: readonly string[] = revise ? [reviseFormat] : onLinkedIn ? ["feed", "linkedin"] : kind === "story" && b.channel === "readme" ? ["readme"] : kind === "story" && b.channel === "presentation" ? ["slide"] : FORMAT_IDS;
     if (b.format !== undefined && !(typeof b.format === "string" && formats.includes(b.format))) return err(c, 400, `Invalid format ${JSON.stringify(b.format)}; use one of ${formats.join(", ")}`);
-    const format = (b.format as FormatId | undefined) ?? (onLinkedIn ? "feed" : kind === "story" && b.channel === "presentation" ? "slide" : "readme");
-    // A report-driven revision round is not enabled yet: `revise: true` is refused.
-    if (b.revise !== undefined && typeof b.revise !== "boolean") return err(c, 400, "revise must be true or false");
-    if (b.revise === true) return err(c, 400, "Layout revision is not enabled");
+    const format = (b.format as FormatId | undefined) ?? (revise ? reviseFormat : onLinkedIn ? "feed" : kind === "story" && b.channel === "presentation" ? "slide" : "readme");
     if (b.readCode !== undefined && typeof b.readCode !== "boolean") return err(c, 400, "readCode must be true or false");
     if (b.readCode !== undefined && !story) return err(c, 400, "readCode is for a story");
+    // The second look's image: a PNG of at most 4 MB; an image on any other kind is refused.
+    let image: Buffer | null = null;
+    if (revise) {
+      const decoded = decodeImage(b.image);
+      if ("error" in decoded) return err(c, 400, decoded.error);
+      image = decoded.bytes;
+    } else if (b.image !== undefined) return err(c, 400, "An image is for a revise");
     if (kind !== "refine" && b.instruction !== undefined && typeof b.instruction !== "string") return err(c, 400, "instruction must be a string");
     if (kind !== "refine" && b.scope !== undefined && !(typeof b.scope === "object" && b.scope !== null && (b.scope as { kind?: unknown }).kind === "view" && Object.keys(b.scope).length === 1)) {
-      return err(c, 400, story ? 'A story draws the channel\'s one view: give no scope or {"kind": "view"}' : 'A simplification works on the overview: give no scope or {"kind": "view"}');
+      return err(c, 400, story || revise ? 'A story draws the channel\'s one view: give no scope or {"kind": "view"}' : 'A simplification works on the overview: give no scope or {"kind": "view"}');
     }
     const instruction = typeof b.instruction === "string" ? b.instruction.trim() : "";
     if (!instruction && kind === "refine") return err(c, 400, "Say what to change: the instruction is empty");
@@ -363,7 +372,8 @@ export function createApp(deps: AppDeps): Hono {
     const first = stored.channels.overview.views[0].id;
     const channel = (b.channel as ChannelId | undefined) ?? (kind === "post" ? "linkedin" : "overview");
     if (story && b.view !== undefined && (typeof b.view !== "string" || channelOfView(stored, b.view) !== channel)) return err(c, 400, `Unknown view "${String(b.view)}"`);
-    const view = story ? first : typeof b.view === "string" ? b.view : "";
+    // A revise without a view looks at its channel's first one.
+    const view = story ? first : typeof b.view === "string" ? b.view : revise && b.view === undefined ? stored.channels[channel].views[0]?.id ?? "" : "";
     if (!story && stored.channels[channel].views.length === 0) return err(c, 400, `The channel "${channel}" has no drawing`);
     const doc = draftOf(stored, story ? "overview" : channel);
     if (!doc.views.some((v) => v.id === view) || (!story && channelOfView(stored, view) !== channel)) return err(c, 400, `Unknown view "${view}"`);
@@ -381,7 +391,11 @@ export function createApp(deps: AppDeps): Hono {
       if (!engine) return err(c, 400, "No engine is available: install and log in to Claude Code or Codex");
     }
     if (runs.runningOn(doc.id)) return err(c, 409, "An instruction is already running on this drawing");
-    const runId = runs.start({ engine, model, instruction, view, base: doc, stored, channel, scope: kind === "refine" ? scope : { kind: "view" }, format, kind, readCode: b.readCode as boolean | undefined });
+    // The image goes into a folder of the server's own, removed when the run ends (api contract, The second look).
+    let written: ReturnType<typeof writeReviseImage> | undefined;
+    try { written = image ? writeReviseImage(config.dataDir, image) : undefined; }
+    catch (e) { return err(c, 500, `The drawing's image could not be saved for the engine: ${(e as Error).message}`); }
+    const runId = runs.start({ engine, model, instruction, view, base: doc, stored, channel, scope: kind === "refine" ? scope : { kind: "view" }, format, kind, readCode: b.readCode as boolean | undefined, image: written });
     return c.json({ runId }, 202);
   });
 

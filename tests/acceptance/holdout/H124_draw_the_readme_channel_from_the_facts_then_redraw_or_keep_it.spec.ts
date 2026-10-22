@@ -7,7 +7,7 @@ const MECHANISMS = ['model-call', 'tool-check'];
 // STORY-1/3: the README channel is chosen on its own tab and drawn from the facts alone, as one undoable step; the drawing
 // shows the held mechanisms and the limit as rows. When a fact it does not draw yet appears, the tab is marked and the
 // stage offers Redraw it or Keep as it is, each one undoable step.
-test('H124 [STORY-1, STORY-3, STORY-5, FILE-3, SHARE-2] Draw it on the README tab draws the README from the facts as one undo step, with the held mechanisms and the limit as rows; a reworded limit it shows marks nothing, a new limit or a new fact marks it, and Redraw it or Keep as it is clears the mark in one undoable step', async ({ page, request }) => {
+test('H124 [STORY-1, STORY-3, STORY-5, FILE-3, SHARE-2, AI-3] Draw it on the README tab draws the README from the facts as one undo step, with the held mechanisms and the limit as rows; a reworded limit it shows marks nothing, a new limit or a new fact marks it, and Redraw it or Keep as it is clears the mark in one undoable step', async ({ page, request }) => {
   test.setTimeout(240_000);
   const { file } = await workspaceRaw('readme-draw', agent3('Readme agent'));
   const posts: any[] = [];
@@ -42,7 +42,8 @@ test('H124 [STORY-1, STORY-3, STORY-5, FILE-3, SHARE-2] Draw it on the README ta
   expect(drawn.facts).toEqual(before.facts); expect(drawn.channels.overview).toEqual(before.channels.overview);
   for (const channel of channelNames) expect(outdatedOf(drawn, channel), channel).toEqual([]);
 
-  // One undo step takes the whole drawing away; redo brings the same drawing back.
+  // From 0.4 the drawing arrives as a preview; kept, it is one undo step that takes the whole drawing away, and redo brings it back.
+  await expect(page.getByTestId('ai-preview')).toBeVisible(); await page.getByTestId('ai-accept').click(); await expect(page.getByTestId('ai-preview')).toHaveCount(0);
   await page.getByTestId('tool-undo').click();
   await persistedDoc(file, d => (d.channels.readme?.views ?? []).length === 0);
   await expect(empty).toContainText('The README drawing is not drawn yet');
@@ -112,6 +113,7 @@ test('H124 [STORY-1, STORY-3, STORY-5, FILE-3, SHARE-2] Draw it on the README ta
   expect(viewOf(redrawn, 'readme')!.id).toBe('readme'); expect(sorted(viewOf(redrawn, 'readme')!.nodes.map(n => n.id))).toEqual(['agent', 'app', 'cache', 'store']);
   expect(redrawn.facts, 'redrawing a channel changes no fact').toEqual(marked.facts);
   expect(sorted(redrawn.facts.components.map(f => f.id))).toEqual(sorted(['app', 'agent', 'model-call', 'tool-check', 'store', 'cache']));
+  await expect(page.getByTestId('ai-preview')).toBeVisible(); await page.getByTestId('ai-accept').click(); await expect(page.getByTestId('ai-preview')).toHaveCount(0);
   await page.getByTestId('tool-undo').click();
   await persistedDoc(file, d => !partOf(d, 'readme', 'cache') && outdatedOf(d, 'readme').join() === 'cache');
   await expect(page.getByTestId('node-cache')).toHaveCount(0); await expect(page.getByTestId('channel-outdated')).toContainText(/1 change/);

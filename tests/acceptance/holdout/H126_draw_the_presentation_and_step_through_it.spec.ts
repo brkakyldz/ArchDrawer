@@ -6,7 +6,7 @@ import { agent3, workspaceRaw, openDrawing, readDocument, persistedDoc, viewOf, 
 // STORY-4: the presentation is one drawing and ordered steps. Drawn from the facts by the fixture engine, its steps are the
 // story's: one per part, a text and a speaker note each, and a step that names a part that is not there is dropped with one
 // warning. Choosing a step lights its parts and dims the rest without resizing anything, and never edits the drawing.
-test('H126 [STORY-4, STORY-1, FILE-2, SHARE-2, NAV-2] Draw it on the Presentation tab keeps the three steps the fixture story names and drops the one for a missing part, and choosing, stepping and leaving a step light and dim parts without resizing or editing anything', async ({ page, request }) => {
+test('H126 [STORY-4, STORY-1, FILE-2, SHARE-2, NAV-2, AI-3] Draw it on the Presentation tab keeps the three steps the fixture story names and drops the one for a missing part, and choosing, stepping and leaving a step light and dim parts without resizing or editing anything', async ({ page, request }) => {
   test.setTimeout(240_000);
   const { file } = await workspaceRaw('presentation-draw', agent3('Present agent'));
   const posts: any[] = [];
@@ -38,6 +38,8 @@ test('H126 [STORY-4, STORY-1, FILE-2, SHARE-2, NAV-2] Draw it on the Presentatio
   expect(drawn.facts).toEqual(before.facts); expect(drawn.channels.overview).toEqual(before.channels.overview);
   for (const channel of channelNames) expect(outdatedOf(drawn, channel), channel).toEqual([]);
   expect(drawn.channels.readme?.views ?? []).toEqual([]);
+  // From 0.4 the drawn presentation arrives as a preview; the steps are looked at after it is kept.
+  await expect(page.getByTestId('ai-preview')).toBeVisible(); await page.getByTestId('ai-accept').click(); await expect(page.getByTestId('ai-preview')).toHaveCount(0);
 
   // The steps panel lists them in order with their numbers and texts.
   await expect(page.getByTestId('steps-panel')).toBeVisible(); await expect(page.getByTestId('step-none')).toHaveCount(0);

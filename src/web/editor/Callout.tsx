@@ -126,7 +126,7 @@ export function Callout({ ctl, id, docked = false }: { ctl: Ctl; id: string; doc
           {menu === "form" && (
             <div className="menu" data-testid="form-menu" style={{ left: 100, top: 70 }}>
               {FORMS.map((f) => (
-                <button key={f} className="form-opt" data-testid={`form-option-${f}`} aria-pressed={node.form === f} onClick={() => { patch({ form: f }); setMenu(null); }}><FormThumb form={f} />{FORM_LABELS[f]}</button>
+                <button key={f} className="form-opt" data-testid={`form-option-${f}`} aria-pressed={node.form === f} onClick={() => { patch({ form: f }); setMenu(null); }}><FormThumb form={f} kind={node.kind} />{FORM_LABELS[f]}</button>
               ))}
             </div>
           )}

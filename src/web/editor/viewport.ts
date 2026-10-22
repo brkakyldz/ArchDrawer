@@ -5,7 +5,7 @@ export interface Viewport { x: number; y: number; k: number }
 
 export const MIN_ZOOM = 0.15;
 export const MAX_ZOOM = 3;
-/** Fit margins (DESIGN.md Layout): the ask box never covers the drawing. */
+/** Fit margins (DESIGN.md Layout): the AI preview bar never covers the drawing. */
 export const FIT = { top: 34, side: 56, bottom: 96, maxK: 1.15 };
 
 export const clampZoom = (k: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, k));

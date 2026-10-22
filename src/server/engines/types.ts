@@ -39,7 +39,11 @@ export interface EngineRunRequest {
    * `tools` is `"none"` (a story from the facts alone; api contract, Engines).
    */
   task?: {
-    kind: "post" | "story" | "scan" | "read" | "route"; schema: object; prompt: string; tools?: "read" | "none";
+    /**
+     * `tools`: `"read"` the read-only tools, `"none"` no tool where the engine can, `"image"` only the
+     * reading of `image` (a revise: Claude Code `Read` with the image's folder added, Codex `-i`).
+     */
+    kind: "post" | "story" | "scan" | "read" | "route" | "revise"; schema: object; prompt: string; tools?: "read" | "none" | "image";
     /** What the fixture builds its answer from (the listing, a story's channel, a draw's title); real engines ignore it. */
     data?: { listing?: string[]; entries?: string[]; channel?: string; overview?: DiagramView; title?: string; draw?: "read" | "overview" | "channel" };
   };
@@ -50,6 +54,8 @@ export interface EngineRunRequest {
    * only, and the engine runs with no tools where it can.
    */
   appearance?: boolean;
+  /** A revise's image (api contract, The second look): its folder and `view.png`, both made by the server. */
+  image?: { dir: string; file: string };
 }
 
 export class EngineError extends Error {}

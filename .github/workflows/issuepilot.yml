@@ -18,6 +18,10 @@ permissions: {}
 
 jobs:
   issuepilot:
+    # The repository is public: an issue starts a run on the owner's Claude token only when its
+    # author is the owner, a member or a collaborator. Anyone else's issue starts nothing; run it
+    # by hand (workflow_dispatch) after reading it.
+    if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)
     # Pinned to a commit, not the movable v1 tag: this job holds the Claude token and may write issues.
     # cf06c3f is what v1 named on 2026-10-21; move it by hand after reading the new version.
     uses: brkakyldz/IssuePilot/.github/workflows/issuepilot.yml@cf06c3f29a824f72f19d432fe79a92bf38948168

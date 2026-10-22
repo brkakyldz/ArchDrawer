@@ -318,7 +318,7 @@ export function createApp(deps: AppDeps): Hono {
     if (typeof picked === "string") return err(c, 400, picked);
     const folderKey = `${f.root}\0${f.rel}`;
     if (runs.drawingOn(folderKey)) return err(c, 409, "A drawing of this folder is already being made");
-    const runId = runs.startDraw({ engine: picked.engine, model: picked.model, folder: f, folderKey, card: scan.card!, focus: drawFocus, channel: b.channel });
+    const runId = runs.startDraw({ engine: picked.engine, model: picked.model, scan: b.scan as string, folder: f, folderKey, card: scan.card!, focus: drawFocus, channel: b.channel });
     return c.json({ runId }, 202);
   };
 

@@ -6,25 +6,23 @@ import { stripTypeScriptTypes } from 'node:module';
 
 const here = new URL('.', import.meta.url);
 
-// Every requirement id of the product spec, with its status. A title may carry only ids that the product
-// does today ('today') or has but is changing ('change'); an id still 'build' has nothing to observe yet.
-// FILE-2, FILE-3, NAV-2 and STORY-1 were built in 0.2. The 0.3 round (batches A–H of the suite, landing with their
-// steps) builds START-4, SCAN-1–4, READ-1–3, STORY-2–5 and AI-5 (STORY-6 and STORY-1 change with it), so from this
-// round on they may appear in titles. The 0.4 round (batches A–F) builds LOOK-2, LOOK-3, AI-2, AI-3, AI-4 and LAYOUT-4, so
-// from it on they may appear too. PRES-1–3, NAV-4, START-2 and QUAL-1/3 stay 'build'.
+// Every requirement id of the product spec, with its status as spec.md states it: 'today' (Today), 'change' (To change) or
+// 'build' (To build). A title may carry only ids that the product does today or is changing; an id still 'build' has nothing
+// to observe yet. Everything the 0.2, 0.3 and 0.4 rounds and the story-limits round (START-6, STORY-7) built is 'today' now.
+// START-1 (To change), and START-2, NAV-4, PRES-1–3 and QUAL-1/3 (To build) are the others.
 const requirements = {
-  'START-1': 'change', 'START-2': 'build', 'START-3': 'today', 'START-4': 'change', 'START-5': 'today',
-  'SCAN-1': 'change', 'SCAN-2': 'change', 'SCAN-3': 'change', 'SCAN-4': 'change',
-  'READ-1': 'change', 'READ-2': 'change', 'READ-3': 'change',
-  'STORY-1': 'change', 'STORY-2': 'change', 'STORY-3': 'change', 'STORY-4': 'change', 'STORY-5': 'change', 'STORY-6': 'change',
-  'LAYOUT-1': 'today', 'LAYOUT-2': 'today', 'LAYOUT-3': 'today', 'LAYOUT-4': 'change',
-  'LOOK-1': 'today', 'LOOK-2': 'change', 'LOOK-3': 'change',
-  'FILE-1': 'today', 'FILE-2': 'change', 'FILE-3': 'change',
+  'START-1': 'change', 'START-2': 'build', 'START-3': 'today', 'START-4': 'today', 'START-5': 'today', 'START-6': 'today',
+  'SCAN-1': 'today', 'SCAN-2': 'today', 'SCAN-3': 'today', 'SCAN-4': 'today',
+  'READ-1': 'today', 'READ-2': 'today', 'READ-3': 'today',
+  'STORY-1': 'today', 'STORY-2': 'today', 'STORY-3': 'today', 'STORY-4': 'today', 'STORY-5': 'today', 'STORY-6': 'today', 'STORY-7': 'today',
+  'LAYOUT-1': 'today', 'LAYOUT-2': 'today', 'LAYOUT-3': 'today', 'LAYOUT-4': 'today',
+  'LOOK-1': 'today', 'LOOK-2': 'today', 'LOOK-3': 'today',
+  'FILE-1': 'today', 'FILE-2': 'today', 'FILE-3': 'today',
   'EDIT-1': 'today', 'EDIT-2': 'today', 'EDIT-3': 'today', 'EDIT-4': 'today',
-  'AI-1': 'today', 'AI-2': 'change', 'AI-3': 'change', 'AI-4': 'change', 'AI-5': 'change',
-  'NAV-1': 'today', 'NAV-2': 'change', 'NAV-3': 'change', 'NAV-4': 'build',
+  'AI-1': 'today', 'AI-2': 'today', 'AI-3': 'today', 'AI-4': 'today', 'AI-5': 'today',
+  'NAV-1': 'today', 'NAV-2': 'today', 'NAV-3': 'today', 'NAV-4': 'build',
   'PRES-1': 'build', 'PRES-2': 'build', 'PRES-3': 'build',
-  'SHARE-1': 'today', 'SHARE-2': 'change', 'SHARE-3': 'change',
+  'SHARE-1': 'today', 'SHARE-2': 'today', 'SHARE-3': 'today',
   'SAFE-1': 'today', 'SAFE-2': 'today', 'SAFE-3': 'today', 'SAFE-4': 'today', 'SAFE-5': 'today',
   'QUAL-1': 'build', 'QUAL-2': 'today', 'QUAL-3': 'build',
 };

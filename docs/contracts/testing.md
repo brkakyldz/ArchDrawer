@@ -99,10 +99,11 @@ engines (draft → answer → repair or story conversion → layout → validati
 models are `fixture-fast` (`Fast (test)`) and `fixture-careful`
 (`Careful (test)`); any valid model name is accepted.
 
-**Progress**: `Using model <model>` when the run names a model, then
-`Reading the drawing`, `Reading the code`, `Updating the drawing`, each after
-`ARCHDRAW_FIXTURE_STEP_MS`, then one more step before it answers. The pipeline
-adds its own lines (`Checking the drawing`, `Saved`, …).
+**Progress**: on every engine call, a repair turn included, `Using model
+<model>` when the run names a model, then `Reading the drawing`, `Reading the
+code`, `Updating the drawing`, each after `ARCHDRAW_FIXTURE_STEP_MS`, then one
+more step before it answers. The pipeline adds its own lines (`Checking the
+drawing`, `Saved`, …).
 
 **Markers** anywhere in the instruction, case-sensitive, for every kind:
 
@@ -114,7 +115,17 @@ adds its own lines (`Checking the drawing`, `Saved`, …).
   `ghost`; repair renames the copy `<id>-2` and drops the connection, one
   warning each, and the copy, which names the fact its original shows, keeps
   its text as its own and shows no fact (one more warning). Post: the intent
-  also has a connection to `ghost`, so the run fails without saving.
+  also has a connection to `ghost`; the repair turn answers without it, so
+  the run saves the post.
+- `[fixture:overlong]` — post and story, and a draw's overview: the lede is
+  `Drawn by the test engine, with a description written far past the limit
+  a story answer may hold.` repeated until it is 250 characters; the repair
+  turn answers the lede the call would have had without the marker.
+- `[fixture:stubborn]` — the repair turn answers the first answer again, so
+  with `[fixture:invalid]` a post fails naming the connection to `ghost`, and
+  with `[fixture:overlong]` the lede is shortened to 240 characters with one
+  warning, `Shortened the description to 240 characters` (a post also keeps
+  its target warning for a description over 140).
 - `[fixture:lose]` — simplify: the last overview component and its
   connections are left out of the detail view, so coverage fails naming it
   and nothing is saved.
@@ -223,7 +234,8 @@ The answer is built from the inputs code gathered:
 
 ### Draw
 
-A `draw` run makes the three calls of the api contract.
+A `draw` run makes the three calls of the api contract, and a repair turn
+after a story call when its answer has a problem.
 
 **Markers** come from the folder's last segment and the typed focus:
 
@@ -232,7 +244,14 @@ A `draw` run makes the three calls of the api contract.
   `[fixture:fail:channel]` the channel call, after the earlier calls
   succeeded;
 - `[fixture:slow]` slows the read;
-- `[fixture:partial]` makes the overview story leave out `store`.
+- `[fixture:partial]` makes the overview story leave out `store`;
+- `[fixture:overlong]` and `[fixture:stubborn]` act on the overview call as
+  above;
+- `[fixture:flaky:overview]` and `[fixture:flaky:channel]` fail that call
+  with `Fixture failure requested` the first time this server process makes
+  it for the folder (its root), whatever the channel, focus, engine or model,
+  and answer as usual every later time. A call the draw does not make (an
+  overview reused, api contract *What a failed draw keeps*) does not count.
 
 Each call has the fixture's progress lines.
 

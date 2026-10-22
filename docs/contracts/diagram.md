@@ -743,7 +743,34 @@ document fields:
   integer or null; `side` `"above"`, `"below"` or null.
 - `facts` names component facts, `held` mechanism facts, `limits` limit facts.
 
-**Relations.** A violation fails the run, and nothing is saved.
+**Problems and the repair turn** (ADR 0009). Code checks a story answer for
+every relation below and every hard limit below at once, and lists each
+problem it finds. An answer that does not match the schema's shape (*Story
+answers* above) fails the run at once, and gets no repair turn. With none, the answer is converted. With any, the engine
+gets one more call, the *repair turn*: the same schema, and a prompt holding
+its answer and the list, both quoted as data. Claude Code gets no tool; Codex,
+which has no tool-free mode, stays in its read-only sandbox and is told to
+read nothing. A revise's story answer gets it too, with no image. Its answer
+replaces the first and is checked again in full; there is never a second
+repair turn. The repair turn is one more call within the run's one deadline,
+with no time added, and cancel stops it as any call. It adds no warning: the
+engine wrote the answer.
+
+After the repair turn, the second answer:
+
+- fails the run, and nothing is saved, when it violates any relation, whether
+  or not the first answer did:
+  `The engine's <overview | LinkedIn post | README drawing | presentation>
+  cannot be drawn: <every violation, joined by "; ">`;
+- otherwise has every hard limit still over repaired as the hard limits below
+  say.
+
+A relation is never repaired by code: a part over the 60 fails the run here,
+while the repair of a full-drawing answer cuts it with a warning, because
+cutting a part of a story would break the spine, zones and holders the story
+built around it.
+
+**Relations.**
 
 - Zone ids are unique, and so are part ids. A part's zone exists.
 - A part's `inside` names another part, never itself or one inside it.
@@ -755,19 +782,39 @@ document fields:
 - A zone's spine parts are consecutive on the spine and its side parts'
   anchors are inside it, or it holds only side parts of one anchor.
 - Connections join two parts, never a part to itself.
-- There is at least one part.
+- There is at least one part, and parts and zones together are at most 60.
 
 A step's parts are not a relation: a wrong one is dropped with a warning
 (see the presentation's row below).
 
-**Hard limits** fail the run and are never shortened:
+**Hard limits.** The prompt states each one, from the constants code checks
+with. The schema gives each text field its limit as `maxLength`, except in the
+schema written for Codex (ADR 0009). A text over its limit after the repair
+turn is shortened to the limit, ending with `…`: `Shortened <what> to <n>
+characters`, one warning per text. `<what>` is `the title`, `the description`,
+`the label of zone "<id>"`, `the label of "<id>"`, `the sub-line of "<id>"`,
+`a chip of "<id>"`, `the label of <from> → <to>`, `the text of step <i>` or
+`the note of step <i>` (ids as the answer gave them, steps counted from 1).
 
-- title 120 chars, never empty; lede 240;
-- labels 48, sub-lines 60;
-- at most 12 chips, each at most 44;
+- title 120 chars; lede 240;
+- zone and part labels 48, sub-lines 60;
+- chips 44 each, except a holder's, which are dropped (below) and never
+  checked or shortened;
 - connection labels 40;
-- in the presentation, step texts 120 and never empty, notes 1000, at most
-  20 steps.
+- in the presentation, step texts 120, notes 1000.
+
+These are problems for the repair turn too, and are then repaired so:
+
+- an empty title: the drawing's title, `The <channel> has no title, kept
+  "<title>"`;
+- in the presentation, a step with an empty text is dropped, `Step <i> has no
+  text and was dropped`, one warning per step, and it then gets no warning for
+  its parts;
+- in the presentation, more than 20 steps keep the first 20, `Kept the first
+  20 of the <n> steps`, one warning for the cut.
+
+More than 12 chips is no problem: the rows (held, chips, limits) are cut to
+12 in the conversion below.
 
 **Briefs and targets per channel.** Each story call has its own brief
 (`src/server/engines/prompt.ts`). The checks in the last column are what code
@@ -775,7 +822,7 @@ does.
 
 | Channel | Brief | Code checks |
 |---|---|---|
-| overview | The complete map: every fact shown or held. A one-line sub-line on every part. Merged parts where many facts are alike. Zones as the system's real boundaries. Every mechanism held by its part; limits where they explain a part. No count target, within the 60 parts a view holds | Every fact drawn (below) |
+| overview | The complete map: every fact shown or held. A one-line sub-line on every part. Merged parts where many facts are alike. Zones as the system's real boundaries. Every mechanism held by its part; limits where they explain a part. No count target, within the 60 parts a view holds, each zone counted as a part | Every fact drawn (below) |
 | linkedin | One image for a phone: about 8–12 parts. A title of at most 9 words and one plain sentence. No held items or limits, no tuning numbers | The post targets below. A non-empty `held`, `limits` or `steps` is dropped, one warning each |
 | readme | A detailed drawing that renders on GitHub. A one-line sub-line on every part, the default description. Held mechanisms only on a part whose working the story is about; elsewhere none. Limits where they explain a guarantee | — |
 | presentation | One drawing and 3–8 ordered steps that tell it. A one-line sub-line on every part; held mechanisms as in the README. Each step highlights the parts it is about, says it on screen in one short sentence, and gives the speaker one to three sentences | Each step's parts exist. A wrong one is dropped with one warning; a step none of whose parts exist is dropped instead, with one warning |
@@ -796,7 +843,8 @@ view):
   zone's label, kind `service` and description `A group of components.`
 - **Holders:** a part that another part is `inside` becomes a group showing
   its own facts. `zone` and `inside` become `parent`; `spine`, `anchor` and
-  `side` become `lane`.
+  `side` become `lane`. A holder draws no chips: its chips are dropped,
+  `"<id>" holds parts, so it draws no chips`, one warning.
 - **Forms:** a part with chips, held mechanisms or limits becomes a panel,
   any other part a card. Chips become its own items.
 - **Facts.** Each step below drops with one warning per id:

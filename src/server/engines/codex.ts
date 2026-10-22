@@ -49,7 +49,7 @@ export class CodexEngine implements Engine {
       const schemaFile = join(dir, "schema.json");
       const outFile = join(dir, "answer.json");
       // Both paths are absolute: codex resolves -o against -C.
-      writeFileSync(schemaFile, JSON.stringify(req.task?.schema ?? DRAFT_JSON_SCHEMA));
+      writeFileSync(schemaFile, JSON.stringify(withoutMaxLength(req.task?.schema ?? DRAFT_JSON_SCHEMA)));
       const prompt = req.task?.prompt ?? instructionPrompt(req);
       const parser = new CodexEventParser(req.progress);
       req.progress("Starting Codex");
@@ -157,4 +157,14 @@ export class CodexEventParser {
       this.progress("Exploring the repository");
     }
   }
+}
+
+/**
+ * The schema as Codex gets it: without `maxLength`, until a live Codex check shows `--output-schema`
+ * accepts it (ADR 0009). The prompt states every limit, and code checks them either way.
+ */
+export function withoutMaxLength(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(withoutMaxLength);
+  if (typeof schema !== "object" || schema === null) return schema;
+  return Object.fromEntries(Object.entries(schema).filter(([k]) => k !== "maxLength").map(([k, v]) => [k, withoutMaxLength(v)]));
 }

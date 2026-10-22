@@ -146,6 +146,8 @@ conversion path as they are, because every new field is optional.
   - three engine calls for a first drawing;
   - two for a refine (the routing question, then the change), one with a
     `parts` scope;
+  - amended by ADR 0009: each story answer may take one more call, a repair
+    turn;
   - the server spawns `git` (argument arrays only);
   - a third user input reaches an engine's working directory;
   - evidence, mechanisms, limits and steps in `src/core` validation, joining

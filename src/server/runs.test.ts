@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { validateDocument3 } from "../core/file3";
 import type { DiagramDocument } from "../core/model";
-import { FixtureEngine } from "./engines/fixture";
+import { FixtureEngine, OVERLONG_LEDE } from "./engines/fixture";
 import { makeApp, makeFolder, shopRepo } from "./testkit";
 
 async function setup(stepMs = 1) {
@@ -200,15 +200,55 @@ describe("post runs", () => {
     expect(doc().views.map((v) => v.id)).toEqual(["overview", "linkedin"]);
   });
 
-  it("keeps an over-target label whole and reports it; an invalid story saves nothing", async () => {
-    const { run, runs, file } = await setup();
+  it("keeps an over-target label whole and reports it", async () => {
+    const { run, runs } = await setup();
     const long = (await runs.wait((await run("[fixture:long]", { kind: "post", view: undefined })).body.runId!))!;
     expect(long.layoutReport!.overLimitText).toContainEqual(expect.objectContaining({ field: "label", text: "A deliberately longer request name", limit: 28 }));
+  });
+
+  it("gives a broken answer one repair turn: saved when the second answer is right, failed naming the channel when a relation is still violated", async () => {
+    const { run, runs, file, stored } = await setup();
+    const fixed = (await runs.wait((await run("[fixture:invalid]", { kind: "post", view: undefined })).body.runId!))!;
+    expect(fixed.status).toBe("succeeded");
+    const at = fixed.progress.indexOf("Fixing 1 problem in the answer");
+    expect(fixed.progress[at - 1]).toBe("Checking the post");
+    expect(fixed.progress.slice(at + 1)).toEqual(["Reading the drawing", "Reading the code", "Updating the drawing", "Checking the post", "Saved with 1 warning"]);
+    const view = (stored() as Document3).channels.linkedin.views[0];
+    expect(view.edges.some((e) => e.to.includes("ghost"))).toBe(false);
     const snapshot = readFileSync(file, "utf8");
-    const bad = (await runs.wait((await run("[fixture:invalid]", { kind: "post", view: undefined })).body.runId!))!;
+    const bad = (await runs.wait((await run("[fixture:invalid] [fixture:stubborn]", { kind: "post", view: undefined })).body.runId!))!;
     expect(bad).toMatchObject({ status: "failed", layoutReport: null });
-    expect(bad.error).toMatch(/ghost/);
+    expect(bad.error).toBe("The engine's LinkedIn post cannot be drawn: a connection request → ghost names something that is not a part");
+    expect(bad.progress.filter((l) => l === "Checking the post")).toHaveLength(2);
     expect(readFileSync(file, "utf8")).toBe(snapshot);
+  });
+
+  it("a revise's story gets the repair turn too, with no image and no tools", async () => {
+    const t = makeApp({ stepMs: 1 });
+    const { file } = shopRepo();
+    const id = ((await (await t.req("/api/files", { method: "POST", json: { path: file } })).json()) as { id: string }).id;
+    const start = async (json: Record<string, unknown>) =>
+      (await t.runs.wait(((await (await t.req("/api/runs", { method: "POST", json: { diagramId: id, engine: "fixture", model: null, ...json } })).json()) as { runId: string }).runId))!;
+    expect((await start({ kind: "story", channel: "readme" })).status).toBe("succeeded");
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const revised = await start({ kind: "revise", channel: "readme", view: "readme", image: png, instruction: "[fixture:overlong]" });
+    expect([revised.status, revised.error]).toEqual(["succeeded", null]);
+    expect(revised.progress[0]).toBe("Looking at the drawing");
+    expect(revised.progress.filter((l) => l.startsWith("Fixing"))).toEqual(["Fixing 1 problem in the answer"]);
+    expect((JSON.parse(readFileSync(file, "utf8")) as Document3).channels.readme.views[0].caption.lede).toBe("A detailed drawing made by the test engine.");
+  });
+
+  it("an over-long text is rewritten by the repair turn, or shortened with one warning after it", async () => {
+    const { run, runs, stored } = await setup();
+    const fixed = (await runs.wait((await run("[fixture:overlong]", { kind: "story", channel: "readme", view: undefined })).body.runId!))!;
+    expect(fixed.status).toBe("succeeded");
+    expect(fixed.progress.filter((l) => l.startsWith("Fixing"))).toEqual(["Fixing 1 problem in the answer"]);
+    expect((stored() as Document3).channels.readme.views[0].caption.lede).toBe("A detailed drawing made by the test engine.");
+    const kept = (await runs.wait((await run("[fixture:overlong][fixture:stubborn]", { kind: "story", channel: "readme", view: undefined })).body.runId!))!;
+    expect(kept.status).toBe("succeeded");
+    const doc = stored() as Document3;
+    expect(doc.channels.readme.views[0].caption.lede).toBe(OVERLONG_LEDE.slice(0, 239) + "…");
+    expect(doc.warnings.filter((w) => w.startsWith("Shortened"))).toEqual(["Shortened the description to 240 characters"]);
   });
 
   it("refuses a post's wrong scope, format, image or view before any engine", async () => {

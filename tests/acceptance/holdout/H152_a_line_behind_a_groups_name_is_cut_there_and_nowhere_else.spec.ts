@@ -42,7 +42,8 @@ test('H152 [LAYOUT-2, LAYOUT-3, SHARE-1] a connection level with the name of a g
   const withLine = await workspaceRaw('group-name-line', groupDoc('Group name line', level.src, level.dst, true));
   const without = await workspaceRaw('group-name-bare', groupDoc('Group name line', level.src, level.dst, false));
   const stored = (await readDrawing(withLine.file)).views[0], storedBefore = await readDocument(withLine.file);
-  const positions = (doc: Doc3) => doc.channels.overview.views![0].nodes.map(n => [n.id, n.x, n.y]);
+  // The group is written with no x/y and opening fills in its computed box (contracts/diagram.md), so it is left out here.
+  const positions = (doc: Doc3) => doc.channels.overview.views![0].nodes.filter(n => n.id !== 'zone').map(n => [n.id, n.x, n.y]);
 
   for (const format of ['readme', 'square'] as const) {
     const a = join(withLine.dir, `line-${format}.svg`), b = join(without.dir, `bare-${format}.svg`);

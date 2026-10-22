@@ -135,6 +135,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const layerRef = useRef(layer);
   layerRef.current = layer;
   const presentBtn = useRef<HTMLButtonElement>(null);
+  const tourBtn = useRef<HTMLButtonElement>(null);
   const backTo = useRef<HTMLButtonElement | null>(null);
   /** The presentation step being looked at (not an edit). */
   const [curStep, setCurStep] = useState<string | null>(null);
@@ -665,6 +666,12 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       <PresentIcon name="present" />{!narrow && <span className="lbl">Present</span>}
     </button>
   );
+  const tourEl = chan !== "presentation" ? null : (
+    <button className="btn" data-testid="tour-start" ref={tourBtn} aria-label="Tour" title={noSlides ? "Add a step first" : undefined} disabled={noSlides}
+      onClick={() => openLayer("tour", tourBtn.current)}>
+      <PresentIcon name="tour" />{!narrow && <span className="lbl">Tour</span>}
+    </button>
+  );
 
   return (
     <div className={`app${side ? " with-side" : ""}`} data-testid="editor" data-theme={doc.theme} data-channel={chan} data-view={view.id}>
@@ -708,7 +715,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
           {!narrow && <><span className="sep" />{undoEl}{redoEl}</>}
         </div>
         <div className="right">
-          {presentEl}
+          {presentEl}{tourEl}
           <button className="btn icon-btn" data-testid="search-button" aria-label="Find a component" title="Find a component ( / )" onClick={() => setSearching(true)}>
             <Icon name="search" size={16} />
           </button>

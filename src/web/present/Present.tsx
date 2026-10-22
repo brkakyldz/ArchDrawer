@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { joinChannel } from "../../core/channels";
 import { renderSlide } from "../../core/export/slide";
 import type { Document3 } from "../../core/file3";
+import { TourPanel } from "./TourPanel";
 import { atOf, firstIndex, indexOf, NO_NOTE, NO_STEPS, noteLines, SLIDE_SWITCHES, statusOf, type At } from "./slides";
 
 /**
@@ -132,22 +133,28 @@ export function Present({ mode, stored, toast, onLeave }: Props) {
       <div className="sr-only" data-testid="present-status" role="status" aria-live="polite">{statusOf(doc, index)}</div>
       <div className="present-body">
         <div className="present-slide" data-testid="present-slide" onClick={() => go(index + 1)} dangerouslySetInnerHTML={{ __html: svg }} />
+        {mode === "tour" && step && (
+          <TourPanel stored={stored} view={doc.views[0]} step={step} index={index} count={steps.length} toast={toast} exit={exit} />
+        )}
       </div>
       {mode === "present" && (
         <>
-          <div className="present-top">{exit}</div>
-          {!moved && <div className="present-hint" data-testid="present-hint">← → to move · Esc to exit</div>}
-          {step && (
-            <div className="present-notes">
-              {noteOpen && (
-                <div className="present-note" data-testid="present-note" id="present-note">
-                  {note ? note.map((l, i) => <span key={i}>{i > 0 && <br />}{l}</span>) : NO_NOTE}
-                </div>
+          {/* Top right, clear of the step's text in the band along the bottom. */}
+          <div className="present-top">
+            <div className="row">
+              {step && (
+                <button className="btn small present-note-toggle" data-testid="present-note-toggle" aria-expanded={noteOpen} aria-controls="present-note"
+                  onClick={() => setNoteOpen((o) => !o)}>Speaker note</button>
               )}
-              <button className="btn small present-note-toggle" data-testid="present-note-toggle" aria-expanded={noteOpen} aria-controls="present-note"
-                onClick={() => setNoteOpen((o) => !o)}>Speaker note</button>
+              {exit}
             </div>
-          )}
+            {step && noteOpen && (
+              <div className="present-note" data-testid="present-note" id="present-note">
+                {note ? note.map((l, i) => <span key={i}>{i > 0 && <br />}{l}</span>) : NO_NOTE}
+              </div>
+            )}
+          </div>
+          {!moved && <div className="present-hint" data-testid="present-hint">← → to move · Esc to exit</div>}
         </>
       )}
     </div>

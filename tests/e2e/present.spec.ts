@@ -1,12 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
-import { open } from "./helpers";
+import { open, shop } from "./helpers";
 
-// Presenting (ui contract, Presenting and the tour). Its journeys are held-out H158–H161; what stays
-// here they do not observe: a refused full screen, forced (H158 accepts either answer), and the
-// stricter rule that no key but Space and Enter acts on a focused button.
+// Presenting and the tour (ui contract, Presenting and the tour). Their journeys are held-out
+// H158–H163; what stays here they do not observe: a refused full screen and a refused clipboard,
+// both forced (H158 and H162 accept either answer), and the stricter rule that no key but Space and
+// Enter acts on a focused button.
 
-async function presentation(page: Page) {
-  await open(page);
+async function presentation(page: Page, file?: Record<string, unknown>) {
+  await open(page, file);
   await page.getByTestId("channel-tab-presentation").click();
   await page.getByTestId("channel-draw").click();
   await expect(page.getByTestId("step-item")).toHaveCount(3, { timeout: 30_000 });
@@ -56,4 +57,17 @@ test("on a focused button only Space and Enter act: the arrows and N move nothin
   await layer.focus();
   await page.keyboard.press("Escape");
   await expect(layer).toHaveCount(0);
+});
+
+test("a refused clipboard says so, and the tour stays open", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: () => Promise.reject(new DOMException("Denied", "NotAllowedError")) } });
+  });
+  await presentation(page, shop((f) => { for (const n of f.views[0].nodes) n.files = ["src/api.ts"]; }));
+  await page.getByTestId("tour-start").click();
+  const layer = page.getByTestId("present");
+  await expect(layer).toHaveAttribute("data-mode", "tour");
+  await page.getByTestId("tour-copy").first().click();
+  await expect(page.getByTestId("toast")).toHaveText("Copying is not allowed here");
+  await expect(layer).toBeVisible();
 });

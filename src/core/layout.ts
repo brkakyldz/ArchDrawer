@@ -9,7 +9,7 @@ import type { DiagramEdge, DiagramNode, DiagramView, EdgeInput, Kind, Lane, Node
  */
 
 export const MARGIN = 40;
-/** Room for an arc around a part: px added to each gap beside it per round, and the rounds. */
+/** Room for a connection behind a part: px added to each gap beside it per round, and the rounds. */
 const ROOM = { step: 40, rounds: 3 } as const;
 const GAP = { top: { x: 88, y: 84 }, inner: { x: 36, y: 32 } } as const;
 
@@ -360,7 +360,7 @@ function gridPositions(view: { nodes: NodeInput[]; edges: EdgeInput[] }, o: Layo
       }
       return need;
     });
-    // Room for an arc around a part a connection could not get past.
+    // Room for a connection that would pass behind a part.
     for (const m of members) {
       const extra = room.get(m.id);
       if (!extra) continue;
@@ -482,11 +482,9 @@ export function layoutView<V extends { nodes: NodeInput[]; edges: EdgeInput[]; i
   };
   let grid = gridPositions(view, o, new Map(), memo);
   let nodes = place(grid);
-  // A connection that has to go around a part placed automatically and finds no arc gets room
-  // there: the gaps beside the part widen across the connection, at most three rounds.
-  // With nothing but a group's name in its way, its own ends get the room (moving them along the
-  // name can bring its end within reach). Room that did not clear its connection is taken back,
-  // so a drawing never grows for nothing. A part with a stored position never moves, and is never
+  // A connection that passes behind a part placed automatically gets room there: the gaps beside
+  // the part widen across the connection, at most three rounds (the curve itself never bends round).
+  // Room that did not clear its connection is taken back, so a drawing never grows for nothing. A part with a stored position never moves, and is never
   // given room.
   const leaves = new Set([...fresh].filter((id) => view.nodes.find((n) => n.id === id)?.form !== "group"));
   if (leaves.size && view.edges.length) {
@@ -507,11 +505,10 @@ export function layoutView<V extends { nodes: NodeInput[]; edges: EdgeInput[]; i
       const rects = layoutRects(placed, { post: o.post });
       blocked = new Set();
       for (const [id, r] of routeEdges(placed, rects, { post: o.post, labels: o.labels })) {
-        if (!r.noArc) continue;
+        if (!r.blocked) continue;
         const e = edges.find((x) => x.id === id), a = e && rects.get(e.from), b = e && rects.get(e.to);
         if (!e || !a || !b) continue;
-        const over = r.blocked?.filter((part) => leaves.has(part)) ?? [];
-        const parts = over.length || r.blocked?.length ? over : [e.from, e.to].filter((part) => leaves.has(part));
+        const parts = r.blocked.filter((part) => leaves.has(part));
         if (!parts.length) continue;
         blocked.add(id);
         if (round === ROOM.rounds) continue;

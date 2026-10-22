@@ -18,7 +18,7 @@ const rectsOf = (v: View, post = false) => {
 const gapX = (a: Rect, b: Rect) => b.x - (a.x + a.w);
 const gapY = (a: Rect, b: Rect) => b.y - (a.y + a.h);
 const boxGap = (a: Rect, b: Rect) => Math.hypot(Math.max(a.x - (b.x + b.w), b.x - (a.x + a.w), 0), Math.max(a.y - (b.y + b.h), b.y - (a.y + a.h), 0));
-const samples = (r: EdgeRoute, n = 200) => (r.segments ?? [r]).flatMap((c) => Array.from({ length: n + 1 }, (_, i) => bezierAt(c, i / n)));
+const samples = (r: EdgeRoute, n = 200) => Array.from({ length: n + 1 }, (_, i) => bezierAt(r, i / n));
 
 describe("lane spacing", () => {
   it("keeps columns 24 px apart and rows 32 px apart (22 in the post style), above and below", () => {
@@ -79,16 +79,6 @@ describe("connection ends and arcs", () => {
       const route = routes.get(e.id!)!;
       expect(onSide(route.p0, rects.get(e.from)!, route.side0), `${e.id} start`).toBe(true);
       expect(onSide(route.p1, rects.get(e.to)!, route.side1), `${e.id} end`).toBe(true);
-    }
-  });
-
-  it("an arc around a part between the ends stays at least 8 px clear of it", () => {
-    for (const block of [{ x: 0, y: 150 }, { x: 20, y: 150 }, { x: -20, y: 150 }]) {
-      const v = { nodes: [node("a", { x: 0, y: 0 }), node("block", block), node("b", { x: 0, y: 300 })], edges: [{ ...edge("a", "b"), id: "e" }] } as Parameters<typeof routeEdges>[0];
-      const rects = layoutRects(v), route = routeEdges(v, rects).get("e")!, r = rects.get("block")!;
-      expect(route.blocked).toBeUndefined();
-      const nearest = Math.min(...samples(route, 400).map((p) => boxGap({ x: p.x, y: p.y, w: 0, h: 0 }, r)));
-      expect(nearest, `block at ${block.x}`).toBeGreaterThanOrEqual(8 - 0.05);
     }
   });
 

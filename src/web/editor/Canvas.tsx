@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { layoutRects, measureText, routeEdges, textStyle, type EdgeRoute, type Rect } from "../../core/geometry";
-import { badgeMarkup, drawOrder, edgeMarkup, labelMarkup, nodeMarkup, sharedDefs, textMarkup } from "../../core/export/svg";
+import { badgeMarkup, drawOrder, edgeMarkup, labelMarkup, namesClip, nodeMarkup, sharedDefs, textMarkup } from "../../core/export/svg";
 import { descendants, isPostView, type DiagramEdge, type DiagramNode, type DiagramText, type Kind } from "../../core/model";
 import type { Palette } from "../../core/theme";
 import { clampTextSize, connect, moveNodes, moveTexts, setText, settleNodes } from "./ops";
@@ -81,6 +81,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   const rects = useMemo(() => layoutRects(view), [view]);
   const routes = useMemo(() => routeEdges(view, rects, { avoid: view.texts.map((t) => ({ x: t.x, y: t.y, ...measureText(t) })) }), [view, rects]);
   const order = useMemo(() => drawOrder(view), [view]);
+  const clip = useMemo(() => namesClip(view, rects, "ad-names", post), [view, rects, post]);
   const kindOf = useMemo(() => new Map(view.nodes.map((n) => [n.id, n.kind])), [view]);
   const defs = useMemo(() => sharedDefs(P, "ad"), [P]);
 
@@ -317,10 +318,13 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
         <defs dangerouslySetInnerHTML={{ __html: defs }} />
         <g transform={`translate(${vp.x} ${vp.y}) scale(${k})`}>
           {groups.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} />)}
-          {view.edges.map((e) => {
-            const r = routes.get(e.id);
-            return r ? <EdgeShape key={e.id} edge={e} route={r} P={P} from={kindOf.get(e.from)!} to={kindOf.get(e.to)!} selected={selEdges.has(e.id)} dim={dimEdge(e)} flow={steps && e.step !== null} open={touchesOpen(e)} /> : null;
-          })}
+          {clip && <defs dangerouslySetInnerHTML={{ __html: clip }} />}
+          <g clipPath={clip ? "url(#ad-names)" : undefined}>
+            {view.edges.map((e) => {
+              const r = routes.get(e.id);
+              return r ? <EdgeShape key={e.id} edge={e} route={r} P={P} from={kindOf.get(e.from)!} to={kindOf.get(e.to)!} selected={selEdges.has(e.id)} dim={dimEdge(e)} flow={steps && e.step !== null} open={touchesOpen(e)} /> : null;
+            })}
+          </g>
           {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} />)}
           {view.edges.map((e) => {
             const r = routes.get(e.id);

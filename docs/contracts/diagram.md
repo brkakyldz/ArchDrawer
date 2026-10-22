@@ -526,34 +526,34 @@ editor and in exports alike: part and group names 16.5 px (compact names
 for its sub-line, each extra label line adding 20; panel 150–300 wide, height
 `14 + 22 + (sub ? 16 : 0) + (k ? 6 + 19k + (k − 1) : 0)`; badge radius 11.5.
 
-**Connections** are smooth curves: one cubic or a chain of up to three
-(`M … C …`, no `L`, `H` or `V`), joined without a corner (directions equal
-within 1°), the end handles along the end sides' normals and every handle at
-least 24 px long. A connection leaves from the side of each part that faces
-the other end; several on one side are spread up to 16 px apart, ordered by
-where the other end is. A group's name box (from the group's left edge to
-2 px past its name, sub-line or detail mark, 46 px tall) is never crossed;
-connections entering a member in the group's first row from above come in
-right of the name, at least 10 px apart.
+**Connections** are smooth curves: one cubic (`M … C …`, no `L`, `H` or
+`V`), its handles along the end sides' outward normals, each 0.42 × the
+distance between the ends, between 24 and 160 px. A connection leaves from
+the side of each part that faces the other end; several on one side are
+spread up to 16 px apart, ordered by where the other end is; connections
+entering a member in a group's first row from above come in right of the
+group's name when the part leaves room, at least 10 px apart.
 
-A connection whose plain curve would enter a part other than its ends or a
-group name (or, in a post, cross more earlier lines than an arc would) takes
-an arc through one or two bend points: never into a group name, at least 8 px
-clear of every non-group part, never into its own two ends. The cheapest arc
-wins: cost = length ÷ distance between the two centres + 0.25 per earlier
-line crossed (ties: fewer bends, shorter, further right). No arc is longer
-than max(1.8 × distance, distance + 120). When no arc fits around
-automatically placed parts, the layout widens the gap the arc needs and
-routes again, at most three times, undoing a widening that does not help;
-stored positions never move. If there is still no arc, the shortest curve
-that stays out of group names is drawn and the layout report lists it in
-`edgesOverParts`.
+A connection is never bent around anything (ADR 0011). Connections are drawn
+under parts, so a curve that meets a part other than its ends passes behind
+it, and the layout report lists it in `edgesOverParts`. A group's name text
+(from 3 px left of its icon to its name box's right edge, 28 px tall round
+the header's middle) is cut out of the connections, so a curve passes behind
+a group's name too. One exception keeps a post's spine visible: in a post, a
+line straight down or up whose plain curve passes behind parts between its
+ends leaves and enters by the same side instead, as one cubic whose handles
+are the shortest (24 px upward in 8 px steps, at most 160) that clear every
+part by 8 px, on the side that stays within the parts' extent with its
+badge, right on a tie; with no such curve it stays straight. When a curve
+passes behind a part placed automatically, the layout widens the gaps
+beside that part and routes again, at most three times, undoing a widening
+that does not clear it; stored positions never move.
 
 A label takes the free spot nearest the middle of its curve, 4 px clear of
-parts, group names, texts and earlier labels and no further from the curve
-than half its width + 10 px; with no such spot it is left out. A step badge
-takes the free spot nearest the middle, its radius + 3 px clear of all of
-those and of every label.
+parts, group names, texts and earlier labels, with its box no further than
+10 px from the curve; with no such spot it is left out. A step badge takes
+the free spot nearest the middle, its radius + 3 px clear of all of those
+and of every label.
 
 ## Layout
 

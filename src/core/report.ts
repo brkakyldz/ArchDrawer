@@ -105,8 +105,8 @@ export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, v
   const boxes = view.nodes.map((n) => rects.get(n.id)).filter((r): r is Rect => !!r);
   const x0 = Math.min(...boxes.map((r) => r.x)), y0 = Math.min(...boxes.map((r) => r.y));
   const diagonal = boxes.length ? Math.hypot(Math.max(...boxes.map((r) => r.x + r.w)) - x0, Math.max(...boxes.map((r) => r.y + r.h)) - y0) : 0;
-  // The routed curve's length, each cubic measured on its own so a detour's corners are not cut.
-  const routeLength = (r: EdgeRoute) => (r.segments?.length ? r.segments : [r]).reduce((s, c) => s + length(Array.from({ length: 65 }, (_, i) => bezierAt(c, i / 64))), 0);
+  // The routed curve's length.
+  const routeLength = (r: EdgeRoute) => length(Array.from({ length: 65 }, (_, i) => bezierAt(r, i / 64)));
   const longest = Math.max(0, ...edges.map((e) => routeLength(routes.get(e.id)!)));
 
   const r = img.readability;

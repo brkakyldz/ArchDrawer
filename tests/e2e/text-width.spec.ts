@@ -8,7 +8,9 @@ import { open, painted, shop } from "./helpers";
 // sub-line and row is painted no wider than the width its part was measured for, in the editor and
 // in the exported image. Linux is where it bites: unless told to draw text at its geometric size,
 // Chromium there rounds each glyph's advance to a whole pixel, so a label sized to fit exactly can
-// overrun its part (docs/contracts/diagram.md, Geometry).
+// overrun its part (docs/contracts/diagram.md, Geometry). The editor and the image must also paint
+// each text at the same width: a canvas style that overrides the font a text is given (a compact
+// sub-line's Geist Mono) changes what the editor shows without changing any box.
 
 // Parts as wide as their text needs (compact, panel), with labels whose rounding errors add up:
 // narrow letters, a realistic name, and Geist Mono in the compact sub-lines.
@@ -72,7 +74,8 @@ async function fullDetail(page: Page) {
 test("every label is painted no wider than its part was measured for, in the editor and in the image", async ({ page }) => {
   const { id } = await open(page, shop((f) => { f.views[0].nodes = nodes; f.views[0].edges = []; }));
   await fullDetail(page);
-  expectWithinMeasure(await paintedTexts(page.locator(".canvas svg.world")), "editor");
+  const editor = await paintedTexts(page.locator(".canvas svg.world"));
+  expectWithinMeasure(editor, "editor");
 
   const res = await page.request.get(`/api/diagrams/${id}/export.svg?view=overview&format=readme`);
   expect(res.status()).toBe(200);
@@ -85,7 +88,17 @@ test("every label is painted no wider than its part was measured for, in the edi
     document.body.append(host);
   }, await res.text());
   await page.evaluate(() => document.fonts.ready);
-  expectWithinMeasure(await paintedTexts(page.locator("#image-under-test > svg")), "image");
+  const image = await paintedTexts(page.locator("#image-under-test > svg"));
+  expectWithinMeasure(image, "image");
+
+  // The same text, painted in the editor and in the image, is the same width.
+  const key = (t: Painted) => `${t.id} ${t.role} ${t.text}`;
+  const inImage = new Map(image.filter((t) => t.role !== "other" && t.text).map((t) => [key(t), t.painted]));
+  for (const t of editor.filter((t) => t.role !== "other" && t.text)) {
+    const there = inImage.get(key(t));
+    expect.soft(there, `image: ${key(t)} is drawn`).toBeDefined();
+    expect.soft(Math.abs(t.painted - (there ?? 0)), `${key(t)}: editor ${t.painted.toFixed(2)} px, image ${(there ?? 0).toFixed(2)} px`).toBeLessThanOrEqual(0.25);
+  }
 });
 
 // Text outside the metrics table: Cyrillic Geist draws itself, Greek capitals and emoji from a

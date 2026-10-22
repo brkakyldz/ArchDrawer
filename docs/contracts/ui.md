@@ -220,7 +220,7 @@ leaves it out of that channel. The current channel is never marked.
 ### Simple versions
 
 Without an engine, `channel-prepare` (and `linkedin-prepare` on LinkedIn) and
-`channel-redraw` draw a channel from the overview channel's first view in
+`channel-redraw` draw a channel from the overview channel's first view (for a `system` choice the map and its detail views in `views-panel` order, skipping parts with a `detail`) in
 code. It is one undoable edit that replaces what the channel held and empties
 its `outdated`. The view keeps its id when the channel already has one, else
 it is named as a story's new view is (drawing contract, *The view*: the
@@ -748,7 +748,7 @@ controls below.
   orientation without writing anything.
 
 **Without an engine**, `linkedin-prepare` draws the LinkedIn channel's view
-from the overview channel's first view as one undoable edit, replacing what
+from the overview channel's first view (for a `system` choice the map and its detail views in `views-panel` order, skipping parts with a `detail`) as one undoable edit, replacing what
 the channel held and emptying its `outdated`. The view's id is kept when the
 channel already has a view, else it is named as a story's new view is
 (drawing contract, *The view*: `linkedin`, or `<choice id>-linkedin` outside

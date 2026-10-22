@@ -783,7 +783,8 @@ A step's parts are not a relation: a wrong one is dropped with a warning
 
 **Hard limits.** The prompt states each one, from the constants code checks
 with. The schema gives each text field its limit as `maxLength`, except in the
-schema written for Codex (ADR 0009). A text over its limit after the repair
+schema written for Codex, which would cut a text at the limit with no `…` and
+no warning (ADR 0009). A text over its limit after the repair
 turn is shortened to the limit, ending with `…`: `Shortened <what> to <n>
 characters`, one warning per text. `<what>` is `the title`, `the description`,
 `the label of zone "<id>"`, `the label of "<id>"`, `the sub-line of "<id>"`,

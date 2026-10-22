@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { intentToDocument, parseIntent, postSource, postViewId, StoryError, type StoryIntent, type StoryPart } from "./intent";
+import { intentToDocument, parseIntent, postSource, postViewId, StoryError, storyProblems, type StoryIntent, type StoryPart } from "./intent";
 import { assignEdgeIds, fillDefaults, validateDocument, type DiagramDocument } from "./model";
 import { layoutReport } from "./report";
 import { startSwitches } from "./export/share";
@@ -96,7 +96,6 @@ describe("story intent → post view", () => {
       ["duplicate spine", { parts: [part("web", { spine: 0 }), part("api", { spine: 0 })] }],
       ["unknown zone", { parts: [part("web", { spine: 0, zone: "z" })] }],
       ["gap in a zone's spine", { zones: [{ id: "z", label: "Z" }], parts: [part("a", { spine: 0, zone: "z" }), part("b", { spine: 1 }), part("c", { spine: 2, zone: "z" })] }],
-      ["over the file's label limit", { parts: [part("web", { spine: 0, label: "x".repeat(49) })] }],
       ["no parts", { parts: [], edges: [] }],
     ];
     for (const [what, change] of bad) {
@@ -115,6 +114,48 @@ describe("story intent → post view", () => {
     const { doc, view, warnings } = intentToDocument(shop(), "overview", i, { portrait: true });
     expect(doc.views.find((v) => v.id === view)!.nodes.find((n) => n.label === "api")!.items).toEqual(chips.slice(0, 12));
     expect(warnings.filter((w) => w.includes("rows"))).toEqual(['Kept the first 12 rows of "api"']);
+  });
+
+  it("lists every problem of an answer at once: relations, texts over their limits, an empty title, the steps", () => {
+    const i = small({
+      title: " ", lede: "x".repeat(241),
+      parts: [part("web", { spine: 0, label: "L".repeat(49), chips: ["c".repeat(45)] }), part("api", { spine: 0 }), part("db", { anchor: "api", side: "below" })],
+    });
+    expect(storyProblems(i, "linkedin")).toEqual([
+      'part "api" has spine 0, which is negative or taken',
+      "the description is 241 characters, over the 240 it may hold",
+      'the label of "web" is 49 characters, over the 48 it may hold',
+      'a chip of "web" is 45 characters, over the 44 it may hold',
+      "it has no title",
+    ]);
+    expect(storyProblems(small(), "linkedin")).toEqual([]);
+    const steps = Array.from({ length: 21 }, (_, k) => ({ parts: ["web"], text: k === 2 ? "" : `Step ${k + 1}`, note: "" }));
+    expect(storyProblems(small({ steps }), "presentation")).toEqual(["it has 21 steps, over the 20 a presentation holds", "step 3 has no text"]);
+    expect(storyProblems(small({ steps }), "readme")).toEqual([]);
+    const many = small({ zones: [{ id: "z", label: "Z" }], parts: Array.from({ length: 60 }, (_, k) => part(`p${k}`, { spine: k })), edges: [] });
+    expect(storyProblems(many, "overview")).toEqual(["it has 60 parts and 1 zones, over the 60 a view holds"]);
+  });
+
+  it("after the repair turn, shortens a text over its limit with one warning each, and fails naming every relation still violated", () => {
+    const long = small({ lede: "a".repeat(250), parts: [part("web", { spine: 0, sub: "s".repeat(61) }), part("api", { spine: 1 }), part("db", { anchor: "api", side: "below" })], edges: [{ from: "web", to: "api", label: "l".repeat(41), style: "call", step: 1 }] });
+    const { doc, view, warnings } = intentToDocument(shop(), "overview", long, { portrait: true });
+    const v = doc.views.find((x) => x.id === view)!;
+    expect(v.caption.lede).toBe("a".repeat(239) + "…");
+    expect(v.nodes.find((n) => n.label === "web")!.sub).toBe("s".repeat(59) + "…");
+    expect(v.edges[0].label).toHaveLength(40);
+    expect(warnings.filter((w) => w.startsWith("Shortened"))).toEqual(["Shortened the description to 240 characters", 'Shortened the sub-line of "web" to 60 characters', "Shortened the label of web → api to 40 characters"]);
+    const broken = small({ edges: [{ from: "web", to: "web", label: "", style: "call", step: 1 }, { from: "web", to: "ghost", label: "", style: "call", step: null }] });
+    expect(() => intentToDocument(shop(), "overview", broken, { portrait: false, channel: "readme" })).toThrow(
+      `The engine's README drawing cannot be drawn: a connection from "web" to itself; a connection web → ghost names something that is not a part`,
+    );
+    // A holder's chips are held to the limit too; a cut never splits a surrogate pair.
+    const holder = small({ parts: [part("web", { spine: 0, chips: ["h".repeat(45)] }), part("api", { spine: 0, inside: "web" })], edges: [] });
+    expect(storyProblems(holder, "readme")).toEqual(['a chip of "web" is 45 characters, over the 44 it may hold']);
+    const emoji = intentToDocument(shop(), "overview", small({ lede: "a".repeat(238) + "😀😀" }), { portrait: true });
+    const lede = emoji.doc.views.find((v) => v.id === emoji.view)!.caption.lede;
+    expect([lede.length, lede.endsWith("a…")]).toEqual([239, true]);
+    const untitled = intentToDocument(shop(), "overview", small({ title: "" }), { portrait: true });
+    expect(untitled.warnings).toContain(`The LinkedIn post has no title, kept "${shop().title}"`);
   });
 
   it("checks the answer against the schema exactly, with no takeaway", () => {

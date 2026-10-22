@@ -1,11 +1,11 @@
 # Held-out coverage
 
-The suite has 90 scenarios. A requirement id appears in a scenario title only
+The suite has 97 scenarios. A requirement id appears in a scenario title only
 when the scenario observes it; an id the spec marks *To build* appears only
 once a step has built something to observe (the 0.3 round: START-4, SCAN-1 to
 SCAN-4, READ-1 to READ-3, STORY-2 to STORY-5 and AI-5, with STORY-1 and
 STORY-6 changed; the 0.4 round: LOOK-2, AI-3, AI-4 and LAYOUT-4, with LOOK-3 and
-AI-2 changed). Ids are the requirement ids of the product spec.
+AI-2 changed; the story-limits round: STORY-7 and START-6). Ids are the requirement ids of the product spec.
 
 Since 0.2 the suite lands in batches, each with the step that makes it pass
 (`batches/MANIFEST.md` lists the files). The *Lands in* column says which. The
@@ -50,6 +50,12 @@ lane runs only its own batches until then, and every file also passes after the 
 | E-suggestions | ai | #79, suggestions | H115, H130 (changed; H130 renamed), H141, H142 |
 | F-second-look | ai | #80, the second look | H116, H120 (changed), H143, H144 |
 | Z-index (0.4) | last | the merge | `COVERAGE.md`, `verify.json`, `README.md`, `author-check.mjs` |
+
+The story-limits round (ADRs 0009 and 0010) is one batch:
+
+| Batch | Lands with | Scenarios |
+|---|---|---|
+| story-limits | the repair turn of a story answer (STORY-7) and a failed draw that keeps its read (START-6) | H145–H151 (new); `COVERAGE.md`, `verify.json`, `README.md`. No helper and no earlier scenario changed |
 
 H100 (Design the post) is unchanged: its result now arrives as a preview, and nothing it does afterwards (the share dialog, the tabs)
 is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no engine, which only the ai lane's finished product has.
@@ -148,6 +154,13 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 | H142 | E-suggestions | with no engine a suggestion saves its instruction as a request for its channel and view and shows as a `saved` turn; no run, input and drawing left alone |
 | H143 | F-second-look | the `revise` request is refused in order (format — only absent or the channel's default is accepted —, readCode, image missing / not a PNG / too large, image on another kind, instruction, scope, drawing, view, channel, engine, no drawing); on the overview one part moves 40 px, on README, LinkedIn and presentation the channel's story; `route` null; progress starts `Looking at the drawing`; a failure writes nothing |
 | H144 | F-second-look | `ai-look-again` posts the view's PNG in the channel's default format at 1x with no old `revise` flag; the overview answer is `1 part moved` as a preview that Undo takes back; LinkedIn gets its story as a preview and the editor, once there, stays where the user goes next; off during a run and on a channel with no drawing |
+| H145 | story-limits | a post and a README story whose first answer has an over-long description are repaired by the engine: saved with its own shorter text, `Fixing 1 problem in the answer` between the two check lines, no `Shortened` warning, the repair adding no warning |
+| H146 | story-limits | with `[fixture:stubborn]` the over-long description is saved at 240 characters ending in `…` with exactly one `Shortened the description to 240 characters` warning, after one repair turn only, for a post and a README story; the run succeeds |
+| H147 | story-limits | a post with a connection to `ghost` is saved without it after the repair turn; with `[fixture:stubborn]` too the run fails naming `The engine's LinkedIn post cannot be drawn:` and `ghost`, and the drawing file is byte for byte unchanged |
+| H148 | story-limits | a draw from the home screen whose overview answer is over-long: one `Fixing 1 problem in the answer` with `stage: "overview"`, after the read and before the channel, a written drawing holding the engine's own overview description and no `Shortened` warning |
+| H149 | story-limits | a draw failing at the channel stage writes nothing; `Try again` from the home screen makes no new scan or read (`Using the facts already read`, no engine lines in the read stage), reuses the overview, writes one drawing, and its warnings equal those of a draw of the same project that never failed |
+| H150 | story-limits | a draw failing at the overview stage, then a draw with another channel: the read is reused, the overview is drawn by a call (engine lines, nothing reused), only that channel is drawn; after that success the next draw reads again |
+| H151 | story-limits | a draw failing at the channel stage, a file the read cites deleted from the folder with no new scan, the same draw again: `Using the facts already read` then `Checking the facts`, no engine line in the read stage, the overview drawn by a call (no `Using the overview already drawn`), a written drawing whose facts no longer cite the deleted file (nor hold the facts only it backed), with a warning naming it; another focus with the same scan reads again |
 
 ## Requirement map
 
@@ -156,14 +169,15 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 | START-1 | H29 | The plugin manifests and the `archdrawer` launcher exist and parse. Only static packaging; the plugin's command opening the app is not observable. |
 | START-2 | — | To build. |
 | START-3 | H123 | With no engine the screen says `To draw a project, install Claude Code or Codex and sign in to it.` with both install commands (H123). Limit: signed out or too old are not observable with the fixture, which is always available. |
-| START-4 | H41, H110–H113, H117–H123 | The folder start: the field with the library's folders, the folder check, the card and options, the focus, the channel, the draw with its stages, the offer of an existing drawing, the keyboard path, a failed draw, no engine. Fixture engine only. |
+| START-4 | H41, H110–H113, H117–H123, H148, H149, H151 | The folder start: the field with the library's folders, the folder check, the card and options, the focus, the channel, the draw with its stages, the offer of an existing drawing, the keyboard path, a failed draw, no engine. Fixture engine only. |
 | START-5 | H15, H16, H17, H25, H27, H41, H44, H84, H88, H89, H90, H91, H106–H109, H123 | `validate`, `open`, `svg` (with `--channel`), `migrate` (`@1`, `@2`, `@3`), `status`, `stop`: exit codes, output lines, same id and URL on reopen, nothing written by `validate`, the path and message of every `@3` violation, the 0.3 rules (H107). |
+| START-6 | H149, H150, H151 | A draw that fails after its read keeps it in memory only: a later draw with the same scan, focus, engine and model starts from the first stage that did not finish. After a channel-stage failure `Try again` shows `Using the facts already read`, `Checking the facts`, then `Drawing the overview` and `Using the overview already drawn`, makes no scan and no engine line before the channel, and its warnings equal a never-failed draw's (H149). After an overview-stage failure another channel reuses the read and draws the overview by a call (H150). A success removes what was kept: the next draw reads again (H150). The kept read answer's evidence is checked again against the folder as it is now, with no new commit or scan: a file the read cites, deleted after the failure, is dropped on `Try again` with the facts only it backed, the overview is then drawn by a call, and the drawing cites no deleted file; another focus with the same scan reads again (H151). Limit: the one-hour expiry, another engine or model reading again, a cancel or timeout keeping the read, and the 409 of a second draw are not exercised (the expiry has no clock surface). |
 | SCAN-1 | H110, H111, H112, H113, H121 | A scan reads the folder in code (listing from git or a walk that skips `node_modules` and its kin, the files named by the dependency files) and answers a card. The size budget and the README and dependency-file reading are not observable from the fixture's answer. |
 | SCAN-2 | H110, H121 | Options of the three kinds, each with title, sentence and files; the option whose file is missing is left out with one warning; fewer than three is a success; paths are relative to the repository root. Limit: "3–5 options" depends on the engine; the fixture gives three. |
 | SCAN-3 | H110, H120, H121, H122 | "The whole system" and a typed focus are never options, always offered, and accepted by the draw. |
 | SCAN-4 | H111, H112, H113, H122 | Cached per commit (cache file count, `cached: true`, `Scanned before at`), the same entry for a tree with uncommitted changes, `refresh`, a new commit, a folder outside git or without a commit never cached, a failed or cancelled scan caches nothing. |
 | READ-1 | H117, H119, H121, H123 | After a focus the read returns components, mechanisms, relations and a limit; a failure at the read, overview or channel writes nothing. Limit: what a real engine reads is not observable; the facts are the fixture's. |
-| READ-2 | H106, H107, H117, H118 | Every fact in a draw carries evidence, `files` are the evidence files, evidence that points nowhere is dropped with the contracted warnings and a fact left with none goes, with what depended on it. In a file only paths are checked. |
+| READ-2 | H106, H107, H117, H118, H151 | Every fact in a draw carries evidence, `files` are the evidence files, evidence that points nowhere is dropped with the contracted warnings and a fact left with none goes, with what depended on it; a kept read answer is checked again against the folder as it is (H151). In a file only paths are checked. |
 | READ-3 | H117 | The agent's loop is five mechanisms within the agent, the check around execution a gate, wherever the fixture answers it. Whether a real engine asks for the loop only when the card says `agent` is not observable. |
 | STORY-1 | H97, H102, H103, H116, H117, H119, H120, H121, H122, H124, H125, H126, H128 | A channel is chosen after the focus and drawn from the facts without reading again, on its own tab, as one undoable step; switching channel starts no run. |
 | STORY-2 | H114, H116 | LinkedIn: no held items or limits on the post, no tuning-number warning outside it, count targets only on it. Limit: "about 8–12 parts", a title of nine words and readability on a phone are the model's work and not observable. |
@@ -171,6 +185,7 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 | STORY-4 | H106, H107, H126, H127, H128 | The presentation is one drawing and ordered steps with a text and a note each; steps are lit and dimmed in the editor, edited, reordered, undone, and follow a deleted part. Full-screen presenting is PRES-1, not built. |
 | STORY-5 | H16, H106, H107, H109, H114, H124 | A number that explains a guarantee (`Stops after 12 turns`) is a limit fact drawn as a row outside LinkedIn and is no warning there. |
 | STORY-6 | H114, H115, H116, H119, H129, H130 | The overview has no caps, no count targets, no size warning and no suggestion; Simplify stays. Limit: that the model decides what to draw and its rough place has no contract surface the fixture can exercise. |
+| STORY-7 | H145, H146, H147, H148 | A story answer with a problem gets one repair turn: `Fixing <n> problem(s) in the answer` between the two check lines (post and story, H145, H146, H147) or in the overview stage of a draw (H148); the engine's second answer is saved as it is, with no `Shortened` warning (H145, H148); a still over-long description is cut to 240 characters ending in `…` with exactly one `Shortened the description to 240 characters` warning and the run does not fail (H146); a violated relation is repaired by the engine's second answer or fails the run `The engine's LinkedIn post cannot be drawn: …` naming the connection, writing nothing (H147). Limit: prompt wording and the schema's `maxLength` are not observable with the fixture; the other `Shortened <what>` forms, the 60-part relation, the presentation's empty-step and 20-step repairs, a revise's repair turn, a channel call's repair turn in a draw and the overview's failure message (no marker reaches them) are not exercised. |
 | LAYOUT-1 | H15, H17, H24, H28, H32, H34, H44, H63, H84, H86, H87, H109 | Parts are placed once and keep their place, sizes follow the contracted geometry (a panel's rows included, H109), and editor, preview, download and `archdrawer svg` draw the same numbers. Limit: sizes and path equality are measured at 0.3 drawing px. |
 | LAYOUT-2 | H84, H86 | No connection enters a part it does not join or a group's name (H84); a connection that cannot avoid a stored part is listed, not hidden (H86). Limit: one laid-out system and one stored-position fixture. |
 | LAYOUT-3 | H28, H38, H39, H63, H64, H85, H86, H114, H115 | The report counts parts, zones, connections, cut text, crossings and connections over parts; its numbers equal an independent measurement of the exported image (H86); count targets only on LinkedIn (H114, H115). |
@@ -213,6 +228,10 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 QUAL-3. (LAYOUT-4, LOOK-2, AI-3 and AI-4 left this list with 0.4.)
 
 **Today or changing, but not observable from the contracts** (a contract gap):
+
+- STORY-7, START-6: prompt text, the schema's `maxLength` (and its removal for Codex), the
+  repair turn's tools, and the one-hour expiry of a kept read are not observable with the
+  fixture engine.
 
 - START-3: signed out or too old are not observable (the fixture engine is
   always available); only the no-engine sentence is (H123).
@@ -410,3 +429,34 @@ only what both readings share, or says here what it assumed.
 - **The suggestions' instruction for `Simpler`.** The ui contract gives its text; the api
   contract says the server puts that text in front of whatever the caller adds. H141 and
   H115 assert the run's kind and view, not the instruction string, for it.
+
+## Contract gaps found while writing the story-limits scenarios
+
+- **Where a story run's warnings are read.** The api contract says a repair adds a warning and
+  the run ends `Saved with <n> warning(s)`; a draw's document carries `warnings`. H145–H147 read
+  a post's or story's warnings from the stored document's `warnings` (only the lines starting
+  `Shortened` are counted, since a post also carries the fixture's one two-way-connection
+  warning and may carry a target warning when its lede is over 140), and H145 reads
+  `Saved with 1 warning` as "the repair turn added none".
+- **The check line of a story run.** The api contract says story and post both show `Checking
+  the post`; H145 counts that line twice for the README story as well. A draw's channel call
+  uses `Checking the drawing` and the overview call has none (H148 does not read either).
+- **How many problems an invalid post has.** `[fixture:overlong]` is one problem (the lede), so
+  the line is asserted exactly; `[fixture:invalid]` is asserted as one repair turn only, with the
+  count not pinned beyond that (H147 matches `Fixing` once, not its number).
+- **The over-long lede's text.** The fixture repeats a sentence until 250 characters; the
+  separator is not stated. H146 asserts that the saved lede starts with the sentence, is exactly 240
+  characters and ends with `…`.
+- **Engine lines of a repair turn.** `Fixing …` is followed by the repair turn's engine lines
+  (api contract). H145 and H148 require at least one line there, without naming it.
+- **The fixture's own lines are every call's.** The fixture's `Reading the code` is a line of
+  every call, not only the read, so reuse is asserted per stage (`stage` of the progress events):
+  the read stage of a reused draw holds none of `Reading the drawing`, `Reading the code`,
+  `Updating the drawing`, and the overview stage of a reused overview none either (H149, H150).
+- **Which markers reach which call.** A draw's marker travels in the typed focus (so the
+  scenarios run on Windows too). `[fixture:flaky:<stage>]` counts once per server process and
+  folder, so every flaky scenario has a folder of its own, and a control draw of the same project
+  uses another folder with the same files and no marker (H149).
+- **No scenario for the channel call's repair turn or a revise's.** The fixture's `overlong`
+  and `stubborn` act on the overview call of a draw, on a post and on a story only; no marker
+  makes a draw's channel call or a revise answer a problem.

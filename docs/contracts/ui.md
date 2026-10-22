@@ -70,7 +70,7 @@ Enter in a field acts as its button.
 | `channel-choice-linkedin`, `channel-choice-readme`, `channel-choice-presentation` | radios `LinkedIn post`, `README drawing`, `Presentation`, shown once a focus is chosen. None is chosen at first (STORY-1) |
 | `draw-start` | `Draw it`, enabled once a focus and a channel are chosen (and `focus-text` is not empty for a typed focus). It starts the `draw` run (api contract, The draw run) |
 | `draw-progress` | while the run goes: `draw-stage` per stage, in order, with `data-stage` (`read`, `overview`, `channel`) and `data-state` (`waiting`, `running`, `done`). The texts are `Reading the code`, `Drawing the overview` and `Drawing the <LinkedIn post / README drawing / presentation>`. Also `draw-line` (the latest progress line) and `draw-cancel` |
-| `draw-error` | after a failed or cancelled draw: the error, and `draw-retry` (`Try again`, the same choices; it starts from the first stage that did not finish, api contract *What a failed draw keeps*). Folder, card, focus and channel stay chosen; nothing was written |
+| `draw-error` | after a failed or cancelled draw: the error, and `draw-retry` (`Try again`, the same choices; it starts from the first stage that did not finish, api contract *What a failed draw keeps*: a reused stage shows `running` with its `Using …` line in `draw-line`, then `done` once the next stage starts). Folder, card, focus and channel stay chosen; nothing was written |
 
 On success the editor opens on the new drawing at the chosen channel
 (`/d/<id>?channel=<channel>`), and the drawing is in the list. While a scan or

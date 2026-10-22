@@ -99,10 +99,11 @@ engines (draft → answer → repair or story conversion → layout → validati
 models are `fixture-fast` (`Fast (test)`) and `fixture-careful`
 (`Careful (test)`); any valid model name is accepted.
 
-**Progress**: `Using model <model>` when the run names a model, then
-`Reading the drawing`, `Reading the code`, `Updating the drawing`, each after
-`ARCHDRAW_FIXTURE_STEP_MS`, then one more step before it answers. The pipeline
-adds its own lines (`Checking the drawing`, `Saved`, …).
+**Progress**: on every engine call, a repair turn included, `Using model
+<model>` when the run names a model, then `Reading the drawing`, `Reading the
+code`, `Updating the drawing`, each after `ARCHDRAW_FIXTURE_STEP_MS`, then one
+more step before it answers. The pipeline adds its own lines (`Checking the
+drawing`, `Saved`, …).
 
 **Markers** anywhere in the instruction, case-sensitive, for every kind:
 
@@ -123,7 +124,8 @@ adds its own lines (`Checking the drawing`, `Saved`, …).
 - `[fixture:stubborn]` — the repair turn answers the first answer again, so
   with `[fixture:invalid]` a post fails naming the connection to `ghost`, and
   with `[fixture:overlong]` the lede is shortened to 240 characters with one
-  warning.
+  warning, `Shortened the description to 240 characters` (a post also keeps
+  its target warning for a description over 140).
 - `[fixture:lose]` — simplify: the last overview component and its
   connections are left out of the detail view, so coverage fails naming it
   and nothing is saved.

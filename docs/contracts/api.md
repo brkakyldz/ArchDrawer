@@ -326,8 +326,9 @@ A failure, cancel or timeout at any stage writes and registers nothing.
 the server's memory only, what it had finished at that moment: the read
 answer, and the drawing with its overview when the overview's answer (after
 its repair turn, if any) was converted. An overview cut off before that is
-not kept. A later `draw` whose `scan` id, `focus`, engine (the one the run
-used) and `model` (as sent; null is its own value) are the same, the channel
+not kept. A later `draw` whose `scan` id, `focus` (a typed text as trimmed),
+engine (the one the run used) and `model` (as sent; null is its own value)
+are the same, the channel
 free, starts from the first stage that did not finish, and makes no engine
 call for the stages before it. A new scan, a `refresh` included, has a new id
 and so reads again. Its progress, in order:

@@ -136,9 +136,11 @@ describe("a story as a channel's view (intentToChannel)", () => {
     expect(r.doc.channels.presentation.views[0].title).toBe("Presentation");
   });
 
-  it("fails a presentation step with no text; elsewhere steps are only ignored", () => {
-    const i = intent({ zones: [], parts: [sp("app", { spine: 0, from: ["app"] })], edges: [], steps: [{ parts: ["app"], text: "  ", note: "" }] });
-    expect(() => intentToChannel(agent(), i, { portrait: false, channel: "presentation" })).toThrow(/step 1 has no text/);
+  it("drops a presentation step with no text, with one warning and none for its parts; elsewhere steps are only ignored", () => {
+    const i = intent({ zones: [], parts: [sp("app", { spine: 0, from: ["app"] })], edges: [], steps: [{ parts: ["app", "ghost"], text: "  ", note: "" }, { parts: ["app"], text: "Two", note: "" }] });
+    const r = intentToChannel(agent(), i, { portrait: false, channel: "presentation" });
+    expect(r.warnings).toEqual(["Step 1 has no text and was dropped"]);
+    expect(r.doc.channels.presentation.steps!.map((s) => s.text)).toEqual(["Two"]);
     expect(intentToChannel(agent(), i, { portrait: false, channel: "readme" }).warnings).toEqual(["Ignored the steps: only a presentation has steps"]);
   });
 

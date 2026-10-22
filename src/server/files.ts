@@ -82,7 +82,13 @@ export function repoFileChecker(root: string): (rel: string) => boolean {
 export const docText = (doc: unknown) => JSON.stringify(doc, null, 2) + "\n";
 export const hashOf = (text: string) => createHash("sha256").update(text).digest("hex");
 
-/** Write through a temporary file and a rename, so a reader never sees half a file. */
+/** The waits between rename attempts, in ms: 150 ms in all, the longest the event loop is held. */
+const RENAME_WAITS = [10, 20, 30, 40, 50];
+
+/**
+ * Write through a temporary file and a rename, so a reader never sees half a file. A file that
+ * stays locked throws: the store keeps its text and tries again on a later read or poll.
+ */
 export function writeAtomic(path: string, text: string, mode?: number): void {
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(tmp, text, mode === undefined ? undefined : { mode });
@@ -91,11 +97,11 @@ export function writeAtomic(path: string, text: string, mode?: number): void {
   for (let attempt = 0; ; attempt++) {
     try { renameSync(tmp, path); return; } catch (e) {
       const code = (e as NodeJS.ErrnoException).code;
-      if (attempt >= 20 || (code !== "EPERM" && code !== "EACCES" && code !== "EBUSY")) {
+      if (attempt >= RENAME_WAITS.length || (code !== "EPERM" && code !== "EACCES" && code !== "EBUSY")) {
         try { unlinkSync(tmp); } catch { /* already gone */ }
         throw e;
       }
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10 + attempt * 10);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, RENAME_WAITS[attempt]);
     }
   }
 }

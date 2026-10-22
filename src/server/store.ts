@@ -45,6 +45,8 @@ export class Store extends EventEmitter {
   private readonly stampedAt = new Map<string, number>();
   /** The document as this store last wrote or read it, to mark what an outside write changed. */
   private readonly last = new Map<string, Document3>();
+  /** Normalised documents whose file could not be written back yet (locked or read-only), per id. */
+  private readonly unwritten = new Map<string, { doc: Document3; text: string }>();
   private timer: NodeJS.Timeout | null = null;
 
   constructor(readonly dataDir: string) {
@@ -52,10 +54,22 @@ export class Store extends EventEmitter {
     this.importsDir = join(dataDir, "diagrams");
     this.registryFile = join(dataDir, "files.json");
     mkdirSync(this.importsDir, { recursive: true });
-    try {
-      const list = JSON.parse(readFileSync(this.registryFile, "utf8"));
-      if (Array.isArray(list)) for (const e of list) if (typeof e?.id === "string" && DOC_ID_RE.test(e.id) && typeof e.path === "string") this.files.set(e.id, e.path);
-    } catch { /* no registry yet */ }
+    this.loadRegistry();
+  }
+
+  /**
+   * Take the registry from disk: another server on the same data folder may have registered or
+   * forgotten files since (api contract, Files on disk). An unreadable registry keeps this one's list.
+   */
+  private loadRegistry() {
+    let list: unknown;
+    try { list = JSON.parse(readFileSync(this.registryFile, "utf8")); } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") this.files.clear();
+      return;
+    }
+    if (!Array.isArray(list)) return;
+    this.files.clear();
+    for (const e of list) if (typeof e?.id === "string" && DOC_ID_RE.test(e.id) && typeof e.path === "string") this.files.set(e.id, e.path);
   }
 
   private saveRegistry() {
@@ -89,18 +103,28 @@ export class Store extends EventEmitter {
     if (!existsSync(abs) || !statSync(abs).isFile()) throw new FileError(`Not found: ${abs}`);
     const report = checkFile(abs, "warn");
     if (!report.ok || !report.file) throw new FileError("The file is not a valid drawing", report.errors);
+    this.loadRegistry();
     const key = pathKey(abs);
-    let id = [...this.files].find(([, p]) => pathKey(p) === key)?.[0];
+    const known = [...this.files].find(([, p]) => pathKey(p) === key)?.[0];
+    let id = known;
     if (!id) {
       const own = report.file.id;
       const taken = (x: string) => this.files.has(x) || existsSync(this.importFile(x) ?? "");
       id = own && DOC_ID_RE.test(own) && !taken(own) ? own : newDocumentId();
       this.files.set(id, abs);
-      this.saveRegistry();
     }
-    const r = this.read(id);
-    if (!r) throw new FileError(`Not found: ${abs}`);
-    if (!r.ok) throw new FileError(r.error, r.errors);
+    // The registry keeps a new file only once it is read and written back (api contract, POST /api/files).
+    const fresh = id;
+    const drop = () => { if (!known) { this.files.delete(fresh); this.forget(fresh); } };
+    let r: ReadResult | null;
+    try { r = this.read(id); } catch (e) { drop(); throw e; }
+    if (!r?.ok || (!known && this.unwritten.has(id))) {
+      drop();
+      if (!r) throw new FileError(`Not found: ${abs}`);
+      if (!r.ok) throw new FileError(r.error, r.errors);
+      throw new Error(`The file ${abs} cannot be written`);
+    }
+    if (!known) this.saveRegistry();
     return r.doc;
   }
 
@@ -125,6 +149,12 @@ export class Store extends EventEmitter {
     try { text = readFileSync(path, "utf8"); } catch { return { ok: false, error: `The file ${path} cannot be read`, errors: [] }; }
     const h = hashOf(text);
     const seen = this.known.get(id);
+    const pending = this.unwritten.get(id);
+    if (seen === h && pending) {
+      // The file is as it was when its write-back failed: the normalised document stands, written now if it can be.
+      this.writeBack(id, path, pending.doc, pending.text, text);
+      return { ok: true, doc: pending.doc };
+    }
     if (seen === h) {
       const v = validateDocument3(JSON.parse(text));
       if (v.ok) { this.versions.set(id, v.doc.updatedAt); this.last.set(id, v.doc); return { ok: true, doc: v.doc }; }
@@ -143,14 +173,31 @@ export class Store extends EventEmitter {
       const theirs = report.file.updatedAt;
       n.doc.updatedAt = theirs && theirs !== this.versions.get(id) && !Number.isNaN(Date.parse(theirs)) ? theirs : now;
     }
-    const out = docText(n.doc);
-    if (out !== text) writeAtomic(path, out);
-    this.known.set(id, hashOf(out));
+    this.writeBack(id, path, n.doc, docText(n.doc), text);
     this.versions.set(id, n.doc.updatedAt);
     this.last.set(id, n.doc);
-    this.stamp(id, path);
     if (outside) this.emit("changed", id, n.doc.updatedAt);
     return { ok: true, doc: n.doc };
+  }
+
+  /**
+   * Write a read's normalised text over the file's. A file that cannot be written (read-only, or held
+   * open by another process) keeps its text: the document stands in memory, and a later read or
+   * poll writes it. A failed write never stops the server.
+   */
+  private writeBack(id: string, path: string, doc: Document3, out: string, text: string) {
+    if (out !== text) {
+      try { writeAtomic(path, out); } catch (e) {
+        if (!this.unwritten.has(id)) console.error(`Could not write back ${path}; trying again later:`, (e as Error).message);
+        this.unwritten.set(id, { doc, text: out });
+        this.known.set(id, hashOf(text));
+        this.stamp(id, path);
+        return;
+      }
+    }
+    this.unwritten.delete(id);
+    this.known.set(id, hashOf(out));
+    this.stamp(id, path);
   }
 
   /** Imported documents keep their own `source`; their `files` are not checked against a folder. */
@@ -183,6 +230,7 @@ export class Store extends EventEmitter {
     if (!v.ok) return { ok: false, conflict: false, error: v.error, errors: v.errors };
     const text = docText(v.doc);
     writeAtomic(path, text);
+    this.unwritten.delete(id);
     this.known.set(id, hashOf(text));
     this.versions.set(id, updatedAt);
     this.last.set(id, v.doc);
@@ -208,16 +256,23 @@ export class Store extends EventEmitter {
 
   /** Forget a registered file (it stays on disk) or delete an imported document. */
   delete(id: string): boolean {
-    if (this.files.delete(id)) {
+    // Another server may have registered or forgotten it meanwhile; its other entries stay.
+    const had = this.files.has(id);
+    this.loadRegistry();
+    if (this.files.delete(id) || had) {
       this.saveRegistry();
-      this.known.delete(id);
+      this.forget(id);
       return true;
     }
     const f = this.importFile(id);
     if (!f || !existsSync(f)) return false;
     rmSync(f, { force: true });
-    this.known.delete(id);
+    this.forget(id);
     return true;
+  }
+
+  private forget(id: string) {
+    for (const m of [this.known, this.versions, this.stamps, this.stampedAt, this.last, this.unwritten]) m.delete(id);
   }
 
   list(): DiagramSummary[] {
@@ -228,8 +283,15 @@ export class Store extends EventEmitter {
       if (r?.ok) out.push({ id, title: r.doc.title, path, root, updatedAt: r.doc.updatedAt });
       else if (r && path) out.push({ id, title: basename(path), path, root, updatedAt: new Date(statSync(path).mtimeMs).toISOString() });
     };
-    for (const [id, path] of this.files) if (existsSync(path)) add(id, path);
-    for (const name of readdirSync(this.importsDir)) if (name.endsWith(".json")) add(name.slice(0, -5), null);
+    // A drawing that cannot be read is listed by its file name, or left out; the others still are.
+    const each = (id: string, path: string | null) => {
+      try { add(id, path); } catch (e) {
+        console.error(`Could not list ${path ?? id}:`, (e as Error).message);
+        try { if (path) out.push({ id, title: basename(path), path, root: repoRootOf(path), updatedAt: new Date(statSync(path).mtimeMs).toISOString() }); } catch { /* gone */ }
+      }
+    };
+    for (const [id, path] of this.files) if (existsSync(path)) each(id, path);
+    for (const name of readdirSync(this.importsDir)) if (name.endsWith(".json")) each(name.slice(0, -5), null);
     return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
   }
 
@@ -240,14 +302,19 @@ export class Store extends EventEmitter {
   /** Look for files changed from outside since the last look; `read` announces them. */
   poll(): void {
     for (const [id, path] of this.files) {
-      let now: string;
-      try { const s = statSync(path); now = `${s.mtimeMs}:${s.size}`; } catch { continue; }
-      // Within 2 s of the last stamp the time and size can match a new same-size text, so the text decides.
-      const fresh = Date.now() - (this.stampedAt.get(id) ?? 0) < 2000;
-      const differs = this.stamps.get(id) !== now || (fresh && this.known.has(id) && (() => { try { return hashOf(readFileSync(path, "utf8")) !== this.known.get(id); } catch { return false; } })());
-      if (differs && this.known.has(id)) this.read(id);
-      else if (!this.stamps.has(id)) this.stamps.set(id, now);
+      try { this.pollOne(id, path); } catch (e) { console.error(`Could not check ${path}:`, (e as Error).message); }
     }
+  }
+
+  private pollOne(id: string, path: string) {
+    let now: string;
+    try { const s = statSync(path); now = `${s.mtimeMs}:${s.size}`; } catch { return; }
+    // Within 2 s of the last stamp the time and size can match a new same-size text, so the text decides.
+    const fresh = Date.now() - (this.stampedAt.get(id) ?? 0) < 2000;
+    const differs = this.stamps.get(id) !== now || (fresh && this.known.has(id) && (() => { try { return hashOf(readFileSync(path, "utf8")) !== this.known.get(id); } catch { return false; } })());
+    // A write-back that failed is tried again on every poll.
+    if ((differs || this.unwritten.has(id)) && this.known.has(id)) this.read(id);
+    else if (!this.stamps.has(id)) this.stamps.set(id, now);
   }
 
   watch(intervalMs = 400): void {

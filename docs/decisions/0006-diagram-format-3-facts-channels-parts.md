@@ -2,7 +2,7 @@
 id: 0006
 title: "archdraw/diagram@3: a facts list, four fixed channels, parts that point to facts"
 date: 2026-10-21
-status: accepted (extended by 0007: evidence, mechanisms, limits, one README and one presentation view)
+status: accepted (extended by 0007: evidence, mechanisms, limits, one README and one presentation view; by 0015: several choices per file, format 4)
 deciders: [brkakyldz]
 supersedes: []
 ---

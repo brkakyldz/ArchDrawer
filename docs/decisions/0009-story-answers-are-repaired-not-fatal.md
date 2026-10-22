@@ -26,8 +26,14 @@ description is 249 characters, over the file's 240; ask for a shorter post`
 
 A spike (2 live Claude Haiku calls, Claude Code 2.1.303): asked for a lede of
 about 300 characters under a schema with `maxLength: 40`, `claude -p
---json-schema` answered 35 and 39 characters, with no error. Codex was not
-tried (paused).
+--json-schema` answered 35 and 39 characters, with no error: complete, shorter
+sentences ("Repo in, architecture diagrams out."). A second spike (3 live Codex
+calls, codex-cli 0.162.1, the adapter's `exec --json --sandbox read-only
+--output-schema`): Codex accepts `maxLength` and holds it by cutting. Under
+`maxLength: 40` both answers were exactly 40 characters and stopped
+mid-sentence ("This web shop helps shoppers browse and "). Under the full story
+schema the lede stopped at exactly 240 with no end, and a connection label at
+exactly 40.
 
 ## Decision
 
@@ -39,8 +45,10 @@ Exact shapes are in `docs/contracts/` (diagram, api, testing).
   stay targets, stated as now.
 - **The schema carries the text limits.** `STORY_SCHEMA` gives every text
   field its hard limit as `maxLength`. The Codex adapter removes `maxLength`
-  from the schema it writes until a live Codex check shows `--output-schema`
-  accepts it.
+  from the schema it writes: Codex would cut the text at the limit
+  mid-sentence, with no `…` and no warning, and the cut answer would pass
+  every check, so no repair turn would come. Without it, an over-long Codex
+  text reaches the repair turn like any other.
 - **One repair turn.** Code checks a story answer for every problem at once:
   each text over its hard limit and each relation violated. With any, the
   engine gets one more call: its answer and the list of problems, quoted as

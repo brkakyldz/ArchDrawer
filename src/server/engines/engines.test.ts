@@ -241,7 +241,7 @@ describe("post task on both adapters", () => {
     const log = JSON.parse(readFileSync(fake.log, "utf8"));
     const args: string[] = log.args;
     const val = (flag: string) => args[args.indexOf(flag) + 1];
-    // Codex gets no maxLength until a live check shows --output-schema accepts it (ADR 0009); Claude gets the schema as is.
+    // Codex gets no maxLength: it would cut a text mid-sentence at the limit (ADR 0009); Claude gets the schema as is.
     expect(JSON.parse(log.schema)).toEqual(withoutMaxLength(STORY_SCHEMA));
     expect(log.schema).not.toContain("maxLength");
     expect(JSON.stringify(STORY_SCHEMA)).toContain('"maxLength":240');

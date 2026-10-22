@@ -160,8 +160,9 @@ export class CodexEventParser {
 }
 
 /**
- * The schema as Codex gets it: without `maxLength`, until a live Codex check shows `--output-schema`
- * accepts it (ADR 0009). The prompt states every limit, and code checks them either way.
+ * The schema as Codex gets it: without `maxLength`. Codex accepts it but holds it by cutting the text
+ * at the limit mid-sentence, with no ellipsis and no warning, and the cut answer would pass every check
+ * (ADR 0009, the Codex spike). The prompt states every limit; an over-long text gets the repair turn.
  */
 export function withoutMaxLength(schema: unknown): unknown {
   if (Array.isArray(schema)) return schema.map(withoutMaxLength);

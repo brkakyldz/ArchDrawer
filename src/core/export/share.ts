@@ -99,12 +99,12 @@ export interface ShareImage {
   drawn: { view: DiagramView; rects: Map<string, Rect>; routes: Map<string, EdgeRoute> };
 }
 
-const EM = 14; // the caption's base em (spacing), as in the demo
+export const EM = 14; // the caption's base em (spacing), as in the demo
 /** Caption and steps wrap onto as many lines as they need: nothing in them is cut short. */
-const WHOLE = 1000;
+export const WHOLE = 1000;
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
-interface Block { w: number; h: number; draw: (x: number, y: number) => string }
+export interface Block { w: number; h: number; draw: (x: number, y: number) => string }
 
 function textBlock(view: DiagramView, f: Format, o: ShareOptions, P: Palette, width: number): Block | null {
   const parts: { lines: string[]; size: number; line: number; weight: 400 | 600; color: string; gap: number; tracking: number }[] = [];
@@ -129,7 +129,7 @@ function textBlock(view: DiagramView, f: Format, o: ShareOptions, P: Palette, wi
   };
 }
 
-function keyBlock(kinds: Kind[], f: Format, P: Palette, width: number, align: "start" | "end"): Block {
+export function keyBlock(kinds: Kind[], f: Format, P: Palette, width: number, align: "start" | "end"): Block {
   const kz = f.kz, dot = 0.55 * kz, gap = 0.5 * kz, hgap = 1.1 * kz, vgap = 0.4 * kz, line = kz * 1.45;
   const items = kinds.map((k) => ({ k, w: dot + gap + textWidth(KIND_INFO[k].label, kz) }));
   const rows: { k: Kind; w: number }[][] = [[]];
@@ -163,7 +163,7 @@ function keyBlock(kinds: Kind[], f: Format, P: Palette, width: number, align: "s
 }
 
 /** Panels without their items shrink around their own centre (ui contract, Share). */
-function shrinkPanels(view: DiagramView): DiagramView {
+export function shrinkPanels(view: DiagramView): DiagramView {
   const full = layoutRects(view, { items: true });
   const bare = layoutRects(view, { items: false });
   return {

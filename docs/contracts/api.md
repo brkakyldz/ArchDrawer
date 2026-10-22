@@ -262,10 +262,13 @@ The checks run in this order, each a 400:
 A second `draw` run on a folder while one is running gets 409
 `A drawing of this folder is already being made`.
 
-The run makes three engine calls in order, each under the timeout. A stage's
-progress line (`Drawing the overview`, `Drawing the <channel>`) is emitted when
-its call starts, so a stage that fails still shows it; `Checking the facts`
-comes after the read's answer.
+The run makes three engine calls in order, all within the run's one timeout
+(*Lifecycle*), and a story call whose answer has a problem gets one repair
+turn (drawing contract, *Problems and the repair turn*). The repair turn is no
+stage of its own: its progress lines carry the stage of the call it repairs. A
+stage's progress line (`Drawing the overview`, `Drawing the <channel>`) is
+emitted when its call starts, so a stage that fails still shows it; `Checking
+the facts` comes after the read's answer.
 
 1. **Read** (`stage: "read"`). Tools: read-only (Claude Code
    `Read,Grep,Glob`, Codex read-only). The prompt holds the focus (the
@@ -317,6 +320,32 @@ On success the run has:
 - `changes`: everything `added`.
 
 A failure, cancel or timeout at any stage writes and registers nothing.
+
+**What a failed draw keeps** (ADR 0010). A draw that ends without a drawing
+(failed, cancelled or timed out) after its read answer was checked keeps, in
+the server's memory only, what it had finished at that moment: the read
+answer, and the drawing with its overview when the overview's answer (after
+its repair turn, if any) was converted. An overview cut off before that is
+not kept. A later `draw` whose `scan` id, `focus`, engine (the one the run
+used) and `model` (as sent; null is its own value) are the same, the channel
+free, starts from the first stage that did not finish, and makes no engine
+call for the stages before it. A new scan, a `refresh` included, has a new id
+and so reads again. Its progress, in order:
+
+1. `Using the facts already read` (`stage: "read"`), then `Checking the
+   facts`: the kept read answer is repaired and its evidence checked again
+   against the folder as it is now, with no engine call;
+2. when an overview is kept and the facts came out of that check unchanged,
+   `Drawing the overview`, then `Using the overview already drawn` (`stage:
+   "overview"`); otherwise the overview call is made as usual;
+3. the channel stage as usual.
+
+The result's warnings are those of every stage, in stage order, as one run
+that never failed would have them. Each folder keeps at most one entry: a
+draw of the folder that ends without a drawing replaces it (with nothing when
+it failed at the read), a draw that succeeds removes it, and it goes one hour
+after the draw that left it, or when the server stops. The reused draw is a
+new run, with its own timeout.
 
 ## Runs
 
@@ -453,6 +482,18 @@ engine lines (`Starting Claude Code`, `Reading <path>`,
 (story and post: `Checking the post`), then `Saved` or `Saved with <n>
 warning(s)`. A `draw` run's events carry `stage`: `read`, `overview` or
 `channel` (null on other kinds).
+
+A story answer with a problem (story, post, a revise's story, a draw's
+overview or channel) adds, right after its own check line, `Fixing <n>
+problem(s) in the answer`, then the repair turn's engine lines, then its check
+line once more. A post with a repair turn so reads: engine lines, `Checking
+the post`, `Fixing 2 problems in the answer`, engine lines, `Checking the
+post`, `Saved` (or `Saved with <n> warning(s)`; the repair turn itself adds
+none). With one problem the line is `Fixing 1 problem in the answer`.
+
+A draw's overview call has no check line, so there the line follows its
+engine lines; the channel call's check line is `Checking the drawing`. Each
+of these lines carries the stage of the call it repairs.
 
 ### Change summary
 

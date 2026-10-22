@@ -53,6 +53,23 @@ describe("v1 → v2 migration", () => {
   });
 });
 
+describe("v1 → v2 migration shortens text with one warning each (#124)", () => {
+  it("warns for a long title, group label, tech, subtitle and note", () => {
+    const long = (n: number) => "x".repeat(n);
+    const raw = {
+      ...v1, title: long(200), subtitle: long(1000),
+      groups: [{ ...v1.groups[0], label: long(200) }],
+      nodes: v1.nodes.map((n) => (n.id === "web" ? { ...n, tech: long(200) } : n)),
+      notes: [{ id: "n1", text: long(2000), x: 40, y: 300 }],
+    };
+    const { doc, warnings } = migrateV1(raw, "2026-10-13T00:00:00.000Z");
+    expect(validateDocument(doc).ok).toBe(true);
+    const shortened = warnings.filter((w) => /shortened/i.test(w));
+    expect(shortened).toHaveLength(5);
+    expect(migrateV1(v1, "2026-10-13T00:00:00.000Z").warnings.filter((w) => /shortened/i.test(w))).toEqual([]);
+  });
+});
+
 describe("v1 → v3", () => {
   it("converts through @2 when v1 is allowed, and refuses it otherwise", () => {
     expect(readAnyFile(v1).errors).toEqual(['schema: this is archdraw/diagram@1; run "archdrawer migrate <file>"']);

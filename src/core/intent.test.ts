@@ -205,3 +205,27 @@ describe("post-view identity", () => {
     expect(validateDocument(doc).ok).toBe(true);
   });
 });
+
+describe("story ids the conversion builds itself (#124)", () => {
+  it("shortens ids built from valid engine ids without a warning", () => {
+    const a = "a".repeat(40), b = "b".repeat(40), z = "z".repeat(62);
+    const i = small({
+      zones: [{ id: z, label: "Zone" }],
+      parts: [part(a, { spine: 0, from: ["web"], zone: z }), part(b, { spine: 1, from: ["api"], zone: z })],
+      edges: [{ from: a, to: b, label: "", style: "call", step: 1 }],
+    });
+    const { doc, view, warnings } = intentToDocument(shop(), "overview", i, { portrait: true });
+    expect(warnings.filter((w) => w.startsWith("Renamed"))).toEqual([]);
+    expect(validateDocument(doc).ok).toBe(true);
+    const v = doc.views.find((x) => x.id === view)!;
+    expect(v.edges[0].id.length).toBeLessThanOrEqual(64);
+    expect(v.nodes.find((n) => n.form === "group")!.id.length).toBeLessThanOrEqual(64);
+  });
+
+  it("warns once for an engine id it cleans, naming the channel", () => {
+    const i = small({ parts: [part("my web", { spine: 0, from: ["web"] }), part("api", { spine: 1, from: ["api"] })], edges: [{ from: "my web", to: "api", label: "", style: "call", step: 1 }] });
+    const renamed = (channel?: "readme") => intentToDocument(shop(), "overview", i, { portrait: true, ...(channel ? { channel } : {}) }).warnings.filter((w) => w.startsWith("Renamed"));
+    expect(renamed()).toEqual([`Renamed the LinkedIn post's id "my web" to "my-web": ids use letters, digits, - and _`]);
+    expect(renamed("readme")).toEqual([`Renamed the README drawing's id "my web" to "my-web": ids use letters, digits, - and _`]);
+  });
+});

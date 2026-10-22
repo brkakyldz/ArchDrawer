@@ -15,8 +15,9 @@ and `bin/archdrawer.cmd`; `src/server/files.ts`, `src/server/serverfile.ts`,
 - Output is UTF-8 text on stdout; messages that stop a command go to stderr.
 - Exit codes: `0` success, `1` invalid file or failure, `2` wrong usage.
   A usage error prints its reason and `Run "archdrawer --help" for the
-  commands.` to stderr. Unknown options, a missing option value and a wrong
-  number of files are usage errors.
+  commands.` to stderr. Unknown options (any argument but `-` that starts
+  with `-`: `Unknown or incomplete option <arg>`), a missing option value and
+  a wrong number of files are usage errors.
 - The CLI reads the same environment as the server (testing contract) and
   passes it to a server it starts.
 - When its own dependencies are missing (a bare plugin copy), the entry point
@@ -50,15 +51,20 @@ check. Writes nothing.
    anything.
 2. Normalises the document (drawing contract) and writes it back only when
    its text changed.
-3. Reads `server.json` in the data directory. When that server answers
-   `GET /api/health` with `"app": "archdrawer"` and this installation's
-   `build`, it is reused. When it answers with another `build`, the CLI sends
-   `POST /api/shutdown`, waits up to 5 s, prints `Restarted the editor server
-   (it was running older code)` and starts a new one. When none answers, it
-   builds the web client if needed, starts the server **detached** (it
-   outlives the command and the session that ran it), appends its output to
-   `<data dir>/server.log`, and waits up to 15 s for health; otherwise it fails
-   with `The editor server did not start within 15 s; see <log>`.
+3. Reads `server.json` in the data directory and finds this data
+   directory's server (below). When it runs this installation's `build`, it
+   is reused. When it runs another `build`, the CLI stops it as `stop` does,
+   prints `Restarted the editor server (it was running older code)` and
+   starts a new one; when it does not stop, the command fails with `stop`'s
+   message. When there is none, it builds the web client if needed, starts
+   the server **detached** (it outlives the command and the session that ran
+   it), appends its output to `<data dir>/server.log`, and waits up to 15 s
+   for this data directory's server with this `build` — the one it started,
+   or one another command started meanwhile, in which case the one it
+   started is stopped. When the server it started exits first (a port in
+   use, say), it fails with `The editor server did not start: <the last line
+   it logged>; see <log>`; after 15 s, with `The editor server did not start
+   within 15 s; see <log>`.
 4. Registers the file (`POST /api/files`). A refusal prints
    `The editor refused the file: <error>` on stderr and its `ERROR` lines;
    exit 1.
@@ -103,10 +109,19 @@ other schema: `ERROR schema: not an archdrawer drawing`; exit 1.
 
 ## `archdrawer status` and `archdrawer stop`
 
-`status` prints `running on http://127.0.0.1:<port> (pid <pid>)` when the
-server in `server.json` answers health, else `not running`; exit 0. `stop`
-sends that server `POST /api/shutdown` with its token, waits up to 5 s until it
-no longer answers, and prints `stopped` (or `not running`); exit 0.
+This data directory's server is the one on the port `server.json` names when
+it answers `GET /api/health` with `"app": "archdrawer"` and accepts the token
+`server.json` names: `POST /api/health` with that token, a call no route
+serves, answers anything but 403. A server on that port that refuses the token
+is another data directory's (the `server.json` is stale) and counts as none.
+
+`status` prints `running on http://127.0.0.1:<port> (pid <pid>)` when this data
+directory's server runs, else `not running`; exit 0. `stop` sends that server
+`POST /api/shutdown` with its token and waits up to 5 s until it no longer
+answers, then prints `stopped`, exit 0; with no server it prints `not running`,
+exit 0. A refused shutdown prints `The editor server refused to stop: <error>`,
+and a server still answering after 5 s prints `The editor server on port
+<port> (pid <pid>) still answers after 5 s`, both on stderr, exit 1.
 
 ## `archdrawer --version`, `--help`
 

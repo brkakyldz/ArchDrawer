@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, resolve, sep } from "node:path";
 import { Hono, type Context } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { renderMermaid } from "../core/export/mermaid";
@@ -9,7 +10,7 @@ import { draftOf, joinChannel } from "../core/channels";
 import { CHANNELS, channelOfView, isChannel, type ChannelId, type Document3 } from "../core/file3";
 import { isRepoRelative, LIMITS, THEMES, type Theme } from "../core/model";
 import type { RunScope } from "../core/repair";
-import { APP_ROOT } from "./config";
+import { APP_ROOT, shareFonts } from "./config";
 import type { Config } from "./config";
 import { FileError, nowIso, type Store } from "./store";
 import type { RunManager } from "./runs";
@@ -50,6 +51,13 @@ export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
   type Status = 400 | 403 | 404 | 409 | 413 | 500;
   const err = (c: Context, status: Status, message: string, extra: Record<string, unknown> = {}) => c.json({ error: message, ...extra }, status);
+
+  // Anything a handler throws (a drawing that cannot be written, say) is the contract's JSON error too.
+  app.onError((e, c) => {
+    if (e instanceof HTTPException && e.status < 500) return c.json({ error: e.message || "Bad request" }, e.status);
+    console.error(e);
+    return err(c, 500, e.message || "Internal error");
+  });
 
   // Security envelope: Host allow-list against DNS rebinding, foreign Origin refused, token on mutations.
   app.use("*", async (c, next) => {
@@ -182,7 +190,7 @@ export function createApp(deps: AppDeps): Hono {
     const parts = (c.req.query("parts") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     const unknown = parts.find((p) => !view.nodes.some((n) => n.id === p));
     if (unknown) return err(c, 400, `Unknown component "${unknown}" in the view "${viewId}"`);
-    const img = renderShare(doc, viewId, { ...DEFAULT_SHARE, format, theme, parts: parts.length ? parts : null });
+    const img = renderShare(doc, viewId, { ...DEFAULT_SHARE, format, theme, parts: parts.length ? parts : null, fonts: shareFonts() });
     return c.body(img.svg, 200, { "Content-Type": "image/svg+xml; charset=utf-8" });
   });
 
@@ -450,8 +458,10 @@ export function createApp(deps: AppDeps): Hono {
     return html.replace("</head>", `<meta name="archdraw-token" content="${token}"></head>`);
   };
   app.get("*", (c) => {
-    const path = decodeURIComponent(new URL(c.req.url).pathname);
-    if (path !== "/" && !path.endsWith("/")) {
+    // A path whose percent-encoding is broken names no file: it gets the app like any other.
+    let path: string | null;
+    try { path = decodeURIComponent(new URL(c.req.url).pathname); } catch { path = null; }
+    if (path !== null && path !== "/" && !path.endsWith("/")) {
       const file = resolve(webRoot, "." + path);
       if (file.startsWith(webRoot + sep) && existsSync(file) && statSync(file).isFile()) {
         const cache = path.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache";

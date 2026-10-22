@@ -13,20 +13,34 @@ export class CodexEngine implements Engine {
   readonly label = "Codex";
   private cmd: Command | null = null;
   private ephemeral = false;
+  /** The detection in flight, shared by every caller until it ends. */
+  private detecting: Promise<EngineInfo> | null = null;
 
-  constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
+  /** `detectMs`: how long each detection command may take before it is killed. */
+  constructor(private readonly env: NodeJS.ProcessEnv = process.env, private readonly detectMs = 15_000) {}
 
-  async detect(): Promise<EngineInfo> {
+  detect(): Promise<EngineInfo> {
+    this.detecting ??= this.probe().finally(() => { this.detecting = null; });
+    return this.detecting;
+  }
+
+  private async probe(): Promise<EngineInfo> {
     const base = { id: this.id, label: this.label, test: false, models: [] as EngineModel[] };
-    this.cmd = resolveCommand("codex", this.env);
-    if (!this.cmd) return { ...base, available: false, version: null, detail: "Not installed — install the Codex CLI and log in (npm i -g @openai/codex)" };
-    const version = versionOf(this.cmd);
-    const help = helpText(this.cmd, ["exec", "--help"]);
+    const cmd = await resolveCommand("codex", this.env, this.detectMs);
+    if (!cmd) {
+      this.cmd = null;
+      return { ...base, available: false, version: null, detail: "Not installed — install the Codex CLI and log in (npm i -g @openai/codex)" };
+    }
+    const [version, help] = await Promise.all([versionOf(cmd, this.detectMs), helpText(cmd, ["exec", "--help"], this.detectMs)]);
     if (!help.includes("--output-schema")) {
+      this.cmd = cmd;
       return { ...base, available: false, version, detail: "This Codex CLI is too old: it has no --output-schema. Update it (codex update)." };
     }
+    const models = codexModels(await outputOf(cmd, ["debug", "models"], this.detectMs));
+    // The command and its capabilities change together, after every await.
+    this.cmd = cmd;
     this.ephemeral = help.includes("--ephemeral");
-    return { ...base, models: codexModels(outputOf(this.cmd, ["debug", "models"])), available: true, version, detail: "Uses your ChatGPT/Codex subscription through the codex CLI, read-only sandbox" };
+    return { ...base, models, available: true, version, detail: "Uses your ChatGPT/Codex subscription through the codex CLI, read-only sandbox" };
   }
 
   /**

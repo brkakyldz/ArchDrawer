@@ -31,9 +31,13 @@ model reading again, the plural repair line, a stubborn overview that still writ
 0009 and 0010 alone; and on 2026-10-22 the round of ADR 0011 —
 connections pass behind parts as one cubic each (LAYOUT-2 changed), H84 and H86 rewritten, H152 and
 H153 added — was written by Claude Sonnet 5.5 (`claude-sonnet-5-5`) as an independent acceptance
-author, from ADR 0011 and the contracts alone (no product code was read).
+author, from ADR 0011 and the contracts alone (no product code was read); and on 2026-10-22 the 0.5
+round — the slide image, presenting (PRES-1), the tour (PRES-2) and the slide exports (PRES-3), H158–H166
+— was written by Claude Sonnet 5.5 (`claude-sonnet-5-5`) as an independent acceptance author, from ADR 0012
+and the contracts alone (no product code was read), in batches `0-helpers`, A–C and Z for the two lanes
+that build 0.5 at the same time.
 
-The suite holds 103 Playwright acceptance journeys, written from the product
+The suite holds 112 Playwright acceptance journeys, written from the product
 contracts and never from product code. Each title reads
 `H<nn> [REQUIREMENT IDS] journey`; the ids are the requirements of the product
 spec that the journey observes.
@@ -122,6 +126,18 @@ spec that the journey observes.
     is shortened with one warning and still writes and registers the drawing.
   - `H157`, `Try again` from the home screen after the overview call failed: the read stage
     `running` with `Using the facts already read`, then `done`, the overview drawn by a call.
+- `H158`–`H166` `*.spec.ts` (9 journeys, the 0.5 round, ADR 0012; no earlier file changed):
+  - `H158`–`H161`, presenting (PRES-1): `Present` and `Tour` in the header of the presentation channel only, off
+    with a reason, at every width; the layer on the opening slide in the drawing's theme with focus held, full
+    screen asked for and never assumed; the keys, a click, the status line, the band and the dimming rules of the slide image,
+    the hint; the speaker note, leaving with the focus back and the step shown current, a deaf editor under the
+    layer; an outside change to the file while presenting.
+  - `H162`–`H163`, the tour (PRES-2): the first step in a window, the panel beside or under the slide, the parts
+    of the step in the view's order with their files and cited lines, `No files recorded`, a path copied alone,
+    the tour's keys and leaving.
+  - `H164`–`H166`, the slide exports (PRES-3): the PDF read as the testing contract says and the zip of PNG slides,
+    in the same order; the dialog's theme and toggles; the format changing no size; the slug; no slide download on other
+    channels; two-digit numbering; off without a step.
 - `helpers.ts`, `helpers-svg-parity.ts`: shared, test-owned helpers (files, the
   command line, the editor, the share dialog, image measurement; for 0.3 also
   project folders in real git repositories, the scan and draw requests, event
@@ -193,3 +209,12 @@ The ADR 0011 round is one batch, `edges-behind`, that rewrites `H84` and `H86`, 
 adds helpers to `helpers-svg-parity.ts` (`isSingleCubic`, `edgeLine`, `routeToBox`, `distanceToBox`,
 `sideOf`, `rasterDifferences`; nothing above them changed) and changes `COVERAGE.md`, `verify.json` and
 this file. `batches/MANIFEST.md` lists the files and the scenarios left unchanged.
+
+The 0.5 scenarios are written in batches for two lanes that build at the same time, each on its own branch,
+merged at the end. All the batches land together, on one branch both lanes start from; each lane then runs only
+its own batches until the merge. `0-helpers` (both lanes) appends the 0.5 helpers to `helpers.ts` and changes nothing
+above them. The present lane runs `A-present` (PRES-1, H158–H161) and `B-tour` (PRES-2, H162–H163) and has no
+`download-slides-*`; the share lane runs `C-slides` (PRES-3, H164–H166) and has no `present`, `present-*` or `tour-*`
+test id. A lane's files use nothing the other lane builds, no file counts the buttons of `share-actions`, and every
+file also passes after the merge. No earlier scenario changed. `Z-index` is this index, with `author-check.mjs`
+checking that no file mixes the two lanes' surfaces.

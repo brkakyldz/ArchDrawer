@@ -146,12 +146,12 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 
 ### Presentation and tour (PRES)
 
-- **PRES-1** (To build) A full-screen presentation mode steps through the
+- **PRES-1** (Today) A full-screen presentation mode steps through the
   presentation channel with the arrow keys, highlighting each step's parts and
   dimming the rest.
-- **PRES-2** (To build) The same steps form the guided tour for learning a
+- **PRES-2** (Today) The same steps form the guided tour for learning a
   repository.
-- **PRES-3** (To build) The steps export as PDF pages and PNG slides.
+- **PRES-3** (Today) The steps export as PDF pages and PNG slides.
 
 ### Share (SHARE)
 

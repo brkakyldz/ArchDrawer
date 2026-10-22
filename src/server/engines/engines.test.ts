@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { validateFile } from "../../core/model";
 import { normalizeFile } from "../../core/normalize";
 import { documentToDraft, DRAFT_JSON_SCHEMA } from "../../core/repair";
-import { makeFolder, shopFile2, tempDir } from "../testkit";
+import { makeApp, makeFolder, shopFile2, tempDir } from "../testkit";
 import { ClaudeEngine, ClaudeStreamParser, extractJson, writingLine } from "./claude";
 import { CodexEngine, CodexEventParser, describeCommand, withoutMaxLength } from "./codex";
 import { engineEnv, resolveCommand, shimTarget } from "./process";
@@ -294,10 +294,62 @@ describe("parsers and helpers", () => {
     writeFileSync(cmd, '@ECHO off\r\n"%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n');
     expect(shimTarget(cmd)).toBe(join(dir, "node_modules", "@openai", "codex", "bin", "codex.js"));
   });
-  it("resolveCommand runs .js overrides through node", () => {
+  it("resolveCommand runs .js overrides through node", async () => {
     const fake = fakeCli("codex", "ok");
-    expect(resolveCommand("codex", { ARCHDRAW_CODEX_BIN: fake.bin })).toEqual({ file: process.execPath, prefix: [fake.bin] });
+    expect(await resolveCommand("codex", { ARCHDRAW_CODEX_BIN: fake.bin })).toEqual({ file: process.execPath, prefix: [fake.bin] });
   });
+});
+
+/** A fake CLI that answers `--help` (and Codex's model list) only after `ms`, and logs each call's arguments. */
+function slowCli(kind: "claude" | "codex", ms: number): { bin: string; calls: () => string[] } {
+  const dir = tempDir("archdraw-slow-");
+  const log = join(dir, "calls.log");
+  const bin = join(dir, `${kind}.js`);
+  writeFileSync(bin, `
+const fs = require("fs");
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(log)}, args.join(" ") + "\\n");
+if (args.includes("--version")) { console.log("1.2.3"); process.exit(0); }
+const help = ${JSON.stringify(kind === "claude" ? "--json-schema --safe-mode --restricted --strict-mcp-config --no-session-persistence" : "--output-schema --ephemeral")};
+setTimeout(() => { console.log(args[0] === "debug" ? '{"models":[]}' : help); process.exit(0); }, ${ms});
+`);
+  return { bin, calls: () => (existsSync(log) ? readFileSync(log, "utf8").split("\n").filter(Boolean) : []) };
+}
+
+describe("engine detection (#131)", () => {
+  it.each(["claude", "codex"] as const)("%s: the server keeps answering while a slow CLI is detected", async (kind) => {
+    const slow = slowCli(kind, 1500);
+    const env = { ...process.env, [`ARCHDRAW_${kind.toUpperCase()}_BIN`]: slow.bin };
+    const t = makeApp({ engines: [kind === "claude" ? new ClaudeEngine(env) : new CodexEngine(env)] });
+    const started = Date.now();
+    const engines = t.req("/api/engines");
+    await new Promise((r) => setTimeout(r, 200));
+    const health = await t.req("/api/health");
+    expect(health.status).toBe(200);
+    // Well before one slow `--help` could have ended.
+    expect(Date.now() - started).toBeLessThan(1000);
+    const body = (await (await engines).json()) as { engines: { available: boolean; version: string }[] };
+    expect(body.engines[0]).toMatchObject({ available: true, version: "1.2.3" });
+  }, 20_000);
+
+  it("concurrent callers share one detection in flight", async () => {
+    const slow = slowCli("claude", 300);
+    const engine = new ClaudeEngine({ ...process.env, ARCHDRAW_CLAUDE_BIN: slow.bin });
+    const [a, b] = await Promise.all([engine.detect(), engine.detect()]);
+    expect(a).toEqual(b);
+    expect(slow.calls().filter((c) => c.includes("--version"))).toHaveLength(1);
+    // A later call detects again (the server keeps results for a minute itself).
+    await engine.detect();
+    expect(slow.calls().filter((c) => c.includes("--version"))).toHaveLength(2);
+  }, 20_000);
+
+  it("a CLI that never answers --help is given up on, and the engine is unavailable", async () => {
+    const slow = slowCli("claude", 60_000);
+    const engine = new ClaudeEngine({ ...process.env, ARCHDRAW_CLAUDE_BIN: slow.bin }, 500);
+    const started = Date.now();
+    expect((await engine.detect()).available).toBe(false);
+    expect(Date.now() - started).toBeLessThan(5000);
+  }, 20_000);
 });
 
 describe("a story from the facts alone (STORY-1)", () => {

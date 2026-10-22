@@ -4,8 +4,8 @@ import { basename, join } from "node:path";
 import { checkScan, namedEntries, pickInputs, SCAN_BUDGET, SCAN_SCHEMA, ScanAnswerError, scanText, type FocusOption, type RepoCard, type ScanInput } from "../core/scan";
 import { scanPrompt } from "./engines/prompt";
 import { EngineError, type Engine } from "./engines/types";
-import { repoFileChecker, writeAtomic } from "./files";
-import { headCommit, listFolder, readPart, type Folder } from "./folders";
+import { writeAtomic } from "./files";
+import { headCommit, listFolder, readPart, repoFile, type Folder } from "./folders";
 
 /**
  * Scans (api contract, *Scans*; ADR 0007): a repository card and focus options for a folder, from
@@ -84,8 +84,11 @@ export class ScanManager {
     return true;
   }
 
-  cancelAll(): void {
-    for (const s of this.scans.values()) if (s.status === "running") s.abort.abort();
+  /** Cancels every running scan; resolves once they have all ended and their engines are gone. */
+  async cancelAll(): Promise<void> {
+    const running = [...this.scans.values()].filter((s) => s.status === "running");
+    for (const s of running) s.abort.abort();
+    await Promise.all(running.map((s) => s.finished));
   }
 
   async wait(id: string): Promise<ScanRecord | null> {
@@ -195,7 +198,7 @@ export class ScanManager {
     });
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the scan");
-    const r = checkScan(answer, { folderName, exists: repoFileChecker(f.root) });
+    const r = checkScan(answer, { folderName, exists: repoFile(f.root) });
     progress("Done");
     return r;
   }

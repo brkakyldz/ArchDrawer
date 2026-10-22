@@ -14,18 +14,27 @@ export class ClaudeEngine implements Engine {
   readonly label = "Claude Code";
   private cmd: Command | null = null;
   private caps: Caps | null = null;
+  /** The detection in flight, shared by every caller until it ends. */
+  private detecting: Promise<EngineInfo> | null = null;
 
-  constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
+  /** `detectMs`: how long each detection command may take before it is killed. */
+  constructor(private readonly env: NodeJS.ProcessEnv = process.env, private readonly detectMs = 15_000) {}
 
-  async detect(): Promise<EngineInfo> {
+  detect(): Promise<EngineInfo> {
+    this.detecting ??= this.probe().finally(() => { this.detecting = null; });
+    return this.detecting;
+  }
+
+  private async probe(): Promise<EngineInfo> {
     const base = { id: this.id, label: this.label, test: false, models: [] as EngineModel[] };
-    this.cmd = resolveCommand("claude", this.env);
-    if (!this.cmd) return { ...base, available: false, version: null, detail: "Not installed — install Claude Code and log in (claude.com/claude-code)" };
-    const version = versionOf(this.cmd);
-    const help = helpText(this.cmd, ["-p", "--help"]);
-    if (!help.includes("--json-schema")) {
-      return { ...base, available: false, version, detail: "This Claude Code is too old: it has no --json-schema. Update it (claude update)." };
+    const cmd = await resolveCommand("claude", this.env, this.detectMs);
+    if (!cmd) {
+      this.cmd = null;
+      return { ...base, available: false, version: null, detail: "Not installed — install Claude Code and log in (claude.com/claude-code)" };
     }
+    const [version, help] = await Promise.all([versionOf(cmd, this.detectMs), helpText(cmd, ["-p", "--help"], this.detectMs)]);
+    // The command and its capabilities change together, after every await: a run never sees one without the other.
+    this.cmd = cmd;
     this.caps = {
       safeMode: help.includes("--safe-mode"),
       restricted: help.includes("--restricted"),
@@ -33,6 +42,9 @@ export class ClaudeEngine implements Engine {
       strictMcp: help.includes("--strict-mcp-config"),
       noPersist: help.includes("--no-session-persistence"),
     };
+    if (!help.includes("--json-schema")) {
+      return { ...base, available: false, version, detail: "This Claude Code is too old: it has no --json-schema. Update it (claude update)." };
+    }
     // Fail closed: the repository being drawn is untrusted. Without a way to skip its own settings
     // (hooks run shell commands) and its MCP servers, drawing it could execute its code.
     const skipsSettings = this.caps.safeMode || this.caps.restricted || this.caps.settingSources;

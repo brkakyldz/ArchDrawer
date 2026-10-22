@@ -37,7 +37,12 @@ repository:
 - **Numbers that explain a guarantee are limits.** A deadline, a turn limit
   or a size cap ("Stops after 12 turns") goes in `facts.limits`, on the
   component it guards, with the file that sets it; it never goes in a label or
-  an item.
+  an item. A limit has exactly these fields: `on` is the component's id,
+  `text` is 1–60 characters, and the file goes in `evidence` (0–8 entries,
+  `lines` null for the whole file) — never in `file` or `files`:
+  `{ "id": "turn-limit", "on": "agent", "text": "Stops after 12 turns",
+  "evidence": [{ "file": "src/agent.ts", "lines": [30, 31] }] }`.
+  A panel shows it by listing its id in the part's `limits`.
 - **Every component explains itself.** `description`: 1–3 plain sentences on
   what it is for and what it guarantees, for a reader new to the code.
   `files`: repository-relative paths you actually opened that implement it.

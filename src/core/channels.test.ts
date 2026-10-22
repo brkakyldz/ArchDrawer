@@ -386,3 +386,111 @@ describe("markOutside and warnings", () => {
     expect(w.some((x) => x.startsWith("channels.linkedin"))).toBe(false);
   });
 });
+
+describe("edits that once left an invalid file (bug sweep)", () => {
+  const card = (id: string, extra: object = {}) => ({ id, facts: [id], form: "card" as const, icon: null, parent: null, detail: null, place: null, ...extra });
+  type Parts = File3["channels"]["overview"]["views"][number]["nodes"];
+  /** An agent with a held mechanism `loop` and its own items, drawn in the overview and the README. */
+  function agentDoc(readme: Parts): Document3 {
+    const f: File3 = {
+      schema: "archdraw/diagram@3", title: "Agent",
+      facts: {
+        components: [
+          { id: "api", label: "API", kind: "service", sub: "", description: "Takes calls.", files: [], items: [] },
+          { id: "agent", label: "Agent", kind: "llm", sub: "", description: "Runs the loop.", files: [], items: ["Plan", "Act"] },
+          { id: "loop", label: "The loop", kind: "service", sub: "", description: "Turns.", files: [], items: [], within: "agent" },
+          { id: "db", label: "DB", kind: "data", sub: "", description: "Keeps rows.", files: [], items: [] },
+          { id: "tools", label: "Tools", kind: "service", sub: "", description: "Calls tools.", files: [], items: [] },
+          { id: "memory", label: "Memory", kind: "data", sub: "", description: "Remembers.", files: [], items: [] },
+        ],
+        relations: [{ id: "r1", from: "api", to: "agent", label: "asks", style: "call", both: false }],
+      },
+      channels: {
+        overview: { views: [{ id: "overview", title: "Overview", caption: { title: "Agent", lede: "" }, nodes: [
+          card("api"), card("agent", { form: "panel", held: ["loop"] }), card("db"), card("tools"), card("memory"),
+        ], edges: [{ id: "e1", from: "api", to: "agent", relations: ["r1"], step: 1 }] }] },
+        readme: { views: [{ id: "readme", title: "README", caption: { title: "Agent", lede: "" }, nodes: readme, edges: [] }] },
+      },
+    };
+    const r = validateFile3(f);
+    expect(r.errors).toEqual([]);
+    return normalizeFile3(r.file!, { id: "d_agentsweep", now: NOW, source: null });
+  }
+  const removeHeldRow = (d: DiagramDocument) => {
+    const a = node(d, "agent");
+    a.items = a.items.slice(1);
+    a.heldIds = [];
+  };
+
+  it("#118 removing a held row in the overview turns a README panel with nothing else to show into a card", () => {
+    const doc = agentDoc([card("agent", { form: "panel", held: ["loop"], items: [], lane: { spine: 0 } })]);
+    expect(joinChannel(doc, "readme").views[0].nodes[0].items).toEqual(["The loop"]);
+    const next = edit(doc, "overview", removeHeldRow);
+    expect(fact(next, "loop")).toBeUndefined();
+    const p = next.channels.readme.views[0].nodes[0];
+    expect(p.form).toBe("card");
+    expect(p.items).toBeUndefined();
+  });
+
+  it("#118 removing a held row in the overview turns a merged README panel with nothing else to show into a card", () => {
+    const doc = agentDoc([card("m", { facts: ["agent", "db"], form: "panel", held: ["loop"], lane: { spine: 0 }, label: "Agent and DB", kind: "service", description: "Runs and keeps." })]);
+    const next = edit(doc, "overview", removeHeldRow);
+    expect(next.channels.readme.views[0].nodes[0]).toMatchObject({ id: "m", form: "card", facts: ["agent", "db"] });
+  });
+
+  it("#119 deleting a holder in the overview gives its README members free spine orders among their new siblings", () => {
+    const doc = agentDoc([
+      card("api", { lane: { spine: 0 } }),
+      card("agent", { form: "group", lane: { spine: 1 } }),
+      card("db", { lane: { spine: 2 } }),
+      card("tools", { parent: "agent", lane: { spine: 0 } }),
+      card("memory", { parent: "agent", lane: { spine: 1 } }),
+    ]);
+    const next = edit(doc, "overview", (d) => { d.views[0].nodes = d.views[0].nodes.filter((n) => n.id !== "agent"); d.views[0].edges = []; });
+    const parts = new Map(next.channels.readme.views[0].nodes.map((p) => [p.id, p]));
+    expect([...parts.keys()]).toEqual(["api", "db", "tools", "memory"]);
+    expect(parts.get("tools")!.parent).toBeNull();
+    const orders = [...parts.values()].map((p) => (p.lane && "spine" in p.lane ? p.lane.spine : null)).filter((s) => s !== null);
+    expect(new Set(orders).size).toBe(orders.length);
+    // The members follow their new siblings, in the order they had.
+    expect(["api", "db", "tools", "memory"].map((id) => parts.get(id)!.lane)).toEqual([{ spine: 0 }, { spine: 2 }, { spine: 3 }, { spine: 4 }]);
+  });
+
+  it("#120 turning two-way off in the overview reorients a reversed LinkedIn connection that comes to follow the relation", () => {
+    let doc = small((f) => {
+      f.facts.relations![0].both = true;
+      f.channels.linkedin!.views![0].edges = [{ id: "li-e", from: "b", to: "a", relations: ["r1"], step: 1 }];
+    });
+    doc = edit(doc, "linkedin", (d) => { d.views[0].edges[0].both = false; });
+    expect(doc.channels.linkedin.views[0].edges[0]).toMatchObject({ from: "b", to: "a", both: false });
+    doc = edit(doc, "overview", (d) => { d.views[0].edges.find((e) => e.id === "e1")!.both = false; });
+    const c = doc.channels.linkedin.views[0].edges[0];
+    expect(c).toMatchObject({ from: "a", to: "b", relations: ["r1"] });
+    expect(c.both).toBeUndefined();
+  });
+
+  it("#121 a new relation or part takes an id no limit fact has", () => {
+    const withLimit = (id: string) => (f: File3) => { f.facts.limits = [{ id, on: "a", text: "At most 3" }]; };
+    let doc = small(withLimit("r3"));
+    doc = edit(doc, "overview", (d) => { d.views[0].edges.push({ id: "new-e", from: "a", to: "c", label: "", style: "call", both: false, step: null }); });
+    expect(doc.facts.relations.find((r) => r.from === "a" && r.to === "c")!.id).not.toBe("r3");
+    doc = small(withLimit("turn-limit"));
+    doc = edit(doc, "overview", (d) => { d.views[0].nodes.push({ ...node(d, "c"), id: "turn-limit", label: "Turn limit", facts: undefined, x: 900, y: 40 }); });
+    expect(doc.facts.components.map((c) => c.id)).not.toContain("turn-limit");
+  });
+
+  it("#123 an answer that gives one fact to two parts drops the relation a connection no longer joins, with one warning", () => {
+    const doc = small();
+    const j = joinChannel(doc, "overview");
+    const a = node(j, "a");
+    a.facts = undefined;
+    a.from = ["a", "b"];
+    const r = applyChannel(doc, "overview", { views: j.views, warnings: j.warnings }, { answer: true });
+    if (!r.ok) throw new Error(r.error);
+    const v = validateDocument3(r.doc);
+    expect(v.ok ? [] : v.errors).toEqual([]);
+    expect(r.doc.warnings).toContain('View "overview": "b" no longer shows "b", which an earlier part shows');
+    // "b" now shows no fact: each connection at it stops showing its relation, one warning each.
+    expect(["r1", "r2"].map((id) => r.doc.warnings.filter((x) => x.includes(`"${id}"`)).length)).toEqual([1, 1]);
+  });
+});

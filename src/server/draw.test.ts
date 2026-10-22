@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { validateDocument3 } from "../core/file3";
@@ -42,9 +42,12 @@ function linesOf(t: ReturnType<typeof makeApp>, id: string) {
   return out;
 }
 
+/** A folder as the server resolves it: the disk's own letter case, Windows short names (RUNNER~1) expanded. */
+const real = (p: string) => realpathSync.native(p);
+
 describe("the draw run", () => {
   it("writes a new drawing under the folder, registers it, and draws every fact in the overview", async () => {
-    const dir = repo();
+    const dir = real(repo());
     const t = makeApp();
     const events: { message: string; stage: string | null }[] = [];
     const run = await draw(t, dir);
@@ -66,7 +69,7 @@ describe("the draw run", () => {
   });
 
   it("roots a drawing of a folder outside git at that folder, also when the file is opened again", async () => {
-    const dir = makeFolder(agentFiles);
+    const dir = real(makeFolder(agentFiles));
     const t = makeApp();
     const run = await draw(t, dir, { channel: "linkedin" });
     expect(run.status).toBe("succeeded");
@@ -78,7 +81,7 @@ describe("the draw run", () => {
   });
 
   it("an empty or stray .git above a folder does not widen its root (the engine reads only the folder)", async () => {
-    const outer = makeFolder({ "other/secret.txt": "x\n" });
+    const outer = real(makeFolder({ "other/secret.txt": "x\n" }));
     mkdirSync(join(outer, ".git"));
     const dir = join(outer, "project");
     for (const [rel, text] of Object.entries(agentFiles)) { mkdirSync(join(dir, rel, ".."), { recursive: true }); writeFileSync(join(dir, rel), text); }
@@ -87,7 +90,7 @@ describe("the draw run", () => {
     const run = await draw(t, dir);
     expect([run.status, t.store.rootOf(run.diagramId!)]).toEqual(["succeeded", dir]);
     // A .git file naming a git folder (a worktree) still marks a root.
-    const wt = makeFolder({ "a.ts": "x\n" });
+    const wt = real(makeFolder({ "a.ts": "x\n" }));
     mkdirSync(join(wt, "gitdir"));
     writeFileSync(join(wt, ".git"), `gitdir: ${join(wt, "gitdir")}\n`);
     mkdirSync(join(wt, "sub"));

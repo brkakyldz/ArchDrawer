@@ -297,9 +297,10 @@ export function renderShare(doc: Pick<DiagramDocument, "views">, viewId: string,
     }
     if (!placed) {
       // A strip under the drawing, title left and key right, above a firm hairline.
-      const sw = f.w - f.m * 2;
-      const t = wantText ? textBlock(source, f, o, P, Math.round(sw * 0.64)) : null;
-      const k = wantKey ? keyBlock(kinds, f, P, Math.round(sw * (t ? 0.48 : 1)), "end") : null;
+      // Both sit on the strip's bottom line, so the title wraps in what the key leaves of it.
+      const sw = f.w - f.m * 2, apart = 1.6 * EM;
+      const k = wantKey ? keyBlock(kinds, f, P, Math.round(sw * (wantText ? 0.48 : 1)), "end") : null;
+      const t = wantText ? textBlock(source, f, o, P, Math.floor(Math.min(sw * 0.64, sw - (k ? k.w + apart : 0)))) : null;
       const inner = Math.max(t?.h ?? 0, k?.h ?? 0);
       const pad = 0.9 * EM;
       const stripH = 1 + pad + inner;

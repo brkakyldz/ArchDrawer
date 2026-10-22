@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { validateDocument, validateFile, type DiagramDocument } from "./model";
 import { normalizeFile } from "./normalize";
 import { answerToDocument, documentToDraft, DRAFT_JSON_SCHEMA, EmptyDiagramError } from "./repair";
+import { applyChannel, draftOf, normalizeFile3 } from "./channels";
+import { validateDocument3, validateFile3, type Document3, type File3 } from "./file3";
 
 const base = (): DiagramDocument => {
   const f = JSON.parse(readFileSync("tests/fixtures/shop.archdraw.json", "utf8"));
@@ -192,5 +194,55 @@ describe("engine answer repair", () => {
       if (s.anyOf) for (const a of s.anyOf as Record<string, unknown>[]) walk(a);
     };
     walk(DRAFT_JSON_SCHEMA as unknown as Record<string, unknown>);
+  });
+});
+
+describe("a refine answer writes a kept part's facts back as it gives them (#122)", () => {
+  const NOW3 = "2026-10-21T00:00:00.000Z";
+  const comp = (id: string) => ({ id, label: id.toUpperCase(), kind: "service" as const, sub: "", description: `${id} works.`, files: [], items: [] });
+  const part = (id: string, facts: string[], extra: object = {}) => ({ id, facts, form: "card" as const, icon: null, parent: null, detail: null, place: null, ...extra });
+  /** An overview with a merged part `m` (facts a and b) and a part `q` (fact c). */
+  function merged(): Document3 {
+    const f: File3 = {
+      schema: "archdraw/diagram@3", title: "Merged",
+      facts: { components: [comp("a"), comp("b"), comp("c")], relations: [] },
+      channels: { overview: { views: [{ id: "overview", title: "Overview", caption: { title: "Merged", lede: "" }, nodes: [
+        part("m", ["a", "b"], { label: "A and B", kind: "service", description: "Both." }), part("q", ["c"]),
+      ], edges: [] }] } },
+    };
+    const r = validateFile3(f);
+    expect(r.errors).toEqual([]);
+    return normalizeFile3(r.file!, { id: "d_merged0001", now: NOW3, source: null });
+  }
+  function refine(stored: Document3, change: (nodes: Record<string, unknown>[]) => void): Document3 {
+    const base = draftOf(stored, "overview");
+    const draft = documentToDraft(base) as { views: { nodes: Record<string, unknown>[] }[] };
+    change(draft.views[0].nodes);
+    const answered = answerToDocument(draft, { base, now: NOW3, engine: null, facts: stored.facts.components.map((c) => c.id) });
+    const r = applyChannel(stored, "overview", { views: answered.views, warnings: answered.warnings }, { answer: true });
+    if (!r.ok) throw new Error(r.error);
+    const v = validateDocument3(r.doc);
+    expect(v.ok ? [] : v.errors).toEqual([]);
+    return r.doc;
+  }
+  const factsOf = (d: Document3) => Object.fromEntries(d.channels.overview.views[0].nodes.map((p) => [p.id, p.facts]));
+
+  it("splits a merged part", () => {
+    const d = refine(merged(), (nodes) => {
+      const m = nodes.find((n) => n.id === "m")!;
+      m.facts = ["a"];
+      nodes.push({ ...m, id: "bpart", label: "B part", facts: ["b"], place: null, at: null });
+    });
+    expect(factsOf(d)).toEqual({ m: ["a"], q: ["c"], bpart: ["b"] });
+    expect(d.warnings).toEqual([]);
+  });
+
+  it("moves a fact from one part to another", () => {
+    const d = refine(merged(), (nodes) => {
+      nodes.find((n) => n.id === "m")!.facts = ["a"];
+      nodes.find((n) => n.id === "q")!.facts = ["c", "b"];
+    });
+    expect(factsOf(d)).toEqual({ m: ["a"], q: ["c", "b"] });
+    expect(d.warnings).toEqual([]);
   });
 });

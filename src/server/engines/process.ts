@@ -10,16 +10,16 @@ export interface Command { file: string; prefix: string[] }
  * `shell: true` (CVE-2024-27980); we read the shim and run its JS entry with node instead,
  * so user text never passes through cmd.exe (AGENTS.md invariant 1).
  */
-export function resolveCommand(name: string, env: NodeJS.ProcessEnv = process.env): Command | null {
+export async function resolveCommand(name: string, env: NodeJS.ProcessEnv = process.env, timeoutMs = 15_000): Promise<Command | null> {
   const override = env[`ARCHDRAW_${name.toUpperCase()}_BIN`];
   const candidates: string[] = [];
   if (override) candidates.push(override);
   else if (process.platform === "win32") {
-    const r = spawnSync("where", [name], { encoding: "utf8", windowsHide: true });
-    if (r.status === 0) candidates.push(...r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean));
+    const r = await capture({ file: "where", prefix: [] }, [name], timeoutMs, process.env);
+    if (r.code === 0) candidates.push(...r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean));
   } else {
-    const r = spawnSync("sh", ["-c", 'command -v "$1"', "sh", name], { encoding: "utf8" });
-    if (r.status === 0 && r.stdout.trim()) candidates.push(r.stdout.trim());
+    const r = await capture({ file: "sh", prefix: [] }, ["-c", 'command -v "$1"', "sh", name], timeoutMs, process.env);
+    if (r.code === 0 && r.stdout.trim()) candidates.push(r.stdout.trim());
   }
   for (const c of candidates) {
     if (!existsSync(c)) continue;
@@ -123,20 +123,40 @@ export function runProcess(cmd: Command, args: string[], opts: RunProcessOptions
   });
 }
 
-export function versionOf(cmd: Command, timeoutMs = 15_000): string | null {
-  const r = spawnSync(cmd.file, [...cmd.prefix, "--version"], { encoding: "utf8", timeout: timeoutMs, windowsHide: true, env: engineEnv() });
-  if (r.status !== 0) return null;
+/**
+ * A short command's exit code and output, spawned without a shell and without blocking the server:
+ * every other request and event stream goes on while an engine is detected. After `timeoutMs` the
+ * process tree is killed and the code is null.
+ */
+function capture(cmd: Command, args: string[], timeoutMs: number, env: NodeJS.ProcessEnv = engineEnv()): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return new Promise((done) => {
+    let child: ChildProcess;
+    try {
+      child = spawn(cmd.file, [...cmd.prefix, ...args], { env, windowsHide: true, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
+    } catch { done({ code: null, stdout: "", stderr: "" }); return; }
+    let stdout = "", stderr = "", timedOut = false;
+    child.stdout!.setEncoding("utf8").on("data", (d: string) => { stdout = (stdout + d).slice(-1_000_000); });
+    child.stderr!.setEncoding("utf8").on("data", (d: string) => { stderr = (stderr + d).slice(-100_000); });
+    const timer = setTimeout(() => { timedOut = true; killTree(child); }, timeoutMs);
+    child.on("error", () => { clearTimeout(timer); done({ code: null, stdout, stderr }); });
+    child.on("close", (code) => { clearTimeout(timer); done({ code: timedOut ? null : code, stdout, stderr }); });
+  });
+}
+
+export async function versionOf(cmd: Command, timeoutMs = 15_000): Promise<string | null> {
+  const r = await capture(cmd, ["--version"], timeoutMs);
+  if (r.code !== 0) return null;
   const m = /(\d+\.\d+\.\d+[^\s]*)/.exec(r.stdout);
   return m ? m[1] : r.stdout.trim().split(/\r?\n/)[0] || null;
 }
 
-export function helpText(cmd: Command, args: string[], timeoutMs = 15_000): string {
-  const r = spawnSync(cmd.file, [...cmd.prefix, ...args], { encoding: "utf8", timeout: timeoutMs, windowsHide: true, env: engineEnv() });
-  return `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
+export async function helpText(cmd: Command, args: string[], timeoutMs = 15_000): Promise<string> {
+  const r = await capture(cmd, args, timeoutMs);
+  return `${r.stdout}\n${r.stderr}`;
 }
 
 /** Standard output of a short command, or "" when it fails (model lists). */
-export function outputOf(cmd: Command, args: string[], timeoutMs = 15_000): string {
-  const r = spawnSync(cmd.file, [...cmd.prefix, ...args], { encoding: "utf8", timeout: timeoutMs, windowsHide: true, env: engineEnv() });
-  return r.status === 0 ? r.stdout ?? "" : "";
+export async function outputOf(cmd: Command, args: string[], timeoutMs = 15_000): Promise<string> {
+  const r = await capture(cmd, args, timeoutMs);
+  return r.code === 0 ? r.stdout : "";
 }

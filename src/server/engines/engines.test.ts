@@ -7,9 +7,10 @@ import { normalizeFile } from "../../core/normalize";
 import { documentToDraft, DRAFT_JSON_SCHEMA } from "../../core/repair";
 import { makeFolder, shopFile2, tempDir } from "../testkit";
 import { ClaudeEngine, ClaudeStreamParser, extractJson, writingLine } from "./claude";
-import { CodexEngine, CodexEventParser, describeCommand } from "./codex";
+import { CodexEngine, CodexEventParser, describeCommand, withoutMaxLength } from "./codex";
 import { engineEnv, resolveCommand, shimTarget } from "./process";
-import { postPrompt, readPrompt, ROUTE_SCHEMA, routePrompt, RULES_FILE, scanPrompt } from "./prompt";
+import { postPrompt, readPrompt, ROUTE_SCHEMA, routePrompt, RULES_FILE, scanPrompt, storyPrompt } from "./prompt";
+import { storyAnswer } from "../story-turn";
 import { READ_SCHEMA } from "../../core/read";
 import { SCAN_SCHEMA } from "../../core/scan";
 
@@ -19,10 +20,11 @@ const draft = documentToDraft(normalizeFile(validateFile(shopFile2()).file!, { i
  * Fake CLIs: node scripts that answer `--version` and `--help` like the real ones, record their argv,
  * cwd and stdin to a log file, and emit the real event formats. No model is called.
  */
-function fakeCli(kind: "claude" | "codex", behaviour: "ok" | "prose" | "error" | "hang", help?: string): { bin: string; log: string } {
+function fakeCli(kind: "claude" | "codex", behaviour: "ok" | "prose" | "error" | "hang", help?: string, story?: { first: unknown; repair: unknown }): { bin: string; log: string } {
   const dir = tempDir("archdraw-fake-");
   const log = join(dir, "log.json");
-  const answer = JSON.stringify(draft);
+  // A story answer: the first, or the repair turn's when the prompt lists problems.
+  const answer = story ? `(stdin.includes("<problems>") ? ${JSON.stringify(story.repair)} : ${JSON.stringify(story.first)})` : JSON.stringify(draft);
   const src = `
 const fs = require("fs");
 const args = process.argv.slice(2);
@@ -32,7 +34,9 @@ let stdin = "";
 process.stdin.on("data", (d) => (stdin += d));
 process.stdin.on("end", () => {
   const si = args.indexOf("--output-schema");
-  fs.writeFileSync(${JSON.stringify(log)}, JSON.stringify({ args, cwd: process.cwd(), stdin, env: process.env, schema: si >= 0 ? fs.readFileSync(args[si + 1], "utf8") : null }));
+  const entry = { args, cwd: process.cwd(), stdin, env: process.env, schema: si >= 0 ? fs.readFileSync(args[si + 1], "utf8") : null };
+  fs.writeFileSync(${JSON.stringify(log)}, JSON.stringify(entry));
+  fs.appendFileSync(${JSON.stringify(log)} + ".calls", JSON.stringify({ args, stdin, schema: entry.schema }) + "\\n");
   const behaviour = ${JSON.stringify(behaviour)};
   if (behaviour === "hang") {
     const { spawn } = require("child_process");
@@ -56,7 +60,7 @@ process.stdin.on("end", () => {
   console.log(JSON.stringify({ type: "item.completed", item: { type: "reasoning", text: "**Mapping the services**" } }));
   // "codex debug models" (engine detection) has no -o; never write a stray file then.
   const o = args.includes("-o") ? args[args.indexOf("-o") + 1] : null;
-  if (o && behaviour === "ok") fs.writeFileSync(o, ${JSON.stringify(answer)});
+  if (o && behaviour === "ok") fs.writeFileSync(o, JSON.stringify(${answer}));
   if (o && behaviour === "prose") fs.writeFileSync(o, "It is a web app.");
   if (behaviour === "error") { console.log(JSON.stringify({ type: "turn.failed", error: { message: "You've hit your usage limit" } })); process.exit(1); }
   console.log(JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1 } }));
@@ -237,7 +241,10 @@ describe("post task on both adapters", () => {
     const log = JSON.parse(readFileSync(fake.log, "utf8"));
     const args: string[] = log.args;
     const val = (flag: string) => args[args.indexOf(flag) + 1];
-    expect(JSON.parse(log.schema)).toEqual(STORY_SCHEMA);
+    // Codex gets no maxLength until a live check shows --output-schema accepts it (ADR 0009); Claude gets the schema as is.
+    expect(JSON.parse(log.schema)).toEqual(withoutMaxLength(STORY_SCHEMA));
+    expect(log.schema).not.toContain("maxLength");
+    expect(JSON.stringify(STORY_SCHEMA)).toContain('"maxLength":240');
     expect(isAbsolute(val("-o"))).toBe(true);
     expect(isAbsolute(val("--output-schema"))).toBe(true);
     expect(val("--sandbox")).toBe("read-only");
@@ -328,6 +335,45 @@ describe("a story from the facts alone (STORY-1)", () => {
     expect(log.stdin).toContain("<facts>");
     expect(log.stdin).toContain("Do not read, list or search any file");
   });
+});
+
+describe("the repair turn of a story answer (STORY-7)", () => {
+  const facts = { components: [{ id: "api", label: "Order API", description: "Takes orders.", files: ["src/api.ts"] }], relations: [] };
+  const answer = (lede: string) => ({
+    title: "Orders", lede, zones: [], steps: [], edges: [],
+    parts: [{ id: "api", label: "Order API", sub: "takes orders", kind: "api", chips: [], zone: null, inside: null, spine: 0, anchor: null, side: null, facts: ["api"], held: [], limits: [] }],
+  });
+  const story = { first: answer("x".repeat(300)), repair: answer("Takes an order.") };
+  const task = { kind: "story" as const, schema: STORY_SCHEMA, tools: "none" as const, prompt: storyPrompt({ channel: "readme", folderName: "shop", facts }) };
+  const repairOf = (engine: ClaudeEngine | CodexEngine, cwd: string, progress: string[]) => (prompt: string) =>
+    engine.run({ ...request(cwd, progress), task: { ...task, tools: "none", prompt } });
+  const calls = (log: string) => readFileSync(`${log}.calls`, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { args: string[]; stdin: string; schema: string | null })
+    .filter((c) => c.args[0] !== "debug"); // Codex's model listing at detection is no engine call
+
+  for (const kind of ["claude", "codex"] as const) {
+    it(`${kind === "claude" ? "Claude Code" : "Codex"} gets a second call with its answer and the problems, the same schema and no tool`, async () => {
+      const fake = fakeCli(kind, "ok", undefined, story);
+      const engine = kind === "claude" ? new ClaudeEngine({ ...process.env, ARCHDRAW_CLAUDE_BIN: fake.bin }) : new CodexEngine({ ...process.env, ARCHDRAW_CODEX_BIN: fake.bin });
+      await engine.detect();
+      const cwd = makeFolder({}), progress: string[] = [];
+      const first = await engine.run({ ...request(cwd, progress), task });
+      const intent = await storyAnswer(first, { channel: "readme", check: "Checking the post", signal: new AbortController().signal, progress: (m) => progress.push(m), repair: repairOf(engine, cwd, progress) });
+      expect(intent.lede).toBe("Takes an order.");
+      expect(progress).toContain("Fixing 1 problem in the answer");
+      const [one, two] = calls(fake.log);
+      expect(two.stdin).toContain("<problems>\n- the description is 300 characters, over the 240 it may hold\n</problems>");
+      expect(two.stdin).toContain(`"lede": "${"x".repeat(300)}"`);
+      expect(two.stdin).toContain("Do not read, list or search any file");
+      if (kind === "claude") {
+        expect(two.args[two.args.indexOf("--tools") + 1]).toBe("");
+        expect(JSON.parse(two.args[two.args.indexOf("--json-schema") + 1])).toEqual(STORY_SCHEMA);
+        expect(two.args.filter((a) => a !== two.args[two.args.indexOf("--json-schema") + 1])).toEqual(one.args.filter((a) => a !== one.args[one.args.indexOf("--json-schema") + 1]));
+      } else {
+        expect(two.args[two.args.indexOf("--sandbox") + 1]).toBe("read-only");
+        expect(JSON.parse(two.schema!)).toEqual(withoutMaxLength(STORY_SCHEMA));
+      }
+    });
+  }
 });
 
 describe("a refine's routing (AI-5)", () => {

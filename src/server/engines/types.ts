@@ -45,7 +45,7 @@ export interface EngineRunRequest {
      */
     kind: "post" | "story" | "scan" | "read" | "route" | "revise"; schema: object; prompt: string; tools?: "read" | "none" | "image";
     /** What the fixture builds its answer from (the listing, a story's channel, a draw's title); real engines ignore it. */
-    data?: { listing?: string[]; entries?: string[]; channel?: string; overview?: DiagramView; title?: string; draw?: "read" | "overview" | "channel" };
+    data?: { listing?: string[]; entries?: string[]; channel?: string; overview?: DiagramView; title?: string; draw?: "read" | "overview" | "channel"; repair?: boolean };
   };
   /** A simplify run (api contract): the overview becomes a map, and its prompt says what may change. */
   simplify?: boolean;

@@ -106,6 +106,24 @@ export function fixtureRoute(instruction: string): "facts" | "story" {
   return instruction.includes("[fixture:story]") || STORY_SUGGESTIONS.some((s) => text.startsWith(s)) ? "story" : "facts";
 }
 
+const OVERLONG = "[fixture:overlong]", STUBBORN = "[fixture:stubborn]";
+/** The markers a repair turn answers without (testing contract, Markers). */
+const unbreak = (text: string) => text.split(OVERLONG).join("").split("[fixture:invalid]").join("");
+/** The draw stages `[fixture:flaky:<stage>]` has failed once, per folder, for the life of this server process. */
+const FLAKED = new Set<string>();
+/** The lede of `[fixture:overlong]`: the sentence repeated until it is 250 characters. */
+export const OVERLONG_LEDE = (() => {
+  const s = "Drawn by the test engine, with a description written far past the limit a story answer may hold.";
+  let t = s;
+  while (t.length < 250) t += ` ${s}`;
+  return t.slice(0, 250);
+})();
+/** A story answer with `[fixture:overlong]`'s lede; any other answer as it is. */
+function overlong<T>(answer: T, on: boolean): T {
+  const a = answer as { lede?: unknown; parts?: unknown };
+  return on && a && typeof a.lede === "string" && Array.isArray(a.parts) ? { ...answer, lede: OVERLONG_LEDE } : answer;
+}
+
 const SCAN_STEPS = ["Reading the inputs", "Writing the card"];
 const MARKERS = /\s*\[fixture:[a-z:]+\]\s*/g;
 
@@ -220,10 +238,17 @@ export class FixtureEngine implements Engine {
     // A draw's markers come from the folder's name and the typed focus (testing contract, Draw).
     // The routing question (testing contract, Routing): answered at once, from the marker alone.
     if (req.task?.kind === "route") return { route: fixtureRoute(req.instruction) };
+    // A repair turn answers as the call would have without the markers that broke it, unless the engine is stubborn.
+    const repair = req.task?.data?.repair === true;
+    if (repair && !(req.instruction.includes(STUBBORN) || req.folderName.includes(STUBBORN))) req = { ...req, instruction: unbreak(req.instruction), folderName: unbreak(req.folderName) };
     const stage = req.task?.data?.draw;
     if (stage) return this.drawCall(req, stage, (m) => req.instruction.includes(m) || req.folderName.includes(m));
-    // A second look first checks that it has an image to look at (testing contract, Revise).
-    if (req.task?.kind === "revise" && !isPng(req.image?.file)) throw new EngineError("Fixture: no image to look at");
+    // A second look first checks that it has an image to look at (testing contract, Revise); its repair turn has none.
+    if (req.task?.kind === "revise" && !repair && !isPng(req.image?.file)) throw new EngineError("Fixture: no image to look at");
+    return overlong(await this.answer(req), req.instruction.includes(OVERLONG));
+  }
+
+  private async answer(req: EngineRunRequest): Promise<unknown> {
     if (req.instruction.includes("[fixture:slow]")) {
       for (let i = 1; i <= 30; i++) {
         await sleep(2000, req.signal);
@@ -266,9 +291,12 @@ export class FixtureEngine implements Engine {
     }
     await sleep(this.stepMs, req.signal);
     if (marked(stage === "read" ? "[fixture:fail]" : `[fixture:fail:${stage}]`)) throw new EngineError("Fixture failure requested");
+    // Fails the stage's first call for the folder in this server process, whatever else the draw asks.
+    const once = `${req.cwd}\0${stage}`;
+    if (stage !== "read" && marked(`[fixture:flaky:${stage}]`) && !FLAKED.has(once)) { FLAKED.add(once); throw new EngineError("Fixture failure requested"); }
     const data = req.task?.data ?? {};
     if (stage === "read") return fixtureRead(data.listing ?? []);
-    if (stage === "overview") return fixtureOverview(data.title ?? req.folderName, marked("[fixture:partial]"));
+    if (stage === "overview") return overlong(fixtureOverview(data.title ?? req.folderName, marked("[fixture:partial]")), marked(OVERLONG));
     if (req.task?.kind === "post") return fixturePost(req.base, req.view, req.instruction);
     return fixtureStory(data.overview!, data.channel === "presentation");
   }

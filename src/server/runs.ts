@@ -6,7 +6,7 @@ import { channelOfView, validateDocument3, type ChannelId, type Document3 } from
 import { isPostView, validateDocument, type DiagramDocument } from "../core/model";
 import { startSwitches, type FormatId } from "../core/export/share";
 import { layoutReport, type LayoutReport } from "../core/report";
-import { channelViewId, intentToChannel, parseIntent, STORY_SCHEMA, StoryError, storyRows } from "../core/intent";
+import { channelViewId, intentToChannel, STORY_SCHEMA, StoryError, storyRows } from "../core/intent";
 import { postPrompt, ROUTE_SCHEMA, routePrompt, storyPrompt } from "./engines/prompt";
 import { diffDocuments, type Changes } from "../core/diff";
 import { CoverageError, keepUnrelatedViews, missingFacts, SIMPLIFY_INSTRUCTION } from "../core/simplify";
@@ -16,7 +16,8 @@ import { repoFileChecker } from "./files";
 import { nowIso, type Store } from "./store";
 import { EngineError, type Engine } from "./engines/types";
 import { ReadAnswerError } from "../core/read";
-import { DrawError, runDraw, type DrawRequest } from "./draw";
+import { DrawError, keptKey, runDraw, type DrawRequest, type KeptDraw } from "./draw";
+import { storyAnswer } from "./story-turn";
 
 export type RunStatus = "running" | "succeeded" | "failed" | "cancelled";
 export type RunKind = "refine" | "story" | "post" | "simplify" | "revise" | "draw";
@@ -99,6 +100,9 @@ interface Look { image: ReviseImage; report: LayoutReport }
 const storyChannelOf = (req: StartRun): StoryChannel | null =>
   req.kind === "post" ? "linkedin" : req.kind === "story" ? ((req.channel as StoryChannel | undefined) ?? "linkedin") : null;
 
+/** How long what a failed draw kept stays (api contract, What a failed draw keeps). */
+const KEPT_MS = 3_600_000;
+
 /** Runs one instruction-box call end to end and keeps its event log for replay over SSE. */
 export class RunManager {
   private readonly runs = new Map<string, Run>();
@@ -167,11 +171,28 @@ export class RunManager {
 
   /** Start a `draw` run (api contract, The draw run): a new drawing file from a scanned folder. */
   startDraw(req: DrawRequest): string {
+    // What the folder's last failed draw kept, if this draw asks the same (api contract, What a failed draw keeps).
+    const key = keptKey(req);
+    for (const [folder, k] of this.kept) if (Date.now() - k.at >= KEPT_MS) this.kept.delete(folder);
+    const last = this.kept.get(req.folderKey);
+    const kept = last && last.key === key ? last.kept : null;
+    const done: Partial<KeptDraw> = {};
     return this.launch(
       { kind: "draw", channel: req.channel, view: req.channel, engine: req.engine.id, model: req.model, target: `folder:${req.folderKey}` },
-      (signal, progress, run) => runDraw(req, { store: this.store, timeoutMs: this.opts.timeoutMs, signal, progress, wrote: (path) => (run.path = path) }),
+      (signal, progress, run) => runDraw(req, { store: this.store, timeoutMs: this.opts.timeoutMs, signal, progress, wrote: (path) => (run.path = path), kept, done }).then(
+        (r) => { this.kept.delete(req.folderKey); return r; },
+        (err: unknown) => {
+          // Only what was finished is kept, replacing the folder's entry; a draw that failed at the read keeps nothing.
+          if (done.read === undefined) this.kept.delete(req.folderKey);
+          else this.kept.set(req.folderKey, { key, at: Date.now(), kept: { read: done.read, overview: done.overview ?? null } });
+          throw err;
+        },
+      ),
     );
   }
+
+  /** One entry per folder: what its latest draw that ended without a drawing had finished. */
+  private readonly kept = new Map<string, { key: string; at: number; kept: KeptDraw }>();
 
   private launch(
     init: Pick<RunRecord, "kind" | "channel" | "view" | "engine" | "model"> & { target: string },
@@ -347,14 +368,17 @@ export class RunManager {
       : channel === "linkedin"
       ? postPrompt({ folderName: basename(root), view: source, base: draft, facts: req.stored.facts, format: format as "feed" | "linkedin", instruction: req.instruction, readCode })
       : storyPrompt({ channel, folderName: basename(root), view: source, base: current ? { overview: draft, current } : draft, facts: req.stored.facts, instruction: req.instruction, readCode });
-    const answer = await req.engine.run({
-      cwd: root, folderName: basename(root), instruction: req.instruction, view: source, model: req.model, scope: { kind: "view" }, parts: [],
-      base: draft, signal, timeoutMs: this.opts.timeoutMs, progress, ...(look ? { image: look.image } : {}),
-      task: { kind: look ? "revise" : channel === "linkedin" ? "post" : "story", schema: STORY_SCHEMA, tools: look ? "image" : readCode ? "read" : "none", prompt, data: { channel, overview: req.base.views[0] } },
-    });
+    const call = { cwd: root, folderName: basename(root), instruction: req.instruction, view: source, model: req.model, scope: { kind: "view" } as const, parts: [], base: draft, signal, timeoutMs: this.opts.timeoutMs, progress };
+    const task = { kind: look ? "revise" as const : channel === "linkedin" ? "post" as const : "story" as const, schema: STORY_SCHEMA, data: { channel, overview: req.base.views[0] } };
+    const answer = await req.engine.run({ ...call, ...(look ? { image: look.image } : {}), task: { ...task, tools: look ? "image" : readCode ? "read" : "none", prompt } });
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the post");
-    const { doc, view, warnings } = intentToChannel(req.stored, parseIntent(answer), { portrait: format === "feed", channel });
+    // One repair turn for an answer with problems: no tools, no image, the same schema (diagram contract).
+    const intent = await storyAnswer(answer, {
+      channel, progress, check: "Checking the post", signal,
+      repair: (prompt) => req.engine.run({ ...call, task: { ...task, tools: "none", prompt, data: { ...task.data, repair: true } } }),
+    });
+    const { doc, view, warnings } = intentToChannel(req.stored, intent, { portrait: format === "feed", channel });
     const toSave: Document3 = { ...doc, engine: { id: req.engine.id, model: req.model }, updatedAt: nowIso() };
     if (signal.aborted) throw new EngineError("Cancelled");
     const saved = this.store.put(req.base.id, toSave, { base: req.base.updatedAt, announce: true });

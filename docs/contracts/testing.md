@@ -123,7 +123,8 @@ adds its own lines (`Checking the drawing`, `Saved`, …).
 - `[fixture:stubborn]` — the repair turn answers the first answer again, so
   with `[fixture:invalid]` a post fails naming the connection to `ghost`, and
   with `[fixture:overlong]` the lede is shortened to 240 characters with one
-  warning.
+  warning, `Shortened the description to 240 characters` (a post also keeps
+  its target warning for a description over 140).
 - `[fixture:lose]` — simplify: the last overview component and its
   connections are left out of the detail view, so coverage fails naming it
   and nothing is saved.

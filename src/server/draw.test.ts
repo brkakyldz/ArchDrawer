@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { validateDocument3 } from "../core/file3";
@@ -33,6 +33,13 @@ async function draw(t: ReturnType<typeof makeApp>, folder: string, body: Record<
   const r = await json(await t.req("/api/runs", { method: "POST", json: { kind: "draw", scan: s.body.scanId, focus: { kind: "whole" }, channel: "readme", ...body } }));
   expect(r.status).toBe(202);
   return (await t.runs.wait(r.body.runId))!;
+}
+
+/** A finished run's progress lines with their stages, replayed. */
+function linesOf(t: ReturnType<typeof makeApp>, id: string) {
+  const out: { message: string; stage: string | null }[] = [];
+  t.runs.subscribe(id, (e) => { if (e.type === "progress") out.push({ message: e.message, stage: e.stage }); });
+  return out;
 }
 
 describe("the draw run", () => {
@@ -85,6 +92,75 @@ describe("the draw run", () => {
     writeFileSync(join(wt, ".git"), `gitdir: ${join(wt, "gitdir")}\n`);
     mkdirSync(join(wt, "sub"));
     expect((await json(await t.req("/api/folders/check", { method: "POST", json: { folder: join(wt, "sub") } }))).body.root).toBe(wt);
+  });
+
+  it("an over-long overview answer gets one repair turn in the overview stage", async () => {
+    const dir = repo();
+    const t = makeApp();
+    const run = await draw(t, dir, { focus: { kind: "typed", text: "The agent [fixture:overlong]" } });
+    expect(run.status).toBe("succeeded");
+    const events = linesOf(t, run.id);
+    const at = events.findIndex((e) => e.message === "Fixing 1 problem in the answer");
+    expect(events[at].stage).toBe("overview");
+    expect(events.slice(at + 1, at + 4)).toEqual(["Reading the drawing", "Reading the code", "Updating the drawing"].map((message) => ({ message, stage: "overview" })));
+    expect(events.filter((e) => e.message.startsWith("Fixing"))).toHaveLength(1);
+    const doc = t.store.get(run.diagramId!)!;
+    expect(doc.channels.overview.views[0].caption.lede).toBe("Drawn by the test engine.");
+    expect(doc.warnings.some((w) => w.startsWith("Shortened"))).toBe(false);
+  });
+
+  it("a draw that failed after its read starts again from the stage that did not finish, with the warnings of a draw that never failed", async () => {
+    const dir = repo();
+    const t = makeApp();
+    const s = await json(await t.req("/api/scans", { method: "POST", json: { folder: dir } }));
+    await t.scans.wait(s.body.scanId);
+    const start = async (focus: string, channel = "readme") => {
+      const r = await json(await t.req("/api/runs", { method: "POST", json: { kind: "draw", scan: s.body.scanId, focus: { kind: "typed", text: focus }, channel } }));
+      return (await t.runs.wait(r.body.runId))!;
+    };
+    const failed = await start("The agent [fixture:flaky:channel]");
+    expect([failed.status, failed.error, existsSync(join(dir, "docs"))]).toEqual(["failed", "Fixture failure requested", false]);
+    // The channel may differ; the read and the overview are used again with no call.
+    const again = await start("The agent [fixture:flaky:channel]", "presentation");
+    expect(again.status).toBe("succeeded");
+    const lines = linesOf(t, again.id);
+    expect(lines.filter((e) => e.stage !== "channel")).toEqual([
+      { message: "Using the facts already read", stage: "read" }, { message: "Checking the facts", stage: "read" },
+      { message: "Drawing the overview", stage: "overview" }, { message: "Using the overview already drawn", stage: "overview" },
+    ]);
+    const clean = await draw(t, repo(), { focus: { kind: "typed", text: "The agent" }, channel: "presentation" });
+    const [doc, control] = [t.store.get(again.diagramId!)!, t.store.get(clean.diagramId!)!];
+    expect(doc.warnings).toEqual(control.warnings);
+    const shape = (d: typeof doc) => ({ nodes: d.channels.overview.views[0].nodes, edges: d.channels.overview.views[0].edges });
+    expect(shape(doc)).toEqual(shape(control));
+    // A success removes what was kept: the next draw reads again.
+    const third = await start("The agent [fixture:flaky:channel]");
+    expect(linesOf(t, third.id)[0]).not.toEqual({ message: "Using the facts already read", stage: "read" });
+  });
+
+  it("a kept read is checked again: a cited file gone since drops its facts, and the overview is drawn again", async () => {
+    const dir = repo();
+    const t = makeApp();
+    const s = await json(await t.req("/api/scans", { method: "POST", json: { folder: dir } }));
+    await t.scans.wait(s.body.scanId);
+    const start = async (focus: string) => {
+      const r = await json(await t.req("/api/runs", { method: "POST", json: { kind: "draw", scan: s.body.scanId, focus: { kind: "typed", text: focus }, channel: "readme" } }));
+      return (await t.runs.wait(r.body.runId))!;
+    };
+    const failed = await start("The agent [fixture:flaky:channel]");
+    expect(failed.status).toBe("failed");
+    unlinkSync(join(dir, "src/agent.ts"));
+    const again = await start("The agent [fixture:flaky:channel]");
+    expect(again.status).toBe("succeeded");
+    const lines = linesOf(t, again.id).map((e) => e.message);
+    expect(lines.slice(0, 3)).toEqual(["Using the facts already read", "Checking the facts", "Drawing the overview"]);
+    expect(lines).not.toContain("Using the overview already drawn");
+    const doc = t.store.get(again.diagramId!)!;
+    expect(JSON.stringify(doc.facts)).not.toContain("src/agent.ts");
+    expect(doc.warnings.some((w) => w.includes("src/agent.ts"))).toBe(true);
+    // Another focus is another request: it reads again.
+    const other = await start("Something else [fixture:flaky:channel]");
+    expect(linesOf(t, other.id).map((e) => e.message)).not.toContain("Using the facts already read");
   });
 
   it("a failure at any stage writes nothing and leaves no docs folder", async () => {

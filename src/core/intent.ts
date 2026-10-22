@@ -24,21 +24,21 @@ export interface StoryEdge { from: string; to: string; label: string; style: Edg
 export interface StoryStep { parts: string[]; text: string; note: string }
 export interface StoryIntent { title: string; lede: string; zones: { id: string; label: string }[]; parts: StoryPart[]; edges: StoryEdge[]; steps: StoryStep[] }
 
-/** The schema the engine answers in (diagram contract, verbatim). */
+/** The schema the engine answers in (diagram contract); each text carries its hard limit as `maxLength`. */
 export const STORY_SCHEMA = {
   type: "object", additionalProperties: false,
   required: ["title", "lede", "zones", "parts", "edges", "steps"],
   properties: {
-    title: { type: "string" },
-    lede: { type: "string" },
+    title: { type: "string", maxLength: LIMITS.captionTitle },
+    lede: { type: "string", maxLength: LIMITS.lede },
     zones: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "label"],
-      properties: { id: { type: "string" }, label: { type: "string" } } } },
+      properties: { id: { type: "string" }, label: { type: "string", maxLength: LIMITS.label } } } },
     parts: { type: "array", items: { type: "object", additionalProperties: false,
       required: ["id", "label", "sub", "kind", "chips", "zone", "inside", "spine", "anchor", "side", "facts", "held", "limits"],
       properties: {
-        id: { type: "string" }, label: { type: "string" }, sub: { type: "string" },
+        id: { type: "string" }, label: { type: "string", maxLength: LIMITS.label }, sub: { type: "string", maxLength: LIMITS.sub },
         kind: { type: "string", enum: ["actor", "client", "api", "service", "worker", "llm", "external", "ops", "gate", "data"] },
-        chips: { type: "array", items: { type: "string" } },
+        chips: { type: "array", items: { type: "string", maxLength: LIMITS.item } },
         zone: { anyOf: [{ type: "string" }, { type: "null" }] },
         inside: { anyOf: [{ type: "string" }, { type: "null" }] },
         spine: { anyOf: [{ type: "integer" }, { type: "null" }] },
@@ -51,13 +51,13 @@ export const STORY_SCHEMA = {
     edges: { type: "array", items: { type: "object", additionalProperties: false,
       required: ["from", "to", "label", "style", "step"],
       properties: {
-        from: { type: "string" }, to: { type: "string" }, label: { type: "string" },
+        from: { type: "string" }, to: { type: "string" }, label: { type: "string", maxLength: LIMITS.edgeLabel },
         style: { type: "string", enum: ["call", "async", "dep"] },
         step: { anyOf: [{ type: "integer" }, { type: "null" }] },
       } } },
     steps: { type: "array", items: { type: "object", additionalProperties: false,
       required: ["parts", "text", "note"],
-      properties: { parts: { type: "array", items: { type: "string" } }, text: { type: "string" }, note: { type: "string" } } } },
+      properties: { parts: { type: "array", items: { type: "string" } }, text: { type: "string", maxLength: FACT3_LIMITS.stepText }, note: { type: "string", maxLength: FACT3_LIMITS.stepNote } } } },
   },
 } as const;
 
@@ -153,9 +153,146 @@ const VIEW_TITLES: Record<ChannelId, string> = { overview: "Overview", linkedin:
 const CHANNEL_NAMES: Record<ChannelId, string> = { overview: "overview", linkedin: "LinkedIn post", readme: "README drawing", presentation: "presentation" };
 
 /**
+ * The hard limits of a story answer's texts (diagram contract, Hard limits), in the words a problem
+ * and its warning use. The prompts state the same numbers (`src/server/engines/prompt.ts`).
+ */
+export const STORY_HARD_LIMITS = {
+  title: LIMITS.captionTitle, lede: LIMITS.lede, zoneLabel: LIMITS.label, label: LIMITS.label, sub: LIMITS.sub,
+  chip: LIMITS.item, edgeLabel: LIMITS.edgeLabel, stepText: FACT3_LIMITS.stepText, stepNote: FACT3_LIMITS.stepNote,
+  /** Parts and zones of one story together (a zone becomes a part of the view). */
+  parts: LIMITS.nodesPerView, steps: FACT3_LIMITS.steps,
+} as const;
+
+/** Each text of an intent that has a hard limit, with a way to replace it. Holders draw no chips, so theirs are not held to it. */
+function limitedTexts(intent: StoryIntent, channel: ChannelId): { text: string; limit: number; what: string; put: (t: string) => void }[] {
+  const L = STORY_HARD_LIMITS;
+  const holders = new Set(intent.parts.filter((p) => p.inside !== null).map((p) => p.inside!));
+  const out: { text: string; limit: number; what: string; put: (t: string) => void }[] = [
+    { text: intent.title, limit: L.title, what: "the title", put: (t) => (intent.title = t) },
+    { text: intent.lede, limit: L.lede, what: "the description", put: (t) => (intent.lede = t) },
+  ];
+  for (const z of intent.zones) out.push({ text: z.label, limit: L.zoneLabel, what: `the label of zone ${q(z.id)}`, put: (t) => (z.label = t) });
+  for (const p of intent.parts) {
+    out.push({ text: p.label, limit: L.label, what: `the label of ${q(p.id)}`, put: (t) => (p.label = t) });
+    out.push({ text: p.sub, limit: L.sub, what: `the sub-line of ${q(p.id)}`, put: (t) => (p.sub = t) });
+    if (!holders.has(p.id)) p.chips.forEach((c, i) => out.push({ text: c, limit: L.chip, what: `a chip of ${q(p.id)}`, put: (t) => (p.chips[i] = t) }));
+  }
+  for (const e of intent.edges) out.push({ text: e.label, limit: L.edgeLabel, what: `the label of ${e.from} → ${e.to}`, put: (t) => (e.label = t) });
+  // Steps outside the presentation are ignored, so only the presentation's are held to its limits.
+  if (channel === "presentation") intent.steps.slice(0, L.steps).forEach((s, i) => {
+    out.push({ text: s.text, limit: L.stepText, what: `the text of step ${i + 1}`, put: (t) => (s.text = t) });
+    out.push({ text: s.note, limit: L.stepNote, what: `the note of step ${i + 1}`, put: (t) => (s.note = t) });
+  });
+  return out;
+}
+
+/** The relations a story answer violates (diagram contract, Relations), every one, in the words of its failure. */
+function relationProblems(intent: StoryIntent): string[] {
+  const out: string[] = [];
+  if (!intent.parts.length) out.push("it has no parts");
+  const size = intent.parts.length + intent.zones.length;
+  if (size > STORY_HARD_LIMITS.parts) out.push(`it has ${intent.parts.length} parts and ${intent.zones.length} zones, over the ${STORY_HARD_LIMITS.parts} a view holds`);
+  const zoneIds = new Set<string>(), partIds = new Set<string>();
+  for (const z of intent.zones) { if (zoneIds.has(z.id)) out.push(`zone ${q(z.id)} is listed twice`); zoneIds.add(z.id); }
+  for (const p of intent.parts) { if (partIds.has(p.id)) out.push(`part ${q(p.id)} is listed twice`); partIds.add(p.id); }
+  const byPart = new Map(intent.parts.map((p) => [p.id, p]));
+  // Holders: a part inside another is drawn in it; the chain never loops and nests at most three groups.
+  const holderOf = (p: StoryPart) => (p.inside === null ? undefined : byPart.get(p.inside));
+  for (const p of intent.parts) {
+    if (p.inside === null) continue;
+    if (!byPart.has(p.inside)) { out.push(`part ${q(p.id)} is inside ${q(p.inside)}, which is not a part`); continue; }
+    const seen = new Set([p.id]);
+    let depth = 0, top: StoryPart = p, loop = false;
+    for (let h = holderOf(p); h; h = holderOf(h)) {
+      if (seen.has(h.id)) { loop = true; break; }
+      seen.add(h.id);
+      depth++;
+      top = h;
+    }
+    if (loop) { out.push(`part ${q(p.id)} is inside itself`); continue; }
+    const groups = depth + (top.zone !== null ? 1 : 0);
+    if (groups > LIMITS.depth) out.push(`part ${q(p.id)} nests ${groups} groups deep; at most ${LIMITS.depth}`);
+    if (p.zone !== null && p.zone !== top.zone) out.push(`part ${q(p.id)} is inside ${q(p.inside)} but names another zone`);
+  }
+  const level = (p: StoryPart) => p.inside ?? "";
+  const spineOrders = new Set<string>();
+  for (const p of intent.parts) {
+    if (p.zone !== null && !zoneIds.has(p.zone)) out.push(`part ${q(p.id)} is in zone ${q(p.zone)}, which does not exist`);
+    if (p.spine !== null) {
+      const key = `${level(p)}:${p.spine}`;
+      if (p.spine < 0 || spineOrders.has(key)) out.push(`part ${q(p.id)} has spine ${p.spine}, which is negative or taken`);
+      if (p.anchor !== null || p.side !== null) out.push(`spine part ${q(p.id)} also names an anchor or side`);
+      spineOrders.add(key);
+    } else {
+      const a = p.anchor === null ? undefined : byPart.get(p.anchor);
+      if (!a || a.spine === null || level(a) !== level(p)) out.push(`side part ${q(p.id)} needs a spine part of its own level as its anchor`);
+      if (p.side === null) out.push(`side part ${q(p.id)} needs a side, above or below`);
+    }
+  }
+  const top = intent.parts.filter((p) => p.inside === null);
+  const spine = top.filter((p) => p.spine !== null).sort((a, b) => a.spine! - b.spine!);
+  for (const z of intent.zones) {
+    const members = top.filter((p) => p.zone === z.id);
+    const onSpine = members.filter((p) => p.spine !== null).map((p) => spine.indexOf(p)).sort((a, b) => a - b);
+    const sides = members.filter((p) => p.spine === null);
+    if (onSpine.length) {
+      if (onSpine.some((x, i) => i > 0 && x !== onSpine[i - 1] + 1)) out.push(`zone ${q(z.id)} holds spine parts that are not consecutive`);
+      if (sides.some((p) => p.anchor === null || byPart.get(p.anchor)?.zone !== z.id)) out.push(`zone ${q(z.id)} holds a side part whose anchor is outside it`);
+    } else if (new Set(sides.map((p) => p.anchor)).size > 1) out.push(`zone ${q(z.id)} holds side parts of different anchors`);
+  }
+  for (const e of intent.edges) {
+    if (!partIds.has(e.from) || !partIds.has(e.to)) out.push(`a connection ${e.from} → ${e.to} names something that is not a part`);
+    else if (e.from === e.to) out.push(`a connection from ${q(e.from)} to itself`);
+  }
+  return out;
+}
+
+/**
+ * Every problem of a story answer (diagram contract, Problems and the repair turn): each relation it
+ * violates, each text over its hard limit, an empty title, a presentation step with no text, more
+ * steps than a presentation holds. With any, the engine gets one repair turn.
+ */
+export function storyProblems(intent: StoryIntent, channel: ChannelId): string[] {
+  const out = relationProblems(intent);
+  for (const t of limitedTexts(structuredClone(intent), channel)) if (t.text.length > t.limit) out.push(`${t.what} is ${t.text.length} characters, over the ${t.limit} it may hold`);
+  if (!intent.title.trim()) out.push("it has no title");
+  if (channel === "presentation") {
+    if (intent.steps.length > STORY_HARD_LIMITS.steps) out.push(`it has ${intent.steps.length} steps, over the ${STORY_HARD_LIMITS.steps} a presentation holds`);
+    intent.steps.slice(0, STORY_HARD_LIMITS.steps).forEach((s, i) => { if (!s.text.trim()) out.push(`step ${i + 1} has no text`); });
+  }
+  return out;
+}
+
+/** A text cut to exactly `limit` characters, ending with `…`. */
+const shorten = (text: string, limit: number) => text.slice(0, limit - 1) + "…";
+
+/**
+ * The hard limits after the repair turn (diagram contract, Hard limits), one warning each: a text
+ * over its limit is shortened, an empty title takes the drawing's, a presentation keeps its first
+ * steps. A step with no text is dropped where steps are converted.
+ */
+function fitLimits(intent: StoryIntent, channel: ChannelId, title: string, warnings: string[]): StoryIntent {
+  const next = structuredClone(intent);
+  if (channel === "presentation" && next.steps.length > STORY_HARD_LIMITS.steps) {
+    warnings.push(`Kept the first ${STORY_HARD_LIMITS.steps} of the ${next.steps.length} steps`);
+    next.steps = next.steps.slice(0, STORY_HARD_LIMITS.steps);
+  }
+  for (const t of limitedTexts(next, channel)) {
+    if (t.text.length <= t.limit) continue;
+    t.put(shorten(t.text, t.limit));
+    warnings.push(`Shortened ${t.what} to ${t.limit} characters`);
+  }
+  if (!next.title.trim()) {
+    next.title = title.slice(0, STORY_HARD_LIMITS.title);
+    warnings.push(`The ${CHANNEL_NAMES[channel]} has no title, kept ${q(next.title)}`);
+  }
+  return next;
+}
+
+/**
  * Turn an intent into a channel's view (or, without `ids`, the source's post): the only changed
- * view, created or replaced keeping its id. Impossible relations fail; every repair adds exactly
- * one warning; text is never shortened.
+ * view, created or replaced keeping its id. A violated relation fails; every repair adds exactly
+ * one warning, a text over its hard limit included (diagram contract, Hard limits).
  */
 export function intentToDocument(doc: DiagramDocument, source: string, intent: StoryIntent, o: StoryOptions): { doc: DiagramDocument; view: string; warnings: string[]; steps: Step[] } {
   const channel = o.channel ?? "linkedin";
@@ -164,85 +301,13 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
   if (!src) throw new StoryError(`There is no view "${source}" to design a post for`);
   if (src.postOf) throw new StoryError(`"${source}" is a post; design from its source "${src.postOf}"`);
   const name = CHANNEL_NAMES[channel];
-  if (!intent.parts.length) throw new StoryError(`The engine's ${name} has no parts`);
   const warnings: string[] = [];
-  const fail = (what: string): never => { throw new StoryError(`The engine's ${name} cannot be drawn: ${what}`); };
-
-  // Relations (diagram contract, Relations and conversion): code does not guess a story.
-  const zoneIds = new Set<string>(), partIds = new Set<string>();
-  for (const z of intent.zones) { if (zoneIds.has(z.id)) fail(`zone ${q(z.id)} is listed twice`); zoneIds.add(z.id); }
-  for (const p of intent.parts) { if (partIds.has(p.id)) fail(`part ${q(p.id)} is listed twice`); partIds.add(p.id); }
-  const byPart = new Map(intent.parts.map((p) => [p.id, p]));
-  // Holders: a part inside another is drawn in it; the chain never loops and nests at most three groups.
-  const holderOf = (p: StoryPart) => (p.inside === null ? undefined : byPart.get(p.inside));
-  const topOf = (p: StoryPart) => { let cur = p; for (let h = holderOf(cur); h; h = holderOf(cur)) cur = h; return cur; };
-  for (const p of intent.parts) {
-    if (p.inside === null) continue;
-    if (!byPart.has(p.inside)) fail(`part ${q(p.id)} is inside ${q(p.inside)}, which is not a part`);
-    const seen = new Set([p.id]);
-    let depth = 0;
-    for (let h = holderOf(p); h; h = holderOf(h)) {
-      if (seen.has(h.id)) fail(`part ${q(p.id)} is inside itself`);
-      seen.add(h.id);
-      depth++;
-    }
-    const groups = depth + (topOf(p).zone !== null ? 1 : 0);
-    if (groups > LIMITS.depth) fail(`part ${q(p.id)} nests ${groups} groups deep; at most ${LIMITS.depth}`);
-    if (p.zone !== null && p.zone !== topOf(p).zone) fail(`part ${q(p.id)} is inside ${q(p.inside)} but names another zone`);
-  }
-  const level = (p: StoryPart) => p.inside ?? "";
-  const spineOrders = new Set<string>();
-  for (const p of intent.parts) {
-    if (p.zone !== null && !zoneIds.has(p.zone)) fail(`part ${q(p.id)} is in zone ${q(p.zone)}, which does not exist`);
-    if (p.spine !== null) {
-      const key = `${level(p)}:${p.spine}`;
-      if (p.spine < 0 || spineOrders.has(key)) fail(`part ${q(p.id)} has spine ${p.spine}, which is negative or taken`);
-      if (p.anchor !== null || p.side !== null) fail(`spine part ${q(p.id)} also names an anchor or side`);
-      spineOrders.add(key);
-    } else {
-      const a = p.anchor === null ? undefined : byPart.get(p.anchor);
-      if (!a || a.spine === null || level(a) !== level(p)) fail(`side part ${q(p.id)} needs a spine part of its own level as its anchor`);
-      if (p.side === null) fail(`side part ${q(p.id)} needs a side, above or below`);
-    }
-  }
-  const top = intent.parts.filter((p) => p.inside === null);
-  const spine = top.filter((p) => p.spine !== null).sort((a, b) => a.spine! - b.spine!);
-  for (const z of intent.zones) {
-    const members = top.filter((p) => p.zone === z.id);
-    const onSpine = members.filter((p) => p.spine !== null).map((p) => spine.indexOf(p));
-    const sides = members.filter((p) => p.spine === null);
-    if (onSpine.length) {
-      onSpine.sort((a, b) => a - b);
-      if (onSpine.some((x, i) => i > 0 && x !== onSpine[i - 1] + 1)) fail(`zone ${q(z.id)} holds spine parts that are not consecutive`);
-      if (sides.some((p) => byPart.get(p.anchor!)!.zone !== z.id)) fail(`zone ${q(z.id)} holds a side part whose anchor is outside it`);
-    } else if (new Set(sides.map((p) => p.anchor)).size > 1) fail(`zone ${q(z.id)} holds side parts of different anchors`);
-  }
-  for (const e of intent.edges) {
-    if (!partIds.has(e.from) || !partIds.has(e.to)) fail(`a connection ${e.from} → ${e.to} names something that is not a part`);
-    if (e.from === e.to) fail(`a connection from ${q(e.from)} to itself`);
-  }
+  // Relations (diagram contract, Problems and the repair turn): code does not guess a story.
+  const violated = relationProblems(intent);
+  if (violated.length) throw new StoryError(`The engine's ${name} cannot be drawn: ${violated.join("; ")}`);
+  // What is left is repaired, one warning each: a text over its hard limit, an empty title, the steps.
+  intent = fitLimits(intent, channel, doc.title, warnings);
   const holders = new Set(intent.parts.filter((p) => p.inside !== null).map((p) => p.inside!));
-  // Hard limits fail the run: code never shortens the engine's text.
-  const hard = (text: string, limit: number, what: string) => { if (text.length > limit) fail(`${what} is ${text.length} characters, over the ${limit} it may hold`); };
-  hard(intent.title, LIMITS.captionTitle, "the title");
-  hard(intent.lede, LIMITS.lede, "the description");
-  for (const z of intent.zones) hard(z.label, LIMITS.label, `zone ${q(z.id)}'s label`);
-  for (const p of intent.parts) {
-    hard(p.label, LIMITS.label, `part ${q(p.id)}'s label`);
-    hard(p.sub, LIMITS.sub, `part ${q(p.id)}'s sub-line`);
-    p.chips.forEach((c) => hard(c, LIMITS.item, `a chip of ${q(p.id)}`));
-  }
-  for (const e of intent.edges) hard(e.label, LIMITS.edgeLabel, `the label of ${e.from} → ${e.to}`);
-  // Steps outside the presentation are ignored (below), so only the presentation's are held to its limits.
-  if (channel === "presentation") {
-    if (intent.steps.length > FACT3_LIMITS.steps) fail(`the story has ${intent.steps.length} steps, over the file's ${FACT3_LIMITS.steps}`);
-    intent.steps.forEach((s, i) => {
-      if (!s.text.trim()) fail(`step ${i + 1} has no text`);
-      hard(s.text, FACT3_LIMITS.stepText, `the text of step ${i + 1}`);
-      hard(s.note, FACT3_LIMITS.stepNote, `the note of step ${i + 1}`);
-    });
-  }
-  if (!intent.title.trim()) fail("it has no title");
 
   // Editorial targets of a post: kept whole, one warning each (the layout report lists them too).
   if (post) {
@@ -360,6 +425,8 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
   if (channel !== "presentation") {
     if (intent.steps.length) warnings.push("Ignored the steps: only a presentation has steps");
   } else intent.steps.forEach((s, i) => {
+    // A step with no text is dropped, one warning, and gets none for its parts (diagram contract, Hard limits).
+    if (!s.text.trim()) { warnings.push(`Step ${i + 1} has no text and was dropped`); return; }
     const parts: string[] = [], wrong: string[] = [];
     for (const p of s.parts) {
       const mapped = partOf.get(p);

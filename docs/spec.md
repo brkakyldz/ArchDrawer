@@ -31,7 +31,7 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **START-4** (Today) The home screen starts a drawing from a local folder.
 - **START-5** (Today) The `archdrawer` command opens, validates and exports
   drawing files.
-- **START-6** (To build) A draw that fails after its read keeps what it read,
+- **START-6** (Today) A draw that fails after its read keeps what it read,
   and `Try again` starts from the stage that did not finish, with no new
   read (ADR 0010).
 
@@ -74,7 +74,7 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **STORY-6** (Today) The model decides what is drawn and its rough place
   (beside, above, below, inside); the fixed caps of one rulebook (zones and
   connection counts for every drawing) are removed.
-- **STORY-7** (To build) An engine's story answer over a limit never costs
+- **STORY-7** (Today) An engine's story answer over a limit never costs
   the user the run: every prompt states the limits code checks, a broken
   answer gets one repair turn, and a text still too long is shortened with a
   warning (ADR 0009).

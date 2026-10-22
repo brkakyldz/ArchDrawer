@@ -186,10 +186,10 @@ part of the view draws its sub-line; `false`, none does, and every part is
 measured without it (*Geometry*). Any other value is invalid (rule 4). It is
 appearance: changing it changes only its channel (*Edits*). The editor writes
 `false` and removes the field when the switch is turned on again, and
-normalisation never adds it, so a file without it is valid and unchanged; the
-format stays `archdraw/diagram@3`. A redraw or a simple version that replaces
-a channel's view keeps that view's `subLines`; engine answers neither see nor
-change it.
+normalisation never adds it, so a file without it is valid and unchanged;
+`subLines` needs no format change of its own. A redraw or a simple version
+that replaces a channel's view keeps that view's `subLines`; engine answers
+neither see nor change it.
 
 ### Part (node)
 
@@ -520,8 +520,8 @@ A drawing without held items is not warned about (LOOK-3).
 - **Flat** — six or more top-level parts that all have a `place` on the same
   row, or none has a `place` and every one is an end of a numbered
   connection.
-- **Tuning number** (LinkedIn channel only) — a drawn label, sub-line or item
-  with a number and a unit of time, count or size (`6 turns`, `90 s`,
+- **Tuning number** (LinkedIn channel only) — a drawn label or sub-line with
+  a number and a unit of time, count or size (`6 turns`, `90 s`,
   `2 retries`, `5 MB`, `30%`). Elsewhere a number that explains a guarantee
   may show (STORY-5), best as a limit.
 - **No main path** — three or more connections and none has a step.
@@ -584,18 +584,20 @@ label measured to fit its part exactly can overrun it.
 sub-line row whether or not its sub-line is empty, so its height never
 depends on that text. With it off, no part draws a sub-line and none is
 measured with one: a card loses its 18 px sub-line row (the plain card is 90
-tall), a compact part its sub-line text, and a group header its sub-line.
+tall), a compact part its sub-line text, and a group header its sub-line;
+the group header stays 46 px, so a group's box does not change.
 
 **The open mark** (NAV-1). A part whose `detail` is set draws the open mark:
 a filled circle 20 px across in the part's kind colour, holding the `layers`
-icon, 12 px, in the canvas colour. It sits 8 px inside the top and right
-edges of a card or panel, 12 px inside the right edge of a compact part and
-centred on its height, and at the right end of a group's header, centred on
-it. The label row keeps `8 + 20` px for it (the 14 px detail mark it
-replaces kept `8 + 14`). It is the element with class `open-mark`, the same
-in the editor's `node-<id>` (a group's in `node-head-<id>`, *Connections*) and in
-the export's `g[data-node-id]`, which then carries `data-open="true"`. The share image, the slides and `archdrawer svg`
-draw it as the editor does.
+icon, 12 px, in the canvas colour. It sits 8 px inside the top-right corner
+of a card's or panel's front body (*Shapes*), 12 px inside the right end of a
+compact part's front body and centred on its height, and at the right end of
+a group's header, centred on it. The label row keeps `8 + 20` px for it (the
+14 px detail mark it replaces kept `8 + 14`). It is the element with class
+`open-mark`, the same in the editor's `node-<id>` (a group's in its
+`node-head-<id>`) and in the export's `g[data-node-id]` (a group's in its
+`<g data-group-head>`); that `g[data-node-id]` carries `data-open="true"`.
+The share image, the slides and `archdrawer svg` draw it as the editor does.
 
 **Shapes** (LOOK-2, ADR 0014). The outline of a part is the element with
 class `body`; it carries `data-shape`, the same in the editor's `node-<id>`
@@ -657,11 +659,12 @@ text.
   part's box (parity check); selection, search and drop-target rings stay
   box-shaped. The editor and every export draw from the same numbers
   (invariant 5).
-- The detail mark (14 px) sits 8 px inside the top-right corner of the
-  outline's front body: the body under the avatar for `person`, the front
-  card for `stack`, the part below the bumps for `external`, the part between
-  the points for `port`, the box for the others. An agent's spark then moves
-  6 px left of it. In a compact part it ends the row, as before.
+- The open mark (20 px, *The open mark*) sits 8 px inside the top-right
+  corner of the outline's front body: the body under the avatar for `person`,
+  the front card for `stack`, the part below the bumps for `external`, the
+  part between the points for `port`, the box for the others. An agent's
+  spark then moves 6 px left of the open mark. In a compact part it sits
+  12 px inside the right end of the front body, centred on its height.
 - Connections take their sides and spread their ends on the box, as
   *Connections* says. On the left and right sides of a `port`, every end
   attaches at the point: those ends are not spread. Anywhere else, where the
@@ -746,8 +749,8 @@ that does not clear it; stored positions never move.
 
 *A group's name* (ADR 0013). A group is drawn in two layers: its frame
 (outline, fill and glow) under the connections, and its head — icon, name,
-sub-line and detail mark — over the connections and under the parts. The
-name and the sub-line carry a halo: `stroke` in the header's colour,
+sub-line and open mark (`open-mark`) — over the connections and under the
+parts. The name and the sub-line carry a halo: `stroke` in the header's colour,
 `stroke-width="4"`, `stroke-linejoin="round"`, `paint-order="stroke"`, so a
 line that crosses the header is hidden only under the letters and 2 px
 round them. The header's colour is the group's fill as painted, made solid:
@@ -920,8 +923,10 @@ panel's empty items are dropped and more than 12 are cut; an unknown icon or
 style becomes the default; a part or view id is cleaned to letters, digits,
 `-` and `_`, an empty one becomes `component-<n>` or `view-<n>`, an invalid
 one is replaced and a duplicate is renamed `<id>-2` (one warning per id); a
-second copy of a view is ignored; an empty label becomes the id, an empty
-description `No description yet.`, and an empty view title, caption title or
+new view id that another view of the file already has, in any choice, is
+renamed `<id>-2` (`-3`, …; one warning per id); a second copy of a view is
+ignored; an empty label becomes the id, an empty description
+`No description yet.`, and an empty view title, caption title or
 drawing title the stored one; a `place` beyond ±20 is clamped and one that is
 not two integers is dropped; a `step` that is not a positive integer is
 dropped; a dangling `parent` or `detail` is cleared; parent loops and

@@ -52,7 +52,8 @@ Exact shapes are in `docs/contracts/diagram.md` (*Geometry*, *View*) and
   part works. Story briefs stop asking for rows.
 - **The sub-line can be switched off.** One line under the label stays the
   default summary. A view stores an optional `subLines` switch (absent means
-  on), so older files stay valid and the format stays `archdraw/diagram@3`.
+  on), so older files stay valid and the field needs no new format version
+  (the format is `archdraw/diagram@4` for ADR 0015's own reasons).
   With it off, cards shrink to icon and label. The share image follows the
   view, and its own `show-sub` switch can override it; `show-items` goes.
 - **Colours come from the theme.** Kind colours and the existing tokens, in

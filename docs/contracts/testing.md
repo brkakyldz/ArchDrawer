@@ -373,7 +373,9 @@ These are the answers of a `story` run, a `draw` run's channel call, and the
 `story` route of a refine (*Routing*).
 
 - **LinkedIn:** the post intent above.
-- **README.** Code builds the intent from the overview channel's first view:
+- **README.** Code builds the intent from the overview channel's first view,
+  and for a `system` choice from the map and its detail views in
+  `views-panel` order, skipping parts with a `detail`:
   - title: its caption title; lede: `A detailed drawing made by the test
     engine.`; no zones;
   - parts: one per part that is not a group and shows a fact, in view order,
@@ -383,6 +385,12 @@ These are the answers of a `story` run, a `draw` run's channel call, and the
   - edges: the connections between those parts, with their drawn label,
     style and step;
   - steps: `[]`.
+
+  For the whole system (`system`) of the fixture's draw that gives the parts
+  `app`, `agent` and `store` (`zone-runtime` has a `detail` and is skipped)
+  and one edge, `agent → store`: the map's `app → zone-runtime` ends at a
+  skipped part. A section, flow or custom choice gives the same three parts
+  with both connections.
 - **Presentation:** the README intent, with steps added:
   - one step for each of the first three parts:
     `{ "parts": ["<id>"], "text": "Step <n>: <label>", "note": "The test

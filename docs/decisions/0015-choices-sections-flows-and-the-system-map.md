@@ -4,7 +4,7 @@ title: "Choices: tick sections and flows, one file holds them all (format 4), th
 date: 2026-10-22
 status: accepted
 deciders: [brkakyldz]
-supersedes: [0007]
+supersedes: []
 ---
 
 ## Context

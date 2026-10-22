@@ -39,7 +39,7 @@ and its files, and a guided tour for learning a repository (ADR 0001).
   choices that finished; `Try again` starts from the first choice that did
   not finish. Nothing is written until every choice is drawn (ADR 0015).
 
-### Scan and focus (SCAN)
+### Scan and choices (SCAN)
 
 - **SCAN-1** (Today) A scan of about a minute reads the README, the folder
   tree, dependency files and entry points, and produces a short repository card.
@@ -56,8 +56,8 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 
 ### Deep read and facts (READ)
 
-- **READ-1** (Today) After a focus is chosen, the engine reads the files the
-  focus needs and returns a facts list: components, the mechanisms inside
+- **READ-1** (Today) For each choice, the engine reads the files the
+  choice needs and returns a facts list: components, the mechanisms inside
   them, who calls whom and how, and limits that explain a guarantee.
 - **READ-2** (Today) Every fact names the files (and lines where useful)
   that support it; code checks the files exist and rejects facts without

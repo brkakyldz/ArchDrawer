@@ -223,7 +223,9 @@ Without an engine, `channel-prepare` (and `linkedin-prepare` on LinkedIn) and
 `channel-redraw` draw a channel from the overview channel's first view in
 code. It is one undoable edit that replaces what the channel held and empties
 its `outdated`. The view keeps its id when the channel already has one, else
-it is named after the channel. It is titled `LinkedIn`, `README` or
+it is named as a story's new view is (drawing contract, *The view*: the
+channel's name, such as `readme`, or `<choice id>-readme` outside the file's
+first choice, `-2`, … when taken). It is titled `LinkedIn`, `README` or
 `Presentation`, and its caption is copied from the overview's first view.
 
 - **LinkedIn:** as *The LinkedIn flow* says.
@@ -398,7 +400,7 @@ every component until unpinned.
 | `callout-files` | absent for a part that shows no fact; `callout-file` each with `callout-file-remove` (which removes it from every fact of the part that lists it); `callout-file-add` gives `callout-file-input` (Enter adds a repository-relative path, at most 20; a path outside the repository toasts `Use a path inside the repository, like src/app.ts`; Escape or blur cancels). A path that does not exist in the repository (`check-files`, api contract) still saves; its `callout-file` has `data-missing="true"` and shows `callout-file-missing` `not in the repository` |
 | `callout-parent` | `<select>`: `""` (`Top level`) and every group of the view except the component and what it holds; choosing one moves it inside that group at a free spot |
 | `callout-open-inside` | (`detail` set) `Open inside`: goes to that view |
-| `callout-create-inside` | (`detail` null, on the overview: the other channels hold one view each) `Draw its inside`: adds a view titled after the component holding one copy of it (a group copied as a card), pointing to the same facts (a group with no fact copied with its drawn label, kind and description as its own), sets `detail`, goes there |
+| `callout-create-inside` | (`detail` null, on the overview: the other channels hold one view each) `Draw its inside`: adds a view titled after the component, id `<part id>-inside` (`-2`, `-3`, … when any view of the file has it), holding one copy of it (a group copied as a card), pointing to the same facts (a group with no fact copied with its drawn label, kind and description as its own), sets `detail`, goes there |
 | `callout-ask` | `Change this part`: selects the component and opens `ai-panel` with `ai-scope-selection` chosen and `ai-input` focused |
 | `callout-delete` | deletes the component, its connections, and moves a group's members to its parent; in the overview its facts go too, elsewhere it is only left out of this channel (*Channels*) |
 | `callout-close` | closes |
@@ -496,18 +498,20 @@ name `Ask AI`) opens and closes it.
 | `ai-engine-note` | `<label> reads the repository (read-only) and changes the drawing`; for the test engine `Test engine (no AI): it understands only add, remove, rename, hold, move and align, gives a canned post, a canned simplification and a canned second look, and changes nothing else`; without engine `No engine is available: the instruction is saved in the file for your next archdrawer session` |
 | `ai-scope-view`, `ai-scope-selection`, `ai-scope-all` | radios `This view`, `Selected parts (<n>)`, `The whole channel`; default view; selection disabled (and falls back to view) without a selected component |
 | `ai-send` | disabled while `ai-input` is empty, while a run is going, and on a channel with no view (`ai-button` still opens the panel there; the suggestions and `ai-look-again` are disabled too) |
-| `ai-look-again` | `Look at the drawing again` (LAYOUT-4): renders the current view as the share image in the channel's default format with its starting switches (*Share*), at 1×, as PNG, and starts a `revise` run for the current channel and view with that image (api contract, *The second look*). Disabled during a run, on a channel with no view and without an engine |
+| `ai-look-again` | `Look at the drawing again` (LAYOUT-4): renders the current view as the share image in the channel's default format with its starting switches (*Share*), at 1×, as PNG, and starts a `revise` run for the current choice, channel and view (`choice`, `channel`, `view`) with that image (api contract, *The second look*). Disabled during a run, on a channel with no view and without an engine |
 
 Sending first waits until every edit is saved (else fails with
 `Your last edit is not saved yet; the instruction was not sent`). With an
-engine it starts `POST /api/runs` for the current channel and view, the scope
-`{"kind":"view"}`, `{"kind":"parts","ids":[…]}` or `{"kind":"all"}`, and the
-chosen engine and model (`null` for `Default`); `ai-input` is then cleared.
-Without an engine it posts to `/api/diagrams/:id/requests` (current channel
-and view). If the run's event stream closes for good, the run is cancelled
-and fails with `Lost the connection to the instruction, so it was stopped`.
-Only one run at a time; the AI panel, the channel stages, the LinkedIn panel
-and the share dialog share it.
+engine it starts `POST /api/runs` for the current choice, channel and view
+(`choice`, `channel`, `view`), the scope `{"kind":"view"}`,
+`{"kind":"parts","ids":[…]}` or `{"kind":"all"}`, and the chosen engine and
+model (`null` for `Default`); `ai-input` is then cleared. Without an engine it
+posts to `/api/diagrams/:id/requests` for the current choice, channel and view
+(`choice`, `channel`, `view`). If the run's event stream closes for good, the
+run is cancelled and fails with
+`Lost the connection to the instruction, so it was stopped`. Only one run at a
+time; the AI panel, the channel stages, the LinkedIn panel and the share
+dialog share it.
 
 **Choosing the engine**: the one last chosen in this browser if available;
 else the document's `engine` if available and not the test engine; else the
@@ -746,7 +750,9 @@ controls below.
 **Without an engine**, `linkedin-prepare` draws the LinkedIn channel's view
 from the overview channel's first view as one undoable edit, replacing what
 the channel held and emptying its `outdated`. The view's id is kept when the
-channel already has a view, else `linkedin`; its title `LinkedIn`, its caption copied from the overview's first view:
+channel already has a view, else it is named as a story's new view is
+(drawing contract, *The view*: `linkedin`, or `<choice id>-linkedin` outside
+the file's first choice, `-2`, … when taken); its title `LinkedIn`, its caption copied from the overview's first view:
 
 - groups fold into one part each (members not drawn); texts are left out;
   connections inside one group disappear; two connections between the same
@@ -756,10 +762,10 @@ channel already has a view, else `linkedin`; its title `LinkedIn`, its caption c
   (at most 4), +2 if it holds something (items, or a folded group's
   members), +1 if its description is not `No description yet.`; ties by
   main-path order, then view order;
-- the open parts — score ≥ 5, at most 4 — are panels listing up to 5 entries
-  (a longer list ends `+ <n> more`), or cards when they hold nothing; other
-  main-path parts are cards; the rest compact; a card whose sub-line would be
-  shortened becomes compact;
+- the open parts — score ≥ 5, at most 4 — are panels whose own `items` are
+  up to 5 entries (a longer list ends `+ <n> more`), shown in the callout, or
+  cards when they hold nothing; other main-path parts are cards; the rest
+  compact; a card whose sub-line would be shortened becomes compact;
 - the main path runs along a grid of three columns (two when that reads more
   than 8 % larger), turning back at each row; other parts sit beside what they
   connect to; columns use their own widest part;

@@ -4,7 +4,7 @@ import { slugify, type DiagramDocument, type DiagramView, type Theme } from "../
 import { Icon } from "../ui/Icon";
 import { LayoutReportLine } from "../ui/LayoutReport";
 import { reportOf } from "../../core/report";
-import { fonts, orient, toPng } from "./image";
+import { fonts, orient, slides, toPng } from "./image";
 
 /** `Where will you share it?` (ui contract, Share); the landscape LinkedIn post sits under Advanced. */
 const WHERE: { id: FormatId; label: string }[] = [
@@ -67,6 +67,8 @@ export function ShareDialog({ doc, view, channel, onClose, toast }: Props) {
   const [advanced, setAdvanced] = useState(false);
   const [details, setDetails] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** The slide download being made, if any (its button says `Making slides…`). */
+  const [making, setMaking] = useState<"pdf" | "png" | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const well = useRef<HTMLDivElement>(null);
   const [wellSize, setWellSize] = useState({ w: 800, h: 600 });
@@ -141,6 +143,31 @@ export function ShareDialog({ doc, view, channel, onClose, toast }: Props) {
       setBusy(false);
     }
   };
+
+  // The slide downloads (ui contract, Share): the presentation channel only, off without a step.
+  const talk = channel === "presentation";
+  const stepCount = doc.steps?.length ?? 0;
+  const makeSlides = async (as: "pdf" | "png") => {
+    setBusy(true);
+    setMaking(as);
+    try {
+      const slug = slugify(doc.title) || "diagram";
+      const bytes = await slides({ views: doc.views, steps: doc.steps }, { theme, ...show }, as, slug);
+      if (as === "pdf") download(new Blob([bytes as BlobPart], { type: "application/pdf" }), `${slug}-slides.pdf`);
+      else download(new Blob([bytes as BlobPart], { type: "application/zip" }), `${slug}-slides.zip`);
+    } catch {
+      toast("The slides could not be made");
+    } finally {
+      setMaking(null);
+      setBusy(false);
+    }
+  };
+  const slideButton = (as: "pdf" | "png") => (
+    <button className="btn" data-testid={`download-slides-${as}`} disabled={busy || stepCount === 0}
+      title={stepCount === 0 ? "Add a step first" : undefined} onClick={() => void makeSlides(as)}>
+      {making === as ? "Making slides…" : as === "pdf" ? "Slides as PDF" : "Slides as PNG"}
+    </button>
+  );
 
   const r = img.readability;
 
@@ -217,6 +244,8 @@ export function ShareDialog({ doc, view, channel, onClose, toast }: Props) {
           <button className="btn primary dl" data-testid="download-png" disabled={busy} onClick={() => void act("png")}><Icon name="download" size={16} /> Download PNG</button>
           <button className="btn" data-testid="download-svg" disabled={busy} onClick={() => void act("svg")}>Download SVG</button>
           <button className="btn" data-testid="copy-image" disabled={busy} onClick={() => void act("copy")}><Icon name="copy" size={16} /> Copy image</button>
+          {talk && slideButton("pdf")}
+          {talk && slideButton("png")}
         </div>
       </div>
     </div>

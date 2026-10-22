@@ -18,12 +18,13 @@ const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, change
   );
 });
 
-const EdgeShape = memo(function EdgeShape({ edge, route, P, from, to, selected, dim, flow, open = false }: { edge: DiagramEdge; route: EdgeRoute; P: Palette; from: Kind; to: Kind; selected: boolean; dim: boolean; flow: boolean; open?: boolean }) {
+const EdgeShape = memo(function EdgeShape({ edge, route, P, from, to, selected, dim, flow, open = false, clip }: { edge: DiagramEdge; route: EdgeRoute; P: Palette; from: Kind; to: Kind; selected: boolean; dim: boolean; flow: boolean; open?: boolean; clip?: string }) {
   return (
     <g className={`ed${dim ? " dim" : ""}${open ? " open" : ""}`} data-dim={dim ? "true" : undefined} data-testid={`edge-${edge.id}`} data-edge-id={edge.id} data-style={edge.style} data-both={String(edge.both)}
       data-step={edge.step ?? ""} data-selected={String(selected)}>
-      <g dangerouslySetInnerHTML={{ __html: edgeMarkup(edge, route, P, { fromKind: from, toKind: to }) }} />
-      {flow && <path className="flow" d={route.d} />}
+      {/* The line is clipped at group names as in the export; the hit path is not, so a line stays selectable there. */}
+      <g clipPath={clip} dangerouslySetInnerHTML={{ __html: edgeMarkup(edge, route, P, { fromKind: from, toKind: to }) }} />
+      {flow && <path className="flow" d={route.d} clipPath={clip} />}
       <path className="hit" d={route.d} />
       <EdgeBounds route={route} />
     </g>
@@ -319,12 +320,10 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
         <g transform={`translate(${vp.x} ${vp.y}) scale(${k})`}>
           {groups.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} />)}
           {clip && <defs dangerouslySetInnerHTML={{ __html: clip }} />}
-          <g clipPath={clip ? "url(#ad-names)" : undefined}>
-            {view.edges.map((e) => {
-              const r = routes.get(e.id);
-              return r ? <EdgeShape key={e.id} edge={e} route={r} P={P} from={kindOf.get(e.from)!} to={kindOf.get(e.to)!} selected={selEdges.has(e.id)} dim={dimEdge(e)} flow={steps && e.step !== null} open={touchesOpen(e)} /> : null;
-            })}
-          </g>
+          {view.edges.map((e) => {
+            const r = routes.get(e.id);
+            return r ? <EdgeShape key={e.id} edge={e} route={r} P={P} from={kindOf.get(e.from)!} to={kindOf.get(e.to)!} selected={selEdges.has(e.id)} dim={dimEdge(e)} flow={steps && e.step !== null} open={touchesOpen(e)} clip={clip ? "url(#ad-names)" : undefined} /> : null;
+          })}
           {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} />)}
           {view.edges.map((e) => {
             const r = routes.get(e.id);

@@ -529,17 +529,23 @@ for its sub-line, each extra label line adding 20; panel 150–300 wide, height
 **Connections** are smooth curves: one cubic (`M … C …`, no `L`, `H` or
 `V`), its handles along the end sides' outward normals, each 0.42 × the
 distance between the ends, between 24 and 160 px. A connection leaves from
-the side of each part that faces the other end; several on one side are
-spread up to 16 px apart, ordered by where the other end is; connections
-entering a member in a group's first row from above come in right of the
-group's name when the part leaves room, at least 10 px apart.
+the side of each part that faces the other end. Between a part and a group
+holding it, both ends use the side where the part lies nearest the group's
+border. When the facing curve would have no length or go inside one of its
+own two parts (parts that touch or overlap), both ends use the like sides
+whose curve stays out of both, the shortest, right first on a tie. Several
+connections on one side are spread up to 16 px apart, ordered by where the
+other end is; connections entering a member in a group's first row from
+above come in right of the group's name when the part leaves room, at least
+10 px apart.
 
 A connection is never bent around anything (ADR 0011). Connections are drawn
 under parts, so a curve that meets a part other than its ends passes behind
 it, and the layout report lists it in `edgesOverParts`. A group's name text
 (from 3 px left of its icon to its name box's right edge, 28 px tall round
-the header's middle) is cut out of the connections, so a curve passes behind
-a group's name too. One exception keeps a post's spine visible: in a post, a
+the header's middle) is cut out of the connections' lines, in the editor and
+every export, so a curve passes behind a group's name too; labels, badges
+and the editor's hit area are not cut. One exception keeps a post's spine visible: in a post, a
 line straight down or up whose plain curve passes behind parts between its
 ends leaves and enters by the same side instead, as one cubic whose handles
 are the shortest (24 px upward in 8 px steps, at most 160) that clear every

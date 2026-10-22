@@ -242,6 +242,14 @@ export function alongRoute(r: Curve): (t: number) => Point {
   };
 }
 
+/**
+ * Points along a curve that measure what it passes over: both ends, and inner samples shifted off
+ * the middle so two mirrored lines never cross exactly on a sample point. The routing's
+ * `blocked` and the layout report's `edgesOverParts` both read these, so they always agree.
+ */
+export const routeSamples = (r: Curve, steps = 64): Point[] =>
+  [bezierAt(r, 0), ...Array.from({ length: steps - 1 }, (_, i) => bezierAt(r, (i + 1.31) / steps)), bezierAt(r, 1)];
+
 /** The shortest handle (diagram contract: at least 24 px), with room for the path's rounding to 0.1 px. */
 const MIN_HANDLE = 24.1;
 
@@ -250,7 +258,7 @@ const MIN_HANDLE = 24.1;
  * are smooth curves"): a curve is never bent around anything, so this only reports.
  */
 function behind(route: Curve, parts: (Rect & { id: string })[]): string[] {
-  const pts = Array.from({ length: 49 }, (_, i) => bezierAt(route, i / 48));
+  const pts = routeSamples(route);
   return parts.filter((r) => pts.some((p) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h)).map((r) => r.id);
 }
 
@@ -293,6 +301,48 @@ export interface RouteOptions {
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
+/** The middle of a side of a box. */
+const sideMid = (r: Rect, s: Side): Point => ({ x: r.x + r.w * (s === "l" ? 0 : s === "r" ? 1 : 0.5), y: r.y + r.h * (s === "t" ? 0 : s === "b" ? 1 : 0.5) });
+/** The plain cubic between the middles of two sides, with the usual handles. */
+function plainCurve(a: Rect, b: Rect, s: [Side, Side]): Curve {
+  const p0 = sideMid(a, s[0]), p1 = sideMid(b, s[1]), c = clamp(Math.hypot(p1.x - p0.x, p1.y - p0.y) * 0.42, MIN_HANDLE, 160);
+  return { p0, p1, c1: { x: p0.x + NORMAL[s[0]][0] * c, y: p0.y + NORMAL[s[0]][1] * c }, c2: { x: p1.x + NORMAL[s[1]][0] * c, y: p1.y + NORMAL[s[1]][1] * c } };
+}
+/** A curve with no length, or one that goes inside either of its own two parts (it may start on their borders). */
+function intoOwn(c: Curve, a: Rect, b: Rect): boolean {
+  if (Math.hypot(c.p1.x - c.p0.x, c.p1.y - c.p0.y) < 1) return true;
+  const within = (p: Point, r: Rect) => p.x > r.x + 0.5 && p.x < r.x + r.w - 0.5 && p.y > r.y + 0.5 && p.y < r.y + r.h - 0.5;
+  return routeSamples(c).some((p) => within(p, a) || within(p, b));
+}
+const holds = (outer: Rect, inner: Rect) => inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h;
+
+/**
+ * The sides a connection uses (diagram contract, Connections): the facing pair (`chooseSides`). A part
+ * and a group holding it use the side where the part lies nearest the group's border, at both ends.
+ * When the facing pair's curve has no length or goes inside one of its own parts (parts that touch or
+ * overlap), the shortest pair of like sides whose curve stays out of both, right first on a tie.
+ */
+export function sidesFor(a: Rect, b: Rect): [Side, Side] {
+  if (holds(a, b) || holds(b, a)) {
+    const [inner, outer] = holds(b, a) ? [a, b] : [b, a];
+    const gaps: [Side, number][] = [["b", outer.y + outer.h - inner.y - inner.h], ["r", outer.x + outer.w - inner.x - inner.w], ["t", inner.y - outer.y], ["l", inner.x - outer.x]];
+    const s = gaps.reduce((p, q) => (q[1] < p[1] ? q : p))[0];
+    return [s, s];
+  }
+  const facing = chooseSides(a, b);
+  if (!intoOwn(plainCurve(a, b, facing), a, b)) return facing;
+  let best: { s: [Side, Side]; length: number } | null = null;
+  for (const x of ["r", "l", "b", "t"] as const) {
+    const c = plainCurve(a, b, [x, x]);
+    if (intoOwn(c, a, b)) continue;
+    const pts = routeSamples(c);
+    let length = 0;
+    for (let i = 1; i < pts.length; i++) length += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    if (!best || length < best.length - 1e-9) best = { s: [x, x], length };
+  }
+  return best?.s ?? facing;
+}
+
 /**
  * Curves for every connection whose ends are drawn. Connections on one side of a component are
  * spread up to 16 px apart, ordered by where the other end is, so lines never stack.
@@ -305,7 +355,7 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
   for (const e of view.edges) {
     const a = rects.get(e.from), b = rects.get(e.to);
     if (!a || !b || e.from === e.to) continue;
-    const s = chooseSides(a, b);
+    const s = sidesFor(a, b);
     sides.set(e.id, s);
     ends.push({ e, end: 0, id: e.from, side: s[0], other: centre(b) }, { e, end: 1, id: e.to, side: s[1], other: centre(a) });
   }
@@ -326,11 +376,10 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
   // the parts' extent with its badge, right on a tie.
   const leaves = view.nodes.filter((n) => n.form !== "group");
   const bulge = new Map<string, number>();
-  const mid = (r: Rect, s: Side): Point => ({ x: r.x + r.w * (s === "l" ? 0 : s === "r" ? 1 : 0.5), y: r.y + r.h * (s === "t" ? 0 : s === "b" ? 1 : 0.5) });
   let left = Infinity, right = -Infinity;
   for (const r of rects.values()) { left = Math.min(left, r.x); right = Math.max(right, r.x + r.w); }
   const curveOf = (e: DiagramEdge, s: [Side, Side], c?: number): Point[] => {
-    const a = rects.get(e.from)!, b = rects.get(e.to)!, p0 = mid(a, s[0]), p1 = mid(b, s[1]);
+    const a = rects.get(e.from)!, b = rects.get(e.to)!, p0 = sideMid(a, s[0]), p1 = sideMid(b, s[1]);
     c ??= clamp(Math.hypot(p1.x - p0.x, p1.y - p0.y) * 0.42, MIN_HANDLE, 160);
     const curve = { p0, p1, c1: { x: p0.x + NORMAL[s[0]][0] * c, y: p0.y + NORMAL[s[0]][1] * c }, c2: { x: p1.x + NORMAL[s[1]][0] * c, y: p1.y + NORMAL[s[1]][1] * c } } as EdgeRoute;
     return Array.from({ length: 65 }, (_, i) => bezierAt(curve, i / 64));
@@ -346,7 +395,7 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
     const s = sides.get(e.id);
     if (!S.post || !s || !((s[0] === "b" && s[1] === "t") || (s[0] === "t" && s[1] === "b")) || clearCurve(e, s)) continue;
     const options = (["r", "l"] as const).flatMap((x) => {
-      for (let c = MIN_HANDLE; c <= 160; c += 8) if (clearCurve(e, [x, x], c)) {
+      for (let c = MIN_HANDLE; c <= 160; c = c < 160 && c + 8 > 160 ? 160 : c + 8) if (clearCurve(e, [x, x], c)) {
         const xs = curveOf(e, [x, x], c).map((p) => p.x), out = S.BADGE.r + 3;
         return [{ side: x, c, over: Math.max(0, Math.max(...xs) + out - right) + Math.max(0, left - (Math.min(...xs) - out)) }];
       }

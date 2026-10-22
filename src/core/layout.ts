@@ -484,7 +484,9 @@ export function layoutView<V extends { nodes: NodeInput[]; edges: EdgeInput[]; i
   let nodes = place(grid);
   // A connection that passes behind a part placed automatically gets room there: the gaps beside
   // the part widen across the connection, at most three rounds (the curve itself never bends round).
-  // Room that did not clear its connection is taken back, so a drawing never grows for nothing. A part with a stored position never moves, and is never
+  // Widening only moves parts apart, so it clears a curve that runs between them, not one that runs
+  // along the same row or column as the part; room that did not clear its connection is taken back,
+  // so a drawing never grows for nothing. A part with a stored position never moves, and is never
   // given room.
   const leaves = new Set([...fresh].filter((id) => view.nodes.find((n) => n.id === id)?.form !== "group"));
   if (leaves.size && view.edges.length) {

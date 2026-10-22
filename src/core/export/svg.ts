@@ -330,16 +330,18 @@ export function drawView(view: DiagramView, P: Palette, o: DrawOptions = {}): Dr
   // One group per drawn connection holds its line, its label and its badge (ui contract, The share image);
   // labels and badges sit in free spots, so drawing them before the parts covers nothing.
   const clip = namesClip(view, rects, `${prefix}-names`, o.post);
-  if (clip) out.push(`<defs>${clip}</defs><g clip-path="url(#${prefix}-names)">`);
+  if (clip) out.push(`<defs>${clip}</defs>`);
   for (const e of view.edges) {
     const r = routes.get(e.id);
     if (!r) continue;
     const id = esc(e.id);
     const label = r.labelAt && e.label && o.labels !== false ? `<g data-edge-label="${id}" data-testid="edge-label-${id}">${labelMarkup(e.label, r.labelAt, P, o.post)}</g>` : "";
     const badge = o.steps && e.step !== null ? `<g data-step-badge="${id}" data-testid="step-badge-${id}">${badgeMarkup(e.step, r.badgeAt, P, prefix, o.post)}</g>` : "";
-    out.push(`<g data-edge-id="${id}" data-style="${e.style}" data-both="${e.both}">${edgeMarkup(e, r, P, { prefix, fromKind: kind.get(e.from)!, toKind: kind.get(e.to)! })}${label}${badge}</g>`);
+    // Only the line is clipped at group names: its label and badge already keep off them.
+    const markup = edgeMarkup(e, r, P, { prefix, fromKind: kind.get(e.from)!, toKind: kind.get(e.to)! });
+    const line = clip ? `<g clip-path="url(#${prefix}-names)">${markup}</g>` : markup;
+    out.push(`<g data-edge-id="${id}" data-style="${e.style}" data-both="${e.both}">${line}${label}${badge}</g>`);
   }
-  if (clip) out.push("</g>");
   for (const node of order.filter((x) => x.form !== "group")) out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="${node.form}">${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
   for (const t of texts) out.push(`<g data-text-id="${esc(t.id)}" data-size="${t.size}">${textMarkup(t, P)}</g>`);
   return { body: out.join(""), defs: sharedDefs(P, prefix), bounds: viewBounds({ ...view, texts }, rects, routes, true, o.steps), rects, routes };

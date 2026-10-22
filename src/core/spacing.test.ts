@@ -94,6 +94,22 @@ describe("connection ends and arcs", () => {
   });
 });
 
+describe("a label stays on its line", () => {
+  it("takes a free spot along the curve, its box within 10 px of it, when the middle is behind a part", () => {
+    const v = { nodes: [node("a", { x: 0, y: 0 }), node("b", { x: 300, y: 0 }), node("c", { x: 800, y: 0 })], edges: [{ ...edge("a", "c", { label: "sends every order" }), id: "e" }] } as Parameters<typeof routeEdges>[0];
+    const rects = layoutRects(v), route = routeEdges(v, rects).get("e")!, b = rects.get("b")!;
+    expect(route.blocked).toEqual(["b"]);
+    const at = route.labelAt!, w = labelWidth("sends every order"), box = { x: at.x - w / 2, y: at.y - LABEL.h / 2, w, h: LABEL.h };
+    expect(box.x).toBeGreaterThanOrEqual(b.x + b.w + 4 - 0.05);
+    expect(Math.min(...samples(route, 400).map((p) => boxGap({ x: p.x, y: p.y, w: 0, h: 0 }, box)))).toBeLessThanOrEqual(10 + 0.05);
+  });
+
+  it("is left out rather than set off its line when no gap along the curve holds it", () => {
+    const v = { nodes: [node("a", { x: 0, y: 0 }), node("b", { x: 300, y: 0 }), node("c", { x: 600, y: 0 })], edges: [{ ...edge("a", "c", { label: "sends every order" }), id: "e" }] } as Parameters<typeof routeEdges>[0];
+    expect(routeEdges(v, layoutRects(v)).get("e")!.labelAt).toBeNull();
+  });
+});
+
 describe("labels and badges keep clear", () => {
   const drawings = ["tests/fixtures/shop.archdraw.json", "tests/fixtures/archdrawer.archdraw.json", "tests/fixtures/hotel.archdraw.json"];
   const views = drawings.flatMap((path) => {

@@ -15,7 +15,7 @@ const cross = (a: Point, b: Point, c: Point, d: Point) => {
 
 describe("story fixtures in both post formats", () => {
   for (const name of ["reference", "claude", "codex", "shop"]) for (const format of ["feed", "linkedin"] as const) {
-    it(`${name}, ${format}: no crossing, every label placed, nothing cut${format === "feed" ? ", readable in place" : ""}`, () => {
+    it(`${name}, ${format}: no crossing, no line behind a part, every label placed, nothing cut${format === "feed" ? ", readable in place" : ""}`, () => {
       const doc = storyFixture(name, format === "feed"), view = doc.views[0];
       expect(validateDocument(doc).ok).toBe(true);
       const rects = layoutRects(view), routes = routeEdges(view, rects);
@@ -28,6 +28,8 @@ describe("story fixtures in both post formats", () => {
         const pa = poly.get(a.id)!, pb = poly.get(b.id)!;
         expect(pa.slice(1).some((p, s) => pb.slice(1).some((q, t) => cross(pa[s], p, pb[t], q))), `${a.id} × ${b.id}`).toBe(false);
       }
+      // Every line shows: none is hidden behind a part (a spine line turns out on a side instead).
+      expect(edges.filter((e) => routes.get(e.id)!.blocked).map((e) => e.id)).toEqual([]);
       expect(edges.filter((e) => e.label && !routes.get(e.id)!.labelAt)).toEqual([]);
       const img = renderShare(doc, view.id, { ...DEFAULT_SHARE, format, theme: "light", lede: true, legend: false });
       expect(img.shortened).toEqual([]);

@@ -1,4 +1,4 @@
-import { bezierAt, measureNode, postOf, type EdgeRoute, type Point, type Rect } from "./geometry";
+import { bezierAt, measureNode, postOf, routeSamples, type EdgeRoute, type Point, type Rect } from "./geometry";
 import { isPostView, type DiagramDocument } from "./model";
 import { renderShare, type ShareImage, type ShareOptions } from "./export/share";
 
@@ -27,10 +27,6 @@ export const STORY_LIMITS = { label: 28, sub: 28, chip: 22, lede: 140, titleWord
 const POST_TARGETS = { parts: 12, zones: { min: 0, max: 4 }, connections: 14 };
 const DETAIL_TARGETS = { parts: null, zones: null, connections: null };
 
-const STEPS = 64;
-/** Both ends, and inner samples shifted off the middle so two mirrored lines never cross exactly on a sample point. */
-const polyline = (r: EdgeRoute): Point[] =>
-  [bezierAt(r, 0), ...Array.from({ length: STEPS - 1 }, (_, i) => bezierAt(r, (i + 1.31) / STEPS)), bezierAt(r, 1)];
 const inside = (p: Point, r: Rect) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
 /** Proper crossing of two segments: touching, sharing an end or running along each other is not one. */
 const crosses = (a: Point, b: Point, c: Point, d: Point) => {
@@ -52,7 +48,7 @@ export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, v
   const post = isPostView(whole);
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
   const edges = view.edges.filter((e) => routes.has(e.id));
-  const lines = new Map(edges.map((e) => [e.id, polyline(routes.get(e.id)!)]));
+  const lines = new Map(edges.map((e) => [e.id, routeSamples(routes.get(e.id)!)]));
 
   let crossings = 0;
   for (let i = 0; i < edges.length; i++) for (const b of edges.slice(i + 1)) {

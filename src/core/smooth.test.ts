@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bezierAt, layoutRects, routeEdges, type Rect } from "./geometry";
+import { bezierAt, groupNameText, layoutRects, routeEdges, routeSamples, type Rect } from "./geometry";
+import { drawView, namesClip } from "./export/svg";
+import { PALETTES } from "./theme";
 import { fillDefaults, type DiagramView } from "./model";
 import { edge, node } from "./testkit";
 import { storyFixture } from "../../scripts/story-fixtures";
@@ -59,8 +61,8 @@ describe("connections are smooth curves", () => {
       expect(h0.x * NORMAL[r.side0][0] + h0.y * NORMAL[r.side0][1], `${e.id} start handle`).toBeGreaterThan(0);
       expect(Math.abs(h1.x * NORMAL[r.side1][1] - h1.y * NORMAL[r.side1][0]), `${e.id} end handle`).toBeLessThan(1e-6);
       expect(h1.x * NORMAL[r.side1][0] + h1.y * NORMAL[r.side1][1], `${e.id} end handle`).toBeGreaterThan(0);
-      // It reports exactly the other parts it passes behind.
-      const pts = Array.from({ length: 49 }, (_, i) => bezierAt(r, i / 48));
+      // It reports exactly the other parts it passes behind, as the layout report measures them.
+      const pts = routeSamples(r);
       const under = view.nodes.filter((n) => n.form !== "group" && n.id !== e.from && n.id !== e.to && rects.has(n.id) && pts.some((p) => inside(p, rects.get(n.id)!))).map((n) => n.id);
       expect(r.blocked ?? [], e.id).toEqual(under);
     }
@@ -100,5 +102,94 @@ describe("handles", () => {
         expect(Math.hypot(pts[i + 3].x - pts[i + 2].x, pts[i + 3].y - pts[i + 2].y), `${e.id} drawn`).toBeGreaterThanOrEqual(24);
       }
     }
+  });
+});
+
+describe("a connection never runs through its own parts", () => {
+  const routeOf = (nodes: ReturnType<typeof node>[], from: string, to: string) => {
+    const v = fillDefaults({ version: 2, title: "own", views: [{ id: "v", title: "V", caption: { what: "", how: "", notice: "" }, nodes, edges: [{ ...edge(from, to), id: "e" }] }] } as never).views[0] as DiagramView;
+    const rects = layoutRects(v);
+    return { rects, r: routeEdges(v, rects).get("e")! };
+  };
+  const intoPart = (r: ReturnType<typeof routeOf>["r"], b: Rect) => routeSamples(r).some((p) => inside(p, { x: b.x + 0.5, y: b.y + 0.5, w: b.w - 1, h: b.h - 1 }));
+
+  it("from a part to the group holding it: out of the side nearest the group's border, into that border", () => {
+    const { rects, r } = routeOf([node("g", { form: "group", label: "Zone" }), node("a", { parent: "g", x: 18, y: 64 })], "a", "g");
+    const a = rects.get("a")!, g = rects.get("g")!;
+    expect([r.side0, r.side1]).toEqual(["b", "b"]);
+    expect(r.p0.y).toBe(a.y + a.h);
+    expect(r.p1.y).toBe(g.y + g.h);
+    expect(intoPart(r, a)).toBe(false);
+  });
+
+  it("between two touching parts: a bend out of and into one side, never a curve of no length", () => {
+    const { rects, r } = routeOf([node("b", { x: 400, y: 40 }), node("c", { x: 400, y: 148 })], "b", "c");
+    const b = rects.get("b")!, c = rects.get("c")!;
+    expect(b.y + b.h).toBe(c.y);
+    expect([r.side0, r.side1]).toEqual(["r", "r"]);
+    expect(Math.hypot(r.p1.x - r.p0.x, r.p1.y - r.p0.y)).toBeGreaterThan(50);
+    expect(intoPart(r, b) || intoPart(r, c)).toBe(false);
+  });
+});
+
+describe("a post's spine line hidden behind parts turns out on one side", () => {
+  const view = (extra: ReturnType<typeof node>[], postOf: string | null) => fillDefaults({ version: 2, title: "spine", views: [{ id: "v", title: "V", caption: { what: "", how: "", notice: "" }, postOf, nodes: [
+    node("a", { x: 0, y: 0 }), node("x", { x: 0, y: 200 }), node("b", { x: 0, y: 400 }), ...extra,
+  ], edges: [{ ...edge("a", "b"), id: "ab" }] }] } as never).views[0] as DiagramView;
+  const route = (v: DiagramView, post: boolean) => { const rects = layoutRects(v, { post }); return { rects, r: routeEdges(v, rects, { post }).get("ab")! }; };
+
+  it("as one cubic out of and into the same side, right on a tie, clear of the part by 8 px", () => {
+    const { rects, r } = route(view([], "p"), true), x = rects.get("x")!;
+    expect([r.side0, r.side1]).toEqual(["r", "r"]);
+    expect(r.d).toMatch(/^M-?[\d.]+,-?[\d.]+ C[^MLHVC]*$/);
+    expect(r.blocked).toBeUndefined();
+    const h = Math.hypot(r.c1.x - r.p0.x, r.c1.y - r.p0.y);
+    expect(h).toBeGreaterThanOrEqual(24);
+    expect(h).toBeLessThanOrEqual(160);
+    const grown = { x: x.x - 8, y: x.y - 8, w: x.w + 16, h: x.h + 16 };
+    expect(Array.from({ length: 129 }, (_, i) => bezierAt(r, i / 128)).some((p) => inside(p, grown))).toBe(false);
+  });
+
+  it("stays straight behind the part when no turn-out within 160 px clears its neighbours", () => {
+    const { r } = route(view([node("left", { x: -200, y: 200 }), node("right", { x: 200, y: 200 })], "p"), true);
+    expect([r.side0, r.side1]).toEqual(["b", "t"]);
+    expect(r.blocked).toEqual(["x"]);
+  });
+
+  it("stays straight behind the part outside a post", () => {
+    const { r } = route(view([], null), false);
+    expect([r.side0, r.side1]).toEqual(["b", "t"]);
+    expect(r.blocked).toEqual(["x"]);
+  });
+});
+
+describe("group names are cut out of the lines only", () => {
+  const view = (groups: boolean) => fillDefaults({ version: 2, title: "names", views: [{ id: "v", title: "V", caption: { what: "", how: "", notice: "" }, nodes: [
+    ...(groups ? [node("g1", { form: "group", label: "Runtime" }), node("g2", { form: "group", label: "" })] : []),
+    node("a", { x: 0, y: 0, parent: groups ? "g1" : null }), node("b", { x: 0, y: 400, parent: groups ? "g2" : null }),
+  ], edges: [{ ...edge("a", "b", { label: "calls" }), id: "ab" }] }] } as never).views[0] as DiagramView;
+
+  it("one even-odd hole per group's name text, applied to the line and not to its label", () => {
+    const v = view(true), rects = layoutRects(v);
+    const clip = namesClip(v, rects, "ad-names")!;
+    expect(clip).toContain('<clipPath id="ad-names" clipPathUnits="userSpaceOnUse"><path clip-rule="evenodd"');
+    // The outer square and one hole per group: an unnamed group still draws its icon there.
+    expect(clip.match(/Z/g)!.length).toBe(1 + 2);
+    for (const g of ["g1", "g2"]) {
+      const t = groupNameText(v.nodes.find((n) => n.id === g)!, rects.get(g)!);
+      expect(clip).toContain(`M${t.x},${t.y} `);
+    }
+    const body = drawView(v, PALETTES.light, { prefix: "ad" }).body;
+    const edgeG = body.slice(body.indexOf('<g data-edge-id="ab"'));
+    expect(edgeG.startsWith('<g data-edge-id="ab" data-style="call" data-both="false"><g clip-path="url(#ad-names)">')).toBe(true);
+    // The clip group closes before the label's group opens.
+    const clipped = edgeG.slice(0, edgeG.indexOf('<g data-edge-label="ab"'));
+    expect(clipped.match(/<g/g)!.length - clipped.match(/<\/g>/g)!.length).toBe(1);
+  });
+
+  it("no clip without a group", () => {
+    const v = view(false);
+    expect(namesClip(v, layoutRects(v), "ad-names")).toBeNull();
+    expect(drawView(v, PALETTES.light, { prefix: "ad" }).body).not.toContain('clip-path="url(#ad-names)"');
   });
 });

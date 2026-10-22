@@ -12,7 +12,7 @@ import { diffDocuments, type Changes } from "../core/diff";
 import { CoverageError, keepUnrelatedViews, missingFacts, SIMPLIFY_INSTRUCTION } from "../core/simplify";
 import { answerToDocument, documentToDraft, DRAFT_JSON_SCHEMA, EmptyDiagramError, type RunScope } from "../core/repair";
 import { removeReviseFolder, reviseOverviewPrompt, reviseStoryPrompt, type ReviseImage } from "./engines/revise";
-import { repoFileChecker } from "./files";
+import { repoFile } from "./folders";
 import { nowIso, type Store } from "./store";
 import { EngineError, type Engine } from "./engines/types";
 import { ReadAnswerError } from "../core/read";
@@ -143,8 +143,11 @@ export class RunManager {
     return true;
   }
 
-  cancelAll(): void {
-    for (const r of this.runs.values()) if (r.status === "running") r.abort.abort();
+  /** Cancels every running run; resolves once they have all ended, their engines gone and their images removed. */
+  async cancelAll(): Promise<void> {
+    const running = [...this.runs.values()].filter((r) => r.status === "running");
+    for (const r of running) r.abort.abort();
+    await Promise.all(running.map((r) => r.finished));
   }
 
   /** Resolves when the run has ended (tests and shutdown). */
@@ -309,7 +312,7 @@ export class RunManager {
     });
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the drawing");
-    let doc = answerToDocument(answer, { base: req.base, now: nowIso(), engine: { id: req.engine.id, model: req.model }, fileExists: repoFileChecker(root), scope, view: req.view, facts: req.stored.facts.components.map((c) => c.id), rows: storyRows(req.stored) });
+    let doc = answerToDocument(answer, { base: req.base, now: nowIso(), engine: { id: req.engine.id, model: req.model }, fileExists: repoFile(root), scope, view: req.view, facts: req.stored.facts.components.map((c) => c.id), rows: storyRows(req.stored) });
     if (simplify) doc = keepUnrelatedViews(req.base, doc).doc;
     // The story route on the overview changes how it looks only; each content change is ignored with a warning.
     if (appearance) doc = appearanceOnly(req.base, doc).doc;

@@ -19,10 +19,25 @@ export function checkFolder(raw: unknown): Folder | { error: string } {
   if (!isAbsolute(typed)) return { error: "The path must be absolute" };
   let folder = resolve(typed);
   if (!existsSync(folder)) return { error: `Not found: ${typed}` };
-  try { folder = realpathSync(folder); } catch { return { error: `Not found: ${typed}` }; }
+  // The native form gives the disk's own letter case (and expands Windows short names), so every
+  // spelling of one folder has one key: one scan or draw at a time, one cache entry.
+  try { folder = realpathSync.native(folder); } catch { return { error: `Not found: ${typed}` }; }
   if (!statSync(folder).isDirectory()) return { error: `Not a folder: ${typed}` };
   const root = rootOfFolder(folder);
   return { folder, root, rel: relative(root, folder).split(sep).join("/") };
+}
+
+/**
+ * True when a repository-relative path is a regular file under the root, symlinks resolved
+ * (`RepoFiles.exists`, diagram contract, The evidence check): a folder is not found, with or
+ * without a trailing separator.
+ */
+export function repoFile(root: string): (rel: string) => boolean {
+  const inside = repoFileChecker(root);
+  return (rel) => {
+    if (/[\\/]$/.test(rel) || !inside(rel)) return false;
+    try { return statSync(resolve(root, rel)).isFile(); } catch { return false; }
+  };
 }
 
 /** The nearest ancestor of the folder, the folder included, that holds `.git`; else the folder. */

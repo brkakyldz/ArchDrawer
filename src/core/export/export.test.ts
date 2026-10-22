@@ -1,14 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { layoutRects, overlaps } from "../geometry";
-import { depthWarnings, LIMITS, validateFile, type DiagramDocument, type DiagramEdge, type DiagramNode, type DiagramView } from "../model";
+import { depthWarnings, KINDS, LIMITS, validateFile, type DiagramDocument, type DiagramEdge, type DiagramNode, type DiagramView } from "../model";
 import { normalizeFile } from "../normalize";
 import { PALETTES } from "../theme";
 import { arrangeForFeed, explainInstruction, foldForFeed, importance, rearrangeForFeed } from "./feed";
 import { makeLinkedInView } from "../testkit";
 import { renderMermaid } from "./mermaid";
 import { DEFAULT_SHARE, FORMAT_IDS, FORMATS, readabilityOf, renderShare, shortenedIn, startSwitches, suggestionFor } from "./share";
-import { drawView, outlineOf, outlineSize, shapeOf } from "./svg";
+import { drawView, esc, outlineOf, outlineSize, shapeOf } from "./svg";
+import { textWidth } from "../text";
 
 const load = (path: string) =>
   normalizeFile(validateFile(JSON.parse(readFileSync(path, "utf8"))).file!, { id: "d_test000001", now: "2026-10-13T00:00:00.000Z", source: null });
@@ -202,6 +203,68 @@ describe("share image", () => {
   it("draws its text at the font's own advances (diagram contract, Geometry)", () => {
     const img = renderShare(shop(), "overview", { ...DEFAULT_SHARE, theme: "light" });
     expect(img.svg).toMatch(/^<svg [^>]*\btext-rendering="geometricPrecision"/);
+  });
+
+  it("keeps a long title in the strip under the drawing clear of a full colour key (#138)", () => {
+    const doc = hotel();
+    const v = doc.views[0];
+    v.nodes.forEach((n, i) => { n.kind = KINDS[i % KINDS.length]; });
+    v.caption.title = "Orders go in at the shop and out to the courier, the bank and the warehouse";
+    // A free text in each corner of a 16:9 box round the drawing: no corner of the image is free.
+    const b = drawView(v, PALETTES.light).bounds;
+    const w = Math.max(b.w, (b.h * 16) / 9), h = (w * 9) / 16, x = b.x + b.w / 2 - w / 2, y = b.y + b.h / 2 - h / 2;
+    for (const [i, [tx, ty]] of [[x, y], [x + w - 60, y], [x, y + h - 50], [x + w - 60, y + h - 50]].entries()) v.texts.push({ id: `c${i}`, text: "ok", x: tx, y: ty, size: 40 });
+    for (const format of ["readme", "slide"] as const) {
+      const f = FORMATS[format];
+      const svg = renderShare(doc, v.id, { ...DEFAULT_SHARE, format, theme: "light" }).svg;
+      expect(svg, format).toContain('data-caption="strip"');
+      const title = /<text data-caption="title"[^>]*>(.*?)<\/text>/.exec(svg)![1];
+      const lines = [...title.matchAll(/<tspan[^>]*>([^<]*)<\/tspan>/g)].map((m) => m[1].replace(/&#39;/g, "'").replace(/&amp;/g, "&"));
+      const titleRight = f.m + Math.max(...lines.map((l) => textWidth(l, f.t, 600, -0.02)));
+      const dots = [...svg.matchAll(/<g data-key="[a-z]+"><circle cx="([\d.]+)"[^>]*r="([\d.]+)"/g)];
+      expect(dots, format).toHaveLength(KINDS.length);
+      const keyLeft = Math.min(...dots.map((m) => Number(m[1]) - Number(m[2])));
+      expect(titleRight, format).toBeLessThan(keyLeft);
+    }
+  });
+});
+
+/** XML 1.0 well-formedness, enough for our own markup: legal characters, known entities, balanced tags. */
+function wellFormed(xml: string): string | null {
+  const bad = /[^\t\n\r\x20-퟿-�\u{10000}-\u{10FFFF}]/u.exec(xml);
+  if (bad) return `Invalid character U+${bad[0].codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")} at ${bad.index}`;
+  const amp = /&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/.exec(xml);
+  if (amp) return `Bare & at ${amp.index}`;
+  const stack: string[] = [];
+  for (const m of xml.matchAll(/<(\/?)([A-Za-z][\w:.-]*)((?:\s+[\w:.-]+="[^"<]*")*)\s*(\/?)>|<|>/g)) {
+    if (!m[2]) { if (m[0] === "<") return `Stray < at ${m.index}`; continue; }
+    if (m[1]) { if (stack.pop() !== m[2]) return `Unbalanced </${m[2]}> at ${m.index}`; }
+    else if (!m[4]) stack.push(m[2]);
+  }
+  return stack.length ? `Unclosed <${stack.pop()}>` : null;
+}
+
+describe("exports are well-formed XML (#135)", () => {
+  const C0 = ["\u0001", "\u0008", "\u000B", "\u000C", "\u001F", "\uFFFE"];
+  it("drops characters XML forbids from every user text, in the drawing and the share image", () => {
+    const doc = shop();
+    const v = doc.views[0];
+    const panel = v.nodes.find((n) => n.form === "panel");
+    for (const [i, n] of v.nodes.entries()) { n.label = `Order${C0[i % C0.length]}desk`; n.sub = `sub${C0[(i + 1) % C0.length]}line`; }
+    if (panel) panel.items = panel.items.map((t) => `${t}\u000B`);
+    for (const e of v.edges) e.label = "pays\u000Cout";
+    v.texts.push({ id: "t1", text: "free\u0001text", x: 0, y: -80, size: 24 });
+    v.caption.title = "Title\u0002 with\u0003 controls";
+    expect(wellFormed(drawView(v, PALETTES.light).body)).toBeNull();
+    for (const format of FORMAT_IDS) {
+      const svg = renderShare(doc, v.id, { ...DEFAULT_SHARE, lede: true, format, theme: "dark" }).svg;
+      expect(wellFormed(svg), format).toBeNull();
+      expect(svg).toContain("Orderdesk");
+    }
+  });
+  it("still escapes markup characters", () => {
+    expect(esc(`a<b>&"c'\u000B`)).toBe("a&lt;b&gt;&amp;&quot;c&#39;");
+    expect(wellFormed(`<svg><text>${esc("x\u0000\uD800y")}</text></svg>`)).toBeNull();
   });
 });
 

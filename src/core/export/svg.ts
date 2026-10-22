@@ -11,8 +11,13 @@ import { widthOf } from "../text";
  * (invariant 5). Plain shapes and text: no foreignObject, no script.
  */
 
+/**
+ * Text as XML character data or an attribute value. Characters XML 1.0 forbids (C0 controls other
+ * than tab, LF and CR; lone surrogates; U+FFFE and U+FFFF) are dropped, so every export parses.
+ */
 export const esc = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 const n = (v: number) => String(Math.round(v * 100) / 100);
 /** Baseline of one line of `size` px text centred in a line box of height `lineH` starting at `top`. */
 export const baseline = (top: number, lineH: number, size: number) => top + (lineH - size) / 2 + size * 0.76;

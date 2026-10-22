@@ -493,7 +493,11 @@ Sizes are a function of a channel view's content, measured with the bundled
 Geist metrics. The editor and every export draw from the same numbers.
 
 A text is measured as the sum of its characters' advance widths in the font
-plus its letter-spacing: Geist with a 2 % margin, Geist Mono with none. The
+plus its letter-spacing: Geist with a 2 % margin, Geist Mono with none. A
+character the font does not draw counts as wide as a fallback font draws it,
+rounded up: 1.4 em for an emoji, 1 em for CJK and other wide scripts, 0.85 em
+for a capital letter (Greek, say) and 0.62 em for anything else; a joiner or
+variation selector counts nothing. The
 editor and every export draw text with `text-rendering: geometricPrecision`
 (the export as an attribute of its root `svg`), so each glyph is painted at
 the font's own advance and no text is painted wider than it was measured.

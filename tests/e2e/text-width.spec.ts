@@ -87,3 +87,47 @@ test("every label is painted no wider than its part was measured for, in the edi
   await page.evaluate(() => document.fonts.ready);
   expectWithinMeasure(await paintedTexts(page.locator("#image-under-test > svg")), "image");
 });
+
+// Text outside the metrics table: Cyrillic Geist draws itself, Greek capitals and emoji from a
+// fallback font, and CJK or emoji sub-lines that Geist Mono lacks (#134). Only the ink is checked
+// against the part (and a compact label against its sub-line): fallback fonts differ by platform.
+const scripts = [
+  { id: "gate", label: "ШЛЮЗ ПЛАТЕЖЕЙ", kind: "api", form: "compact", sub: "", place: { row: 0, col: 0 } },
+  { id: "orders", label: "ЦЕНТР ОБРАБОТКИ ЗАКАЗОВ", kind: "service", form: "compact", sub: "", place: { row: 0, col: 1 } },
+  { id: "greek", label: "ΣΥΣΤΗΜΑ ΨΦΔ", kind: "service", form: "compact", sub: "", place: { row: 1, col: 0 } },
+  { id: "emoji", label: "📦📦📦📦📦📦", kind: "worker", form: "compact", sub: "", place: { row: 1, col: 1 } },
+  { id: "cjk", label: "Order database", kind: "data", form: "compact", sub: "订单数据库缓存", place: { row: 2, col: 0 } },
+  { id: "box", label: "Order database", kind: "data", form: "compact", sub: "📦📦📦📦📦", place: { row: 2, col: 1 } },
+  { id: "card", label: "ЖЖЖЖЩЩЩЩШШШШ ЮЮЮЮ", kind: "service", form: "card", sub: "ΨΨΨΨ ΦΦΦΦ", place: { row: 3, col: 0 } },
+].map((n) => ({ icon: null, items: [], description: "A part.", files: [], parent: null, detail: null, ...n }));
+
+function expectInside(texts: Painted[], where: string) {
+  const checked = texts.filter((t) => t.role !== "other" && t.text);
+  expect(new Set(checked.map((t) => `${t.id} ${t.role}`)).size, `${where}: texts found`).toBe(scripts.length + scripts.filter((n) => n.sub).length);
+  for (const t of checked) {
+    expect.soft(t.left, `${where}: ${t.id} ${t.role} "${t.text}" starts inside its part`).toBeGreaterThanOrEqual(t.boxLeft);
+    expect.soft(t.right, `${where}: ${t.id} ${t.role} "${t.text}" ends inside its part`).toBeLessThanOrEqual(t.boxRight);
+  }
+  for (const n of scripts.filter((s) => s.form === "compact" && s.sub)) {
+    const label = checked.find((t) => t.id === n.id && t.role === "label")!, sub = checked.find((t) => t.id === n.id && t.role === "sub")!;
+    expect.soft(label.right, `${where}: ${n.id} label ends before its sub-line`).toBeLessThanOrEqual(sub.left);
+  }
+}
+
+test("text in Cyrillic, Greek, CJK and emoji stays inside its part, in the editor and in the image", async ({ page }) => {
+  const { id } = await open(page, shop((f) => { f.views[0].nodes = scripts; f.views[0].edges = []; }));
+  await fullDetail(page);
+  expectInside(await paintedTexts(page.locator(".canvas svg.world")), "editor");
+
+  const res = await page.request.get(`/api/diagrams/${id}/export.svg?view=overview&format=readme`);
+  expect(res.status()).toBe(200);
+  await page.evaluate((svg) => {
+    const host = document.createElement("div");
+    host.id = "image-under-test";
+    host.style.cssText = "position:fixed;left:-10000px;top:0";
+    host.innerHTML = svg;
+    document.body.append(host);
+  }, await res.text());
+  await page.evaluate(() => document.fonts.ready);
+  expectInside(await paintedTexts(page.locator("#image-under-test > svg")), "image");
+});

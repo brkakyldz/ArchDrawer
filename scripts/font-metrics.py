@@ -1,7 +1,9 @@
 """Generate src/core/metrics.generated.ts from the bundled Geist fonts.
 
 Advance widths in em of every character in CHARS, for Geist at weights 400, 500 and 600
-(instanced from the variable font), and the fixed advance of Geist Mono.
+(instanced from the variable font), and the fixed advance of Geist Mono. CHARS is Latin-1,
+Latin Extended-A, some punctuation, and the Greek and Cyrillic letters Geist draws itself;
+text.ts gives every other character a fallback width.
 
     python scripts/font-metrics.py          # needs fontTools and brotli (pip install fonttools brotli)
 
@@ -15,10 +17,13 @@ from fontTools.varLib.instancer import instantiateVariableFont
 ROOT = Path(__file__).resolve().parent.parent
 FONTS = ROOT / "src" / "web" / "fonts"
 OUT = ROOT / "src" / "core" / "metrics.generated.ts"
+_GEIST = TTFont(FONTS / "Geist-Variable.woff2").getBestCmap()
 CHARS = (
     "".join(chr(c) for c in range(0x20, 0x7F))
     + "".join(chr(c) for c in range(0xA0, 0x180))
     + "–—‘’“”…•→←↑↓·×"
+    # Greek and Cyrillic: only what Geist has. A Greek letter it lacks comes from a fallback font.
+    + "".join(chr(c) for c in range(0x370, 0x500) if c in _GEIST)
 )
 
 

@@ -68,6 +68,24 @@ describe("a story as a channel's view (intentToChannel)", () => {
     expect(r.doc.channels.overview).toEqual(d.channels.overview);
   });
 
+  it("a redraw that echoes the view's group ids keeps them; a new zone id gets zone- once", () => {
+    const zoned = (zone: string) => intent({ zones: [{ id: zone, label: "Runtime" }], parts: intent().parts.map((p) => (p.zone ? { ...p, zone } : p)) });
+    const groupIds = (doc: Document3) => doc.channels.readme.views[0].nodes.filter((n) => n.form === "group" && !n.facts.length).map((n) => n.id);
+    const first = intentToChannel(agent(), zoned("run"), { portrait: false, channel: "readme" });
+    expect(groupIds(first.doc)).toEqual(["zone-run"]);
+    const again = intentToChannel(first.doc, zoned("zone-run"), { portrait: false, channel: "readme" });
+    expect(groupIds(again.doc)).toEqual(["zone-run"]);
+    expect(again.warnings).toEqual(first.warnings);
+    // A group the user named without the prefix keeps its id when the story names it.
+    const renamed = structuredClone(first.doc);
+    for (const n of renamed.channels.readme.views[0].nodes) {
+      if (n.id === "zone-run") n.id = "runtime";
+      if (n.parent === "zone-run") n.parent = "runtime";
+    }
+    expect(groupIds(intentToChannel(renamed, zoned("runtime"), { portrait: false, channel: "readme" }).doc)).toEqual(["runtime"]);
+    expect(groupIds(intentToChannel(renamed, zoned("core"), { portrait: false, channel: "readme" }).doc)).toEqual(["zone-core"]);
+  });
+
   it("drops a fact an earlier part shows before checking what a part holds: one warning each, never a failed run", () => {
     // `second` names the agent again: it no longer shows it, so it holds nothing within it and its limit goes.
     const i = intent({ zones: [], edges: [], parts: [

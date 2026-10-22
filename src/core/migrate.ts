@@ -24,12 +24,17 @@ const clip = (s: string, max: number) => (s.length <= max ? s : s.slice(0, max -
 export function migrateV1(raw: unknown, now: string): { doc: DiagramDocument; warnings: string[] } {
   const d = raw as V1Doc;
   const warnings: string[] = [];
-  const title = clip((d.title ?? "").trim() || "Architecture", LIMITS.title);
+  /** Over-long text is shortened, one warning each (diagram contract, Reading `archdraw/diagram@1`). */
+  const fit = (s: string, max: number, what: string) => {
+    if (s.length > max) warnings.push(`${what} shortened to ${max} characters`);
+    return clip(s, max);
+  };
+  const title = fit((d.title ?? "").trim() || "Architecture", LIMITS.title, "The title");
   const nodes: DiagramNode[] = [];
 
   for (const g of d.groups ?? []) {
     nodes.push({
-      id: g.id, label: clip(g.label, LIMITS.label), kind: "service", form: "group", icon: "layers", sub: "", items: [],
+      id: g.id, label: fit(g.label, LIMITS.label, `Zone "${g.id}": label`), kind: "service", form: "group", icon: "layers", sub: "", items: [],
       description: "A group of components.", files: [], parent: g.parent ?? null, detail: null, place: null, x: g.x, y: g.y,
     });
     warnings.push(`Zone "${g.id}" became a group component`);
@@ -37,12 +42,11 @@ export function migrateV1(raw: unknown, now: string): { doc: DiagramDocument; wa
   for (const n of d.nodes ?? []) {
     let kind = n.kind as Kind;
     if (n.kind === "ui") { kind = "client"; warnings.push(`Component "${n.id}": kind ui became client`); }
-    let label = n.label;
-    if (label.length > LIMITS.label) { label = clip(label, LIMITS.label); warnings.push(`Component "${n.id}": label shortened to ${LIMITS.label} characters`); }
+    const label = fit(n.label, LIMITS.label, `Component "${n.id}": label`);
     let description = (n.description ?? "").trim();
     if (!description) { description = "No description yet."; warnings.push(`Component "${n.id}" had no description`); }
     nodes.push({
-      id: n.id, label, kind, form: "card", icon: null, sub: clip(n.tech ?? "", LIMITS.sub), items: [], description,
+      id: n.id, label, kind, form: "card", icon: null, sub: fit(n.tech ?? "", LIMITS.sub, `Component "${n.id}": tech`), items: [], description,
       files: [...(n.files ?? [])], parent: n.group ?? null, detail: null, place: null, x: n.x, y: n.y,
     });
   }
@@ -79,10 +83,10 @@ export function migrateV1(raw: unknown, now: string): { doc: DiagramDocument; wa
       id: "overview",
       title: "Overview",
       postOf: null,
-      caption: { title, lede: clip((d.subtitle ?? "").trim(), LIMITS.lede) },
+      caption: { title, lede: fit((d.subtitle ?? "").trim(), LIMITS.lede, "The subtitle") },
       nodes,
       edges,
-      texts: (d.notes ?? []).filter((t) => t.text.trim()).map((t) => ({ id: t.id, text: clip(t.text, LIMITS.text), x: t.x, y: t.y, size: TEXT_SIZE.note })),
+      texts: (d.notes ?? []).filter((t) => t.text.trim()).map((t) => ({ id: t.id, text: fit(t.text, LIMITS.text, `Note "${t.id}"`), x: t.x, y: t.y, size: TEXT_SIZE.note })),
     }],
     requests: [],
     warnings: [...(d.warnings ?? []), ...warnings],

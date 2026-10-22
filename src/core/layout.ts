@@ -194,16 +194,27 @@ function laneHints(members: NodeInput[], lanes: Map<string, Lane>, portrait: boo
   const turn = Math.max(2, spine.length - 4); // the column under which the second band starts
   spine.forEach((n, i) => put(n.id, portrait && i >= 3 ? 3 : 0, portrait && i >= 3 ? turn - (i - 3) : i));
   const columns = Math.max(3, portrait ? 3 : spine.length);
-  for (const n of members) {
+  // Zone members take their cells before outside parts: an outside part placed first on the same
+  // side of a zone's spine member would sit where the zone has to grow.
+  for (const n of [...members.filter((m) => zoneOf.has(m.id)), ...members.filter((m) => !zoneOf.has(m.id))]) {
     const lane = lanes.get(n.id);
-    if (!lane || !("anchor" in lane)) continue;
+    if (!lane || !("anchor" in lane) || cells.has(n.id)) continue;
     const anchor = cells.get(lane.anchor);
     if (!anchor) continue;
     const dir = lane.side === "above" ? -1 : 1;
     const cols = Array.from({ length: columns }, (_, c) => c).sort((a, b) => Math.abs(a - anchor.c) - Math.abs(b - anchor.c) || a - b);
     let r = anchor.r + dir;
     for (let guard = 0; guard < 64 && !cols.some((c) => fits(n.id, r, c)); guard++) r += dir;
-    put(n.id, r, cols.find((c) => fits(n.id, r, c)) ?? cols.find((c) => !used.has(key(r, c)))!);
+    const c = cols.find((c) => fits(n.id, r, c));
+    if (c !== undefined) { put(n.id, r, c); continue; }
+    // No cell on its side keeps the zone clear: the nearest one anywhere that does.
+    let best: (Cell & { d: number }) | null = null;
+    for (let rr = anchor.r - 8; rr <= anchor.r + 8; rr++) for (let cc = -4; cc < columns + 4; cc++) {
+      const d = Math.abs(rr - anchor.r) + Math.abs(cc - anchor.c) + (Math.sign(rr - anchor.r) === dir ? 0 : 0.5);
+      if ((!best || d < best.d) && fits(n.id, rr, cc)) best = { r: rr, c: cc, d };
+    }
+    if (best) put(n.id, best.r, best.c);
+    else put(n.id, r, cols.find((c) => !used.has(key(r, c)))!);
   }
   return [...members].sort((a, b) => Number(cells.has(b.id)) - Number(cells.has(a.id))).map((n) => { const cell = cells.get(n.id); return cell ? { ...n, place: { row: cell.r, col: cell.c } } : n; });
 }
@@ -471,7 +482,13 @@ export function layoutView<V extends { nodes: NodeInput[]; edges: EdgeInput[]; i
         const rects = layoutRects({ nodes }, { post: o.post });
         const others = [...rects].filter(([id]) => id !== n.id && !up.has(id) && !(byId.get(id)?.form === "group" && descends(byId, id, n.id))).map(([, r]) => r);
         const me = rects.get(n.id)!;
-        const p = freeSpot(others, { x: me.x + me.w / 2, y: me.y + me.h / 2 }, me.w, me.h);
+        // Its group grows around it, so the spot also keeps the grown box off the parts outside.
+        // When the grid cell lies away from the group, a spot by the group itself may do that; where
+        // none does (a group hemmed in), the one by the group grows it least.
+        const clear = groupsClear(nodes, rects, n.id, o.post);
+        let p = freeSpot(others, { x: me.x + me.w / 2, y: me.y + me.h / 2 }, me.w, me.h, 24, clear);
+        const home = n.parent ? rects.get(n.parent) : undefined;
+        if (home && !clear({ ...p, w: me.w, h: me.h })) p = freeSpot(others, { x: home.x + home.w / 2, y: home.y + home.h / 2 }, me.w, me.h, 24, clear);
         n.x = p.x; n.y = p.y;
       }
     }
@@ -538,24 +555,61 @@ function descends(byId: Map<string, DiagramNode>, ancestor: string, id: string):
 }
 
 /**
- * Top-left for a w×h box nearest to the wished centre `at` where it overlaps none of `taken`
- * (with a 24 px gap), searched ring by ring on an 8 px grid.
+ * Whether `id`, put at `box`, leaves every group holding it clear of the parts outside that group:
+ * each group's box grows around the member as `layoutRects` grows it (padding and header), and
+ * the grown box keeps `gap` from every part that is neither inside the group nor holds it.
  */
-export function freeSpot(taken: Rect[], at: { x: number; y: number }, w: number, h: number, gap = 24): { x: number; y: number } {
+export function groupsClear(nodes: readonly DiagramNode[], rects: Map<string, Rect>, id: string, post?: boolean, gap = 24): (box: Rect) => boolean {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const chain: DiagramNode[] = [];
+  for (let p = byId.get(id)?.parent; p && byId.has(p) && !chain.some((g) => g.id === p); p = byId.get(p)!.parent) chain.push(byId.get(p)!);
+  if (!chain.length) return () => true;
+  const levels = chain.map((g, i) => {
+    const inner = i === 0 ? id : chain[i - 1].id;
+    const siblings = nodes.filter((n) => n.parent === g.id && n.id !== inner).map((n) => rects.get(n.id)!).filter(Boolean);
+    const outside = nodes.filter((n) => n.id !== g.id && !descends(byId, g.id, n.id) && !descends(byId, n.id, g.id)).map((n) => rects.get(n.id)!).filter(Boolean);
+    return { g, siblings, outside, headW: groupHeaderWidth(g, post) };
+  });
+  return (box) => {
+    let inner = box;
+    for (const { siblings, outside, headW } of levels) {
+      const cs = [inner, ...siblings];
+      const minX = Math.min(...cs.map((c) => c.x)), minY = Math.min(...cs.map((c) => c.y));
+      const maxX = Math.max(...cs.map((c) => c.x + c.w)), maxY = Math.max(...cs.map((c) => c.y + c.h));
+      inner = { x: minX - GROUP.padX, y: minY - GROUP.head, w: Math.max(maxX - minX + GROUP.padX * 2, headW), h: maxY - minY + GROUP.head + GROUP.padBottom };
+      if (outside.some((r) => overlaps(inner, r, gap - 0.01))) return false;
+    }
+    return true;
+  };
+}
+
+/**
+ * Top-left for a w×h box nearest to the wished centre `at` where it overlaps none of `taken`
+ * (with a 24 px gap), searched ring by ring on an 8 px grid. `clear` is a further test of a spot
+ * (`groupsClear`): the nearest free spot that passes it wins when it lies within 40 rings (320 px)
+ * of the nearest free one; where a group is hemmed in and none does, that nearest free one.
+ */
+export function freeSpot(taken: Rect[], at: { x: number; y: number }, w: number, h: number, gap = 24, clear?: (box: Rect) => boolean): { x: number; y: number } {
   const x0 = Math.round((at.x - w / 2) / 8) * 8, y0 = Math.round((at.y - h / 2) / 8) * 8;
-  const fits = (x: number, y: number) => taken.every((r) => !overlaps({ x, y, w, h }, r, gap - 0.01));
+  const free = (x: number, y: number) => taken.every((r) => !overlaps({ x, y, w, h }, r, gap - 0.01));
   const step = 8;
+  type Spot = { x: number; y: number; d: number } | null;
+  let loose: { x: number; y: number; ring: number } | null = null;
   for (let ring = 0; ring <= 200; ring++) {
-    let best: { x: number; y: number; d: number } | null = null;
+    if (loose && (!clear || ring > loose.ring + 40)) return { x: loose.x, y: loose.y };
+    let best: Spot = null, near: Spot = null;
     for (let i = -ring; i <= ring; i++) {
       for (const [dx, dy] of [[i, -ring], [i, ring], [-ring, i], [ring, i]]) {
         const x = x0 + dx * step, y = y0 + dy * step, d = dx * dx + dy * dy;
-        if ((!best || d < best.d) && fits(x, y)) best = { x, y, d };
+        if ((best && d >= best.d) || !free(x, y)) continue;
+        if (!loose && (!near || d < near.d)) near = { x, y, d };
+        if (!clear || clear({ x, y, w, h })) best = { x, y, d };
       }
     }
-    if (best) return { x: best.x, y: best.y };
+    if (best && clear) return { x: best.x, y: best.y };
+    if (!loose && near) loose = { x: near.x, y: near.y, ring };
   }
-  return { x: x0, y: Math.max(0, ...taken.map((r) => r.y + r.h)) + gap };
+  return loose ? { x: loose.x, y: loose.y } : { x: x0, y: Math.max(0, ...taken.map((r) => r.y + r.h)) + gap };
 }
 
 /** Lay out every view of a document. */

@@ -6,11 +6,23 @@ for (let i = 0; i < METRIC_CHARS.length; i++) index.set(METRIC_CHARS[i], i);
 export type FontWeight = 400 | 500 | 600;
 const TABLE: Record<FontWeight, readonly number[]> = { 400: GEIST_400, 500: GEIST_500, 600: GEIST_600 };
 
-/** Advance width in em of one character of Geist; unknown glyphs count as wide. */
+/**
+ * Advance width in em of a character neither Geist nor Geist Mono draws, as the fallback font
+ * draws it, rounded up: an emoji about 1.4 em, CJK and other wide scripts 1 em, a capital letter
+ * (Greek, say) 0.85 em, anything else 0.62 em. Joiners and variation selectors take no room.
+ */
+function fallback(ch: string): number {
+  const cp = ch.codePointAt(0)!;
+  if (cp === 0x200d || (cp >= 0xfe00 && cp <= 0xfe0f)) return 0;
+  if (/[\p{Extended_Pictographic}\p{Regional_Indicator}]/u.test(ch)) return 1.4;
+  if (cp > 0x2e80) return 1.0;
+  return ch !== ch.toLowerCase() ? 0.85 : 0.62;
+}
+
+/** Advance width in em of one character of Geist. */
 function advance(ch: string, weight: FontWeight): number {
   const i = index.get(ch);
-  if (i === undefined) return ch.codePointAt(0)! > 0x2e80 ? 1.0 : 0.62;
-  return TABLE[weight][i];
+  return i === undefined ? fallback(ch) : TABLE[weight][i];
 }
 
 /**
@@ -25,9 +37,14 @@ export function textWidth(text: string, size: number, weight: FontWeight = 400, 
   return (em + tracking * n) * size * 1.02;
 }
 
-/** Rendered width in px of `text` in Geist Mono at `size` px. */
+/** Rendered width in px of `text` in Geist Mono at `size` px; what Geist Mono lacks counts at its fallback width. */
 export function monoWidth(text: string, size: number): number {
-  return [...text].length * MONO_ADVANCE * size;
+  let em = 0;
+  for (const ch of text) {
+    const wide = index.has(ch) ? MONO_ADVANCE : fallback(ch);
+    em += wide && Math.max(MONO_ADVANCE, wide);
+  }
+  return em * size;
 }
 
 export interface TextStyle { size: number; weight?: FontWeight; tracking?: number; mono?: boolean }

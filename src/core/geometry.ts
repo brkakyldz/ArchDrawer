@@ -134,10 +134,15 @@ export function groupHeaderWidth(n: Pick<DiagramNode, "label" | "sub" | "detail"
 export const groupNameBox = (n: Pick<DiagramNode, "label" | "sub" | "detail">, r: Rect, post = false): Rect =>
   ({ x: r.x, y: r.y, w: Math.min(r.w, groupHeaderWidth(n, post) - GROUP.padHead), h: GROUP.head });
 
-/** Where a group's name text lies, 3 px round: connections pass behind it (they are not drawn there). */
+/**
+ * Where a group's name text lies, 3 px round: connections pass behind it (they are not drawn there).
+ * It runs 5 % past the name box, since a platform may paint the text a few percent wider than its
+ * metrics (Linux paints Geist about 3 % wider), and stays within the group.
+ */
 export const groupNameText = (n: Pick<DiagramNode, "label" | "sub" | "detail">, r: Rect, post = false): Rect => {
   const b = groupNameBox(n, r, post), x = r.x + GROUP.padHead - 3;
-  return { x, y: r.y + GROUP.head / 2 - 14, w: Math.max(0, b.x + b.w - x), h: 28 };
+  const w = Math.max(0, b.x + b.w - x);
+  return { x, y: r.y + GROUP.head / 2 - 14, w: Math.min(Math.ceil(w * 1.05), r.x + r.w - x), h: 28 };
 };
 
 /**

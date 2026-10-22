@@ -542,8 +542,9 @@ above come in right of the group's name when the part leaves room, at least
 A connection is never bent around anything (ADR 0011). Connections are drawn
 under parts, so a curve that meets a part other than its ends passes behind
 it, and the layout report lists it in `edgesOverParts`. A group's name text
-(from 3 px left of its icon to its name box's right edge, 28 px tall round
-the header's middle) is cut out of the connections' lines, in the editor and
+(from 3 px left of its icon to 5 % past its name box's right edge, within
+the group, 28 px tall round the header's middle; the 5 % covers a platform
+that paints the text a few percent wider than its metrics) is cut out of the connections' lines, in the editor and
 every export, so a curve passes behind a group's name too; labels, badges
 and the editor's hit area are not cut. One exception keeps a post's spine visible: in a post, a
 line straight down or up whose plain curve passes behind parts between its

@@ -1,11 +1,12 @@
 # Held-out coverage
 
-The suite has 97 scenarios. A requirement id appears in a scenario title only
+The suite has 99 scenarios. A requirement id appears in a scenario title only
 when the scenario observes it; an id the spec marks *To build* appears only
 once a step has built something to observe (the 0.3 round: START-4, SCAN-1 to
 SCAN-4, READ-1 to READ-3, STORY-2 to STORY-5 and AI-5, with STORY-1 and
 STORY-6 changed; the 0.4 round: LOOK-2, AI-3, AI-4 and LAYOUT-4, with LOOK-3 and
-AI-2 changed; the story-limits round: STORY-7 and START-6). Ids are the requirement ids of the product spec.
+AI-2 changed; the story-limits round: STORY-7 and START-6; the ADR 0011 round:
+LAYOUT-2 changed). Ids are the requirement ids of the product spec.
 
 Since 0.2 the suite lands in batches, each with the step that makes it pass
 (`batches/MANIFEST.md` lists the files). The *Lands in* column says which. The
@@ -57,6 +58,12 @@ The story-limits round (ADRs 0009 and 0010) is one batch:
 |---|---|---|
 | story-limits | the repair turn of a story answer (STORY-7) and a failed draw that keeps its read (START-6) | H145–H151 (new); `COVERAGE.md`, `verify.json`, `README.md`. No helper and no earlier scenario changed |
 
+The ADR 0011 round (connections pass behind parts) is one batch:
+
+| Batch | Lands with | Scenarios |
+|---|---|---|
+| edges-behind | one cubic per connection, behind parts, a group's name cut out, a post's hidden spine line turned out (LAYOUT-2) | H84, H86 (rewritten), H152, H153 (new); `helpers-svg-parity.ts` (helpers added, none changed), `COVERAGE.md`, `verify.json`, `README.md`. H85 and every other scenario unchanged |
+
 H100 (Design the post) is unchanged: its result now arrives as a preview, and nothing it does afterwards (the share dialog, the tabs)
 is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no engine, which only the ai lane's finished product has.
 
@@ -93,9 +100,9 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 | H44 | A (migrated) | accept lane hints in a session file, place what has no position by its place hint and leave positioned parts where they are |
 | H63 | — | share a full ordinary view for three destinations with a wrapped caption and explicit clipping warning |
 | H64 | A (migrated) | distinguish readable names from readable detail and report the level the measured sizes give |
-| H84 | — | open a session file without positions: no overlap, no connection through a part or a group name |
+| H84 | edges-behind (rewritten) | open a session file without positions: no overlap, every connection one `M … C …` cubic in the editor and the image, every label within 10 px of its curve, and the share dialog's connections-over-parts and crossings equal an independent measurement of the exported image (no part is required to be clear) |
 | H85 | — | a sub-line the image shortens is drawn, listed and counted; after the user shortens it nothing is cut |
-| H86 | — | ask for no change on a drawing with fixed positions: nothing moves and the layout report counts what the image draws |
+| H86 | edges-behind (rewritten) | ask for no change on a drawing with fixed positions: nothing moves, every connection is one cubic, a line through a part (`lr` through `wall`) is drawn under it and listed by the run's report and the share dialog exactly as an independent measurement of the image lists it, no group or end listed |
 | H87 | — | the editor and the exported image agree on every part size and connection path, also after the user moves a part |
 | H88 | A | an `@2` file with a detail view and a LinkedIn post opens through the command and the editor and is read back as `@3`: facts, overview views, the LinkedIn view, the conversion warning, every id kept |
 | H89 | A | `archdrawer migrate` takes an `@1` and an `@2` file to `@3`, leaves an `@3` file alone, refuses what is not a drawing, and an imported `@2` document is stored as `@3` |
@@ -161,6 +168,8 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 | H149 | story-limits | a draw failing at the channel stage writes nothing; `Try again` from the home screen makes no new scan or read (`Using the facts already read`, no engine lines in the read stage), reuses the overview, writes one drawing, and its warnings equal those of a draw of the same project that never failed |
 | H150 | story-limits | a draw failing at the overview stage, then a draw with another channel: the read is reused, the overview is drawn by a call (engine lines, nothing reused), only that channel is drawn; after that success the next draw reads again |
 | H151 | story-limits | a draw failing at the channel stage, a file the read cites deleted from the folder with no new scan, the same draw again: `Using the facts already read` then `Checking the facts`, no engine line in the read stage, the overview drawn by a call (no `Using the overview already drawn`), a written drawing whose facts no longer cite the deleted file (nor hold the facts only it backed), with a warning naming it; another focus with the same scan reads again |
+| H152 | edges-behind | a connection level with a group's name, in the readme and the square image: the name is cut out of the line (no pixel differs from the same drawing without the line), the line is drawn left of the group, in it beyond the name and right of it, as one cubic with its label and badge, the report lists no part, and nothing moves |
+| H153 | edges-behind | three stored parts in a column and a line from the first to the third: the overview draws it straight down behind the middle part, under it, and lists that part; the LinkedIn post turns it out on one side as one cubic clear of the part by 8 px with 24 px handles and lists nothing, its other two lines stay straight on facing sides, its label stays within 10 px, nothing moves |
 
 ## Requirement map
 
@@ -180,15 +189,15 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 | READ-2 | H106, H107, H117, H118, H151 | Every fact in a draw carries evidence, `files` are the evidence files, evidence that points nowhere is dropped with the contracted warnings and a fact left with none goes, with what depended on it; a kept read answer is checked again against the folder as it is (H151). In a file only paths are checked. |
 | READ-3 | H117 | The agent's loop is five mechanisms within the agent, the check around execution a gate, wherever the fixture answers it. Whether a real engine asks for the loop only when the card says `agent` is not observable. |
 | STORY-1 | H97, H102, H103, H116, H117, H119, H120, H121, H122, H124, H125, H126, H128 | A channel is chosen after the focus and drawn from the facts without reading again, on its own tab, as one undoable step; switching channel starts no run. |
-| STORY-2 | H114, H116 | LinkedIn: no held items or limits on the post, no tuning-number warning outside it, count targets only on it. Limit: "about 8–12 parts", a title of nine words and readability on a phone are the model's work and not observable. |
+| STORY-2 | H114, H116, H153 | LinkedIn: no held items or limits on the post, no tuning-number warning outside it, count targets only on it; the post style's own line rule for a hidden straight line (H153). Limit: "about 8–12 parts", a title of nine words and readability on a phone are the model's work and not observable. |
 | STORY-3 | H106, H109, H124, H125 | The README is a drawing of its own that holds held mechanisms and limits as rows, counted in the panel's height. Limit: "one-line descriptions" and "held items only on the few parts that matter" are the model's choice. |
 | STORY-4 | H106, H107, H126, H127, H128 | The presentation is one drawing and ordered steps with a text and a note each; steps are lit and dimmed in the editor, edited, reordered, undone, and follow a deleted part. Full-screen presenting is PRES-1, not built. |
 | STORY-5 | H16, H106, H107, H109, H114, H124 | A number that explains a guarantee (`Stops after 12 turns`) is a limit fact drawn as a row outside LinkedIn and is no warning there. |
 | STORY-6 | H114, H115, H116, H119, H129, H130 | The overview has no caps, no count targets, no size warning and no suggestion; Simplify stays. Limit: that the model decides what to draw and its rough place has no contract surface the fixture can exercise. |
 | STORY-7 | H145, H146, H147, H148 | A story answer with a problem gets one repair turn: `Fixing <n> problem(s) in the answer` between the two check lines (post and story, H145, H146, H147) or in the overview stage of a draw (H148); the engine's second answer is saved as it is, with no `Shortened` warning (H145, H148); a still over-long description is cut to 240 characters ending in `…` with exactly one `Shortened the description to 240 characters` warning and the run does not fail (H146); a violated relation is repaired by the engine's second answer or fails the run `The engine's LinkedIn post cannot be drawn: …` naming the connection, writing nothing (H147). Limit: prompt wording and the schema's `maxLength` are not observable with the fixture; the other `Shortened <what>` forms, the 60-part relation, the presentation's empty-step and 20-step repairs, a revise's repair turn, a channel call's repair turn in a draw and the overview's failure message (no marker reaches them) are not exercised. |
 | LAYOUT-1 | H15, H17, H24, H28, H32, H34, H44, H63, H84, H86, H87, H109 | Parts are placed once and keep their place, sizes follow the contracted geometry (a panel's rows included, H109), and editor, preview, download and `archdrawer svg` draw the same numbers. Limit: sizes and path equality are measured at 0.3 drawing px. |
-| LAYOUT-2 | H84, H86 | No connection enters a part it does not join or a group's name (H84); a connection that cannot avoid a stored part is listed, not hidden (H86). Limit: one laid-out system and one stored-position fixture. |
-| LAYOUT-3 | H28, H38, H39, H63, H64, H85, H86, H114, H115 | The report counts parts, zones, connections, cut text, crossings and connections over parts; its numbers equal an independent measurement of the exported image (H86); count targets only on LinkedIn (H114, H115). |
+| LAYOUT-2 | H84, H86, H152, H153 | ADR 0011. Every connection is one `M … C …` cubic, never an arc, a chain or a straight command, in the editor and the image (H84, H86, H152, H153); a connection that meets a part it does not join passes behind it, is drawn under it, and is listed in `edgesOverParts`, the run's report and the share dialog agreeing with an independent measurement of the exported image, and nothing a line passes behind is missing or invented (H84, H86, H153); a group's name is cut out of the line in two exported images and the line is drawn everywhere else (H152); in a post a straight line hidden behind the part between its ends turns out on one side as one cubic, clear of it by 8 px with 24 px handles, while the overview draws the same line behind the part (H153); labels lie within 10 px of their curve or are left out (H84, H153); stored positions never move (H84, H86, H152, H153). Limit: that code places parts without a stored position so lines clear them where it can (and the widening of gaps, at most three times) is not asserted, since no fixture makes the outcome certain; the cut-out of a group's name is measured by pixels in two exports, not in the editor; which side a post's line turns out on (right on a tie) and the 0.42 handle length are not asserted; the editor's hit area not being cut is not observable. |
+| LAYOUT-3 | H28, H38, H39, H63, H64, H84, H85, H86, H114, H115, H152, H153 | The report counts parts, zones, connections, cut text, crossings and connections over parts; its numbers equal an independent measurement of the exported image (H84, H86, H152, H153); count targets only on LinkedIn (H114, H115). |
 | LAYOUT-4 | H97, H143, H144 | The `revise` run: its request checks in their contracted order (format, `readCode`, image missing / not a PNG / too large, an image on another kind, instruction, scope, drawing, view, channel, engine, no drawing), the fixture's answers (the overview's first part 40 px right and nothing else; the channel's story elsewhere; a lone group changes nothing), `route` null, progress starting `Looking at the drawing`, a failed run writing nothing (H143); `ai-look-again` posting the view's PNG in the channel's default format at 1x, ending in a preview, off during a run and on an empty channel (H144), off with no engine (H137). Limit: that the image shows what the reader sees, that the revise folder under the data directory is made and removed, and what a real engine does with the picture are not observable with the fixture engine. |
 | LOOK-1 | H20, H36, H41, H131 | Light and dark themes switch, persist and keep the library legible at the contracted contrast; the shapes are the same in both (H131). No judgement of style. |
 | LOOK-2 | H131, H132, H133 | A card or compact part of kind `llm`, `actor`, `data`, `external` or `gate` names its outline in `data-shape` (`agent`, `person`, `store`, `external`, `check`), every other kind, a panel and a group as `card` / `card` / `group`; the same in the editor and in `export.svg`; no size or place changes with it, also in the post style; the picker's card and compact buttons show the chosen kind's shape; changing a kind in the callout changes the shape only. Limit: what the outlines look like (a second outline, a head badge, a cylinder, dashes, cut corners) is not observable from `data-shape`; the picker's panel and group buttons and the callout's form menu thumbnails are not asserted. |
@@ -210,7 +219,7 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 | NAV-3 | H35 | Slash and the search button open search; `data-match` and `data-dim` while typing, the count texts, Enter / Shift+Enter with wrap, no part resized and no view move while typing, a match in another view, Escape ending the highlight, and the file untouched. Limit: the order of matches is not pinned; Ctrl/Cmd+K and the 50-result cap are not exercised. |
 | NAV-4 | — | To build. |
 | PRES-1 – PRES-3 | — | To build (0.5). |
-| SHARE-1 | H15, H23, H28, H38, H63, H85, H87, H91, H100, H109 | PNG and SVG at twice the size, copy, light and dark, all four sizes, no product mark, real text, the same image from preview, download, HTTP and the command, for a named channel, now also README and presentation images (H109). |
+| SHARE-1 | H15, H23, H28, H38, H63, H85, H87, H91, H100, H109, H152, H153 | PNG and SVG at twice the size, copy, light and dark, all four sizes, no product mark, real text, the same image from preview, download, HTTP and the command, for a named channel, now also README and presentation images (H109). |
 | SHARE-2 | H39, H100, H124, H125, H126 | The modal keeps focus, closes back to its button, and carries preview, report and meter, and downloads; none of the old simplify and share-one-part controls. On the LinkedIn channel the dialog defaults to the feed, on the README channel to the README size, on the presentation to the slide, each with that channel's own view. |
 | SHARE-3 | H39, H64 | The `readability` line is the contracted one-sentence wording for its level and destination, with no digit. |
 | SAFE-1 | H25, H29 | Text typed into an instruction is data, and model names that look like options or shell words are refused. Folder and scan checks refuse a malformed model the same way (H113, H120). |
@@ -219,7 +228,7 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 | SAFE-4 | H29 | A whole browser journey makes no request outside the local server. |
 | SAFE-5 | — | See *Not covered*. |
 | QUAL-1 | — | To build. |
-| QUAL-2 | H64, H84, H85 | Readability levels follow the contracted thresholds (H64); no connection over a part (H84); no cut text and an empty crossing and over-part count on a fixed drawing (H85). Limit: nothing here checks a pipeline output of an agent, API or full-stack project. |
+| QUAL-2 | H64, H84, H85, H152, H153 | Readability levels follow the contracted thresholds (H64); the report equals an independent measurement of the image, and a line behind a part is listed, not hidden (H84, H152, H153); no cut text and an empty crossing and over-part count on a fixed drawing of neighbouring parts (H85); a post's hidden line is turned out so the post lists none (H153). Since ADR 0011 "no connections over parts" is the report's promise where the layout can clear them, not a property of every drawing (H86 holds a line that cannot). Limit: nothing here checks a pipeline output of an agent, API or full-stack project. |
 | QUAL-3 | — | To build. |
 
 ## Not covered

@@ -15,7 +15,8 @@ function advance(ch: string, weight: FontWeight): number {
 
 /**
  * Rendered width in px of `text` in Geist at `size` px with `tracking` em of letter spacing.
- * Includes a 2% safety margin.
+ * Includes a 2% safety margin. Holds only where text is drawn with geometricPrecision, which
+ * keeps Chromium on Linux from rounding each advance to a whole pixel (diagram contract, Geometry).
  */
 export function textWidth(text: string, size: number, weight: FontWeight = 400, tracking = 0): number {
   let em = 0;

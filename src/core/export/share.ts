@@ -316,7 +316,7 @@ export function renderShare(doc: Pick<DiagramDocument, "views">, viewId: string,
       `@font-face{font-family:"Geist Mono";font-weight:100 900;src:url(data:font/woff2;base64,${o.fonts.mono}) format("woff2")}</style>`
     : "";
   const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${f.w}" height="${f.h}" viewBox="0 0 ${f.w} ${f.h}" data-theme="${o.theme}" data-format="${f.id}" font-family="${esc(FONT_SANS)}">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${f.w}" height="${f.h}" viewBox="0 0 ${f.w} ${f.h}" data-theme="${o.theme}" data-format="${f.id}" font-family="${esc(FONT_SANS)}" text-rendering="geometricPrecision">` +
     `<defs>${fonts}${drawing.defs}</defs>` +
     `<rect width="${f.w}" height="${f.h}" fill="${P.canvas}"/>` +
     `<g transform="translate(${r1(place.tx)} ${r1(place.ty)}) scale(${Math.round(place.k * 10000) / 10000})">${drawing.body}</g>` +

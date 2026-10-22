@@ -42,12 +42,21 @@ const front = /^---\n([\s\S]*?)\n---\n/.exec(skill)?.[1] ?? "";
 check(/^name: archdrawer$/m.test(front) && /^description: .{40,}$/m.test(front), "skill front matter: name and description");
 check(existsSync(join(root, "skills", "archdrawer", "rules.md")), "the rules file sits beside the skill");
 
-// Launchers, from the repository.
-const sh = win ? "bash" : "sh";
+// Launchers, from the repository. Claude Code puts the plugin's bin/ on the PATH, so on macOS and
+// Linux the launchers run by name: git must record them executable, and there they run directly.
+const modes = run("git", ["ls-files", "-s", "bin/archdrawer", "bin/archdrawer.mjs"], { cwd: root }).out.split(/\r?\n/).map((l) => l.split(/\s+/)[0]);
+check(modes.length === 2 && modes.every((m) => m === "100755"), `git records bin/archdrawer and bin/archdrawer.mjs as executable (${modes.join(", ")})`);
+/** Run a POSIX launcher: under bash on Windows, directly (its shebang and execute bit) elsewhere. */
+const launch = (file, args) => (win ? run("bash", [file, ...args]) : run(file, args));
+const how = win ? "under bash" : "directly";
 // The shop example's overview has no zones: validate prints one overview-depth warning before "valid with 1 warning(s)".
 const valid = (out) => /(^|\n)valid( with \d+ warning\(s\))?$/.test(out.trim());
-const viaSh = run(sh, [join(root, "bin", "archdrawer"), "validate", example]);
-check(viaSh.code === 0 && valid(viaSh.out), `bin/archdrawer runs under ${sh} (${viaSh.out || viaSh.err})`);
+const viaSh = launch(join(root, "bin", "archdrawer"), ["validate", example]);
+check(viaSh.code === 0 && valid(viaSh.out), `bin/archdrawer runs ${how} (${viaSh.out || viaSh.err})`);
+if (!win) {
+  const viaMjs = launch(join(root, "bin", "archdrawer.mjs"), ["validate", example]);
+  check(viaMjs.code === 0 && valid(viaMjs.out), `bin/archdrawer.mjs runs directly (${viaMjs.out || viaMjs.err})`);
+}
 if (win) {
   const viaCmd = run("cmd.exe", ["/d", "/c", join(root, "bin", "archdrawer.cmd"), "validate", example]);
   check(viaCmd.code === 0 && valid(viaCmd.out), `bin/archdrawer.cmd runs under cmd (${viaCmd.out || viaCmd.err})`);
@@ -66,9 +75,9 @@ try {
     cpSync(join(root, f), join(plugin, f));
   }
   check(!existsSync(join(plugin, "node_modules")), "the copy has no node_modules");
-  const first = run(sh, [join(plugin, "bin", "archdrawer"), "validate", join(plugin, "examples", "shop.archdraw.json")]);
+  const first = launch(join(plugin, "bin", "archdrawer"), ["validate", join(plugin, "examples", "shop.archdraw.json")]);
   check(first.code === 0 && valid(first.out) && /installing its dependencies/.test(first.err), `first run installs the dependencies, then validates (${first.code}: ${first.out} / ${first.err.slice(-300)})`);
-  const again = run(sh, [join(plugin, "bin", "archdrawer"), "--version"]);
+  const again = launch(join(plugin, "bin", "archdrawer"), ["--version"]);
   check(again.code === 0 && again.out === JSON.parse(readFileSync(join(plugin, "package.json"), "utf8")).version && again.err === "", "second run starts directly");
   check(!existsSync(join(plugin, "node_modules", "vitest")), "only the runtime dependencies were installed");
 

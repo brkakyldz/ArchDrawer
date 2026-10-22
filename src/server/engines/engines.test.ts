@@ -40,7 +40,9 @@ process.stdin.on("end", () => {
   const behaviour = ${JSON.stringify(behaviour)};
   if (behaviour === "hang") {
     const { spawn } = require("child_process");
-    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    // On Windows a node parent takes its children down with it (libuv's job object), which a real
+    // CLI does not promise; a detached child leaves that job, so only killing the tree stops it.
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", detached: process.platform === "win32" });
     fs.writeFileSync(${JSON.stringify(log)} + ".child", String(child.pid));
     setInterval(() => {}, 1000);
     return;

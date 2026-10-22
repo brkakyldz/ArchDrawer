@@ -5,10 +5,11 @@ import { describe, expect, it } from "vitest";
 import { validateDocument3 } from "../core/file3";
 import type { DiagramDocument } from "../core/model";
 import { FixtureEngine, OVERLONG_LEDE } from "./engines/fixture";
+import type { EngineRunRequest } from "./engines/types";
 import { makeApp, makeFolder, shopRepo } from "./testkit";
 
-async function setup(stepMs = 1) {
-  const t = makeApp({ stepMs });
+async function setup(stepMs = 1, engines?: FixtureEngine[]) {
+  const t = makeApp({ stepMs, engines });
   const { file } = shopRepo();
   const id = ((await (await t.req("/api/files", { method: "POST", json: { path: file } })).json()) as { id: string }).id;
   const run = async (instruction: string, extra: Record<string, unknown> = {}) => {
@@ -260,5 +261,45 @@ describe("post runs", () => {
     // An image is for a revise only (api contract, Runs).
     expect(await run("", { kind: "post", view: undefined, image: "iVBORw0KGgo=" })).toMatchObject({ status: 400, body: { error: "An image is for a revise" } });
     expect((await run("")).status).toBe(400);
+  });
+});
+
+describe("simplify runs (diagram contract, Simplify coverage)", () => {
+  it("draws the overview as a map whose detail still shows every fact, and keeps the facts", async () => {
+    const { run, runs, stored } = await setup();
+    const before = stored();
+    const done = await runs.wait((await run("", { kind: "simplify" })).body.runId!);
+    expect(done).toMatchObject({ status: "succeeded", error: null });
+    const after = stored();
+    expect(after.facts).toEqual(before.facts);
+    expect(after.channels.overview.views.map((v: { id: string }) => v.id)).toEqual(["overview", "inside-the-system"]);
+    expect(after.warnings).toEqual([]);
+  });
+
+  it("fails a simplification that loses a fact and leaves the file untouched", async () => {
+    const { run, runs, file } = await setup();
+    const before = readFileSync(file, "utf8");
+    const done = await runs.wait((await run("[fixture:lose]", { kind: "simplify" })).body.runId!);
+    expect(done).toMatchObject({ status: "failed", diagramId: null, error: "The simplified drawing loses 1 component: db. Nothing was changed." });
+    expect(readFileSync(file, "utf8")).toBe(before);
+  });
+
+  it("leaves out a new view nothing links to, with one warning", async () => {
+    // The fixture's simplification, plus a view no part of the overview opens.
+    class StrayView extends FixtureEngine {
+      override async run(req: EngineRunRequest): Promise<unknown> {
+        const answer = (await super.run(req)) as { views: { nodes: object[] }[] };
+        if (req.simplify) {
+          const part = { ...answer.views.at(-1)!.nodes[0], id: "stray-part" };
+          answer.views.push({ id: "stray", title: "Stray", caption: { title: "Stray", lede: "" }, nodes: [part], edges: [], relayout: [] } as { nodes: object[] });
+        }
+        return answer;
+      }
+    }
+    const { run, runs, stored } = await setup(1, [new StrayView(1)]);
+    const done = await runs.wait((await run("", { kind: "simplify" })).body.runId!);
+    expect(done).toMatchObject({ status: "succeeded", error: null });
+    expect(stored().channels.overview.views.map((v: { id: string }) => v.id)).toEqual(["overview", "inside-the-system"]);
+    expect(stored().warnings).toEqual(['Left out the new view "stray": no component of the overview links to it']);
   });
 });

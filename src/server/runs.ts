@@ -329,6 +329,8 @@ export class RunManager {
       const missing = missingFacts(req.stored, split.doc);
       if (missing.length) throw new CoverageError(missing);
     }
+    // The saved warnings are this run's own, so a clean run leaves none (diagram contract, warnings).
+    split.doc.warnings = split.doc.warnings.slice(req.stored.warnings.length);
     const stored = validateDocument3(split.doc);
     if (!stored.ok) throw new EngineError(`The engine's drawing could not be repaired into a valid document: ${stored.error}`);
     // Never overwrite a drawing that changed after the run started (the editor, a session, the CLI).
@@ -336,7 +338,7 @@ export class RunManager {
     if (!saved) throw new EngineError("The drawing was removed while the instruction ran.");
     if (!saved.ok) throw new EngineError(saved.conflict ? "The drawing changed while the instruction ran." : `The drawing could not be saved: ${saved.error}`);
     // Counted from the saved file, so the split's own repairs are counted too.
-    const added = split.doc.warnings.length - req.stored.warnings.length;
+    const added = split.doc.warnings.length;
     progress(added > 0 ? `Saved with ${added} warning${added === 1 ? "" : "s"}` : "Saved");
     // The report measures the saved result, with the format's default switches (api contract, Layout report).
     const format = req.format ?? "readme";
@@ -383,7 +385,7 @@ export class RunManager {
       repair: (prompt) => req.engine.run({ ...call, task: { ...task, tools: "none", prompt, data: { ...task.data, repair: true } } }),
     });
     const { doc, view, warnings } = intentToChannel(req.stored, intent, { portrait: format === "feed", channel });
-    const toSave: Document3 = { ...doc, engine: { id: req.engine.id, model: req.model }, updatedAt: nowIso() };
+    const toSave: Document3 = { ...doc, warnings, engine: { id: req.engine.id, model: req.model }, updatedAt: nowIso() };
     if (signal.aborted) throw new EngineError("Cancelled");
     const saved = this.store.put(req.base.id, toSave, { base: req.base.updatedAt, announce: true });
     if (!saved) throw new EngineError("The drawing was removed while the post was designed.");

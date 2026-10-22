@@ -48,7 +48,9 @@ Files with `archdraw/diagram@2` are converted when read (*Reading
                       "steps": [ /* the presentation's ordered steps; optional, default [] */ ] }
   },
   "requests": [],               // optional; instructions waiting for the next session
-  "warnings": []                // optional; one line per repair or conversion
+  "warnings": []                // optional; one line per repair or conversion of the
+                                //   last change: a run that saves replaces the list
+                                //   with its own, so a clean run leaves it empty
 }
 ```
 
@@ -836,6 +838,9 @@ view):
 
 - **Zones** become group parts (`zone-<id>`) with no facts. Each takes its
   zone's label, kind `service` and description `A group of components.`
+  A zone id that already starts with `zone-`, or that a group of the view
+  being redrawn already has, is kept as it is, so a redraw that echoes the
+  current view keeps its groups.
 - **Holders:** a part that another part is `inside` becomes a group showing
   its own facts. `zone` and `inside` become `parent`; `spine`, `anchor` and
   `side` become `lane`. A holder draws no chips: its chips are dropped,

@@ -68,8 +68,8 @@ export class CoverageError extends Error {
 
 /**
  * Simplify coverage on facts (diagram contract, Simplify coverage): the component facts no part
- * shows any more in the overview, in a view reached from it through `detail`, or in a view left
- * exactly as it was. In file order.
+ * shows or holds any more in the overview, in a view reached from it through `detail`, or in a
+ * view left exactly as it was. In file order.
  */
 export function missingFacts(before: Document3, after: Document3): string[] {
   const views = after.channels.overview.views;
@@ -84,7 +84,7 @@ export function missingFacts(before: Document3, after: Document3): string[] {
   for (const v of views) {
     const kept = before.channels.overview.views.find((b) => b.id === v.id);
     if (!reach.has(v.id) && !(kept && JSON.stringify(kept) === JSON.stringify(v))) continue;
-    for (const p of v.nodes) for (const f of p.facts) shown.add(f);
+    for (const p of v.nodes) for (const f of [...p.facts, ...(p.held ?? [])]) shown.add(f);
   }
   return before.facts.components.map((c) => c.id).filter((id) => !shown.has(id));
 }

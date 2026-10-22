@@ -335,9 +335,11 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
   const id = o.ids?.view ?? postViewId(doc, source);
   const others = { ...doc, views: doc.views.filter((v) => v.id !== id) };
   const used = new Set(o.ids ? [...(o.ids.taken ?? []), id] : [...allIds(others), ...others.views.map((v) => v.id), id]);
-  const fresh = (want: string) => {
-    let base = ID_RE.test(want) ? want : want.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "part";
-    if (base !== want) warnings.push(`Renamed the post's id "${want}" to "${base}": ids use letters, digits, - and _`);
+  // An id built from the engine's (`zone-<id>`, `<from>-<to>`) is the conversion's own: cleaning it
+  // changes nothing the engine said, so only an id the engine wrote warns (invariant 6).
+  const fresh = (want: string, built = false) => {
+    const base = ID_RE.test(want) ? want : want.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "part";
+    if (base !== want && !built) warnings.push(`Renamed the ${name}'s id "${want}" to "${base}": ids use letters, digits, - and _`);
     let out = base;
     for (let n = 2; used.has(out); n++) out = `${base.slice(0, 64 - `-${n}`.length)}-${n}`;
     used.add(out);
@@ -347,7 +349,7 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
   // (a story that carries the current view echoes them), is kept, so a redraw does not rename it.
   const groups = new Set(o.ids?.groups ?? doc.views.find((v) => v.id === id)?.nodes.filter((n) => n.form === "group").map((n) => n.id));
   const zoneId = (z: string) => (groups.has(z) || z.startsWith("zone-") ? z : `zone-${z}`);
-  const zoneOf = new Map(intent.zones.map((z) => [z.id, fresh(zoneId(z.id))]));
+  const zoneOf = new Map(intent.zones.map((z) => [z.id, fresh(zoneId(z.id), ID_RE.test(z.id))]));
   const partOf = new Map(intent.parts.map((p) => [p.id, fresh(p.id)]));
 
   // Parts take what they represent from the source components they name: in a channel (`ids`) by the
@@ -420,7 +422,7 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
       warnings.push(`Joined ${e.to} → ${e.from} and ${e.from} → ${e.to} into one two-way connection`);
       continue;
     }
-    edges.push({ id: fresh(`${e.from}-${e.to}`), from: a, to: b, label: e.label, style: e.style, both: false, step: e.step });
+    edges.push({ id: fresh(`${e.from}-${e.to}`, true), from: a, to: b, label: e.label, style: e.style, both: false, step: e.step });
   }
   edges.filter((e) => e.step !== null).sort((x, y) => x.step! - y.step!).forEach((e, i) => {
     if (e.step !== i + 1) { warnings.push(`Renumbered the step of ${e.id} from ${e.step} to ${i + 1}`); e.step = i + 1; }

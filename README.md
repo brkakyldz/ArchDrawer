@@ -39,6 +39,14 @@ The drawing lives next to the code as one JSON file you can commit. Ask your
 session to update it later; existing parts keep their identities and the
 positions you chose.
 
+You can also start from the app's home screen. Give it a local folder: a
+scan of about a minute suggests what to draw, you pick a focus and a channel,
+and your engine reads the code and draws it. Under the hood the work is split
+into a quick scan, a focused code read, facts linked to source files, a story
+for each channel and layout in code. Correctness is checked once, on the
+shared facts, so switching channels needs no new read and every channel
+agrees on what the system does.
+
 ## Get started
 
 You need **Node.js 20.19 or newer**, plus Claude Code or Codex installed and
@@ -95,26 +103,48 @@ archdrawer open docs/architecture.archdraw.json
 
 ## What works today
 
+- **Start from a folder.** The home screen checks that Claude Code or Codex
+  is installed and signed in, then scans a local folder: its README, folder
+  tree, dependency files and entry points. The scan suggests **3–5 focuses
+  backed by real files**, such as a request's path through the system, an
+  agent loop or the whole architecture, and you can always type your own. A
+  scan is kept per commit, so opening the same commit again does not rescan.
+- **A focused read.** After you pick a focus, your engine reads the files it
+  needs and returns facts: the components, the mechanisms inside them, who
+  calls whom and the limits behind a guarantee. Every fact names the files
+  that support it, and code checks they exist. If a draw fails after its
+  read, `Try again` keeps what was read.
 - **A drawing grounded in files.** Parts describe what they do and point to
   the code behind them. Groups and connections show how the system fits
-  together; detail views open a part's internals one level down.
+  together; detail views open a part's internals one level down. An AI agent,
+  a person, a data store, an external service and a check each have their own
+  shape; other parts are plain cards.
 - **A local editor.** Move, rename and add parts and connections. Undo and
   redo changes, search across all views with matches highlighted on the
   canvas, and autosave to the drawing file. A breadcrumb shows where you are
   in the detail views.
 - **Shared facts, one drawing per channel.** The file keeps the facts about
-  your system once, plus a drawing for each channel: the overview and the
-  LinkedIn post today, README and presentation next. Moving a box stays in its
-  channel; correcting what a part does updates the facts and every channel
-  that shows it, and a tab whose drawing may be out of date is marked
+  your system once, plus a drawing for each channel: the overview, the
+  LinkedIn post, the README drawing and the presentation. Moving a box stays
+  in its channel; correcting what a part does updates the facts and every
+  channel that shows it, and a tab whose drawing may be out of date is marked
   “needs update”.
 - **A LinkedIn post from the same facts.** The LinkedIn tab draws one image
-  for a phone screen. Your engine tells the story from the facts already read
-  and is asked not to read the code again (Claude Code runs with no tools at
-  all); with no engine, a simple version is laid out by code. Redraw it, or keep it, when the facts change.
-- **AI changes with a scope.** Type an instruction, choose Claude Code or
+  for a phone screen. `Draw it` tells the story from the facts already read
+  and asks your engine not to read the code again (Claude Code runs with no
+  tools at all); `Design the post` may also read the code, read-only. With no
+  engine, a simple version is laid out by code. Redraw it, or keep it, when
+  the facts change.
+- **A README drawing and a presentation.** The README drawing is detailed,
+  with one-line descriptions. The presentation is a list of steps; each
+  highlights some parts and carries a short on-screen text and a speaker
+  note, edited beside the drawing.
+- **AI changes in one place.** Type an instruction, choose Claude Code or
   Codex and a model, then target the current view, selected parts or the
-  whole channel.
+  whole channel. Requests and results read as a conversation; a result
+  arrives as a preview with the changed parts highlighted, to accept or undo.
+  One-click suggestions cover common changes, and “Look at the drawing again”
+  lets the engine see the rendered image and propose one round of fixes.
 - **Images ready to share.** Four presets, light and dark themes, PNG, SVG
   and clipboard copy, sized for the channel you are on.
 
@@ -155,44 +185,37 @@ Every automatic repair of AI output is surfaced as a warning.
 
 ## Current limits
 
-A new drawing starts in a **Claude Code or Codex session**, rather than the
-app's home screen. Sources are **local folders**; a GitHub URL is not yet a
-supported starting point.
+Sources are **local folders**; a GitHub URL is not yet a supported starting
+point. Clone the repository first.
 
 Large systems can produce crowded overviews and share images with text too
 small to read. Improving that is a focus of ongoing development.
 
 ## Planned work
 
-Most of this section is planned; what already exists is marked. Development
-work and the roadmap are tracked in
+Development work and the roadmap are tracked in
 [GitHub issues](https://github.com/brkakyldz/Archdrawer/issues).
-
-The planned workflow starts with what you want to explain:
-
-**Pick a repository → choose a focus → choose a channel → make the drawing.**
-
-A quick scan will suggest **3–5 focuses backed by real files**, such as a
-request's path through the system, an agent loop or the whole architecture.
-You will also be able to write your own focus.
 
 | Channel | What it is designed for |
 | --- | --- |
-| LinkedIn (first version available) | One image that reads at a glance on a phone. |
-| README (planned) | A drawing that lives in the repository and renders well on GitHub. |
-| Presentation (planned) | A step-by-step walkthrough with highlights, on-screen notes and speaker notes; full-screen presenting and PDF/PNG slides. The same walkthrough can guide someone through an unfamiliar repository. |
+| LinkedIn | One image that reads at a glance on a phone. |
+| README | A drawing that lives in the repository and renders well on GitHub. |
+| Presentation | A step-by-step walkthrough with highlights, on-screen notes and speaker notes. |
 
-The planned pipeline separates a quick scan, a focused code read, facts
-linked to source files, a story for each channel and layout in code.
-Correctness is checked on the shared facts once, so switching channels can
-be fast and every channel agrees on what the system does. The shared facts
-and the per-channel drawings already exist; the scan and the focused read are
-next. An optional “look again” pass will let the AI inspect the rendered
-image and improve readability.
+Still planned:
 
-Planned interface work includes distinct shapes for selected part types,
-useful item lists per channel, one AI change panel with a preview before
-keeping changes, and a new logo.
+- **Presenting.** Full-screen presenting that steps through the presentation
+  with the arrow keys, highlighting each step's parts; the same steps as a
+  guided tour of an unfamiliar repository; and the steps exported as PDF
+  pages and PNG slides.
+- **A first launch with an example.** A ready-made drawing and its
+  presentation, shown before you start your own.
+- **The plugin opens the app.** The plugin's command opens the app on the
+  session's repository.
+- **A cleaner header** with a new logo.
+- **Shareable without hand edits** for an agent project, a backend/API
+  service and a full-stack app, with the agent's loop visible in the README
+  and presentation outputs.
 
 The first target repositories are **AI agent projects, backend/API services
 and full-stack web apps**. Hosted accounts, API-key engines, real-time

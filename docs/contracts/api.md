@@ -45,7 +45,7 @@ Implemented by: `src/server/app.ts` (routes), `src/server/main.ts`
 | `PUT /api/diagrams/:id` | 200 `{"ok": true, "updatedAt"}`; atomic write | see *Saving* |
 | `DELETE /api/diagrams/:id` | 204: forgets a registered file (it stays on disk) or deletes an imported document | 404 |
 | `GET /api/diagrams/:id/events` | 200 `text/event-stream`: `event: changed`, `data: {"updatedAt"}` when the stored document changes other than through `PUT` (a session or the CLI edited the file, a request was saved, a run saved its result); a `: ping` comment every 20 s | 404 |
-| `GET /api/diagrams/:id/export.svg?channel=&view=&format=&theme=&parts=` | 200 `image/svg+xml`: the share image (ui contract) of a channel view with title, held items, steps, labels, colour key and texts on and description off; `channel` defaults to `overview`, `view` to the channel's first, `format` to `linkedin`, `theme` to the document's (an unknown theme falls back to it); `parts` (comma-separated ids) draws only those components, everything inside the groups among them, and the connections between them | 404; 400 `Unknown channel "<c>"; use one of overview, linkedin, readme, presentation`, `The channel "<c>" has no drawing`, `Unknown view "<v>"`, `Unknown format "<f>"; use one of linkedin, readme, slide, square, feed`, `Unknown component "<id>" in the view "<v>"` |
+| `GET /api/diagrams/:id/export.svg?channel=&view=&format=&theme=&parts=` | 200 `image/svg+xml`: the share image (ui contract) of a channel view with title, steps, labels, colour key and texts on, description off and sub-lines as the view's switch says; `channel` defaults to `overview`, `view` to the channel's first, `format` to `linkedin`, `theme` to the document's (an unknown theme falls back to it); `parts` (comma-separated ids) draws only those components, everything inside the groups among them, and the connections between them | 404; 400 `Unknown channel "<c>"; use one of overview, linkedin, readme, presentation`, `The channel "<c>" has no drawing`, `Unknown view "<v>"`, `Unknown format "<f>"; use one of linkedin, readme, slide, square, feed`, `Unknown component "<id>" in the view "<v>"` |
 | `GET /api/diagrams/:id/export.mmd?channel=&view=` | 200 `text/plain`: a Mermaid `flowchart LR` of the channel view (groups as subgraphs); defaults as for `export.svg` | 404; 400 unknown or empty channel, unknown view |
 | `POST /api/diagrams/:id/requests` `{"channel", "view", "text"}` | 201 `{"id"}` (`q<n>`): appends to `requests`; `channel` defaults to `overview` | 400 `The instruction is empty` / `The instruction is too long (4000 characters at most)` / unknown channel / unknown view; 404; 409 `The drawing could not be saved` |
 | `POST /api/diagrams/:id/check-files` `{"files": [path, …]}` | 200 `{"missing": [path, …]}`: the given repository-relative paths that do not exist under the drawing's repository root (*Runs*), symlinks resolved; none when that folder is not on this machine | 400 `files must be at most 20 repository-relative paths`; 404 |
@@ -525,18 +525,22 @@ image draws it, with the format's starting switches (ui contract):
   "longestConnection": 0.42 }
 ```
 
-- `crossings`: pairs of connections without a shared end whose curves cross,
-  once per pair.
-- `edgesOverParts`: a curve entering a non-group component other than its
-  ends.
-- `cutText`: component labels, sub-lines and items drawn shorter than they
-  are, and labels left out for lack of room (only when labels are shown).
+- `crossings`: pairs of connections without a shared end whose drawn lines
+  cross, once per pair. Only what is drawn counts: each connection's own
+  stretch and each trunk, never a hidden connection; two members of a trunk
+  that meet only at its split point do not cross (diagram contract,
+  *Connections*).
+- `edgesOverParts`: a drawn line entering a non-group component other than
+  its ends; a hidden connection is never listed.
+- `cutText`: component labels and sub-lines drawn shorter than they are, and
+  labels left out for lack of room (only when labels are shown).
 - `overLimitText` (LinkedIn channel only): text over the post targets (title in words,
   lede 140, label and sub-line 28, items 22, side labels in words); a label on
   a numbered connection is listed with `limit: 0`.
 - `smallestText`: the readability numbers (ui contract); an empty view gives
   zeros and `warn`.
-- `counts`: non-group components, top-level groups, drawn connections.
+- `counts`: non-group components, top-level groups, drawn connections (a
+  hidden connection is not drawn).
   `targets`: the LinkedIn view `{"parts": 12, "zones": {"min": 0, "max": 4},
   "connections": 14}`; any other view all null (ADR 0007: only LinkedIn has
   count targets). Targets are advice.

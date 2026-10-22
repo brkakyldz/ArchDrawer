@@ -2,10 +2,13 @@
 id: 0006
 title: "archdraw/diagram@3: a facts list, four fixed channels, parts that point to facts"
 date: 2026-10-21
-status: accepted (extended by 0007: evidence, mechanisms, limits, one README and one presentation view)
+status: accepted (extended by 0007: evidence, mechanisms, limits, one README and one presentation view; amended by 0014: held mechanisms are listed in the callout, not drawn as rows)
 deciders: [brkakyldz]
 supersedes: []
 ---
+
+Amended by ADR 0014: the overview still holds every fact, but a held
+mechanism is listed in its part's callout, not drawn as a row.
 
 ## Context
 

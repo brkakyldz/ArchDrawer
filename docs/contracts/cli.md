@@ -77,9 +77,9 @@ another registered drawing gets a new id, written back.
 
 ## `archdrawer svg <file> [--channel <c>] [--view <id>] [--format <f>] [--theme light|dark] [--out <path>]`
 
-Writes the share image (ui contract, The share image) with title, held items,
-steps, connection labels, colour key and texts on and description off, the
-fonts embedded. The file is checked as `open` checks it. `--channel` is
+Writes the share image (ui contract, The share image) with title, steps,
+connection labels, colour key and texts on, description off and sub-lines as
+the view's switch says, the fonts embedded. The file is checked as `open` checks it. `--channel` is
 `overview` (default), `linkedin`, `readme` or `presentation`; `--view` defaults
 to the channel's first view; `--format` is
 `linkedin` (default, 1620×1080), `readme`, `slide`, `square` or `feed`

@@ -792,7 +792,8 @@ characters`, one warning per text. `<what>` is `the title`, `the description`,
 
 - title 120 chars; lede 240;
 - zone and part labels 48, sub-lines 60;
-- chips 44 each;
+- chips 44 each, except a holder's, which are dropped (below) and never
+  checked or shortened;
 - connection labels 40;
 - in the presentation, step texts 120, notes 1000.
 
@@ -836,7 +837,8 @@ view):
   zone's label, kind `service` and description `A group of components.`
 - **Holders:** a part that another part is `inside` becomes a group showing
   its own facts. `zone` and `inside` become `parent`; `spine`, `anchor` and
-  `side` become `lane`.
+  `side` become `lane`. A holder draws no chips: its chips are dropped,
+  `"<id>" holds parts, so it draws no chips`, one warning.
 - **Forms:** a part with chips, held mechanisms or limits becomes a panel,
   any other part a card. Chips become its own items.
 - **Facts.** Each step below drops with one warning per id:

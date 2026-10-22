@@ -1,9 +1,9 @@
 import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { layoutRects, measureText, routeEdges, textStyle, type EdgeRoute, type Rect } from "../../core/geometry";
 import { badgeMarkup, drawOrder, edgeMarkup, labelMarkup, namesClip, nodeMarkup, sharedDefs, textMarkup } from "../../core/export/svg";
-import { descendants, isPostView, type DiagramEdge, type DiagramNode, type DiagramText, type Kind } from "../../core/model";
+import { descendants, isPostView, LIMITS, type DiagramEdge, type DiagramNode, type DiagramText, type Kind } from "../../core/model";
 import type { Palette } from "../../core/theme";
-import { clampTextSize, connect, moveNodes, moveTexts, setText, settleNodes } from "./ops";
+import { clampTextSize, connect, moveNodes, moveTexts, setText, settleNodes, VIEW_FULL } from "./ops";
 import type { Ctl, Selection } from "./types";
 import { NOTHING } from "./types";
 import { detailAt, toWorld, zoomAt } from "./viewport";
@@ -167,6 +167,8 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
       if (tx) return start({ kind: "scale", id, corner: handle.getAttribute("data-text-handle") as Corner, size0: tx.size, box: { x: tx.x, y: tx.y, ...measureText(tx) }, moved: false });
     }
     if (c.tool === "component") {
+      // A full view is refused before the picker opens (diagram contract, validation).
+      if (c.view.nodes.length >= LIMITS.nodesPerView) { c.toast(VIEW_FULL); return; }
       const b = local(e);
       c.setPicker({ screen: b, world: p });
       return;

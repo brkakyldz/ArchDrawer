@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { rearrangeForFeed } from "../../core/export/feed";
 import { layoutView } from "../../core/layout";
 import { LIMITS, type DiagramDocument, type DiagramView } from "../../core/model";
@@ -6,6 +7,7 @@ import type { Runner } from "./runner";
 
 const SAVED = "Saved in the file for your next archdrawer session";
 const REWRITE = "Rewrite this post in plain words for someone who has never seen the project";
+const NO_TITLE = "A post needs a title";
 
 /** A view placed by lanes can be placed again for either orientation. */
 export const hasLanes = (v: DiagramView) => v.nodes.some((n) => n.lane);
@@ -88,7 +90,7 @@ export function LinkedInStart(p: Engine & { onPrepare: () => void }) {
  * Beside the drawn LinkedIn channel (ui contract, The LinkedIn flow): its caption, placing it again,
  * redesigning and rewriting it. The share dialog only packages it.
  */
-export function LinkedInPanel(p: Engine & { view: DiagramView; apply: (fn: (d: DiagramDocument) => DiagramDocument, opts?: { coalesce?: string }) => void }) {
+export function LinkedInPanel(p: Engine & { view: DiagramView; apply: (fn: (d: DiagramDocument) => DiagramDocument, opts?: { coalesce?: string }) => void; toast: (m: string) => void }) {
   const { view, apply } = p;
   const running = p.runner.state.status === "running";
   const setCaption = (key: "title" | "lede", value: string) =>
@@ -99,7 +101,7 @@ export function LinkedInPanel(p: Engine & { view: DiagramView; apply: (fn: (d: D
     <aside className="li-panel" data-testid="linkedin-panel" aria-label="LinkedIn post">
       <h2>LinkedIn post</h2>
       <label className="field">Title
-        <input data-testid="share-caption-title" value={view.caption.title} maxLength={LIMITS.captionTitle} disabled={running} onChange={(e) => setCaption("title", e.target.value)} />
+        <TitleInput value={view.caption.title} disabled={running} onCommit={(t) => setCaption("title", t)} onEmpty={() => p.toast(NO_TITLE)} />
       </label>
       <label className="field">Description
         <textarea data-testid="share-caption-lede" value={view.caption.lede} maxLength={LIMITS.lede} rows={3} disabled={running} onChange={(e) => setCaption("lede", e.target.value)} />
@@ -114,5 +116,27 @@ export function LinkedInPanel(p: Engine & { view: DiagramView; apply: (fn: (d: D
       {!p.engine && <p className="hint" data-testid="post-engine-note">No engine available — prepared without AI</p>}
       <RunLine runner={p.runner} />
     </aside>
+  );
+}
+
+/**
+ * The post's title (a caption title has at least one character, diagram contract): what is typed
+ * shows as typed, an empty or blank title is refused with a toast and never saved, and leaving the
+ * field shows the saved title again.
+ */
+function TitleInput({ value, disabled, onCommit, onEmpty }: { value: string; disabled: boolean; onCommit: (t: string) => void; onEmpty: () => void }) {
+  const [draft, setDraft] = useState(value);
+  // The title this field last saved: any other value (an undo, a run) is shown at once, even while typing.
+  const mine = useRef(value);
+  useEffect(() => { if (value !== mine.current) { mine.current = value; setDraft(value); } }, [value]);
+  return (
+    <input data-testid="share-caption-title" value={draft} maxLength={LIMITS.captionTitle} disabled={disabled}
+      onBlur={() => setDraft(value)}
+      onChange={(e) => {
+        const t = e.target.value;
+        setDraft(t);
+        if (!t.trim()) onEmpty();
+        else if (t !== value) { mine.current = t; onCommit(t); }
+      }} />
   );
 }

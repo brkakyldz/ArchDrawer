@@ -427,6 +427,11 @@ toast `Updated from the file`, except while `present` is open (*Presenting and
 the tour*). With an unsaved edit, the next save gets 409 and `save-status`
 says so.
 
+Showing the file's version, after `Updated from the file` or `save-reload`,
+starts a new history: `tool-undo` and `tool-redo` have nothing to step to until
+the next edit, so undo never writes the editor's older version over a change a
+session or the CLI made.
+
 ## Presenting and the tour
 
 `present` is a layer over the whole window (`role="dialog"`, `aria-modal`)

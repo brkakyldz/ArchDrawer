@@ -4,7 +4,7 @@ import { readAnyFile } from "../../core/convert";
 import { validateDocument3, type ChannelId, type Document3 } from "../../core/file3";
 import { type DiagramDocument } from "../../core/model";
 import { node } from "../../core/testkit";
-import { addNode, createInside, deleteNodes, setNode } from "./ops";
+import { addNode, createInside, deleteNodes, reservedIds, setNode } from "./ops";
 
 // Editor operations routed through the facts/channel split, as the editor applies them (FILE-3).
 
@@ -101,5 +101,22 @@ describe("editor edits split into facts and channels", () => {
     // A group copied as a card keeps pointing to the group's fact.
     const g = edit(stored(), (j) => createInside(j, "overview", "rt").doc);
     expect(g.channels.overview.views[1].nodes[0]).toMatchObject({ form: "card", facts: ["rt"] });
+  });
+
+  it("a new part never takes the id of a limit fact, or of a fact the channel does not draw", () => {
+    const base = stored();
+    base.facts.limits = [{ id: "new-component", on: "api", text: "At most 3 turns" }];
+    base.facts.components.push({ ...structuredClone(fact(base, "web")), id: "new-component-2", label: "Undrawn" });
+    // The overview draws every component; the undrawn one is drawn there too, so give it a part.
+    base.channels.overview.views[0].nodes.push({ ...structuredClone(part(base, "web")), id: "new-component-2", facts: ["new-component-2"], x: 900, y: 400 });
+    expect(validateDocument3(base).ok).toBe(true);
+    for (const vid of ["overview", "post"]) {
+      let id = "";
+      const d = edit(base, (j) => { const r = addNode(j, vid, "service", "card", { x: 900, y: 40 }, reservedIds(base)); id = r.id; return r.doc; });
+      expect(id).not.toBe("new-component");
+      expect(id).not.toBe("new-component-2");
+      // The id the editor picked is the part's id in the file (the editor selects it and edits its label).
+      expect([...d.channels.overview.views, ...d.channels.linkedin.views].some((v) => v.nodes.some((n) => n.id === id))).toBe(true);
+    }
   });
 });

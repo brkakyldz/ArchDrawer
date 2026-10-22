@@ -59,4 +59,6 @@ export interface Ctl {
   setPinned: (on: boolean) => void;
   /** While searching with text: the matches on this view, lit, and the one stepped to. */
   found: Found | null;
+  /** Ids a new part may not take though the channel does not draw them: every fact's, limits included. */
+  reserved: ReadonlySet<string>;
 }

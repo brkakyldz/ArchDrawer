@@ -24,9 +24,12 @@ in batches `0-helpers`, A–F and Z for the two lanes that build 0.4 at the same
 draw that keeps its read (START-6), H145–H151 — was written by Claude Sonnet 5.5
 (`claude-sonnet-5-5`) as an independent acceptance author, from ADRs 0009 and 0010 and the
 contracts alone (no product code was read), and revised the same day to add a journey where a
-file the kept read cites is deleted before `Try again`.
+file the kept read cites is deleted before `Try again`; and on 2026-10-22 the round of ADR 0011 —
+connections pass behind parts as one cubic each (LAYOUT-2 changed), H84 and H86 rewritten, H152 and
+H153 added — was written by Claude Sonnet 5.5 (`claude-sonnet-5-5`) as an independent acceptance
+author, from ADR 0011 and the contracts alone (no product code was read).
 
-The suite holds 97 Playwright acceptance journeys, written from the product
+The suite holds 99 Playwright acceptance journeys, written from the product
 contracts and never from product code. Each title reads
 `H<nn> [REQUIREMENT IDS] journey`; the ids are the requirements of the product
 spec that the journey observes.
@@ -37,9 +40,15 @@ spec that the journey observes.
   saving and file conflicts, the instruction box and AI panel, views, sharing,
   security and the plugin manifests.
 - `H84`–`H87` `*.spec.ts` (4 outcome journeys): what the layout promises — no
-  overlapping parts, no connection through a part or a group name, no silently cut
-  text, a layout report that matches the drawn lines, and an editor and an
-  exported image that agree on part sizes and connection paths.
+  overlapping parts, every connection one cubic that is never bent around anything
+  (a line that meets a part passes behind it and the report lists that part), labels on
+  their lines, no silently cut text, a layout report that matches the drawn lines, and an
+  editor and an exported image that agree on part sizes and connection paths.
+- `H152`–`H153` `*.spec.ts` (2 journeys, the ADR 0011 round): a line level with a group's
+  name passes behind it, the name cut out of the line in two exported images and the line
+  drawn everywhere else; and a straight line hidden behind the part between its ends, which
+  an overview draws behind that part and lists, and a LinkedIn post turns out on one side as
+  one cubic clear of it.
 - `H88`–`H105` `*.spec.ts` (18 journeys, the 0.2 round): the `@3` file (reading `@2`
   and `@1`, `migrate`, every validation rule, `--channel` and `?channel=`,
   requests with a channel), edits split between the facts and a channel and the
@@ -164,3 +173,8 @@ is this index.
 
 The story-limits scenarios (`H145`–`H151`) are one batch, `story-limits`, that adds seven files and
 changes `COVERAGE.md`, `verify.json` and this file; no helper changed and no existing scenario.
+
+The ADR 0011 round is one batch, `edges-behind`, that rewrites `H84` and `H86`, adds `H152` and `H153`,
+adds helpers to `helpers-svg-parity.ts` (`isSingleCubic`, `edgeLine`, `routeToBox`, `distanceToBox`,
+`sideOf`, `rasterDifferences`; nothing above them changed) and changes `COVERAGE.md`, `verify.json` and
+this file. `batches/MANIFEST.md` lists the files and the scenarios left unchanged.

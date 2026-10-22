@@ -42,24 +42,6 @@ export function keepUnrelatedViews(before: DiagramDocument, after: DiagramDocume
   return { doc: { ...after, views, warnings: [...after.warnings, ...warnings] }, warnings };
 }
 
-/**
- * The ids of the input's components (and of their provenance) that the result neither keeps,
- * in the overview or a view reached from it or a view it keeps, nor names in a surviving `from`.
- */
-export function missingComponents(before: Pick<DiagramDocument, "views">, after: Pick<DiagramDocument, "views">): string[] {
-  const originals: string[] = [];
-  const add = (id: string) => { if (!originals.includes(id)) originals.push(id); };
-  for (const v of before.views) for (const n of v.nodes) { add(n.id); for (const f of n.from ?? []) add(f); }
-  const reach = reachableViews(after);
-  const present = new Set<string>();
-  for (const v of after.views) {
-    const kept = before.views.find((b) => b.id === v.id);
-    if (!reach.has(v.id) && !(kept && JSON.stringify(kept) === JSON.stringify(v))) continue;
-    for (const n of v.nodes) { present.add(n.id); for (const f of n.from ?? []) present.add(f); }
-  }
-  return originals.filter((id) => !present.has(id));
-}
-
 export class CoverageError extends Error {
   constructor(readonly missing: string[]) {
     super(`The simplified drawing loses ${missing.length} component${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}. Nothing was changed.`);

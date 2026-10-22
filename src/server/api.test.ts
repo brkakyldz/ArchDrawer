@@ -103,15 +103,20 @@ describe("drawings over HTTP", () => {
     expect((await req("/api/diagrams/d_unknown00/check-files", { method: "POST", json: { files: [] } })).status).toBe(404);
   });
 
-  it("refuses a model name that an engine's command line would read as an option", async () => {
-    const { req, id } = await opened();
+  it("refuses a model name that an engine's command line would read as an option or a shell would read at all", async () => {
+    const { req, id, runs } = await opened();
     const start = async (model: string) => json(await req("/api/runs", { method: "POST", json: { diagramId: id, view: "overview", instruction: "add Cache component", engine: "fixture", model } }));
-    for (const model of ["-x", "--dangerously-skip-permissions", "--sandbox=danger-full-access"]) {
+    for (const model of ["-x", "--dangerously-skip-permissions", "--sandbox=danger-full-access", "x; rm -rf ~", "a b", "$(id)", "`id`", "x|y", "x&y", "x>y", 'x"y', "x'y", "%PATH%"]) {
       const r = await start(model);
       expect(r.status).toBe(400);
-      expect(r.body.error).toMatch(/Invalid model name/);
+      expect(r.body.error).toBe(`Invalid model name "${model}"`);
     }
-    expect((await start("claude-opus-5-5")).status).toBe(202);
+    // Invariant 1: letters, digits and ._:/@[]- are a model name's characters.
+    for (const model of ["claude-opus-5-5", "claude-opus-5-5[1m]", "us.anthropic.claude-sonnet-5-5:0", "openai/gpt@latest"]) {
+      const r = await start(model);
+      expect(r.status).toBe(202);
+      await runs.wait(r.body.runId!);
+    }
   });
 
   it("streams changed events for outside writes only", async () => {

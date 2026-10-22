@@ -32,7 +32,8 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **START-5** (Today) The `archdrawer` command opens, validates and exports
   drawing files.
 - **START-6** (To build) A draw that fails after its read keeps what it read,
-  and `Try again` starts from the stage that did not finish (ADR 0010).
+  and `Try again` starts from the stage that did not finish, with no new
+  read (ADR 0010).
 
 ### Scan and focus (SCAN)
 

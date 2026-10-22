@@ -246,9 +246,10 @@ after a story call when its answer has a problem.
 - `[fixture:overlong]` and `[fixture:stubborn]` act on the overview call as
   above;
 - `[fixture:flaky:overview]` and `[fixture:flaky:channel]` fail that call
-  with `Fixture failure requested` the first time this server makes it for
-  the folder and the typed focus, and answer as usual after, so `Try again`
-  shows what a failed draw keeps (api contract, *What a failed draw keeps*).
+  with `Fixture failure requested` the first time this server process makes
+  it for the folder (its root), whatever the channel, focus, engine or model,
+  and answer as usual every later time. A call the draw does not make (an
+  overview reused, api contract *What a failed draw keeps*) does not count.
 
 Each call has the fixture's progress lines.
 

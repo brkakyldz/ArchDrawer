@@ -24,12 +24,16 @@ in batches `0-helpers`, A–F and Z for the two lanes that build 0.4 at the same
 draw that keeps its read (START-6), H145–H151 — was written by Claude Sonnet 5.5
 (`claude-sonnet-5-5`) as an independent acceptance author, from ADRs 0009 and 0010 and the
 contracts alone (no product code was read), and revised the same day to add a journey where a
-file the kept read cites is deleted before `Try again`; and on 2026-10-22 the round of ADR 0011 —
+file the kept read cites is deleted before `Try again`; and on 2026-10-22 the same round was
+extended by Claude Sonnet 5.5 (`claude-sonnet-5-5`), issue #97, with H154–H157 — another focus or
+model reading again, the plural repair line, a stubborn overview that still writes the drawing, and
+`Try again` from the home screen after an overview failure — written from the contracts and ADRs
+0009 and 0010 alone; and on 2026-10-22 the round of ADR 0011 —
 connections pass behind parts as one cubic each (LAYOUT-2 changed), H84 and H86 rewritten, H152 and
 H153 added — was written by Claude Sonnet 5.5 (`claude-sonnet-5-5`) as an independent acceptance
 author, from ADR 0011 and the contracts alone (no product code was read).
 
-The suite holds 99 Playwright acceptance journeys, written from the product
+The suite holds 103 Playwright acceptance journeys, written from the product
 contracts and never from product code. Each title reads
 `H<nn> [REQUIREMENT IDS] journey`; the ids are the requirements of the product
 spec that the journey observes.
@@ -109,6 +113,15 @@ spec that the journey observes.
     reused, the overview drawn by a call, the next draw after a success reading again), and a
     file the read cites deleted before `Try again` (the kept read checked again, the overview
     drawn by a call, no fact citing the file; another focus reading again).
+- `H154`–`H157` `*.spec.ts` (4 journeys, issue #97; no earlier file changed):
+  - `H154`, another focus or another model after a failed draw reads again, while the same
+    trimmed focus and model with another channel reuses the read; nothing is written.
+  - `H155`, two problems in one post answer are one repair turn, announced in the plural, and
+    a stubborn engine fails the run once with the file untouched.
+  - `H156`, a draw from the home screen whose overview stays over its limit after the repair turn
+    is shortened with one warning and still writes and registers the drawing.
+  - `H157`, `Try again` from the home screen after the overview call failed: the read stage
+    `running` with `Using the facts already read`, then `done`, the overview drawn by a call.
 - `helpers.ts`, `helpers-svg-parity.ts`: shared, test-owned helpers (files, the
   command line, the editor, the share dialog, image measurement; for 0.3 also
   project folders in real git repositories, the scan and draw requests, event
@@ -173,6 +186,8 @@ is this index.
 
 The story-limits scenarios (`H145`–`H151`) are one batch, `story-limits`, that adds seven files and
 changes `COVERAGE.md`, `verify.json` and this file; no helper changed and no existing scenario.
+`H154`–`H157` are a second batch, `story-limits-2`, of the same kind: four files and the same three
+index files.
 
 The ADR 0011 round is one batch, `edges-behind`, that rewrites `H84` and `H86`, adds `H152` and `H153`,
 adds helpers to `helpers-svg-parity.ts` (`isSingleCubic`, `edgeLine`, `routeToBox`, `distanceToBox`,

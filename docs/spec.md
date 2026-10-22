@@ -34,16 +34,23 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **START-6** (Today) A draw that fails after its read keeps what it read,
   and `Try again` starts from the stage that did not finish, with no new
   read (ADR 0010).
+- **START-7** (To build) A draw of several choices draws them one after
+  another, one read each. A choice that fails or is cancelled keeps the
+  choices that finished; `Try again` starts from the first choice that did
+  not finish. Nothing is written until every choice is drawn (ADR 0015).
 
 ### Scan and focus (SCAN)
 
 - **SCAN-1** (Today) A scan of about a minute reads the README, the folder
   tree, dependency files and entry points, and produces a short repository card.
-- **SCAN-2** (Today) The scan proposes 3–5 focus options of three kinds —
-  a flow, an inner mechanism, the overview — each with a title, one sentence
-  and the files that back it. An option whose files do not exist is not shown.
-- **SCAN-3** (Today) The user can always pick "the whole system" or type a
-  focus in their own words.
+- **SCAN-2** (To change) The scan proposes 3–8 options of two kinds — a
+  section (a layer or part of the system: the back-end, the front-end, an API
+  layer) and a flow (a workflow) — each with a title, one sentence and the
+  files that back it. An option whose files do not exist is not shown
+  (ADR 0015).
+- **SCAN-3** (To change) The user ticks one or several choices: any of the
+  options, "The whole system", and "Something else" in their own words. One
+  draw makes every choice ticked, into one drawing file.
 - **SCAN-4** (Today) A scan is cached per commit; opening the same commit
   again does not rescan.
 
@@ -61,8 +68,10 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 
 ### Channels and story (STORY)
 
-- **STORY-1** (Today) The user chooses a channel after the focus — LinkedIn,
-  README or presentation — and can switch channel without a new deep read.
+- **STORY-1** (To change) The user chooses one channel after the choices —
+  LinkedIn, README or presentation — and it is drawn for every choice. Each
+  choice has its own set of channels (overview, LinkedIn, README,
+  presentation) and can switch channel without a new deep read.
 - **STORY-2** (Today) LinkedIn: one image, about 8–12 parts, a title and one
   plain sentence, no held items, readable on a phone.
 - **STORY-3** (Today) README: a detailed drawing; one-line descriptions;
@@ -78,6 +87,10 @@ and its files, and a guided tour for learning a repository (ADR 0001).
   the user the run: every prompt states the limits code checks, a broken
   answer gets one repair turn, and a text still too long is shortened with a
   warning (ADR 0009).
+- **STORY-8** (To build) The whole system is drawn as a map of about 5–9
+  top-level parts; every other component is inside one of them, in a detail
+  view the draw writes at once. The map and its detail views together show
+  or hold every component fact (ADR 0015).
 
 ### Layout (LAYOUT)
 
@@ -135,8 +148,9 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 
 - **FILE-1** (Today) A drawing is one JSON file in the user's repository; the
   editor saves into it and follows outside changes to it.
-- **FILE-2** (Today) The file holds the facts list and one drawing per
-  channel (ADR 0003).
+- **FILE-2** (To change) The file holds one or more choices, each with its
+  own facts list and one drawing per channel; an edit changes only its own
+  choice (ADR 0003, ADR 0015).
 - **FILE-3** (Today) Appearance edits change only their channel; content
   edits change the facts and mark the other channels "needs update".
 - **EDIT-1** (Today) Move, resize by content, rename in place, add parts by
@@ -169,11 +183,16 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 
 ### Views and navigation (NAV)
 
-- **NAV-1** (Today) A part can open a detail view of its inside; detail views
-  nest.
-- **NAV-2** (Today) Tabs show the channels (overview, LinkedIn, README,
-  presentation) with a "needs update" mark; a breadcrumb shows the path into
-  detail views.
+- **NAV-1** (To change) A part can open a detail view of its inside; detail
+  views nest. A part with an inside shows a visible open mark, in the editor
+  and the export; a click on it without moving it, or Enter on it, goes into
+  its inside, and a drag moves it.
+- **NAV-2** (To change) A views panel beside the canvas lists the whole
+  system, each section and each flow of the drawing, with their detail views
+  under them, marks the current one and goes to any of them in one click;
+  below 900 px it folds into the header menu. Tabs show the current choice's
+  channels (overview, LinkedIn, README, presentation) with a "needs update"
+  mark; a breadcrumb shows the path into detail views.
 - **NAV-3** (Today) Search highlights matching parts on the canvas as the
   user types, dims the rest, shows the match count and steps through matches
   with Enter; the view moves only when a match is off screen.

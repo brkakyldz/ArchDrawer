@@ -33,13 +33,13 @@ check. Writes nothing.
   then `valid`, or `valid with <n> warning(s)`; exit 0.
 - Invalid: one line per violation, `ERROR <json path>: <message>`, every
   violation listed, then `<n> error(s)`; exit 1. The path names the place to
-  fix (`channels.overview.views[0].nodes[3].form`) and the message what is allowed
+  fix (`choices[0].channels.overview.views[0].nodes[3].form`) and the message what is allowed
   (`"box" is not a form; use one of card, compact, panel, group`). An invalid file
   prints no warnings.
 - Not JSON: `ERROR json: <parser message>`; unreadable: `ERROR file: not
   found` (or the system message); an `archdraw/diagram@1` file:
   `ERROR schema: this is archdraw/diagram@1; run "archdrawer migrate <file>"`
-  (an `archdraw/diagram@2` file is checked as converted, with the conversion
+  (an `archdraw/diagram@3` or `@2` file is checked as converted, with the conversion
   warnings as `WARN` lines);
   each followed by `1 error(s)`, exit 1.
 
@@ -75,11 +75,13 @@ check. Writes nothing.
 The same file always gets the same id and URL. A file whose `id` belongs to
 another registered drawing gets a new id, written back.
 
-## `archdrawer svg <file> [--channel <c>] [--view <id>] [--format <f>] [--theme light|dark] [--out <path>]`
+## `archdrawer svg <file> [--choice <id>] [--channel <c>] [--view <id>] [--format <f>] [--theme light|dark] [--out <path>]`
 
 Writes the share image (ui contract, The share image) with title, steps,
 connection labels, colour key and texts on, description off and sub-lines as
-the view's switch says, the fonts embedded. The file is checked as `open` checks it. `--channel` is
+the view's switch says, the fonts embedded. The file is checked as `open`
+checks it. `--choice` names one of its choices, by default the one holding
+`--view` when it is given, else the first. `--channel` is
 `overview` (default), `linkedin`, `readme` or `presentation`; `--view` defaults
 to the channel's first view; `--format` is
 `linkedin` (default, 1620×1080), `readme`, `slide`, `square` or `feed`
@@ -94,6 +96,8 @@ An unknown format or theme is a usage error (exit 2:
 `Unknown format "<f>"; use one of linkedin, readme, slide, square, feed`,
 `Unknown theme "<t>"; use light or dark`). An unknown channel is a usage error
 (`Unknown channel "<c>"; use one of overview, linkedin, readme, presentation`).
+An unknown choice prints `No choice "<c>" in <file>; choices: <ids>` on
+stderr, exit 1.
 A channel with no view prints `The channel "<c>" has no drawing in <file>` on
 stderr, exit 1. An unknown view prints
 `No view "<v>" in the <c> channel of <file>; views: <ids>` on stderr, exit 1. An invalid file is
@@ -101,10 +105,10 @@ reported as by `validate`, exit 1.
 
 ## `archdrawer migrate <file>`
 
-Rewrites an `archdraw/diagram@1` or `archdraw/diagram@2` file in the current
-format (drawing contract, Reading `archdraw/diagram@2` and `@1`), prints each
+Rewrites an `archdraw/diagram@1`, `@2` or `@3` file in the current
+format (drawing contract, Reading `archdraw/diagram@3`, `@2` and `@1`), prints each
 conversion warning, then `migrated`; exit 0. A file already in the current
-format prints `already archdraw/diagram@3`, exit 0. Not JSON: `ERROR json: <message>`; any
+format prints `already archdraw/diagram@4`, exit 0. Not JSON: `ERROR json: <message>`; any
 other schema: `ERROR schema: not an archdrawer drawing`; exit 1.
 
 ## `archdrawer status` and `archdrawer stop`

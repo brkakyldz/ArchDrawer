@@ -2,10 +2,14 @@
 id: 0007
 title: "The staged pipeline's interfaces: a scan resource, one draw run, facts with evidence, one story shape"
 date: 2026-10-21
-status: accepted
+status: accepted (superseded in part by 0015: one focus per draw, the scan's option kinds and count, format 3, the overview brief of the whole system)
 deciders: [brkakyldz]
 supersedes: []
 ---
+
+Superseded in part by ADR 0015: a draw takes several choices, the scan offers
+3–8 sections and flows, the file is `archdraw/diagram@4`, and the whole system
+is a map of about 5–9 parts.
 
 ## Context
 

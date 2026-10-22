@@ -6,7 +6,8 @@ and the instruction engine write it; the CLI, the server and the editor read
 it. This file defines its shape, the rules that make it valid, how an edit is
 split between the facts and a channel, the warnings it can carry, how it is
 normalised, measured and laid out, and what an engine answers when it changes
-a drawing. Why the file is shaped this way: ADR 0003, ADR 0006 and ADR 0007.
+a drawing. Why the file is shaped this way: ADR 0003, ADR 0006, ADR 0007 and
+ADR 0015.
 
 Implemented by: `src/core/file3.ts` (the `@3` shape, validation, defaults),
 `src/core/channels.ts` (joining a channel view, splitting an edit, `outdated`,
@@ -19,22 +20,45 @@ warnings, normalisation), `src/core/convert.ts` (reading `@2`),
 
 ## Format identifier
 
-Every file carries `"schema": "archdraw/diagram@3"`. The string identifies
+Every file carries `"schema": "archdraw/diagram@4"`. The string identifies
 the file format and is checked exactly; it is not the product's version.
-Files with `archdraw/diagram@2` are converted when read (*Reading
-`archdraw/diagram@2`*); `archdraw/diagram@1` needs `archdrawer migrate`.
+Files with `archdraw/diagram@3` are converted when read (*Reading
+`archdraw/diagram@3`*), and files with `archdraw/diagram@2` through `@3`
+(*Reading `archdraw/diagram@2`*); `archdraw/diagram@1` needs `archdrawer
+migrate`. Whoever writes `@3` or `@2` (the plugin skill, an older session)
+keeps working: the server writes the file back as `@4`.
 
 ## Shape
 
 ```jsonc
 {
-  "schema": "archdraw/diagram@3",
+  "schema": "archdraw/diagram@4",
   "id": "d_k3j9x2ab",          // optional in a written file; ^d_[a-z0-9]{6,}$; `open` assigns one
   "title": "Sample Shop",       // the system's name, 1–120 chars
   "theme": "light",             // optional: "light" (default) | "dark"
   "source": { "kind": "local", "path": "C:/code/shop" },  // optional; the repository root, or null
   "engine": { "id": "claude", "model": null },            // optional; last instruction engine, or null
   "createdAt": "…", "updatedAt": "…",                     // optional ISO strings; the server keeps them
+  "choices": [ /* 1–12 choices (below); choices[0] is the one a drawing opens on */ ],
+  "requests": [],               // optional; instructions waiting for the next session
+  "warnings": []                // optional; one line per repair or conversion of the
+                                //   last change: a run that saves replaces the list
+                                //   with its own, so a clean run leaves it empty
+}
+```
+
+### Choice
+
+A choice is one thing the user chose to draw: the whole system, a section, a
+flow, or a focus in their own words (ADR 0015). It holds its own facts and
+its own four channels, in exactly the shape a format 3 file held them.
+
+```jsonc
+{
+  "id": "system",               // ^[A-Za-z0-9_-]{1,64}$, unique among the choices
+  "title": "The whole system",  // 1–80 chars: its name in the views panel and on the home screen
+  "kind": "system",             // "system" | "section" | "flow" | "custom"
+  "about": "",                  // optional, default "": 0–300 chars, what it draws (the option's sentence, the typed text)
   "facts": {
     "components": [ /* component facts, at most 1800 */ ],
     "relations": [ /* relation facts, at most 3600; optional, default [] */ ],
@@ -46,13 +70,24 @@ Files with `archdraw/diagram@2` are converted when read (*Reading
     "readme":       { "views": [ /* 0 or 1 view */ ], "showSteps": false, "outdated": [] },
     "presentation": { "views": [ /* 0 or 1 view */ ], "showSteps": false, "outdated": [],
                       "steps": [ /* the presentation's ordered steps; optional, default [] */ ] }
-  },
-  "requests": [],               // optional; instructions waiting for the next session
-  "warnings": []                // optional; one line per repair or conversion of the
-                                //   last change: a run that saves replaces the list
-                                //   with its own, so a clean run leaves it empty
+  }
 }
 ```
+
+| kind | made from | its overview (*Story answers*, briefs) |
+|---|---|---|
+| `system` | `The whole system` on the home screen; a converted `@3` file | the map: about 5–9 top-level parts, every other component in a detail view |
+| `section` | a scan option of kind `section`: a layer or part of the system | complete, in one view |
+| `flow` | a scan option of kind `flow`: a workflow | complete, in one view |
+| `custom` | `Something else`: the user's own words | complete, in one view |
+
+A file holds at most one `system` choice. Choices are in the order they were
+drawn; the views panel lists them by kind (ui contract). Everything below
+about facts, channels, views, parts, connections and steps holds within one
+choice: ids, references, `detail`, `outdated` and every rule. Nothing in one
+choice points into another, and the same component may be a fact of two
+choices with no link between them. View ids alone are unique across the
+whole file (rule 2), so a view id names its choice and its channel.
 
 **Facts** say what is true about the system; **channels** say how it is told.
 A channel is one of four fixed names. `showSteps` (optional, default false)
@@ -229,11 +264,11 @@ are appearance (*Edits*).
 ### Requests
 
 ```jsonc
-{ "id": "q1", "text": "Add the hotel board", "channel": "overview", "view": "overview", "at": "2026-10-13T12:00:00.000Z" }
+{ "id": "q1", "text": "Add the hotel board", "choice": "system", "channel": "overview", "view": "overview", "at": "2026-10-13T12:00:00.000Z" }
 ```
 
 An instruction typed in the editor when no engine could run it (1–4000 chars,
-an existing channel and one of its views). The next agent session that edits
+an existing choice, one of its channels and one of that channel's views). The next agent session that edits
 the file applies and removes it.
 
 ## What a channel draws
@@ -267,15 +302,17 @@ A file breaking any rule is **invalid**. `archdrawer validate` lists every
 violation as `<json path>: <message>`; the server refuses an invalid document
 with 400 and the first violation. Invalid files are never repaired.
 
-1. `schema` is exactly `archdraw/diagram@3`. A file with
+1. `schema` is exactly `archdraw/diagram@4`. A file with
    `archdraw/diagram@1` gets the single error
    `schema: this is archdraw/diagram@1; run "archdrawer migrate <file>"`.
-   A file with `archdraw/diagram@2` is converted first and the result is
-   checked.
-2. Ids match `^[A-Za-z0-9_-]{1,64}$`. Fact ids (components and relations
-   together, one id space) are unique among facts; a part's id may equal a
-   fact's. View ids are unique across the file. Limit ids share the facts'
-   id space.
+   A file with `archdraw/diagram@3` or `archdraw/diagram@2` is converted
+   first and the result is checked. A violation's path starts at its choice:
+   `choices[1].channels.overview.views[0].nodes[3].form`.
+2. Ids match `^[A-Za-z0-9_-]{1,64}$`. Choice ids are unique among the
+   choices. Fact ids (components and relations together, one id space) are
+   unique among the facts of their choice; a part's id may equal a fact's.
+   View ids are unique across the file, every choice together. Limit ids
+   share the facts' id space.
    Part, connection, text and step ids are unique within their channel.
    Request ids are unique.
 3. Every component-fact and relation-fact property above is present. Every
@@ -286,8 +323,8 @@ with 400 and the first violation. Invalid files are never repaired.
 4. Lengths, list sizes and enumerations as stated above, for facts and for a
    part's or connection's own values alike. Required strings are non-empty
    after trimming.
-5. `channels` holds `overview` and may hold `linkedin`, `readme` and
-   `presentation`, no other key; each is an object with at most `views`,
+5. Each choice's `channels` holds `overview` and may hold `linkedin`,
+   `readme` and `presentation`, no other key; each is an object with at most `views`,
    `showSteps` and `outdated` (`views` required in the overview), and the
    presentation also `steps`. The overview holds 1–30 views; each other
    channel at most one.
@@ -300,7 +337,7 @@ with 400 and the first violation. Invalid files are never repaired.
 9. `parent` names a group part in the same view; no part is its own
    ancestor; nesting is at most three groups deep.
 10. `detail` is null outside the overview channel; in it, it names another
-    overview view.
+    overview view of the same choice.
 11. A relation's ends exist and differ. At most one relation per ordered
     pair; a pair joined both ways is one relation with `both: true`.
 12. A connection's ends exist in its view and differ. At most one connection
@@ -330,11 +367,13 @@ with 400 and the first violation. Invalid files are never repaired.
     when `docs` holds a `.git` of its own. A registered drawing's
     `source` is always that root.
 15. At most 60 parts per view.
-16. Every component fact is shown or held by at least one part of the
-    overview channel.
+16. Every component fact of a choice is shown or held by at least one part
+    of that choice's overview channel, in any of its views (for a `system`
+    choice: the map or one of its detail views).
 17. `outdated` lists distinct ids (any id syntax; a removed fact's id stays
     listed). An empty channel's `outdated` is `[]`.
-18. A request names an existing channel and one of its views.
+18. A request names an existing choice, one of its channels and one of that
+    channel's views.
 19. `lane` follows *Lane* below.
 20. A component fact's `within` names another component fact, never itself;
     the fact it names has no `within` (one level).
@@ -347,6 +386,10 @@ with 400 and the first violation. Invalid files are never repaired.
     `lines` null or `[from, to]` with `1 ≤ from ≤ to`.
 24. A presentation step names 1–60 distinct parts of the presentation view;
     a channel without a view has no steps.
+25. `choices` holds 1–12 choices. Each has `id`, `title` (1–80 chars),
+    `kind` (`system`, `section`, `flow` or `custom`), `facts` and `channels`,
+    and may have `about` (0–300 chars); no other key. At most one choice is
+    of kind `system`.
 
 ### Lane
 
@@ -367,7 +410,10 @@ because it has a lane.
 
 Every change to a document — an editor edit, a run's answer, a file written
 from outside — is the same pure split (`src/core/channels.ts`): content goes
-to the facts, appearance to the channel it was made in.
+to the facts, appearance to the channel it was made in. A change is made in
+one choice and changes only that choice, its facts and its channels: every
+other choice stays exactly as it was, and `outdated` marks only channels of
+the same choice (an outside write: of each choice it changed).
 
 **Appearance** changes only the channel it is made in: moving, a part's form,
 icon, `place`, `lane`, `parent` and `detail`, which items a panel shows (as
@@ -490,9 +536,11 @@ reads a file, and on import:
 - a missing document `id` is assigned (`d_` + 10 lower-case letters/digits);
 - `source` becomes `{"kind": "local", "path": <repository root>}` for a file
   in a repository; an imported document keeps its own `source`;
-- missing `theme`, `requests`, `warnings`, `facts.relations`, channels,
-  `showSteps`, `outdated`, `lane`, connection `relations`, `texts` and text
-  `size` get their defaults; `createdAt`/`updatedAt` are set when missing; a
+- a `@3` or `@2` file is converted to `@4` first (*Reading
+  `archdraw/diagram@3`*);
+- missing `theme`, `requests`, `warnings`, a choice's `about`,
+  `facts.relations`, channels, `showSteps`, `outdated`, `lane`, connection
+  `relations`, `texts` and text `size` get their defaults; `createdAt`/`updatedAt` are set when missing; a
   part's or connection's own text that is null is left out;
 - every connection without an id gets the next free `e<n>` of its channel;
 - every part without a position is laid out (*Layout*), and every group's
@@ -537,6 +585,17 @@ sub-line row whether or not its sub-line is empty, so its height never
 depends on that text. With it off, no part draws a sub-line and none is
 measured with one: a card loses its 18 px sub-line row (the plain card is 90
 tall), a compact part its sub-line text, and a group header its sub-line.
+
+**The open mark** (NAV-1). A part whose `detail` is set draws the open mark:
+a filled circle 20 px across in the part's kind colour, holding the `layers`
+icon, 12 px, in the canvas colour. It sits 8 px inside the top and right
+edges of a card or panel, 12 px inside the right edge of a compact part and
+centred on its height, and at the right end of a group's header, centred on
+it. The label row keeps `8 + 20` px for it (the 14 px detail mark it
+replaces kept `8 + 14`). It is the element with class `open-mark`, the same
+in the editor's `node-<id>` (a group's in `node-head-<id>`, *Connections*) and in
+the export's `g[data-node-id]`, which then carries `data-open="true"`. The share image, the slides and `archdrawer svg`
+draw it as the editor does.
 
 **Shapes** (LOOK-2, ADR 0014). The outline of a part is the element with
 class `body`; it carries `data-shape`, the same in the editor's `node-<id>`
@@ -841,8 +900,8 @@ It is pure and deterministic. Only parts without a stored position move
 
 ## Engine answers (refine and simplify)
 
-The engine receives a **draft** of the run's channel: `title` and every view
-of the channel as channel views (`id`, `title`, `caption`, parts with their
+The engine receives a **draft** of the run's channel, in the run's choice:
+`title` and every view of the channel as channel views (`id`, `title`, `caption`, parts with their
 drawn content, connections with their drawn label, style and two-way flag)
 without document metadata, texts, requests, warnings, connection ids or
 relation ids, with each part's `facts`, `held`, `limits` and current `box`
@@ -918,8 +977,8 @@ shown by no part fails the run with
 
 ## Read answers (facts)
 
-The deep read of a `draw` run (api contract) answers the facts in the strict
-schema dialect, with no layout:
+The deep read of each choice of a `draw` run (api contract) answers that
+choice's facts in the strict schema dialect, with no layout:
 
 ```json
 { "components": [{ "id": "", "label": "", "kind": "service", "sub": "", "description": "",
@@ -1073,7 +1132,8 @@ does.
 
 | Channel | Brief | Code checks |
 |---|---|---|
-| overview | The complete map: every fact shown or held. A one-line sub-line on every part. Merged parts where many facts are alike. Zones as the system's real boundaries. Every mechanism held by its part; limits where they explain a part. No count target, within the 60 parts a view holds, each zone counted as a part | Every fact drawn (below) |
+| overview of a `system` choice: the map | A map of the system's main groups: about 5–9 top-level parts, zones or holders. Every other component inside one of them, never at top level beside them. A one-line sub-line on every part. Every fact shown or held, on the map or inside a group. Every mechanism held by its part; limits where they explain a part. Within the 60 parts an answer holds, each zone counted as a part | Every fact drawn, then *The map* (below). The layout report's `parts` target is 9 on the map (api contract) |
+| overview of a `section`, `flow` or `custom` choice | The complete map: every fact shown or held. A one-line sub-line on every part. Merged parts where many facts are alike. Zones as the system's real boundaries. Every mechanism held by its part; limits where they explain a part. No count target, within the 60 parts a view holds, each zone counted as a part | Every fact drawn (below) |
 | linkedin | One image for a phone: about 8–12 parts. A title of at most 9 words and one plain sentence. No held items or limits, no tuning numbers | The post targets below. A non-empty `held`, `limits` or `steps` is dropped, one warning each |
 | readme | A detailed drawing that renders on GitHub. A one-line sub-line on every part, the default description. Held mechanisms only on a part whose working the story is about; elsewhere none. Limits where they explain a guarantee | — |
 | presentation | One drawing and 3–8 ordered steps that tell it. A one-line sub-line on every part; held mechanisms as in the README. Each step highlights the parts it is about, says it on screen in one short sentence, and gives the speaker one to three sentences | Each step's parts exist. A wrong one is dropped with one warning; a step none of whose parts exist is dropped instead, with one warning |
@@ -1136,9 +1196,11 @@ view):
 
 **The view.**
 
-- Its id is kept when the channel already has a view. Otherwise it is the
-  channel's name (`linkedin`, `readme`, `presentation`; for the overview,
-  `overview`), or `<name>-2`, `-3`, … when another view has that id.
+- Its id is kept when the channel already has a view. Otherwise, in the
+  file's first choice, it is the channel's name (`linkedin`, `readme`,
+  `presentation`; for the overview, `overview`), and in any other choice
+  `<choice id>-<channel name>` (`back-end-readme`, `back-end-overview`); with
+  `-2`, `-3`, … when another view of the file has that id.
 - Its title is `LinkedIn`, `README`, `Presentation` or `Overview`, and its
   caption is the intent's title and lede. It has no texts.
 - It is laid out by its lanes: portrait for the LinkedIn feed format, wide
@@ -1161,13 +1223,82 @@ out, one warning each:
 - A relation between two parts that each show one fact, which no connection
   shows, is added as a connection.
 
+**The map** (the overview of a `system` choice). After *Every fact drawn*,
+code splits the overview's one view into the map and its detail views. The
+split adds no warning: it is how the map is drawn, not a repair of what the
+engine said.
+
+- **Map parts with an inside.** Each top-level group of the view (a zone's
+  `zone-<id>`, or a holder) that holds at least one part stays on the map,
+  holding nothing there, and its `detail` names a new overview view, its
+  **detail view**, which holds the parts that were inside it with everything
+  inside them.
+  - Its form becomes a panel when it holds mechanisms or shows limits, else a
+    card. A zone's part keeps no fact: its own label is the zone's, its kind
+    `service`, its description `A group of components.` A holder keeps its
+    facts, `held` and `limits`.
+  - Its lane is `{"spine": <n>}`, `<n>` the lowest spine order among the
+    parts it held, when one of them had a spine lane; otherwise it has none.
+- **Detail views.** Id `<part id>-inside` (`-2`, `-3`, … when another view of
+  the file has it); title and caption title the part's label, lede `""`, no
+  texts. The parts directly inside the group are its top-level parts, keeping
+  their lanes and the groups inside them; a side lane whose anchor is not in
+  the view is dropped. It is laid out by its lanes, wide.
+- **Plain map parts.** A top-level part that held nothing stays on the map as
+  it was, with no inside. A side lane whose anchor went into a detail view is
+  dropped.
+- **Connections.** A connection whose two ends are in one view (the map or
+  one detail view) stays there. Any other is **lifted** to the map: each end
+  becomes the map part that holds it (or itself, when it is on the map). One
+  whose two ends lift to the same map part is left out. Connections lifted
+  onto the same pair, in either direction, become one map connection with
+  id `<from>-<to>`:
+  - it keeps those of their relations that join a fact of one end with a
+    fact of the other (rule 12); without one relation it has its own label,
+    style and two-way flag;
+  - when exactly one connection lifts onto the pair, it keeps that one's
+    label, style and step; when several do, it has no label, the style they
+    share (else `call`), the lowest of their steps, and is two-way when they
+    run both ways.
+
+  Steps on the map and in each detail view are then numbered 1, 2, 3 … in
+  their order, silently.
+- The map keeps the view's id, title and caption, and is laid out again by
+  its lanes, wide. The map and its detail views together show or hold every
+  component fact (rule 16), since every part went to exactly one of them.
+- An overview holds at most 30 views (rule 5). Groups past the 29th that
+  would get a detail view, in the order of the view's `nodes`, stay groups on
+  the map, holding their parts, with one warning: `Kept <n> groups on the map:
+  an overview holds at most 30 views`.
+
 The result must pass validation before it is saved.
+
+## Reading `archdraw/diagram@3`
+
+Opening, importing, following an outside change and `archdrawer migrate`
+convert a file with `"schema": "archdraw/diagram@3"`, and the server writes
+it back as `@4`. Nothing is lost and the conversion adds no warning:
+
+- the file's `facts` and `channels` become its one choice,
+  `{"id": "system", "title": "The whole system", "kind": "system",
+  "about": "", "facts": …, "channels": …}`, unchanged: every fact, view and
+  view id, part, connection, text, step, own text, `showSteps` and
+  `outdated` stays as it was (ADR 0006 made the overview the complete map of
+  the file's facts, so the file's one choice is the whole system);
+- `id`, `title`, `theme`, `source`, `engine`, `createdAt`, `updatedAt`,
+  `requests` and `warnings` stay on the document;
+- every request gets `"choice": "system"`.
+
+A file that is invalid as `@3` is invalid and not converted. Read back, the
+`@4` file draws exactly what the `@3` file drew: in the editor, in every
+export and in `archdrawer svg`.
 
 ## Reading `archdraw/diagram@2`
 
 Opening, importing, following an outside change and `archdrawer migrate`
-convert a file with `"schema": "archdraw/diagram@2"` and the server writes it
-back as `@3`. The conversion adds the warning `Converted from
+convert a file with `"schema": "archdraw/diagram@2"` to `@3` as below, then
+to `@4` (*Reading `archdraw/diagram@3`*), and the server writes it back as
+`@4`. The conversion adds the warning `Converted from
 archdraw/diagram@2` and one warning per change of meaning below; a file that
 is invalid as `@2` is invalid and not converted.
 
@@ -1215,7 +1346,7 @@ is invalid as `@2` is invalid and not converted.
 ## Reading `archdraw/diagram@1`
 
 `archdrawer migrate` and import convert a file with
-`"schema": "archdraw/diagram@1"` to `@2`, then to `@3` as above: one view
+`"schema": "archdraw/diagram@1"` to `@2`, then to `@3` and `@4` as above: one view
 `overview` (title `Overview`, caption from the old title and subtitle); nodes
 keep id, label, files and position, `tech` becomes `sub`, kind `ui` becomes
 `client`, a missing description becomes `No description yet.`, form `card`;

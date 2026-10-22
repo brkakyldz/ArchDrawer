@@ -7,9 +7,11 @@ import { stripTypeScriptTypes } from 'node:module';
 const here = new URL('.', import.meta.url);
 
 // Every requirement id of the product spec, with its status as spec.md states it: 'today' (Today), 'change' (To change) or
-// 'build' (To build). A title may carry only ids that the product does today or is changing; an id still 'build' has nothing
-// to observe yet. Everything the 0.2, 0.3 and 0.4 rounds and the story-limits round (START-6, STORY-7) built is 'today' now.
-// START-1 (To change), and START-2, NAV-4, PRES-1–3 and QUAL-1/3 (To build) are the others.
+// 'build' (To build) or 'landing'. A title may carry only ids that the product does today or is changing, or that the round being
+// landed observes; an id still 'build' has nothing to observe yet. Everything the 0.2, 0.3 and 0.4 rounds and the story-limits round
+// (START-6, STORY-7) built is 'today' now. 'landing' is PRES-1–3: `spec.md` keeps them To build until the integration of 0.5 marks
+// them Today, and the 0.5 scenarios (H158–H166) observe them, so a title may carry them. START-1 (To change), and START-2, NAV-4 and
+// QUAL-1/3 (To build) are the others.
 const requirements = {
   'START-1': 'change', 'START-2': 'build', 'START-3': 'today', 'START-4': 'today', 'START-5': 'today', 'START-6': 'today',
   'SCAN-1': 'today', 'SCAN-2': 'today', 'SCAN-3': 'today', 'SCAN-4': 'today',
@@ -21,7 +23,7 @@ const requirements = {
   'EDIT-1': 'today', 'EDIT-2': 'today', 'EDIT-3': 'today', 'EDIT-4': 'today',
   'AI-1': 'today', 'AI-2': 'today', 'AI-3': 'today', 'AI-4': 'today', 'AI-5': 'today',
   'NAV-1': 'today', 'NAV-2': 'today', 'NAV-3': 'today', 'NAV-4': 'build',
-  'PRES-1': 'build', 'PRES-2': 'build', 'PRES-3': 'build',
+  'PRES-1': 'landing', 'PRES-2': 'landing', 'PRES-3': 'landing',
   'SHARE-1': 'today', 'SHARE-2': 'today', 'SHARE-3': 'today',
   'SAFE-1': 'today', 'SAFE-2': 'today', 'SAFE-3': 'today', 'SAFE-4': 'today', 'SAFE-5': 'today',
   'QUAL-1': 'build', 'QUAL-2': 'today', 'QUAL-3': 'build',
@@ -110,7 +112,11 @@ for (const name of ['readDocument', 'readDrawing', 'writeDrawing', 'workspace', 
   'tabTo', 'stepIds', 'litParts', 'nodeSizes', 'samePath', 'warnLines', 'errorLines',
   // 0.4: shapes, the AI conversation, previews, suggestions and the second look.
   'shapeFor', 'editorShape', 'editorShapes', 'svgShapes', 'thumbShapes', 'openAiPanel', 'aiTurns', 'aiTurn', 'turnStates', 'turnTexts', 'startedRun', 'sendInPanel',
-  'runDone', 'acceptPreview', 'noToast', 'paddedPng', 'pngInfo', 'TINY_PNG', 'SUGGESTIONS', 'SUGGESTION_TEXT', 'DEFAULT_IMAGE', 'REFUSED_WHILE_PREVIEW', 'noChanges'])
+  'runDone', 'acceptPreview', 'noToast', 'paddedPng', 'pngInfo', 'TINY_PNG', 'SUGGESTIONS', 'SUGGESTION_TEXT', 'DEFAULT_IMAGE', 'REFUSED_WHILE_PREVIEW', 'noChanges',
+  // 0.5: the slide image, presenting, the tour and the slide exports.
+  'SLIDE_STEPS', 'slideShop', 'tourShop', 'TOUR_DESK_FIRST', 'toPresentation', 'openLayer', 'slideRead', 'slideDimming', 'dimsAgree', 'squeezed', 'textLines',
+  'fullscreenAgrees', 'focusStaysIn', 'watchToasts', 'toastsSeen', 'sessionWrite', 'slugOf', 'downloaded', 'crc32Of', 'readZip', 'readPdf', 'pngSize',
+  'slideSized', 'slideBox', 'pixelGrids', 'gridDistance', 'gridMean'])
   assert.ok(new RegExp(`export (async )?(function|const) ${name}\\b`).test(helpers), `helpers.ts no longer exports ${name}`);
 
 // The ask box and the old one-click fold are gone (0.4): a scenario may name their test ids only to say they are not there.
@@ -129,5 +135,29 @@ for (const [name, source] of sources) {
   if (!/^H\d+_/.test(name)) continue;
   if (/markerRepo\(|markerFolder\(/.test(source)) assert.ok(/process\.platform\s*!==?\s*'win32'/.test(source), `${name}: a folder named with a fixture marker needs the win32 guard`);
 }
+
+// 0.5 is built by two lanes at the same time, so a scenario belongs to one lane's surface: the present lane builds `present-start`,
+// `tour-start` and the `present` layer, the share lane the two slide downloads. A file that uses one lane's test ids or helpers
+// must not use the other's (it could not pass on either lane before the merge), and no file counts the buttons of `share-actions`
+// (the slide downloads are added to it after the merge). The helper file may hold both.
+const presentSurface = /['"`](present|present-[a-z-]+|tour-[a-z-]+)['"`]|\b(openLayer|slideRead|slideDimming|dimsAgree|slideSized|slideBox|fullscreenAgrees|focusStaysIn|tourShop|TOUR_DESK_FIRST)\b/;
+const slidesSurface = /download-slides-(pdf|png)|\b(downloaded|readPdf|readZip|pixelGrids)\b/;
+for (const [name, source] of sources) {
+  if (!/^H\d+_/.test(name)) continue;
+  const present = presentSurface.test(source), slides = slidesSurface.test(source);
+  assert.ok(!(present && slides), `${name}: uses both the present lane's surface (present, tour) and the share lane's (the slide downloads)`);
+  for (const [i, line] of source.split(/\r?\n/).entries()) {
+    if (/^\s*\/\//.test(line)) continue;
+    assert.ok(!(/share-actions/.test(line) && /toHaveCount\(|\.count\(\)|getByRole\(\s*['"]button['"]|locator\(\s*['"]button['"]|\.children\b|\.all\(\)/.test(line)),
+      `${name}:${i + 1}: counts what share-actions holds, which changes when the slide downloads join it`);
+  }
+}
+// The 0.5 title rule: PRES ids appear only in scenarios from H158 on (the round that observes them), and each PRES id has a scenario.
+for (const [name, source] of sources) {
+  if (!/^H\d+_/.test(name)) continue;
+  const number = Number(name.match(/^H(\d+)_/)[1]), title = source.match(/^test\('([^']+)'/m)[1];
+  if (/\bPRES-\d\b/.test(title)) assert.ok(number >= 158, `${name}: a PRES id in a scenario older than the 0.5 round`);
+}
+for (const id of ['PRES-1', 'PRES-2', 'PRES-3']) assert.ok(used.has(id), `no scenario observes ${id}`);
 
 console.log(`author-check: ${scenarios.length} scenarios, ${used.size} requirement ids observed, ${sources.size} typed files parse, imports stay inside the suite: ok`);

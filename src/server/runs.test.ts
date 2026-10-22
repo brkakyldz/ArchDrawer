@@ -223,6 +223,21 @@ describe("post runs", () => {
     expect(readFileSync(file, "utf8")).toBe(snapshot);
   });
 
+  it("a revise's story gets the repair turn too, with no image and no tools", async () => {
+    const t = makeApp({ stepMs: 1 });
+    const { file } = shopRepo();
+    const id = ((await (await t.req("/api/files", { method: "POST", json: { path: file } })).json()) as { id: string }).id;
+    const start = async (json: Record<string, unknown>) =>
+      (await t.runs.wait(((await (await t.req("/api/runs", { method: "POST", json: { diagramId: id, engine: "fixture", model: null, ...json } })).json()) as { runId: string }).runId))!;
+    expect((await start({ kind: "story", channel: "readme" })).status).toBe("succeeded");
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const revised = await start({ kind: "revise", channel: "readme", view: "readme", image: png, instruction: "[fixture:overlong]" });
+    expect([revised.status, revised.error]).toEqual(["succeeded", null]);
+    expect(revised.progress[0]).toBe("Looking at the drawing");
+    expect(revised.progress.filter((l) => l.startsWith("Fixing"))).toEqual(["Fixing 1 problem in the answer"]);
+    expect((JSON.parse(readFileSync(file, "utf8")) as Document3).channels.readme.views[0].caption.lede).toBe("A detailed drawing made by the test engine.");
+  });
+
   it("an over-long text is rewritten by the repair turn, or shortened with one warning after it", async () => {
     const { run, runs, stored } = await setup();
     const fixed = (await runs.wait((await run("[fixture:overlong]", { kind: "story", channel: "readme", view: undefined })).body.runId!))!;

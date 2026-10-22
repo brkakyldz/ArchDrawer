@@ -138,6 +138,36 @@ describe("the draw run", () => {
     expect(linesOf(t, third.id)[0]).not.toEqual({ message: "Using the facts already read", stage: "read" });
   });
 
+  it("a cancelled draw keeps only the stages it finished", async () => {
+    // A fixture that waits in one stage until the run is cancelled, then answers as usual.
+    let hang: string | null = "overview";
+    class Hanging extends FixtureEngine {
+      override run(req: Parameters<FixtureEngine["run"]>[0]) {
+        if (req.task?.data?.draw !== hang) return super.run(req);
+        return new Promise<unknown>((_, reject) => req.signal.addEventListener("abort", () => reject(new EngineError("Cancelled")), { once: true }));
+      }
+    }
+    const dir = repo();
+    const t = makeApp({ engines: [new Hanging(1)] });
+    const s = await json(await t.req("/api/scans", { method: "POST", json: { folder: dir } }));
+    await t.scans.wait(s.body.scanId);
+    const start = async () => (await json(await t.req("/api/runs", { method: "POST", json: { kind: "draw", scan: s.body.scanId, focus: { kind: "whole" }, channel: "readme" } }))).body.runId as string;
+    const cancelled = async () => {
+      const id = await start();
+      for (let i = 0; i < 200 && !t.runs.get(id)!.progress.includes(hang === "overview" ? "Drawing the overview" : "Drawing the README drawing"); i++) await new Promise((r) => setTimeout(r, 10));
+      t.runs.cancel(id);
+      expect((await t.runs.wait(id))!.status).toBe("cancelled");
+    };
+    await cancelled(); // in the overview: the read is kept, no overview
+    hang = "channel";
+    await cancelled(); // in the channel, from the kept read: now the overview is kept too
+    hang = null;
+    const id = await start();
+    const done = (await t.runs.wait(id))!;
+    expect(done.status).toBe("succeeded");
+    expect(done.progress.slice(0, 4)).toEqual(["Using the facts already read", "Checking the facts", "Drawing the overview", "Using the overview already drawn"]);
+  });
+
   it("a kept read is checked again: a cited file gone since drops its facts, and the overview is drawn again", async () => {
     const dir = repo();
     const t = makeApp();

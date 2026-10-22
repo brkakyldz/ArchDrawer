@@ -173,7 +173,6 @@ export class RunManager {
   startDraw(req: DrawRequest): string {
     // What the folder's last failed draw kept, if this draw asks the same (api contract, What a failed draw keeps).
     const key = keptKey(req);
-    for (const [folder, k] of this.kept) if (Date.now() - k.at >= KEPT_MS) this.kept.delete(folder);
     const last = this.kept.get(req.folderKey);
     const kept = last && last.key === key ? last.kept : null;
     const done: Partial<KeptDraw> = {};
@@ -184,7 +183,12 @@ export class RunManager {
         (err: unknown) => {
           // Only what was finished is kept, replacing the folder's entry; a draw that failed at the read keeps nothing.
           if (done.read === undefined) this.kept.delete(req.folderKey);
-          else this.kept.set(req.folderKey, { key, at: Date.now(), kept: { read: done.read, overview: done.overview ?? null } });
+          else {
+            const entry = { key, at: Date.now(), kept: { read: done.read, overview: done.overview ?? null } };
+            this.kept.set(req.folderKey, entry);
+            // It goes an hour later unless a newer draw of the folder replaced it first.
+            setTimeout(() => { if (this.kept.get(req.folderKey) === entry) this.kept.delete(req.folderKey); }, KEPT_MS).unref();
+          }
           throw err;
         },
       ),

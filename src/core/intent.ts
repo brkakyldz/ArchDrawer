@@ -163,10 +163,9 @@ export const STORY_HARD_LIMITS = {
   parts: LIMITS.nodesPerView, steps: FACT3_LIMITS.steps,
 } as const;
 
-/** Each text of an intent that has a hard limit, with a way to replace it. Holders draw no chips, so theirs are not held to it. */
+/** Each text of an intent that has a hard limit, with a way to replace it. */
 function limitedTexts(intent: StoryIntent, channel: ChannelId): { text: string; limit: number; what: string; put: (t: string) => void }[] {
   const L = STORY_HARD_LIMITS;
-  const holders = new Set(intent.parts.filter((p) => p.inside !== null).map((p) => p.inside!));
   const out: { text: string; limit: number; what: string; put: (t: string) => void }[] = [
     { text: intent.title, limit: L.title, what: "the title", put: (t) => (intent.title = t) },
     { text: intent.lede, limit: L.lede, what: "the description", put: (t) => (intent.lede = t) },
@@ -175,7 +174,7 @@ function limitedTexts(intent: StoryIntent, channel: ChannelId): { text: string; 
   for (const p of intent.parts) {
     out.push({ text: p.label, limit: L.label, what: `the label of ${q(p.id)}`, put: (t) => (p.label = t) });
     out.push({ text: p.sub, limit: L.sub, what: `the sub-line of ${q(p.id)}`, put: (t) => (p.sub = t) });
-    if (!holders.has(p.id)) p.chips.forEach((c, i) => out.push({ text: c, limit: L.chip, what: `a chip of ${q(p.id)}`, put: (t) => (p.chips[i] = t) }));
+    p.chips.forEach((c, i) => out.push({ text: c, limit: L.chip, what: `a chip of ${q(p.id)}`, put: (t) => (p.chips[i] = t) }));
   }
   for (const e of intent.edges) out.push({ text: e.label, limit: L.edgeLabel, what: `the label of ${e.from} → ${e.to}`, put: (t) => (e.label = t) });
   // Steps outside the presentation are ignored, so only the presentation's are held to its limits.
@@ -263,8 +262,11 @@ export function storyProblems(intent: StoryIntent, channel: ChannelId): string[]
   return out;
 }
 
-/** A text cut to exactly `limit` characters, ending with `…`. */
-const shorten = (text: string, limit: number) => text.slice(0, limit - 1) + "…";
+/** A text cut to exactly `limit` characters, ending with `…`; a cut never splits a surrogate pair (it is then one shorter). */
+const shorten = (text: string, limit: number) => {
+  const cut = text.slice(0, limit - 1);
+  return (/[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut) + "…";
+};
 
 /**
  * The hard limits after the repair turn (diagram contract, Hard limits), one warning each: a text

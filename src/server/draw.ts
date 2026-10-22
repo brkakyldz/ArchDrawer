@@ -116,6 +116,7 @@ export async function runDraw(req: DrawRequest, ctx: {
   if (kept?.overview && kept.overview.facts === facts) {
     ctx.progress("Using the overview already drawn", "overview");
     withOverview = { ...skeleton, channels: { ...skeleton.channels, overview: kept.overview.channel }, warnings: [...skeleton.warnings, ...kept.overview.warnings] };
+    cancelled();
   } else {
     const task = {
       kind: "story" as const, schema: STORY_SCHEMA, tools: "none" as const, data: { channel: "overview", title: skeleton.title, draw: "overview" as const },

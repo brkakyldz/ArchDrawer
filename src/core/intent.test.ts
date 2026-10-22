@@ -148,6 +148,12 @@ describe("story intent → post view", () => {
     expect(() => intentToDocument(shop(), "overview", broken, { portrait: false, channel: "readme" })).toThrow(
       `The engine's README drawing cannot be drawn: a connection from "web" to itself; a connection web → ghost names something that is not a part`,
     );
+    // A holder's chips are held to the limit too; a cut never splits a surrogate pair.
+    const holder = small({ parts: [part("web", { spine: 0, chips: ["h".repeat(45)] }), part("api", { spine: 0, inside: "web" })], edges: [] });
+    expect(storyProblems(holder, "readme")).toEqual(['a chip of "web" is 45 characters, over the 44 it may hold']);
+    const emoji = intentToDocument(shop(), "overview", small({ lede: "a".repeat(238) + "😀😀" }), { portrait: true });
+    const lede = emoji.doc.views.find((v) => v.id === emoji.view)!.caption.lede;
+    expect([lede.length, lede.endsWith("a…")]).toEqual([239, true]);
     const untitled = intentToDocument(shop(), "overview", small({ title: "" }), { portrait: true });
     expect(untitled.warnings).toContain(`The LinkedIn post has no title, kept "${shop().title}"`);
   });

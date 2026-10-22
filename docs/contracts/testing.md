@@ -99,10 +99,11 @@ engines (draft → answer → repair or story conversion → layout → validati
 models are `fixture-fast` (`Fast (test)`) and `fixture-careful`
 (`Careful (test)`); any valid model name is accepted.
 
-**Progress**: `Using model <model>` when the run names a model, then
-`Reading the drawing`, `Reading the code`, `Updating the drawing`, each after
-`ARCHDRAW_FIXTURE_STEP_MS`, then one more step before it answers. The pipeline
-adds its own lines (`Checking the drawing`, `Saved`, …).
+**Progress**: on every engine call, a repair turn included, `Using model
+<model>` when the run names a model, then `Reading the drawing`, `Reading the
+code`, `Updating the drawing`, each after `ARCHDRAW_FIXTURE_STEP_MS`, then one
+more step before it answers. The pipeline adds its own lines (`Checking the
+drawing`, `Saved`, …).
 
 **Markers** anywhere in the instruction, case-sensitive, for every kind:
 

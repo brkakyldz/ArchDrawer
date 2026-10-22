@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bezierAt, layoutRects, overlaps, routeEdges, labelWidth, LABEL, BADGE } from "./geometry";
+import { layoutRects, overlaps, routeEdges, labelWidth, LABEL, BADGE } from "./geometry";
 import { layoutView } from "./layout";
 import { fillDefaults, validateFile } from "./model";
 import { file, node, edge } from "./testkit";
@@ -106,21 +106,20 @@ describe("relational lanes", () => {
       expect(overlaps(labelBox, badge)).toBe(false);
     }
   });
-  it("routes around an unrelated part between two endpoints", () => {
+  it("passes behind an unrelated part between two endpoints, and reports it", () => {
     const v = { nodes: [node("a", { x: 0, y: 0 }), node("block", { x: 0, y: 150 }), node("b", { x: 0, y: 300 })], edges: [{ ...edge("a", "b"), id: "e" }] } as Parameters<typeof routeEdges>[0];
-    const rects = layoutRects(v), route = routeEdges(v, rects).get("e")!, r = rects.get("block")!;
-    // By a smooth arc: curve commands only.
-    expect(route.d).toMatch(/^M[^LHV]*$/);
-    for (let i = 0; i <= 128; i++) {
-      const p = bezierAt(route, i / 128);
-      expect(p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h).toBe(false);
-    }
+    const rects = layoutRects(v), route = routeEdges(v, rects).get("e")!;
+    // One straight cubic down, behind the part.
+    expect(route.d).toMatch(/^M[^LHV]* C[^C]*$/);
+    expect([route.side0, route.side1]).toEqual(["b", "t"]);
+    expect(route.c1.x).toBe(route.p0.x);
+    expect(route.blocked).toEqual(["block"]);
   });
 });
 
-describe("the layout makes room for an arc that does not fit", () => {
-  // x sits on the row between a and b, with two parts stacked above it and two below: in a post's
-  // tight lane gaps no arc within the cap gets past it.
+describe("the layout makes room for a line behind a part", () => {
+  // x sits on the row between a and b, with two parts stacked above it and two below: no room
+  // beside x takes it off the row.
   const v = {
     id: "v", postOf: "p", edges: [{ ...edge("a", "b"), id: "e" }, { ...edge("x", "up"), id: "f" }],
     nodes: [
@@ -133,15 +132,11 @@ describe("the layout makes room for an arc that does not fit", () => {
   const stored = { ...v, nodes: layoutView({ ...v, edges: v.edges.filter((e) => e.id !== "e") }, { post: true }).nodes };
   const route = (w: typeof stored) => routeEdges(w as Parameters<typeof routeEdges>[0], layoutRects(w, { post: true }), { post: true }).get("e")!;
 
-  it("widens the gaps beside the part in a layout made from scratch, so the line takes an arc", () => {
+  it("takes back room that does not clear the line, which then passes behind the part", () => {
     expect(route(stored).blocked).toEqual(["x"]);
-    const laid = layoutView(v, { post: true }), r = route(laid), x = layoutRects(laid, { post: true }).get("x")!;
-    expect(r.blocked).toBeUndefined();
-    expect(r.d).toMatch(/^M[^LHV]*$/);
-    for (let i = 0; i <= 128; i++) {
-      const p = bezierAt(r, i / 128);
-      expect(p.x > x.x && p.x < x.x + x.w && p.y > x.y && p.y < x.y + x.h).toBe(false);
-    }
+    const laid = layoutView(v, { post: true });
+    expect(laid.nodes.map((n) => [n.id, n.x, n.y])).toEqual(stored.nodes.map((n) => [n.id, n.x, n.y]));
+    expect(route(laid).blocked).toEqual(["x"]);
   });
 
   it("with only the blocker placed automatically, keeps every stored position and clears the line", () => {
@@ -155,32 +150,5 @@ describe("the layout makes room for an arc that does not fit", () => {
     const again = layoutView(stored, { post: true });
     expect(again.nodes.map((n) => [n.id, n.x, n.y])).toEqual(stored.nodes.map((n) => [n.id, n.x, n.y]));
     expect(route(again).blocked).toEqual(["x"]);
-  });
-
-  it("with only a group's name in the way, moves the line's own ends along it until an arc fits", () => {
-    // Two zones with names wider than their members, the ends in each zone's second column: the
-    // only way past the lower name is round its end, too long for the cap until the ends move right.
-    const W = "W".repeat(34);
-    const w = {
-      id: "w", edges: [{ ...edge("s1", "e1"), id: "e" }],
-      nodes: [
-        node("sz", { form: "group", label: W, place: { row: 0, col: 0 }, lane: { spine: 0 } }),
-        node("s0", { form: "compact", label: "Work", parent: "sz", place: { row: 0, col: 0 } }),
-        node("s1", { form: "panel", label: "Work", items: ["Op"], parent: "sz", place: { row: 0, col: 1 } }),
-        node("ez", { form: "group", label: W, place: { row: 1, col: 0 }, lane: { anchor: "sz", side: "below" } }),
-        node("e0", { form: "compact", label: "Work", parent: "ez", place: { row: 0, col: 0 } }),
-        node("e1", { form: "panel", label: "Work", items: ["Op"], parent: "ez", place: { row: 0, col: 1 } }),
-      ],
-    } as Parameters<typeof layoutView>[0];
-    const at = (x: typeof w) => routeEdges(x as Parameters<typeof routeEdges>[0], layoutRects(x as Parameters<typeof layoutRects>[0]), {}).get("e")!;
-    const ordinary = { ...w, nodes: layoutView({ ...w, edges: [] }).nodes };
-    expect(at(ordinary).noArc).toBe(true);
-    const laid = layoutView(w), r = at(laid);
-    expect(r.noArc).toBeUndefined();
-    expect(laid.nodes.find((n) => n.id === "e1")!.x).toBeGreaterThan(ordinary.nodes.find((n) => n.id === "e1")!.x!);
-    // Stored positions never move: the same drawing with every position stored keeps the fallback.
-    const again = layoutView(ordinary);
-    expect(again.nodes.map((n) => [n.id, n.x, n.y])).toEqual(ordinary.nodes.map((n) => [n.id, n.x, n.y]));
-    expect(at(again).noArc).toBe(true);
   });
 });

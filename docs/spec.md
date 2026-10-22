@@ -84,8 +84,11 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **LAYOUT-1** (Today) Code places every part, routes every connection as a
   smooth curve and sizes every part from its content; editor and export draw
   from the same numbers.
-- **LAYOUT-2** (Today) Connections do not cross a group's name and keep clear
-  of parts they do not join.
+- **LAYOUT-2** (Today) Connections are never bent around anything: a
+  connection that meets a part or a group's name it does not join passes
+  behind it, and the layout report lists every part it passes behind. Code
+  places parts without a stored position so connections clear them where it
+  can; in a post, a straight line hidden behind parts turns out on one side.
 - **LAYOUT-3** (Today) A layout report counts crossings, connections over
   parts, cut text and the text size at the channel's display size.
 - **LAYOUT-4** (Today) On request, the model looks at the rendered image and

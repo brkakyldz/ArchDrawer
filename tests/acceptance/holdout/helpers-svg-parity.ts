@@ -454,3 +454,85 @@ export function groupNameBox(group: Box, texts: Box[], scale: number): Box {
 }
 
 export const overlapsBox = (a: Box, b: Box) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+
+// ---------------------------------------------------------------------------------------------------------------
+// ADR 0011: one cubic per connection, passing behind parts, and a group's name cut out of the lines.
+// ---------------------------------------------------------------------------------------------------------------
+
+// `M x y C x y x y x y` and nothing else: no `L`, `H`, `V`, `A`, `Q`, `S`, `T`, `Z`, no second `C`, no lower-case (relative) command.
+export function isSingleCubic(d: string) {
+  const letters = d.replace(/(\d)[eE]([-+]?\d)/g, '$1$2').match(/[A-Za-z]/g) ?? [];
+  const numbers = d.match(/-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g) ?? [];
+  return letters.join('') === 'MC' && numbers.length === 8 && numbers.every(n => Number.isFinite(Number(n)));
+}
+
+// The stroked, visible, open paths of one connection (its line first, longest first; the editor's transparent hit area and
+// every marker, label and badge left out), each with the parts drawn after it in document order, so over it.
+export async function edgeLine(surface: Locator, edgeId: string) {
+  return await surface.evaluate((element, id) => {
+    const root = (element.tagName.toLowerCase() === 'svg' ? element : element.querySelector('svg')) as SVGSVGElement;
+    const visible = (el: Element) => {
+      for (let part: Element | null = el; part; part = part.parentElement) {
+        const s = getComputedStyle(part);
+        if (s.display === 'none' || s.visibility === 'hidden' || s.visibility === 'collapse' || Number(s.opacity) === 0) return false;
+      }
+      return true;
+    };
+    const edge = root.querySelector(`g[data-edge-id="${id}"], [data-testid="edge-${id}"]`)!;
+    const nodeSelector = 'g[data-node-id], [data-testid^="node-"][data-kind]';
+    const paths = [edge, ...Array.from(edge.querySelectorAll('*'))].filter((el): el is SVGPathElement => {
+      if (!(el instanceof SVGPathElement) || el.closest('defs, marker, clipPath, mask, [data-testid^="step-badge-"], [data-testid^="edge-label-"]') || !visible(el)) return false;
+      const s = getComputedStyle(el);
+      const transparent = s.stroke === 'transparent' || /^rgba\(/.test(s.stroke) && /,\s*0(?:\.0+)?%?\s*\)$/.test(s.stroke) || /\/\s*0(?:\.0+)?%?\s*\)$/.test(s.stroke);
+      return s.stroke !== 'none' && !transparent && Number(s.strokeOpacity) > 0 && parseFloat(s.strokeWidth) > 0 && el.getTotalLength() > 0;
+    }).sort((a, b) => b.getTotalLength() - a.getTotalLength());
+    return paths.map(p => ({ d: p.getAttribute('d') ?? '', length: p.getTotalLength(),
+      under: Array.from(root.querySelectorAll(nodeSelector)).filter(g => !!(p.compareDocumentPosition(g) & Node.DOCUMENT_POSITION_FOLLOWING))
+        .map(g => g.getAttribute('data-node-id') ?? g.getAttribute('data-testid')!.slice(5)) }));
+  }, edgeId);
+}
+
+export const distanceToBox = (p: Point, b: Box) => Math.hypot(Math.max(b.left - p.x, 0, p.x - b.right), Math.max(b.top - p.y, 0, p.y - b.bottom));
+export const routeToBox = (route: Point[], b: Box) => Math.min(...route.map(p => distanceToBox(p, b)));
+
+// The side of a box that a point on its border lies on.
+export function sideOf(p: Point, b: Box): 'left' | 'right' | 'top' | 'bottom' {
+  const gaps = { left: Math.abs(p.x - b.left), right: Math.abs(p.x - b.right), top: Math.abs(p.y - b.top), bottom: Math.abs(p.y - b.bottom) };
+  return Object.entries(gaps).sort((a, b) => a[1] - b[1])[0][0] as 'left' | 'right' | 'top' | 'bottom';
+}
+
+// Rasterise two images of the same size and count, for each region (in the images' own units), the pixels that differ.
+// shortcut: Chromium draws both, each as an `<img>` of an SVG with embedded fonts, so equal text draws equal pixels in both.
+export async function rasterDifferences(page: Page, first: string, second: string, regions: Box[]) {
+  const blank = await page.context().newPage();
+  try {
+    await blank.goto('about:blank');
+    return await blank.evaluate(async ({ first, second, regions }) => {
+      const info = (svg: string) => {
+        const root = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement;
+        const vb = (root.getAttribute('viewBox') ?? '').trim().split(/[\s,]+/).map(Number);
+        return { width: Number(root.getAttribute('width')) || vb[2], height: Number(root.getAttribute('height')) || vb[3], vb };
+      };
+      const a = info(first), b = info(second);
+      if (a.width !== b.width || a.height !== b.height || a.vb.join() !== b.vb.join()) throw new Error(`The two images differ in size: ${JSON.stringify([a, b])}`);
+      const draw = async (svg: string) => {
+        const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })), img = new Image();
+        img.src = url; await img.decode();
+        const canvas = document.createElement('canvas'); canvas.width = a.width; canvas.height = a.height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })!; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, a.width, a.height);
+        ctx.drawImage(img, 0, 0, a.width, a.height); URL.revokeObjectURL(url); return ctx;
+      };
+      const one = await draw(first), two = await draw(second);
+      const sx = a.width / a.vb[2], sy = a.height / a.vb[3];
+      return regions.map(r => {
+        const x0 = Math.max(0, Math.floor((r.left - a.vb[0]) * sx)), y0 = Math.max(0, Math.floor((r.top - a.vb[1]) * sy));
+        const x1 = Math.min(a.width, Math.ceil((r.right - a.vb[0]) * sx)), y1 = Math.min(a.height, Math.ceil((r.bottom - a.vb[1]) * sy));
+        const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
+        const p = one.getImageData(x0, y0, w, h).data, q = two.getImageData(x0, y0, w, h).data;
+        let differing = 0;
+        for (let i = 0; i < p.length; i += 4) if (Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]) > 12) differing++;
+        return differing;
+      });
+    }, { first, second, regions });
+  } finally { await blank.close(); }
+}

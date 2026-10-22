@@ -1,14 +1,16 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ARC, bezierAt, GROUP, groupNameBox, layoutRects, routeEdges, type Rect } from "./geometry";
+import { bezierAt, groupNameText, layoutRects, routeEdges, routeSamples, type Rect } from "./geometry";
+import { drawView, namesClip } from "./export/svg";
+import { PALETTES } from "./theme";
 import { fillDefaults, type DiagramView } from "./model";
 import { edge, node } from "./testkit";
 import { storyFixture } from "../../scripts/story-fixtures";
 
 /**
- * Every connection is one cubic or a chain of at most three meeting without a
- * corner, no arc is longer than the cap, and no connection runs through a group's name — over the
- * story fixtures in both formats, this repository's drawing, the examples and fuzzed views.
+ * Every connection is one cubic that leaves and enters along its sides' normals and is never bent
+ * round anything: it passes behind what is in its way and reports the parts it passes behind — over
+ * the story fixtures in both formats, this repository's drawing, the examples and fuzzed views.
  */
 type Case = { name: string; view: DiagramView; post: boolean };
 const cases: Case[] = [];
@@ -42,7 +44,7 @@ for (let k = 0; k < 40; k++) {
 }
 
 const inside = (p: { x: number; y: number }, r: Rect) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
-const angle = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.atan2(b.y - a.y, b.x - a.x);
+const NORMAL = { r: [1, 0], l: [-1, 0], b: [0, 1], t: [0, -1] } as const;
 
 describe("connections are smooth curves", () => {
   it.each(cases.map((c) => [c.name, c] as const))("%s", (_name, { view, post }) => {
@@ -50,58 +52,35 @@ describe("connections are smooth curves", () => {
     if (view.edges.length) expect(routes.size).toBeGreaterThan(0);
     for (const e of view.edges) {
       const r = routes.get(e.id);
-      if (!r) continue;
-      expect(r.d, e.id).toMatch(/^M[^LHV]*$/);
-      const segs = r.segments ?? [r];
-      expect(segs.length, e.id).toBeLessThanOrEqual(3);
-      for (let i = 1; i < segs.length; i++) {
-        let diff = Math.abs(angle(segs[i - 1].c2, segs[i - 1].p1) - angle(segs[i].p0, segs[i].c1)) * 180 / Math.PI;
-        if (diff > 180) diff = 360 - diff;
-        expect(diff, `${e.id} joint ${i}`).toBeLessThanOrEqual(1);
-      }
-      const pts = segs.flatMap((s) => Array.from({ length: 81 }, (_, i) => bezierAt(s, i / 80)));
-      if (r.segments && !r.blocked) {
-        const a = rects.get(e.from)!, b = rects.get(e.to)!;
-        const d = Math.hypot(a.x + a.w / 2 - b.x - b.w / 2, a.y + a.h / 2 - b.y - b.h / 2);
-        let length = 0;
-        for (let i = 1; i < pts.length; i++) length += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-        expect(length, `${e.id} length`).toBeLessThanOrEqual(Math.max(ARC.cap * d, d + ARC.plus) + 1);
-      }
-      // Clear of parts: never inside its own ends (it starts on their border) and, unless reported
-      // blocked, never inside any other part.
-      for (const n of view.nodes) {
-        if (n.form === "group" || !rects.has(n.id) || (r.blocked && n.id !== e.from && n.id !== e.to)) continue;
-        const b = rects.get(n.id)!, inner = { x: b.x + 1, y: b.y + 1, w: b.w - 2, h: b.h - 2 };
-        expect(pts.some((p) => inside(p, inner)), `${e.id} (${e.from}->${e.to}${r.blocked ? " blocked" : ""}, ${(r.segments ?? [r]).length} cubics) inside ${n.id}`).toBe(false);
-      }
-      for (const g of view.nodes) {
-        if (g.form !== "group" || g.id === e.from || g.id === e.to || !rects.has(g.id)) continue;
-        const name = groupNameBox(g, rects.get(g.id)!, post);
-        expect(pts.some((p) => inside(p, { ...name, h: Math.min(name.h, GROUP.head) })), `${e.id} through ${g.id}'s name`).toBe(false);
-      }
+      // The raw example file has parts without a position until it is laid out.
+      if (!r || !Number.isFinite(r.p0.x + r.p1.x)) continue;
+      expect(r.d, e.id).toMatch(/^M-?[\d.]+,-?[\d.]+ C[^MLHVC]*$/);
+      // Each handle lies along its side's outward normal.
+      const h0 = { x: r.c1.x - r.p0.x, y: r.c1.y - r.p0.y }, h1 = { x: r.c2.x - r.p1.x, y: r.c2.y - r.p1.y };
+      expect(Math.abs(h0.x * NORMAL[r.side0][1] - h0.y * NORMAL[r.side0][0]), `${e.id} start handle`).toBeLessThan(1e-6);
+      expect(h0.x * NORMAL[r.side0][0] + h0.y * NORMAL[r.side0][1], `${e.id} start handle`).toBeGreaterThan(0);
+      expect(Math.abs(h1.x * NORMAL[r.side1][1] - h1.y * NORMAL[r.side1][0]), `${e.id} end handle`).toBeLessThan(1e-6);
+      expect(h1.x * NORMAL[r.side1][0] + h1.y * NORMAL[r.side1][1], `${e.id} end handle`).toBeGreaterThan(0);
+      // It reports exactly the other parts it passes behind, as the layout report measures them.
+      const pts = routeSamples(r);
+      const under = view.nodes.filter((n) => n.form !== "group" && n.id !== e.from && n.id !== e.to && rects.has(n.id) && pts.some((p) => inside(p, rects.get(n.id)!))).map((n) => n.id);
+      expect(r.blocked ?? [], e.id).toEqual(under);
     }
   });
 });
 
-describe("the fallback over parts", () => {
-  it("is the shortest curve clear of a group's name, within 0.5 %, and only the name is kept off", () => {
-    // A stored panel under both ends: no arc fits. A group's name sits across the straight line,
-    // the rest of its header does not count. The shortest curve over the name with every handle
-    // at least 24 px is 348.0 long (found by a free optimiser).
-    const view = fillDefaults({ version: 2, title: "fallback", views: [{ id: "v", title: "V", caption: { what: "", how: "", notice: "" }, nodes: [
-      node("wall", { form: "panel", x: 40, y: 0, items: ["W".repeat(44), ...Array.from({ length: 11 }, (_, i) => `Stored operation ${i + 1}`)] }),
-      node("start", { x: 60, y: 150 }), node("end", { x: 600, y: 150 }),
-      node("zone", { form: "group", label: "Barrier", x: 382, y: 182 }), node("member", { form: "compact", label: "Member", x: 400, y: 228.44741382697174, parent: "zone" }),
-    ], edges: [{ ...edge("start", "end"), id: "blocked" }] }] } as never).views[0] as DiagramView;
-    const rects = layoutRects(view, {}), r = routeEdges(view, rects, {}).get("blocked")!;
-    expect(r.blocked).toContain("wall");
-    const name = groupNameBox(view.nodes.find((n) => n.id === "zone")!, rects.get("zone")!);
-    expect(name.w).toBeLessThan(rects.get("zone")!.w);
-    const pts = (r.segments ?? [r]).flatMap((c) => Array.from({ length: 4001 }, (_, i) => bezierAt(c, i / 4000)));
-    expect(pts.some((p) => inside(p, name))).toBe(false);
-    let length = 0;
-    for (let i = 1; i < pts.length; i++) length += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-    expect(length).toBeLessThanOrEqual(348.0 * 1.005);
+describe("a connection in the way of a part", () => {
+  it("passes behind it as the plain curve, and reports it", () => {
+    const view = fillDefaults({ version: 2, title: "behind", views: [{ id: "v", title: "V", caption: { what: "", how: "", notice: "" }, nodes: [
+      node("a", { x: 0, y: 0 }), node("b", { x: 300, y: 0 }), node("c", { x: 600, y: 0 }),
+    ], edges: [{ ...edge("a", "c"), id: "ac" }] }] } as never).views[0] as DiagramView;
+    const rects = layoutRects(view, {}), r = routeEdges(view, rects, {}).get("ac")!;
+    expect(r.blocked).toEqual(["b"]);
+    expect(r.side0).toBe("r");
+    expect(r.side1).toBe("l");
+    // A straight run: both handles on the line between the ends.
+    expect(r.c1.y).toBe(r.p0.y);
+    expect(r.c2.y).toBe(r.p1.y);
   });
 });
 
@@ -109,9 +88,9 @@ describe("handles", () => {
   it.each(cases.map((c) => [c.name, c] as const))("every handle is at least 24 px: %s", (_name, { view, post }) => {
     const rects = layoutRects(view, { post }), routes = routeEdges(view, rects, { post });
     // Edges without an id (the raw example file) are given one when a file is read.
-    for (const r of view.edges.filter((e) => e.id).map((e) => routes.get(e.id)!).filter(Boolean)) for (const c of r.segments ?? [r]) {
-      expect(Math.hypot(c.c1.x - c.p0.x, c.c1.y - c.p0.y), r.id).toBeGreaterThanOrEqual(24 - 1e-6);
-      expect(Math.hypot(c.p1.x - c.c2.x, c.p1.y - c.c2.y), r.id).toBeGreaterThanOrEqual(24 - 1e-6);
+    for (const c of view.edges.filter((e) => e.id).map((e) => routes.get(e.id)!).filter(Boolean)) {
+      expect(Math.hypot(c.c1.x - c.p0.x, c.c1.y - c.p0.y), c.id).toBeGreaterThanOrEqual(24 - 1e-6);
+      expect(Math.hypot(c.p1.x - c.c2.x, c.p1.y - c.c2.y), c.id).toBeGreaterThanOrEqual(24 - 1e-6);
     }
     // And as drawn: the path's numbers are rounded to 0.1 px.
     for (const e of view.edges.filter((x) => x.id)) {
@@ -123,5 +102,94 @@ describe("handles", () => {
         expect(Math.hypot(pts[i + 3].x - pts[i + 2].x, pts[i + 3].y - pts[i + 2].y), `${e.id} drawn`).toBeGreaterThanOrEqual(24);
       }
     }
+  });
+});
+
+describe("a connection never runs through its own parts", () => {
+  const routeOf = (nodes: ReturnType<typeof node>[], from: string, to: string) => {
+    const v = fillDefaults({ version: 2, title: "own", views: [{ id: "v", title: "V", caption: { what: "", how: "", notice: "" }, nodes, edges: [{ ...edge(from, to), id: "e" }] }] } as never).views[0] as DiagramView;
+    const rects = layoutRects(v);
+    return { rects, r: routeEdges(v, rects).get("e")! };
+  };
+  const intoPart = (r: ReturnType<typeof routeOf>["r"], b: Rect) => routeSamples(r).some((p) => inside(p, { x: b.x + 0.5, y: b.y + 0.5, w: b.w - 1, h: b.h - 1 }));
+
+  it("from a part to the group holding it: out of the side nearest the group's border, into that border", () => {
+    const { rects, r } = routeOf([node("g", { form: "group", label: "Zone" }), node("a", { parent: "g", x: 18, y: 64 })], "a", "g");
+    const a = rects.get("a")!, g = rects.get("g")!;
+    expect([r.side0, r.side1]).toEqual(["b", "b"]);
+    expect(r.p0.y).toBe(a.y + a.h);
+    expect(r.p1.y).toBe(g.y + g.h);
+    expect(intoPart(r, a)).toBe(false);
+  });
+
+  it("between two touching parts: a bend out of and into one side, never a curve of no length", () => {
+    const { rects, r } = routeOf([node("b", { x: 400, y: 40 }), node("c", { x: 400, y: 148 })], "b", "c");
+    const b = rects.get("b")!, c = rects.get("c")!;
+    expect(b.y + b.h).toBe(c.y);
+    expect([r.side0, r.side1]).toEqual(["r", "r"]);
+    expect(Math.hypot(r.p1.x - r.p0.x, r.p1.y - r.p0.y)).toBeGreaterThan(50);
+    expect(intoPart(r, b) || intoPart(r, c)).toBe(false);
+  });
+});
+
+describe("a post's spine line hidden behind parts turns out on one side", () => {
+  const view = (extra: ReturnType<typeof node>[], postOf: string | null) => fillDefaults({ version: 2, title: "spine", views: [{ id: "v", title: "V", caption: { what: "", how: "", notice: "" }, postOf, nodes: [
+    node("a", { x: 0, y: 0 }), node("x", { x: 0, y: 200 }), node("b", { x: 0, y: 400 }), ...extra,
+  ], edges: [{ ...edge("a", "b"), id: "ab" }] }] } as never).views[0] as DiagramView;
+  const route = (v: DiagramView, post: boolean) => { const rects = layoutRects(v, { post }); return { rects, r: routeEdges(v, rects, { post }).get("ab")! }; };
+
+  it("as one cubic out of and into the same side, right on a tie, clear of the part by 8 px", () => {
+    const { rects, r } = route(view([], "p"), true), x = rects.get("x")!;
+    expect([r.side0, r.side1]).toEqual(["r", "r"]);
+    expect(r.d).toMatch(/^M-?[\d.]+,-?[\d.]+ C[^MLHVC]*$/);
+    expect(r.blocked).toBeUndefined();
+    const h = Math.hypot(r.c1.x - r.p0.x, r.c1.y - r.p0.y);
+    expect(h).toBeGreaterThanOrEqual(24);
+    expect(h).toBeLessThanOrEqual(160);
+    const grown = { x: x.x - 8, y: x.y - 8, w: x.w + 16, h: x.h + 16 };
+    expect(Array.from({ length: 129 }, (_, i) => bezierAt(r, i / 128)).some((p) => inside(p, grown))).toBe(false);
+  });
+
+  it("stays straight behind the part when no turn-out within 160 px clears its neighbours", () => {
+    const { r } = route(view([node("left", { x: -200, y: 200 }), node("right", { x: 200, y: 200 })], "p"), true);
+    expect([r.side0, r.side1]).toEqual(["b", "t"]);
+    expect(r.blocked).toEqual(["x"]);
+  });
+
+  it("stays straight behind the part outside a post", () => {
+    const { r } = route(view([], null), false);
+    expect([r.side0, r.side1]).toEqual(["b", "t"]);
+    expect(r.blocked).toEqual(["x"]);
+  });
+});
+
+describe("group names are cut out of the lines only", () => {
+  const view = (groups: boolean) => fillDefaults({ version: 2, title: "names", views: [{ id: "v", title: "V", caption: { what: "", how: "", notice: "" }, nodes: [
+    ...(groups ? [node("g1", { form: "group", label: "Runtime" }), node("g2", { form: "group", label: "" })] : []),
+    node("a", { x: 0, y: 0, parent: groups ? "g1" : null }), node("b", { x: 0, y: 400, parent: groups ? "g2" : null }),
+  ], edges: [{ ...edge("a", "b", { label: "calls" }), id: "ab" }] }] } as never).views[0] as DiagramView;
+
+  it("one even-odd hole per group's name text, applied to the line and not to its label", () => {
+    const v = view(true), rects = layoutRects(v);
+    const clip = namesClip(v, rects, "ad-names")!;
+    expect(clip).toContain('<clipPath id="ad-names" clipPathUnits="userSpaceOnUse"><path clip-rule="evenodd"');
+    // The outer square and one hole per group: an unnamed group still draws its icon there.
+    expect(clip.match(/Z/g)!.length).toBe(1 + 2);
+    for (const g of ["g1", "g2"]) {
+      const t = groupNameText(v.nodes.find((n) => n.id === g)!, rects.get(g)!);
+      expect(clip).toContain(`M${t.x},${t.y} `);
+    }
+    const body = drawView(v, PALETTES.light, { prefix: "ad" }).body;
+    const edgeG = body.slice(body.indexOf('<g data-edge-id="ab"'));
+    expect(edgeG.startsWith('<g data-edge-id="ab" data-style="call" data-both="false"><g clip-path="url(#ad-names)">')).toBe(true);
+    // The clip group closes before the label's group opens.
+    const clipped = edgeG.slice(0, edgeG.indexOf('<g data-edge-label="ab"'));
+    expect(clipped.match(/<g/g)!.length - clipped.match(/<\/g>/g)!.length).toBe(1);
+  });
+
+  it("no clip without a group", () => {
+    const v = view(false);
+    expect(namesClip(v, layoutRects(v), "ad-names")).toBeNull();
+    expect(drawView(v, PALETTES.light, { prefix: "ad" }).body).not.toContain('clip-path="url(#ad-names)"');
   });
 });

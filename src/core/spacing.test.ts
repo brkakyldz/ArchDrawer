@@ -18,7 +18,7 @@ const rectsOf = (v: View, post = false) => {
 const gapX = (a: Rect, b: Rect) => b.x - (a.x + a.w);
 const gapY = (a: Rect, b: Rect) => b.y - (a.y + a.h);
 const boxGap = (a: Rect, b: Rect) => Math.hypot(Math.max(a.x - (b.x + b.w), b.x - (a.x + a.w), 0), Math.max(a.y - (b.y + b.h), b.y - (a.y + a.h), 0));
-const samples = (r: EdgeRoute, n = 200) => (r.segments ?? [r]).flatMap((c) => Array.from({ length: n + 1 }, (_, i) => bezierAt(c, i / n)));
+const samples = (r: EdgeRoute, n = 200) => Array.from({ length: n + 1 }, (_, i) => bezierAt(r, i / n));
 
 describe("lane spacing", () => {
   it("keeps columns 24 px apart and rows 32 px apart (22 in the post style), above and below", () => {
@@ -82,16 +82,6 @@ describe("connection ends and arcs", () => {
     }
   });
 
-  it("an arc around a part between the ends stays at least 8 px clear of it", () => {
-    for (const block of [{ x: 0, y: 150 }, { x: 20, y: 150 }, { x: -20, y: 150 }]) {
-      const v = { nodes: [node("a", { x: 0, y: 0 }), node("block", block), node("b", { x: 0, y: 300 })], edges: [{ ...edge("a", "b"), id: "e" }] } as Parameters<typeof routeEdges>[0];
-      const rects = layoutRects(v), route = routeEdges(v, rects).get("e")!, r = rects.get("block")!;
-      expect(route.blocked).toBeUndefined();
-      const nearest = Math.min(...samples(route, 400).map((p) => boxGap({ x: p.x, y: p.y, w: 0, h: 0 }, r)));
-      expect(nearest, `block at ${block.x}`).toBeGreaterThanOrEqual(8 - 0.05);
-    }
-  });
-
   it("comes into a first-row member from above at least 10 px right of the group's name", () => {
     const v = { nodes: [node("top", { x: 0, y: 0 }), node("z", { form: "group", label: "Zone", x: 0, y: 200 }), node("in", { parent: "z", x: 18, y: 246 })],
       edges: [{ ...edge("top", "in"), id: "e" }] } as Parameters<typeof routeEdges>[0];
@@ -101,6 +91,22 @@ describe("connection ends and arcs", () => {
       expect(route.side1, `post ${post}`).toBe("t");
       expect(route.p1.x - (name.x + name.w), `post ${post}`).toBeGreaterThanOrEqual(10 - 1e-6);
     }
+  });
+});
+
+describe("a label stays on its line", () => {
+  it("takes a free spot along the curve, its box within 10 px of it, when the middle is behind a part", () => {
+    const v = { nodes: [node("a", { x: 0, y: 0 }), node("b", { x: 300, y: 0 }), node("c", { x: 800, y: 0 })], edges: [{ ...edge("a", "c", { label: "sends every order" }), id: "e" }] } as Parameters<typeof routeEdges>[0];
+    const rects = layoutRects(v), route = routeEdges(v, rects).get("e")!, b = rects.get("b")!;
+    expect(route.blocked).toEqual(["b"]);
+    const at = route.labelAt!, w = labelWidth("sends every order"), box = { x: at.x - w / 2, y: at.y - LABEL.h / 2, w, h: LABEL.h };
+    expect(box.x).toBeGreaterThanOrEqual(b.x + b.w + 4 - 0.05);
+    expect(Math.min(...samples(route, 400).map((p) => boxGap({ x: p.x, y: p.y, w: 0, h: 0 }, box)))).toBeLessThanOrEqual(10 + 0.05);
+  });
+
+  it("is left out rather than set off its line when no gap along the curve holds it", () => {
+    const v = { nodes: [node("a", { x: 0, y: 0 }), node("b", { x: 300, y: 0 }), node("c", { x: 600, y: 0 })], edges: [{ ...edge("a", "c", { label: "sends every order" }), id: "e" }] } as Parameters<typeof routeEdges>[0];
+    expect(routeEdges(v, layoutRects(v)).get("e")!.labelAt).toBeNull();
   });
 });
 

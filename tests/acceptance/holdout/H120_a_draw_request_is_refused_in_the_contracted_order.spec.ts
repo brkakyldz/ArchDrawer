@@ -9,7 +9,7 @@ const SCAN = 'Scan the folder first: that scan is unknown or did not succeed';
 
 // The checks of a draw run come in a fixed order, each a 400 before any engine starts: the scan, the scan's folder (checked
 // again), the focus, the focus option, the focus text, the channel, then the model and the engine. Several mistakes in one request report the first.
-test('H120 [START-4, SCAN-3, STORY-1] a draw request that names no scan, a scan whose folder has gone, a wrong focus, a missing channel or a bad model is refused with the first fault in the contracted order, and nothing is started or written', async ({ request }) => {
+test('H120 [START-4, SCAN-3, STORY-1, #181] a draw request that names no scan, a scan whose folder has gone, a wrong focus, a missing channel or a bad model is refused with the first fault in the contracted order, and nothing is started or written', async ({ request }) => {
   const auth = await token(request);
   const project = await gitRepo('draw-refusals');
   const scan = await scanFolder(request, auth, project.dir);
@@ -38,7 +38,8 @@ test('H120 [START-4, SCAN-3, STORY-1] a draw request that names no scan, a scan 
   expect(samePath(back.path, join(away, 'docs', 'architecture.archdraw.json')), back.path).toBe(true);
 
   // 3. The focus kind, 4. the option, 5. the text.
-  expect(await ask({ scan: scan.id, channel: 'board', model: '--x' })).toEqual({ status: 400, error: FOCUS });
+  // (From ADR 0015 a request with neither `choices` nor `focus` is told to choose what to draw; H193 holds the rest of the choices.)
+  expect(await ask({ scan: scan.id, channel: 'board', model: '--x' })).toEqual({ status: 400, error: 'Choose what to draw: give 1 to 10 choices' });
   expect(await ask({ scan: scan.id, focus: { kind: 'banana' }, channel: 'linkedin' })).toEqual({ status: 400, error: FOCUS });
   expect(await ask({ scan: scan.id, focus: 'whole', channel: 'linkedin' })).toEqual({ status: 400, error: FOCUS });
   expect(await ask({ scan: scan.id, focus: { kind: 'option', option: 'o9' }, channel: 'board' })).toEqual({ status: 400, error: 'Unknown focus option "o9"' });

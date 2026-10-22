@@ -1,14 +1,15 @@
 import { test, expect } from '@playwright/test';
 import { join } from 'node:path';
 import { rm } from 'node:fs/promises';
-import { gitRepo, token, scanFolder, startDraw, finishRun, runEvents, getDocument, listedDiagrams, exists, samePath } from './helpers';
+import { gitRepo, token, scanFolder, startDraw, finishRun, runEvents, listedDiagrams, exists, samePath } from './helpers';
+import { getDocument } from './helpers-selections'; // a draw writes format 4: this gives the drawn choice in the shape the scenario was written in
 
 const ENGINE_LINES = ['Reading the drawing', 'Reading the code', 'Updating the drawing'];
 
 // START-6 (ADR 0010) with READ-2: the kept read answer is not trusted as it was. Its evidence is checked again against the folder
 // as it is now, so a file that is gone between the failure and `Try again` is dropped with the facts only it backed, and because
 // the facts changed the overview is drawn by a call. The scan is not repeated. A draw with another focus reads again.
-test('H151 [START-6, READ-2, READ-1, START-4] a file the read cites that is deleted after a failed draw is checked again on Try again: the facts already read are reused, the overview is drawn by a call, the drawing no longer cites the file, and another focus reads again', async ({ request }) => {
+test('H151 [START-6, READ-2, READ-1, START-4, #181] a file the read cites that is deleted after a failed draw is checked again on Try again: the facts already read are reused, the overview is drawn by a call, the drawing no longer cites the file, and another focus reads again', async ({ request }) => {
   test.setTimeout(300_000);
   const auth = await token(request);
   const project = await gitRepo('retry-deleted-file');

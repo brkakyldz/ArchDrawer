@@ -1,13 +1,16 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { channelNames, legacyWithPost, workspaceRaw, cli, readDocument, readDrawing, openDrawing, persisted, persistedDoc, getDocument,
+import { channelNames, legacyWithPost, workspaceRaw, cli, openDrawing,
   saved, drawn, partOf, factOf, relationOf, ownText, outdatedOf } from './helpers';
+// The stored file is format 4 (one choice, `system`): `readDocument`, `getDocument`, `persisted`, `persistedDoc` and `readDrawing` here read that choice
+// in the format 3 shape the rest of this scenario was written in; `readRaw` and `getRaw` give the stored document itself.
+import { readDocument, readDrawing, persisted, persistedDoc, getDocument, readRaw, getRaw } from './helpers-selections';
 
 const CONVERTED = 'Converted from archdraw/diagram@2';
 
 // An `archdraw/diagram@2` file (a view per post, `postOf`, `from`, one list of views) is converted when read:
 // the command line and the editor see the same facts, the post becomes the LinkedIn channel, every id is kept.
-test('H88 [FILE-2, START-5, FILE-1] an @2 file with a detail view and a LinkedIn post opens through the command and the editor and is read back as @3 with its ids kept', async ({ page, request }) => {
+test('H88 [FILE-2, START-5, FILE-1, #182] an @2 file with a detail view and a LinkedIn post opens through the command and the editor and is read back as @4, one choice, with its ids kept', async ({ page, request }) => {
   const viaCommand = await workspaceRaw('convert-cli', legacyWithPost('Old shop'));
   const bytes = await readFile(viaCommand.file, 'utf8');
   expect(JSON.parse(bytes).schema).toBe('archdraw/diagram@2');
@@ -19,11 +22,12 @@ test('H88 [FILE-2, START-5, FILE-1] an @2 file with a detail view and a LinkedIn
   expect(warningLine, 'the conversion is reported').toBeTruthy(); expect(warningLine).toMatch(/^WARN\s/);
   expect(await readFile(viaCommand.file, 'utf8')).toBe(bytes);
 
-  // `open` writes it back as `@3`.
+  // `open` writes it back as `@4`: one choice that holds everything the `@2` file held.
   const opened = await cli(['open', viaCommand.file, '--no-browser']); expect(opened.code, opened.stderr).toBe(0);
-  const doc = await readDocument(viaCommand.file);
-  expect(doc.schema).toBe('archdraw/diagram@3'); expect(doc.id).toMatch(/^d_[a-z0-9]{6,}$/);
-  expect(doc).not.toHaveProperty('views'); expect(JSON.stringify(doc)).not.toContain('postOf');
+  const raw = await readRaw(viaCommand.file), doc = await readDocument(viaCommand.file);
+  expect(raw.schema).toBe('archdraw/diagram@4'); expect(raw.id).toMatch(/^d_[a-z0-9]{6,}$/);
+  expect(raw.choices.map((c: { id: string; kind: string; title: string }) => [c.id, c.kind, c.title])).toEqual([['system', 'system', 'The whole system']]);
+  expect(raw).not.toHaveProperty('views'); expect(JSON.stringify(raw)).not.toContain('postOf');
   expect(doc.warnings).toEqual([CONVERTED]); expect(doc.requests).toEqual([]);
   for (const channel of channelNames) expect(outdatedOf(doc, channel), `${channel} starts with nothing to update`).toEqual([]);
 
@@ -71,33 +75,34 @@ test('H88 [FILE-2, START-5, FILE-1] an @2 file with a detail view and a LinkedIn
   expect((await cli(['open', viaCommand.file, '--no-browser'])).code).toBe(0);
   expect(await readFile(viaCommand.file, 'utf8')).toBe(written);
 
-  // The editor reads the same file the same way, and writes `@3` back.
+  // The editor reads the same file the same way, and writes `@4` back.
   const viaEditor = await workspaceRaw('convert-editor', legacyWithPost('Old shop'));
   const registered = await openDrawing(page, request, viaEditor.file);
   await expect(page.getByTestId('repo-name')).toHaveText('Old shop');
   for (const id of ['web', 'api', 'db']) await expect(page.getByTestId(`node-${id}`)).toBeVisible();
   await expect(page.getByTestId('node-web-linkedin')).toHaveCount(0); // The editor shows the overview; the post is another channel.
-  await page.getByTestId('views-button').click();
-  await expect(page.getByTestId('view-item-overview')).toBeVisible(); await expect(page.getByTestId('view-item-inside-api')).toBeVisible();
-  await expect(page.getByTestId('view-item-overview-linkedin')).toHaveCount(0);
-  await page.getByTestId('view-item-overview').click();
+  // The views panel lists the overview's two views (the post is not one), under the one choice.
+  await expect(page.getByTestId('views-panel')).toBeVisible(); await expect(page.getByTestId('views-button')).toHaveCount(0);
+  await expect(page.getByTestId('views-entry-overview')).toBeVisible(); await expect(page.getByTestId('views-entry-inside-api')).toBeVisible();
+  await expect(page.getByTestId('views-entry-overview-linkedin')).toHaveCount(0);
+  await page.getByTestId('views-entry-overview').click();
   await expect(page.getByTestId('warnings')).toBeVisible(); await expect(page.getByTestId('warnings')).toContainText(CONVERTED);
-  const served = await getDocument(request, registered.id);
-  expect(served.schema).toBe('archdraw/diagram@3'); expect(served.facts).toEqual(doc.facts); // Both routes convert to the same facts.
-  expect((await readDocument(viaEditor.file)).schema).toBe('archdraw/diagram@3');
+  const servedRaw = await getRaw(request, registered.id), served = await getDocument(request, registered.id);
+  expect(servedRaw.schema).toBe('archdraw/diagram@4'); expect(served.facts).toEqual(doc.facts); // Both routes convert to the same facts.
+  expect((await readRaw(viaEditor.file)).schema).toBe('archdraw/diagram@4');
   expect(served.channels.linkedin!.views!.map(v => v.id)).toEqual(['overview-linkedin']);
 
   await page.getByTestId('warnings-dismiss').click();
   await persistedDoc(viaEditor.file, d => (d.warnings ?? []).length === 0);
   await page.reload(); await expect(page.getByTestId('editor')).toBeVisible(); await expect(page.getByTestId('warnings')).toHaveCount(0);
 
-  // An edit in the editor is stored as `@3`; the post's parts and ids stay as they were.
+  // An edit in the editor is stored as `@4`; the post's parts and ids stay as they were.
   const postBefore = (await readDocument(viaEditor.file)).channels.linkedin!.views;
   await page.getByTestId('node-web').getByTestId('node-label').dblclick();
   await page.getByTestId('node-label-input').fill('Storefront'); await page.getByTestId('node-label-input').press('Enter');
   await saved(page); await persisted(viaEditor.file, d => d.views[0].nodes.find(n => n.id === 'web')?.label === 'Storefront');
-  const edited = await readDocument(viaEditor.file);
-  expect(edited.schema).toBe('archdraw/diagram@3'); expect(edited).not.toHaveProperty('views');
+  const edited = await readDocument(viaEditor.file), editedRaw = await readRaw(viaEditor.file);
+  expect(editedRaw.schema).toBe('archdraw/diagram@4'); expect(editedRaw).not.toHaveProperty('views'); expect(editedRaw.choices).toHaveLength(1);
   expect(edited.channels.linkedin!.views).toEqual(postBefore);
   expect((await readDrawing(viaEditor.file)).post!.nodes.map(n => n.id)).toEqual(['web-linkedin', 'api-linkedin', 'db-linkedin']);
 });

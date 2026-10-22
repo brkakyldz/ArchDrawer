@@ -1,7 +1,13 @@
 import { test, expect } from '@playwright/test';
-import { component, kinds, drawing, workspace, openDrawing, readDrawing, writeDrawing, cli, baseURL, box, overlaps, svgInfo } from './helpers';
+import { component, kinds, drawing, workspace, openDrawing, project, writeDrawing, cli, baseURL, box, overlaps, svgInfo, callout } from './helpers';
+import { readChoice, cardSize, compactHeight, compactExtraWidth, shapeForKind } from './helpers-drawing';
 
-test('H17 [LAYOUT-1, START-5] a hinted system and nested loop render with matching export geometry and kept positions', async ({ page, request }) => {
+const drawnOf = async (file: string) => project(await readChoice(file));
+
+// LAYOUT-1: parts are placed once and keep their place; sizes follow the contracted geometry, the editor and the image alike.
+// LOOK-2/LOOK-3 (ADR 0014): a card is as wide and tall as its kind's outline needs, a panel is exactly a card of its kind, and no
+// part draws a row: the panel's two items are listed in its callout only.
+test('H17 [LAYOUT-1 START-5 LOOK-2 LOOK-3 #177] a hinted system and nested loop render with matching export geometry, shape-sized parts that draw no rows, and kept positions', async ({ page, request }) => {
   const doc = drawing('System geometry');
   doc.views[0].nodes = kinds.map((kind, i) => component(`kind-${kind}`, {
     label: kind, kind, form: i === 2 ? 'panel' : i === 3 ? 'group' : i === 4 ? 'compact' : 'card',
@@ -21,7 +27,7 @@ test('H17 [LAYOUT-1, START-5] a hinted system and nested loop render with matchi
     edges: [{ id: 'unhinted-one', from: 'entry', to: 'middle', label: '', style: 'call', both: false, step: 1 },
       { id: 'unhinted-two', from: 'middle', to: 'finish', label: '', style: 'call', both: false, step: 2 }], texts: [] });
   const { file } = await workspace('geometry', doc); const opened = await openDrawing(page, request, file);
-  const placed = await readDrawing(file); const nodes = placed.views[0].nodes;
+  const placed = await drawnOf(file); const nodes = placed.views[0].nodes;
   const top = nodes.find(n => n.id === 'kind-actor')!; const sameRow = nodes.find(n => n.id === 'kind-client')!;
   const below = nodes.find(n => n.id === 'kind-worker')!;
   expect(top.x).toBeLessThan(sameRow.x!); expect(top.y).toBe(sameRow.y); expect(below.y).toBeGreaterThan(top.y!);
@@ -38,15 +44,26 @@ test('H17 [LAYOUT-1, START-5] a hinted system and nested loop render with matchi
     const ui = page.getByTestId(`node-${node.id}`);
     await expect(ui).toHaveAttribute('data-kind', node.kind); await expect(ui).toHaveAttribute('data-form', node.form);
     await expect(ui).toHaveAttribute('data-parent', node.parent ?? ''); await expect(ui.getByTestId('node-label')).toHaveText(node.label);
-    await expect(ui.getByTestId('node-item')).toHaveCount(node.items.length);
+    await expect(ui.getByTestId('node-item'), `${node.id} draws no row`).toHaveCount(0); // Must not happen: a row drawn on the canvas.
     const shape = svg.nodes.find(n => n.id === node.id)!; const size = await box(ui);
     // zoom-level is rounded to a whole percent; account only for that rounding and subpixels.
     expect(Math.abs(size.width - shape.width * zoom)).toBeLessThanOrEqual(shape.width * 0.005 + 1);
     expect(Math.abs(size.height - shape.height * zoom)).toBeLessThanOrEqual(shape.height * 0.005 + 1);
-    if (node.form === 'card') expect(shape.width).toBe(196);
-    if (node.form === 'compact') { expect(shape.height).toBe(46); expect(shape.width).toBeGreaterThanOrEqual(140); expect(shape.width).toBeLessThanOrEqual(320); }
-    if (node.form === 'panel') expect(shape.height).toBe(24 + 22 + 17 + 10 + 26 * 2 + 4);
+    const outline = shapeForKind(node.kind, node.form);
+    // A card, and a panel as a card of its kind, are the size of their outline's content box (one label line, sub-line row kept).
+    if (node.form === 'card' || node.form === 'panel') expect({ width: shape.width, height: shape.height }, `${node.id} as ${outline}`).toEqual(cardSize(outline));
+    if (node.form === 'compact') {
+      expect(shape.height).toBe(compactHeight(outline));
+      expect(shape.width).toBeGreaterThanOrEqual(140 + compactExtraWidth(outline)); expect(shape.width).toBeLessThanOrEqual(320 + compactExtraWidth(outline));
+    }
   }
+  // The panel's two items are held in the part and listed in its callout, in the file's order, as shown items.
+  const panel = await callout(page, 'kind-api');
+  await expect(panel.getByTestId('callout-item')).toHaveText([/Validate order/, /Create order/]);
+  await expect(panel.getByTestId('callout-item')).toHaveCount(2);
+  for (const row of await panel.getByTestId('callout-item').all()) await expect(row).toHaveAttribute('data-row', 'item');
+  await page.keyboard.press('Escape');
+  expect(svg.nodes.find(n => n.id === 'kind-api')!.text.join(' '), 'the image draws no row either').not.toContain('Validate order');
   for (const edge of placed.views[0].edges) {
     await expect(page.getByTestId(`edge-${edge.id}`)).toHaveAttribute('data-style', edge.style);
     await expect(page.getByTestId(`edge-${edge.id}`)).toHaveAttribute('data-both', String(edge.both));
@@ -64,10 +81,11 @@ test('H17 [LAYOUT-1, START-5] a hinted system and nested loop render with matchi
   // A session adds a part without a position by writing the file again; the others keep their places.
   placed.views[0].nodes.push(component('new-cache', { kind: 'data', label: 'Cache', place: null }));
   await writeDrawing(file, placed); expect((await cli(['open', file, '--no-browser'])).code).toBe(0);
-  const after = await readDrawing(file);
+  const after = await drawnOf(file);
   for (const node of after.views[0].nodes.filter(n => before.has(n.id))) expect([node.x, node.y]).toEqual(before.get(node.id));
   const newSVG = await svgInfo(page, await (await request.get(`${baseURL()}/api/diagrams/${opened.id}/export.svg`)).text());
   const added = after.views[0].nodes.find(n => n.id === 'new-cache')!; const addedShape = newSVG.nodes.find(n => n.id === added.id)!;
+  expect({ width: addedShape.width, height: addedShape.height }, 'a new store is the size of its outline').toEqual(cardSize('store'));
   for (const node of after.views[0].nodes.filter(n => n.id !== added.id)) {
     const shape = newSVG.nodes.find(n => n.id === node.id)!;
     expect(overlaps({ x: added.x!, y: added.y!, width: addedShape.width, height: addedShape.height }, { x: node.x!, y: node.y!, width: shape.width, height: shape.height })).toBe(false);

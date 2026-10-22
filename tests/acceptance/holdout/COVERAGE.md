@@ -1,6 +1,6 @@
 # Held-out coverage
 
-The suite has 112 scenarios. A requirement id appears in a scenario title only
+The suite has 149 scenarios. A requirement id appears in a scenario title only
 when the scenario observes it; an id the spec marks *To build* appears only
 once a step has built something to observe (the 0.3 round: START-4, SCAN-1 to
 SCAN-4, READ-1 to READ-3, STORY-2 to STORY-5 and AI-5, with STORY-1 and
@@ -88,6 +88,26 @@ after an outside change while a layer is open (H26, H95, H140 are on the overvie
 
 H100 (Design the post) is unchanged: its result now arrives as a preview, and nothing it does afterwards (the share dialog, the tabs)
 is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no engine, which only the ai lane's finished product has.
+
+The ADR 0013–0015 round (calm connections and a steady drag, an outline per kind and no rows on the canvas, choices, sections and
+flows, the system map; `archdraw/diagram@4`). It is written by three independent authors and indexed by a third pass. Its
+scenarios are numbered H167–H184 (drawing) and H190–H208 (selections); H185–H189 and H209–H214 are unused. A title of the round
+reads `H<nn> [IDS #issue …] journey`: the requirement ids, then the build issues the scenario accepts (`ISSUES-drawing.md`,
+`ISSUES-selections.md`), separated by spaces; every scenario from H167 on names at least one issue:
+
+| Batch | Lands with | Scenarios |
+|---|---|---|
+| D-drawing | #164–#168, #170–#172, #174–#177, #184, #186, #44 | H167–H184 (new); H17–H19, H28, H31, H33, H34, H39, H40, H63, H64, H87, H94, H95, H100, H109, H124, H131–H133, H152 (changed; H109, H131, H132, H152 renamed); `helpers-drawing.ts` (new; nothing in `helpers.ts` or `helpers-svg-parity.ts` changed by it) |
+| S-selections | #180–#185 | H190–H208 (new); H15, H16, H27, H35, H88, H89, H90, H96, H106, H107, H110, H117–H123, H148–H151, H156, H157 (changed); `helpers-selections.ts` (new) |
+| Z-index (round) | last | `helpers.ts` (the readers read a `@4` file as its first choice in the `@3` shape; `flattenChoice`, `readStoredRaw`, `getStoredRaw` added, nothing removed); H108, H114, H115, H131 (changed); `COVERAGE.md`, `verify.json`, `README.md`, `author-check.mjs` |
+
+Why the readers moved: once the product has opened a drawing, the stored and the served file is `archdraw/diagram@4` and `facts` and
+`channels` are inside `choices[…]`. About eighty older scenarios read a stored drawing through `readDocument`, `readDrawing`,
+`getDocument`, `persisted`, `persistedDoc` and `sessionWrite` and ask for "the overview channel" of it; on `@4` they read it from the
+file's first choice, which for a converted `@3` file is its one choice `system`. They return it in the `@3` shape with `schema`
+`archdraw/diagram@3` (so a document built from it can still be written by `outsideWrite` as a session that knows `@3` does), and the
+requests of that choice without their `choice` key; `sessionWrite` on a `@4` file merges the change back into its first choice and
+keeps the other choices and their requests. A scenario that asserts the format string of a file reads it with `readStoredRaw`.
 
 ## Scenarios
 
@@ -205,6 +225,43 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 | H164 | C-slides | the share dialog on the presentation channel downloads `<slug>-slides.pdf` (`%PDF-1.4`, `%%EOF`, `/Count` 4, four pages of `/MediaBox [0 0 960 540]`, four 3840 × 2160 `DCTDecode` images starting `FF D8`) and `<slug>-slides.zip` (four stored entries `-slide-00.png` … `-03.png`, 3840 × 2160, checksums right) whose slides are the PDF's pages in the same order (decoded by the browser and matched); one file per click; `download-png` still gives the slide at twice the size; the drawing is untouched |
 | H165 | C-slides | the dialog's theme reaches the zip and the PDF (light and dark differ slide by slide, a dark PDF is nearer the dark slides); the title off or the description on changes the opening slide and no other; texts off changes every slide; the square format keeps the entries and the 3840 × 2160 size and changes the slides through its toggles |
 | H166 | C-slides | no slide download in the dialog of the overview, README or LinkedIn channel; an accented title with `!` is `creme-brulee-cafe`; eleven steps are twelve pages and entries `-00` to `-11`; one step is two; the last step removed turns both buttons off with `Add a step first` and nothing downloads, undo turns them on |
+| H167 | D-drawing | dragging one part across a group keeps the other labels, badges and frames still, lifts the part and lights its own lines, and is saved once on release |
+| H168 | D-drawing | a drop shows the group it would join while dragging, never covers another part, and stays exactly where it is released when it overlaps nothing |
+| H169 | D-drawing | alignment guides and equal-gap marks snap a dragged part within 6 screen pixels, Alt turns snapping off, release moves nothing, and no export draws a guide |
+| H170 | D-drawing | sides are held while a part is dragged, flip to the stateless choice on release, and the editor paths then equal the SVG export |
+| H171 | D-drawing | connections are neutral until a part or line is hovered or selected or the line is numbered, and every export draws the same neutral lines in light and dark |
+| H172 | D-drawing | a line that passes behind a part leaves a faint trace of itself over that part in the editor and the image, and a line that passes behind nothing leaves none |
+| H173 | D-drawing | a label sits clear of every other line and on its own, in the editor and the image, and hovering a label lights its own connection without moving it |
+| H174 | D-drawing | a connection leaves the next free side when its facing side is busy, close parts get handles that never leave the gap, ports in line give a straight line, and the arrowhead touches its part |
+| H175 | D-drawing | three lines into one side from one direction share a trunk that is drawn once, lines from opposite directions or in another style do not, and the editor and the image agree |
+| H176 | D-drawing | a part five parts use is marked used by 5 and its lines from them are not drawn but a step line is, the lines show on hover selection and drag, and the report counts only what is drawn |
+| H177 | D-drawing | a group name sits on a halo and nothing is cut out of a line that crosses its header, and lines that enter a member from above come in right of the name |
+| H178 | D-drawing | the layout orders the parts it places to cut crossings, closes empty columns, keeps place hints, step order and stored positions, and gives the same layout for the same file |
+| H179 | D-drawing | every kind of part draws its own outline at its contracted box, in the editor and in the exported image, in light and dark, and a panel is a card of its kind |
+| H180 | D-drawing | a panel draws no row in the editor or in any image, is as big as a card of its kind, and its callout lists and edits what it holds |
+| H181 | D-drawing | the sub-line switch shrinks the parts of one view only, is one undoable saved edit that leaves no field when on, and the share image follows it unless show-sub says otherwise |
+| H182 | D-drawing | a LinkedIn post sizes each card by its shape in the post style, a long label stops at three lines inside the box, and sub-lines off take 18 px from every card |
+| H183 | D-drawing | the empty LinkedIn stage chooses the engine and model that Draw it uses, shares the choice with the AI panel both ways, goes off while a run is going, and is absent with no engine |
+| H184 | D-drawing | a part with an inside draws the same open mark in the editor and in the exported image, on a card, a compact part, a panel and a group, and the mark changes no size |
+| H190 | S-selections | a scan offers the project\ |
+| H191 | S-selections | after a scan the home screen lists the whole system, the sections, the flows and something else as checkboxes, none ticked, each option with its title, sentence and files, and says so when the scan found no option |
+| H192 | S-selections | tick the whole system, a section, a flow and your own words from the keyboard, choose the LinkedIn post, draw all four in one run, and land on the first choice with one file that holds them all |
+| H193 | S-selections | a draw of several choices is refused with the first fault in the contracted order, a single focus still works as a list of one, and nothing is started or written |
+| H194 | S-selections | one draw run of three choices lists them from the start, reads each in turn with events that name their choice, and writes one valid format 4 file with every choice, its overview and the README; ids are slugs |
+| H195 | S-selections | a failure in the second choice writes nothing and keeps the first, the same draw again goes through the first without an engine call and starts at the second, and a draw without the failed choice reuses what was kept in any order |
+| H196 | S-selections | a draw whose second choice fails shows the first done and the second failed, writes nothing and keeps every tick; Try again goes through the first without a new read and draws the second; a changed third choice reuses the first two |
+| H197 | S-selections | cancelling a draw in its second choice shows the first done and the second cancelled, writes nothing, and the next draw reuses the first |
+| H198 | S-selections | a format 3 file opens as one choice with every fact, view, request and mark as it was and no new warning, is written back as format 4 by migrate and by the server, draws exactly the same images, and an invalid one is not converted |
+| H199 | S-selections | a file of four choices validates, opens, imports, saves and reopens; each broken rule is refused with its choice in the path; twelve choices are valid and thirteen are not; a fact in a detail view is drawn |
+| H200 | S-selections | a move, a rename, a new part and the steps switch in one choice change that choice alone, the other choices stay byte for byte and unmarked, and undo walks back through the edits of every choice |
+| H201 | S-selections | the image, the Mermaid text, the command, the share dialog, a saved request and a run each take the current choice: the default is the one that holds the view or else the first, and a wrong choice or a view of another choice is refused |
+| H202 | S-selections | the whole system of a draw is a map of a part and a card that holds its inside in a detail view, every fact is on the map or in a detail view, a flow stays in one view, the map has its own report target, and the editor goes from the map into the inside and back |
+| H203 | S-selections | a click without moving goes into a part with an inside and is no edit, a drag of the same part moves it and opens nothing, Shift+click selects it, and Enter on it opens it; a part with no inside still opens its callout |
+| H204 | S-selections | a part with an inside draws the same open mark in the editor, the image and the command: 20 px, 8 px inside a card\ |
+| H205 | S-selections | the views panel lists the whole system, the sections, the flows and the user\ |
+| H206 | S-selections | the keyboard reaches every entry of the views panel in order, Up and Down do not wrap, Home and End, Enter and Space go to the view; the panel is 240 px beside a stage that narrows, folds to a 40 px strip that is remembered for every drawing, and is absent for one choice with one view |
+| H207 | S-selections | below 900 px the views panel is in the header menu with the same entries, choosing one goes there and closes the menu, 900 px brings the panel back beside the stage, and the old views button exists at no width |
+| H208 | S-selections | the address, the tabs and their marks, the crumbs, search and an instruction all follow the current choice, and an older link with only a view opens the choice that holds it |
 
 ## Requirement map
 
@@ -627,3 +684,108 @@ every reading shares, or says here what it assumed.
   layer stays closed and no file downloads.
 - **Slug of adjacent non-alphanumerics.** `non-alphanumerics → -` is read per run in neither scenario: the titles used
   (`Crème Brûlée Café!`, `Slides Shop`, `Theme Shop`, `One Step Talk`) have none side by side.
+
+## Requirement and issue map of the ADR 0013–0015 round
+
+Every requirement id this round marks *To build* or *To change* in `spec.md`, and every build issue of `ISSUES-drawing.md` and
+`ISSUES-selections.md`, with the scenarios that observe it (a title carries the id or `#issue`; a changed older file is listed when
+it was rewritten for the rule). It extends the *Requirement map* above for these ids: where a row above lists fewer scenarios, this
+table is the current one.
+
+| Requirement | Scenarios | Evidence and limit |
+|---|---|---|
+| EDIT-5 | H167, H168, H169, H170, H19 | One drag moves only what it moves, lifts the part and saves once (H167); the drop target and the free spot (H168); guides and equal gaps within six screen pixels, never in an export (H169); held sides and the editor paths equal to the export after release (H170). Limit: the matcher's unit tests are not observable. |
+| LOOK-2 | H179, H182, H184, H131, H132, H133, H17 | An outline per kind in cards, compacts and panels, in the editor and the image, at the content box the shape needs. Limit: the post stack's extra width and the two-versus-three-line wrap of a medium label are read one way (see the gaps below). |
+| LOOK-3 | H180, H181, H17, H18, H31, H33, H34, H40, H94, H95, H124, H28, H39, H63, H64, H100, H109, H131, H133, H108 | No row on a part, in the editor or in an export; the callout lists held rows, items and limits; the sub-line switch (`show-sub`) replaces `show-items`. |
+| LOOK-4 | H167, H171, H172, H173, H176, H177, H152, H28, H63, H100 | Neutral lines, colour on hover, selection or number; the faint trace; a label clear of other lines; the hub mark. Limit: the neutral colour is compared exactly, the trace colour and the halo colour are not (see the gaps). |
+| LAYOUT-2 (group name halo) | H177, H152, H172 | A line level with a group's name is drawn over it with the name on a halo, not cut. |
+| LAYOUT-5 | H170, H174, H175, H87 | Busy sides, short handles for close parts, straight pairs, trunks; the editor and the export draw the same paths. Limit: H174's numbers are a hand calculation of the cost rule. |
+| LAYOUT-6 | H178 | Rows and columns ordered to cut crossings, hints and stored positions kept. Limit: crossings are compared with the sorted order and zero on a ladder only. |
+| AI-1, STORY-1 (engine on the empty LinkedIn stage) | H183 | `start-engine` chooses the engine and model the AI panel then uses. |
+| SCAN-2 | H190, H110, H121, H191 | Sections and flows, files cut to eight, an unknown kind becomes `flow`, cache `version` 2. |
+| SCAN-3 | H190, H191, H192, H121 | Ticking one or several choices, from the pointer and the keyboard. |
+| STORY-1 | H192, H194, H195, H148, H156, H183 | One channel after the choices; one run draws them in order. |
+| START-7 | H194, H195, H196, H197, H149, H157 | Several choices drawn one after the other; a failure keeps the finished ones and `Try again` starts from the first unfinished; cancel writes nothing. |
+| STORY-8 | H202, H199 | The whole system as a map of a few parts, each holding its inside in a detail view; the map's target in the layout report (also H114, H115). |
+| FILE-2 | H198, H199, H200, H15, H16, H27, H89, H90, H106, H107, H108 | `archdraw/diagram@4`: a `@3` file becomes the choice `system` with nothing lost; four choices validate with the choice in the path, save and reopen; an edit in one choice changes no other. |
+| NAV-1 | H203, H204, H202, H184, H35 | A click goes into a part with an inside, a drag moves it, Enter opens it (H203); the open mark is the same in the editor, the image and the command (H184, H204). |
+| NAV-2 | H205, H206, H207, H208, H35, H96 | The views panel lists every view by choice, marks the current one, reaches any in one click and by keyboard, folds to a strip (remembered), folds into the header menu below 900 px. |
+| "used by N" (a part four or more parts use) | H176 | Mark and no lines at four users; three users stay as today; a step line stays. |
+| #44 | H183 | |
+| #164 | H170, H174 | |
+| #165 | H170, H87 | |
+| #166 | H167, H19 | |
+| #167 | H168, H19 | |
+| #168 | H169 | |
+| #170 | H167, H171, H177, H152, H28, H63, H100 | |
+| #171 | H172 | |
+| #172 | H173 | |
+| #174 | H175 | |
+| #175 | H178 | |
+| #176 | H177, H152 | |
+| #177 | H179, H180, H181, H182, H131, H132, H133, H17, H18, H31, H33, H34, H39, H40, H63, H64, H94, H95, H100, H109, H124, H28, H87 | |
+| #180 | H190, H110, H191, H121 | |
+| #181 | H192, H193, H194, H195, H196, H197, H120, H121, H122, H123, H148, H149, H150, H151, H156, H157 | |
+| #182 | H198, H199, H200, H106, H107, H15, H16, H27, H89, H90 | |
+| #183 | H201, H208, H200 | |
+| #184 | H184, H202, H203, H204 | |
+| #185 | H205, H206, H207, H208, H35, H96 | |
+| #186 | H176 | |
+
+Changed older files and the reason, in short: H108, H114, H115 (the map target `parts: 9` on a converted file's overview, `choices[0]`
+in violation paths, no rows on the canvas) and H131 (the opened file is `@4`) are the index pass's; every other change is listed by
+its batch above. Older scenarios that only read a stored file through the readers of `helpers.ts` were not touched: the readers carry
+them.
+
+### Not covered this round
+
+- **Acceptance outside the browser, the API and the files**: the unit tests of the issues (the matcher, the cost rule, the outline
+  tables), the live scan of this repository, the live draws "recorded in the ledger", the before/after images in the pull requests,
+  the crossings recorded on the fixtures, `npm run check`/`smoke:core` and the routing time per drag move (#175) cannot be asserted
+  by a scenario; the scenarios observe the same rules through the editor, the exports, the API and the command.
+- **Trunk markup**: the export markup of a trunk is not contracted beyond `g[data-trunk]` and its `path`, so the arrowhead count and
+  tone of a trunk in an export are not asserted (the tone is asserted in the editor, `data-tone`).
+- **Colours the contract does not fix**: the trace's colour is compared with the neutral colour when its line is neutral and only
+  "not neutral" when numbered; the halo's colour is not asserted (a solid stroke of 4 px, round, `paint-order` stroke is).
+- **Sizes printed without a number**: the post stack's extra width and the card's sub-line row when the sub-line is empty are read
+  one way; compact widths are exact for a short label with no sub-line only; two versus three lines of a medium label is not asserted.
+- **Layout report of a later choice**: the `targets` the contract names are asserted for the map; the other keys of the report of a
+  choice that is not the first are not (H202).
+- **Folder-name markers on Windows**: a `[fixture:…]` marker cannot be part of a Windows folder name, so the parts of the selections
+  scenarios that need one are guarded by `process.platform !== 'win32'`; the rest of each journey runs.
+- **Still To build**: START-2, NAV-4, QUAL-1, QUAL-3. START-1 (To change) is observed only as static packaging (H29).
+- **Not run**: no scenario of the round has been compiled or run (no product and no runner in the authoring sandboxes); the first run
+  of the suite on the built product is the first check of the type-level and selector assumptions.
+
+## Contract gaps found while writing the ADR 0013–0015 scenarios
+
+The authors' readings, kept as they wrote them (each is a place where the contract allowed more than one), and the index pass's
+own at the end. A build step that reads the contract another way should say so in its issue rather than change a scenario.
+
+**Drawing (H167–H184):** a card keeps its sub-line row when its sub-line is empty (sub-lines on); a panel is as big as the card of
+its kind, also in the post style; the post stack's extra width is 8; compact widths exact for short labels with no sub-line only; the
+three-line cap is exact, two versus three for a medium label is not asserted; "opacity 0.25" of the trace is opacity × stroke-opacity;
+a line level with a name sits 11 px above the name's middle, and a raster difference over the name's whole width is the sign that
+nothing is cut; a group's name text is read from `g[data-group-head]` (editor `node-head-<id>`); held sides use the 0.8 rule with
+margins (about 46.8° keeps the horizontal pair going down, 43.8° keeps the vertical pair going back, 38° flips it); "24 px clear" is
+a box gap of at least 23 px on one axis; "stays where released" is the offset to a fixed reference part before and after; `data-at`
+of a centre guide is the anchor's centre and any `y` guide at that coordinate is accepted for a same-height part; H174's numbers are
+a hand calculation of the cost rule; the trunk end is asserted on the part's border; `used by 5` counts a two-way user and a step
+user; compaction (parts at columns 0 and 6 laid out like columns 0 and 1) is read from step 4 as holding without a crossing; the
+callout lists held rows, then shown items, then limits; removing a held row also deletes the mechanism fact once nothing holds it;
+H183's `start-engine` leg runs only if it exists on `/` and asserts `draw.body.engine` as `fixture`; the "Open <label>" button is
+found with `getByRole`; the neutral colour is `rgb(132, 139, 152)` light and `rgb(99, 106, 119)` dark.
+
+**Selections (H190–H208):** a failing typed choice is placed second where `:second` markers are used; "at most 10 choices" includes
+the whole-system choice; `Try again` shows `Using the <channel> already drawn` only when the channel is unchanged; view ids are plain
+`overview`/`linkedin` for the first choice and `<choice id>-overview`/`-linkedin` for later ones; the open mark's placement is within
+±2 px of the stated insets and `node-inside` is looked up inside the part, or inside `node-head-<id>` for a group; the views panel
+with one choice and one single-view overview is absent, with a multi-view overview it is shown; the map's `step` ordering is asserted
+as a set; the warnings of a multi-choice draw are prefixed `"<choice title>: "` followed by the single-choice text.
+
+**Index pass:** (1) a reader returns the file's first choice, with `schema` `archdraw/diagram@3` on what it returns; (2) "opening
+writes the file back as `@4`" is read as: `open`, the editor's first open and an import write it, `validate`, `svg` and an export do
+not (H198 asserts the second half, H108 relies on the first); (3) the map target `parts: 9` applies to the first overview view of the
+`system` choice only, so a converted `@3` drawing's overview carries it and its README and presentation views do not (H114, H115);
+(4) a violation path is `choices[<n>].…` even for a file written as `@3` (rule 1), because the file is converted first; (5) a request
+read through `readDocument` belongs to the first choice unless it names another.

@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile, stat } from 'node:fs/promises';
-import { drawing, component, workspace, openDrawing, readDrawing, box } from './helpers';
+import { drawing, component, workspace, openDrawing, box } from './helpers';
+import { readDrawing } from './helpers-selections'; // the stored file is format 4: this reads its one choice
 
 // Overview parts, left to right: Orders DB, Order API (opens "Inside API"), Order worker, Billing gateway; Web app below the API.
 // Stored positions put the two nearest "order" parts side by side and the third far to the left, so a zoomed-in view shows only some.
@@ -55,7 +56,7 @@ function sameBoxes(now: Record<Id, Rect>, before: Record<Id, Rect>) {
   for (const id of ids) { expect(near(now[id].x, before[id].x), `${id} x`).toBe(true); expect(near(now[id].y, before[id].y), `${id} y`).toBe(true); }
 }
 
-test('H35 [NAV-1, NAV-3, FILE-1] reach a detail view from the views menu, the part that holds it, the breadcrumb and a link, then search: matches lit and the rest dimmed while typing, stepping with Enter, other views listed, Escape, and the drawing file never edited', async ({ page, request }) => {
+test('H35 [NAV-1, NAV-2, NAV-3, FILE-1, #184, #185] reach a detail view from the views panel, the part that holds it, the breadcrumb and a link, then search: matches lit and the rest dimmed while typing, stepping with Enter, other views listed, Escape, and the drawing file never edited', async ({ page, request }) => {
   const doc = drawing('Views shop'), view = doc.views[0];
   view.nodes = [
     component('orders-db', { label: 'Orders DB', kind: 'data', sub: 'Postgres', x: -2400, y: 0 }),
@@ -77,22 +78,24 @@ test('H35 [NAV-1, NAV-3, FILE-1] reach a detail view from the views menu, the pa
   const editor = page.getByTestId('editor'), search = page.getByTestId('search'), input = page.getByTestId('search-input'), count = page.getByTestId('search-count');
   const results = page.getByTestId('search-result'), zoom = page.getByTestId('zoom-level');
 
-  await test.step('reach the detail view from the views menu, the part that holds it, the breadcrumb and a link', async () => {
-    await page.getByTestId('views-button').click();
-    for (const v of doc.views) await expect(page.getByTestId(`view-item-${v.id}`)).toHaveText(v.title);
-    await expect(page.getByTestId('view-item-overview')).toHaveAttribute('aria-current', 'true');
-    await page.getByTestId('view-item-inside-api').click(); await expect(editor).toHaveAttribute('data-view', 'inside-api');
-    await expect(page.getByTestId('views-menu')).not.toBeVisible(); await expect(page.getByTestId('node-audit-worker')).toBeVisible();
+  await test.step('reach the detail view from the views panel, the part that holds it, the breadcrumb and a link', async () => {
+    // One choice (the file was `@2`) whose overview holds two views: the panel lists the choice's first view under its title and the detail view under the title of the view.
+    await expect(page.getByTestId('views-panel')).toBeVisible();
+    await expect(page.getByTestId('views-entry-overview')).toHaveText('The whole system'); await expect(page.getByTestId('views-entry-inside-api')).toHaveText('Inside API');
+    await expect(page.getByTestId('views-entry-overview')).toHaveAttribute('aria-current', 'true'); await expect(page.getByTestId('views-entry-inside-api')).not.toHaveAttribute('aria-current', 'true');
+    for (const id of ['views-button', 'views-menu']) await expect(page.getByTestId(id)).toHaveCount(0);
+    await page.getByTestId('views-entry-inside-api').click(); await expect(editor).toHaveAttribute('data-view', 'inside-api');
+    await expect(page.getByTestId('node-audit-worker')).toBeVisible();
     await expect(page.getByTestId('node-web')).toHaveCount(0); await expect(page.getByTestId('crumbs')).toContainText('Inside API');
     await page.getByTestId('crumb-overview').click(); await expect(editor).toHaveAttribute('data-view', 'overview');
-    await page.getByTestId('views-button').click(); await expect(page.getByTestId('view-item-overview')).toHaveAttribute('aria-current', 'true'); await page.getByTestId('view-item-overview').click();
+    await expect(page.getByTestId('views-entry-overview')).toHaveAttribute('aria-current', 'true'); await page.getByTestId('views-entry-overview').click();
     await zoomIn(page);
     await page.getByTestId('node-api').getByTestId('node-inside').click(); await expect(editor).toHaveAttribute('data-view', 'inside-api');
     await expect(page.getByTestId('crumb-overview')).toBeVisible(); await page.getByTestId('crumb-overview').click();
     await page.goto(`/d/${opened.id}?view=inside-api`); await expect(editor).toHaveAttribute('data-view', 'inside-api');
     await page.reload(); await expect(page.getByTestId('node-audit-worker')).toBeVisible();
-    await page.getByTestId('views-button').click(); await expect(page.getByTestId('view-item-inside-api')).toHaveAttribute('aria-current', 'true');
-    await page.getByTestId('view-item-overview').click(); await expect(editor).toHaveAttribute('data-view', 'overview');
+    await expect(page.getByTestId('views-entry-inside-api')).toHaveAttribute('aria-current', 'true');
+    await page.getByTestId('views-entry-overview').click(); await expect(editor).toHaveAttribute('data-view', 'overview');
   });
 
   await zoomIn(page);

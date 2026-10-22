@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { join } from 'node:path';
-import { gitRepo, token, scanFolder, startDraw, finishRun, runEvents, getDocument, listedDiagrams, exists, samePath } from './helpers';
+import { gitRepo, token, scanFolder, startDraw, finishRun, runEvents, listedDiagrams, exists, samePath } from './helpers';
+import { getDocument } from './helpers-selections'; // a draw writes format 4: this gives the drawn choice in the shape the scenario was written in
 
 const ENGINE_LINES = ['Reading the drawing', 'Reading the code', 'Updating the drawing'];
 const FOUR_WARNINGS = [
@@ -10,7 +11,7 @@ const FOUR_WARNINGS = [
 
 // START-6 (ADR 0010): a draw that fails in the overview stage keeps the checked read but no overview. A later draw of the same
 // scan and focus with another channel reuses the read and draws the overview by a call. A success removes what was kept.
-test('H150 [START-6, START-4, STORY-1] after an overview call failed, a draw with another channel reuses the read and draws the overview by a call, and once a draw succeeded the next one reads again', async ({ request }) => {
+test('H150 [START-6, START-4, STORY-1, #181] after an overview call failed, a draw with another channel reuses the read and draws the overview by a call, and once a draw succeeded the next one reads again', async ({ request }) => {
   test.setTimeout(300_000);
   const auth = await token(request);
   const project = await gitRepo('retry-overview');

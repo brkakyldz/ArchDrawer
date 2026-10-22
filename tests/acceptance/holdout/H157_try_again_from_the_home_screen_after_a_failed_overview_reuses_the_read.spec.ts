@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { join } from 'node:path';
-import { gitRepo, startedRun, runEvents, getDocument, listedDiagrams, exists, viewOf, baseURL } from './helpers';
+import { gitRepo, startedRun, runEvents, listedDiagrams, exists, viewOf, baseURL } from './helpers';
+import { getDocument } from './helpers-selections'; // a draw writes format 4: this gives the drawn choice in the shape the scenario was written in
 
 const ENGINE_LINES = ['Reading the drawing', 'Reading the code', 'Updating the drawing'];
 const FOUR_WARNINGS = [
@@ -14,7 +15,7 @@ type Snapshot = { stages: Record<string, string>; line: string };
 // kept, the overview was not. `draw-retry` starts from the overview stage: the read stage is `running` with `Using the facts already
 // read`, it is `done` once the overview starts, the overview is drawn by a call, and the drawing opens. The stage list is watched by a
 // recorder in the page that logs every state the screen is in, so no sleep decides what was seen.
-test('H157 [START-6, START-4, READ-2] after a draw failed in its overview stage Try again on the home screen shows the read stage running with Using the facts already read, then done once the overview starts, draws the overview by a call and opens the drawing', async ({ page, request }) => {
+test('H157 [START-6, START-4, READ-2, START-7, #181] after a draw failed in its overview stage Try again on the home screen shows the read stage running with Using the facts already read, then done once the overview starts, draws the overview by a call and opens the drawing', async ({ page, request }) => {
   test.setTimeout(300_000);
   const project = await gitRepo('retry-overview-ui');
   const docs = join(project.dir, 'docs');

@@ -1,12 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { join } from 'node:path';
-import { gitRepo, startedRun, runEvents, getDocument, listedDiagrams, exists, token, drawFolder, viewOf, baseURL } from './helpers';
+import { gitRepo, startedRun, runEvents, listedDiagrams, exists, token, drawFolder, viewOf, baseURL } from './helpers';
+import { getDocument } from './helpers-selections'; // a draw writes format 4: this gives the drawn choice in the shape the scenario was written in
 
 const ENGINE_LINES = ['Reading the drawing', 'Reading the code', 'Updating the drawing'];
 
 // START-6 (ADR 0010) in START-4's home screen: the channel call fails, nothing is written, and `Try again` starts from the channel
 // stage: no new read, the overview reused, a drawing written whose warnings are those of a draw that never failed.
-test('H149 [START-6, START-4, READ-1] a draw that fails at the channel stage and then Try again from the home screen makes no new read, reuses the overview, writes the drawing and carries the same warnings as a draw that never failed', async ({ page, request }) => {
+test('H149 [START-6, START-4, READ-1, START-7, #181] a draw that fails at the channel stage and then Try again from the home screen makes no new read, reuses the overview, writes the drawing and carries the same warnings as a draw that never failed', async ({ page, request }) => {
   test.setTimeout(300_000);
   const auth = await token(request);
   const project = await gitRepo('retry-channel');

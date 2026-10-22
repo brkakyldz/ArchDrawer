@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { workspace, cli, readDocument, readDrawing, baseURL, download } from './helpers';
+import { workspace, cli, baseURL, download } from './helpers';
+import { readRaw, readDrawing } from './helpers-selections'; // the file the server writes is format 4: `readRaw` is its text, `readDrawing` its first choice drawn
 import { compareSVGs } from './helpers-svg-parity';
 
-test('H15 [START-5, FILE-1, FILE-2, LAYOUT-1, SHARE-1] validate a session file, reopen the same editor and export it', async ({ page, request }) => {
+test('H15 [START-5, FILE-1, FILE-2, LAYOUT-1, SHARE-1, #182] validate a session file, reopen the same editor and export it', async ({ page, request }) => {
   const { dir, file } = await workspace('CLI Shop');
   const original = await readFile(file, 'utf8');
   const validation = await cli(['validate', file]);
@@ -17,21 +18,23 @@ test('H15 [START-5, FILE-1, FILE-2, LAYOUT-1, SHARE-1] validate a session file, 
   expect(opened.code, opened.stderr).toBe(0);
   const url = opened.stdout.trim().split(/\r?\n/).at(-1)!.match(/http:\/\/127\.0\.0\.1:\d+\/d\/d_[a-z0-9]+/)?.[0];
   expect(url).toBeTruthy(); expect(url).toContain(baseURL());
-  const normal = await readDocument(file);
-  expect(normal.schema).toBe('archdraw/diagram@3');
+  const normal = await readRaw(file);
+  expect(normal.schema).toBe('archdraw/diagram@4'); // the `@3` file the session wrote is one choice of a format 4 file
   expect(normal.id).toMatch(/^d_[a-z0-9]{6,}$/);
   expect(normal).toMatchObject({ theme: 'light', requests: [], warnings: [], source: { kind: 'local' } });
-  expect(normal.channels.overview).toMatchObject({ showSteps: false, outdated: [] }); // The defaults are written, per channel.
-  expect(Object.keys(normal.channels).every(name => ['overview', 'linkedin', 'readme', 'presentation'].includes(name))).toBe(true);
+  expect(normal.choices).toHaveLength(1); expect(normal.choices[0]).toMatchObject({ id: 'system', kind: 'system', title: 'The whole system' });
+  expect(normal.choices[0].channels.overview).toMatchObject({ showSteps: false, outdated: [] }); // The defaults are written, per channel.
+  expect(Object.keys(normal.choices[0].channels).every(name => ['overview', 'linkedin', 'readme', 'presentation'].includes(name))).toBe(true);
   expect(resolve(normal.source!.path)).toBe(resolve(dir));
   expect(Number.isFinite(Date.parse(normal.createdAt!))).toBe(true);
-  expect(normal.channels.overview.views![0].nodes.every(n => Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true);
-  expect(normal).not.toHaveProperty('views'); // The `@2` list of views is gone from the file.
+  expect(normal.choices[0].channels.overview.views![0].nodes.every((n: { x: number; y: number }) => Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true);
+  expect(normal).not.toHaveProperty('views'); // The `@2` list of views is gone from the file,
+  expect(normal).not.toHaveProperty('facts'); expect(normal).not.toHaveProperty('channels'); // and the facts and channels are the choice's.
   const text = await readFile(file, 'utf8');
   expect(text).toBe(`${JSON.stringify(normal, null, 2)}\n`);
   const again = await cli(['open', file, '--no-browser']);
   expect(again.code).toBe(0); expect(again.stdout.trim().split(/\r?\n/).at(-1)).toContain(url!);
-  expect((await readDocument(file)).id).toBe(normal.id);
+  expect((await readRaw(file)).id).toBe(normal.id);
   expect(JSON.parse(await readFile(serverFile, 'utf8'))).toEqual(runningServer);
   const beforeExport = await readFile(file, 'utf8');
   const status = await cli(['status']); expect(status.code).toBe(0);

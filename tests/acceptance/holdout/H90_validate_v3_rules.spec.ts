@@ -3,7 +3,10 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { shop3, withLinkedIn, part, repo, writeJSON, cli, token, baseURL, type Doc3 } from './helpers';
 
-const OVERVIEW = 'channels.overview.views[0]';
+// A violation's path starts at its choice (diagram contract, rule 1): these files are `archdraw/diagram@3`, converted first, so they
+// are one choice, `choices[0]`. The rules inside a choice are those of a format 3 file; the rules about choices are H199's.
+const CHOICE = 'choices[0]';
+const OVERVIEW = `${CHOICE}.channels.overview.views[0]`;
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const valid = () => withLinkedIn(shop3('Rules shop'));
 
@@ -14,47 +17,48 @@ const cases: { name: string; pattern: RegExp; break: (d: Doc3) => void }[] = [
   { name: 'form-not-a-form',
     pattern: new RegExp(`^ERROR ${escape(OVERVIEW)}\\.nodes\\[1\\]\\.form: "box" is not a form; use one of card, compact, panel, group$`, 'm'),
     break: d => { d.channels.overview.views![0].nodes[1].form = 'box'; } },
-  { name: 'fact-kind', pattern: /^ERROR facts\.components\[0\]\.kind: .*actor.*client.*api.*service/m,
+  { name: 'fact-kind', pattern: new RegExp(`^ERROR ${escape(CHOICE)}\\.facts\\.components\\[0\\]\\.kind: .*actor.*client.*api.*service`, 'm'),
     break: d => { d.facts.components[0].kind = 'database'; } },
   { name: 'part-points-at-no-fact', pattern: new RegExp(`^ERROR ${escape(OVERVIEW)}\\.nodes\\[0\\]\\.facts`, 'm'),
     break: d => { d.channels.overview.views![0].nodes[0].facts = ['ghost']; } },
   { name: 'part-without-facts-property', pattern: new RegExp(`^ERROR ${escape(OVERVIEW)}\\.nodes\\[0\\]\\.facts`, 'm'),
     break: d => { delete (d.channels.overview.views![0].nodes[0] as Partial<{ facts: string[] }>).facts; } },
-  { name: 'fact-no-overview-part-draws', pattern: /^ERROR (facts\.components\[2\]|channels\.overview)/m, // the LinkedIn channel still draws it
+  { name: 'fact-no-overview-part-draws', pattern: new RegExp(`^ERROR (${escape(CHOICE)}\\.facts\\.components\\[2\\]|${escape(CHOICE)}\\.channels\\.overview)`, 'm'), // the LinkedIn channel still draws it
     break: d => { const v = d.channels.overview.views![0]; v.nodes = v.nodes.filter(n => n.id !== 'db'); v.edges = v.edges.filter(e => e.id !== 'e2'); } },
   { name: 'part-with-no-fact-and-no-own-text', pattern: new RegExp(`^ERROR ${escape(OVERVIEW)}\\.nodes\\[3\\]\\.(label|kind|description)`, 'm'),
     break: d => { d.channels.overview.views![0].nodes.push(part('frame', { facts: [] })); } },
   { name: 'own-label-too-long', pattern: new RegExp(`^ERROR ${escape(OVERVIEW)}\\.nodes\\[0\\]\\.label`, 'm'),
     break: d => { d.channels.overview.views![0].nodes[0].label = 'x'.repeat(49); } },
   // From 0.3 the README holds one view like LinkedIn; a second one breaks the rule (the one-view case is H106's).
-  { name: 'readme-holds-two-views', pattern: /^ERROR channels\.readme/m,
+  { name: 'readme-holds-two-views', pattern: new RegExp(`^ERROR ${escape(CHOICE)}\\.channels\\.readme`, 'm'),
     break: d => {
       const first = structuredClone(d.channels.overview.views![0]), second = structuredClone(first);
       first.id = 'readme-view'; second.id = 'readme-second-view'; d.channels.readme = { views: [first, second] };
     } },
-  { name: 'linkedin-holds-two-views', pattern: /^ERROR channels\.linkedin/m,
+  { name: 'linkedin-holds-two-views', pattern: new RegExp(`^ERROR ${escape(CHOICE)}\\.channels\\.linkedin`, 'm'),
     break: d => { const copy = structuredClone(d.channels.linkedin!.views![0]); copy.id = 'second-post'; d.channels.linkedin!.views!.push(copy); } },
-  { name: 'detail-outside-the-overview', pattern: /^ERROR channels\.linkedin\.views\[0\]\.nodes\[0\]\.detail/m,
+  { name: 'detail-outside-the-overview', pattern: new RegExp(`^ERROR ${escape(CHOICE)}\\.channels\\.linkedin\\.views\\[0\\]\\.nodes\\[0\\]\\.detail`, 'm'),
     break: d => { d.channels.linkedin!.views![0].nodes[0].detail = 'overview'; } },
-  { name: 'view-id-used-in-two-channels', pattern: /^ERROR channels\.(linkedin|overview)\.views\[\d\]\.id/m,
+  { name: 'view-id-used-in-two-channels', pattern: new RegExp(`^ERROR ${escape(CHOICE)}\\.channels\\.(linkedin|overview)\\.views\\[\\d\\]\\.id`, 'm'),
     break: d => { d.channels.linkedin!.views![0].id = 'overview'; } },
-  { name: 'outdated-lists-an-id-twice', pattern: /^ERROR channels\.linkedin\.outdated/m,
+  { name: 'outdated-lists-an-id-twice', pattern: new RegExp(`^ERROR ${escape(CHOICE)}\\.channels\\.linkedin\\.outdated`, 'm'),
     break: d => { d.channels.linkedin!.outdated = ['db', 'db']; } },
   { name: 'connection-shows-a-relation-between-other-parts', pattern: new RegExp(`^ERROR ${escape(OVERVIEW)}\\.edges\\[0\\]\\.relations`, 'm'),
     break: d => { d.channels.overview.views![0].edges[0].relations = ['r2']; } },
-  { name: 'second-relation-on-one-pair', pattern: /^ERROR facts\.relations/m,
+  { name: 'second-relation-on-one-pair', pattern: new RegExp(`^ERROR ${escape(CHOICE)}\\.facts\\.relations`, 'm'),
     break: d => { d.facts.relations!.push({ id: 'r3', from: 'web', to: 'api', label: '', style: 'call', both: false }); } },
-  { name: 'fact-and-relation-share-an-id', pattern: /^ERROR facts\.(relations\[0\]|components\[0\])\.id/m,
+  { name: 'fact-and-relation-share-an-id', pattern: new RegExp(`^ERROR ${escape(CHOICE)}\\.facts\\.(relations\\[0\\]|components\\[0\\])\\.id`, 'm'),
     break: d => { d.facts.relations![0].id = 'web'; } },
-  { name: 'file-outside-the-repository', pattern: /^ERROR facts\.components\[0\]\.files/m,
+  { name: 'file-outside-the-repository', pattern: new RegExp(`^ERROR ${escape(CHOICE)}\\.facts\\.components\\[0\\]\\.files`, 'm'),
     break: d => { d.facts.components[0].files = ['../escape.ts']; } },
+  // A request of a format 3 file names no choice: converting it names `system`. Its channel is still checked at its own path.
   { name: 'request-names-no-channel', pattern: /^ERROR requests\[0\]\.(channel|view)/m,
     break: d => { d.requests = [{ id: 'q1', text: 'Add a cache', channel: 'board', view: 'overview', at: '2026-10-13T12:00:00.000Z' }]; } },
   { name: 'schema-not-this-format', pattern: /^ERROR schema/m,
     break: d => { d.schema = 'archdraw/diagram@9'; } },
 ];
 
-test('H90 [FILE-2, START-5, FILE-1] validate refuses every broken rule of the @3 file with its path and leaves the file alone, while a path missing from the repository only warns', async ({ request }) => {
+test('H90 [FILE-2, START-5, FILE-1, #182] validate refuses every broken rule of an @3 file, read as its one choice, with its path and leaves the file alone, while a path missing from the repository only warns', async ({ request }) => {
   const folder = await repo('rules');
   const auth = await token(request);
   const everyLine = (result: { stdout: string; stderr: string }) => `${result.stdout}\n${result.stderr}`.split(/\r?\n/).map(line => line.trimEnd());
@@ -92,7 +96,7 @@ test('H90 [FILE-2, START-5, FILE-1] validate refuses every broken rule of the @3
   const manyPath = join(folder.dir, 'many.json'); await writeJSON(manyPath, many);
   const everything = await cli(['validate', manyPath]); expect(everything.code).toBe(1);
   const listed = everyLine(everything).filter(line => /^ERROR /.test(line));
-  for (const path of ['facts.components[0].kind', 'facts.components[1].files', `${OVERVIEW}.nodes[0].label`, 'channels.linkedin.outdated']) expect(listed.some(line => line.startsWith(`ERROR ${path}`)), path).toBe(true);
+  for (const path of [`${CHOICE}.facts.components[0].kind`, `${CHOICE}.facts.components[1].files`, `${OVERVIEW}.nodes[0].label`, `${CHOICE}.channels.linkedin.outdated`]) expect(listed.some(line => line.startsWith(`ERROR ${path}`)), path).toBe(true);
   expect(listed.length).toBeGreaterThanOrEqual(4);
   expect(everyLine(everything)).toContain(`${listed.length} error(s)`);
 
@@ -100,8 +104,8 @@ test('H90 [FILE-2, START-5, FILE-1] validate refuses every broken rule of the @3
   const missing = valid(); missing.facts.components[0].files = ['src/not-written-yet.ts'];
   const missingPath = join(folder.dir, 'missing-file.json'); await writeJSON(missingPath, missing);
   const checked = await cli(['validate', missingPath]); expect(checked.code).toBe(1);
-  expect(everyLine(checked).some(line => line.startsWith('ERROR facts.components[0].files'))).toBe(true);
+  expect(everyLine(checked).some(line => line.startsWith(`ERROR ${CHOICE}.facts.components[0].files`))).toBe(true);
   const reopened = await cli(['open', missingPath, '--no-browser']); expect(reopened.code, reopened.stderr).toBe(0);
   const warned = everyLine(reopened).filter(line => /^WARN /.test(line) && line.includes('does not exist in the repository'));
-  expect(warned.length).toBeGreaterThanOrEqual(1); expect(warned[0]).toContain('facts.components[0].files'); expect(warned[0]).toContain('src/not-written-yet.ts');
+  expect(warned.length).toBeGreaterThanOrEqual(1); expect(warned[0]).toContain(`${CHOICE}.facts.components[0].files`); expect(warned[0]).toContain('src/not-written-yet.ts');
 });

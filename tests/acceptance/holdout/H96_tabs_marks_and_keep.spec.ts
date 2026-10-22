@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { shop3, withDetail, withLinkedIn, workspaceRaw, openDrawing, readDocument, persistedDoc, saved, viewOf, outdatedOf, sorted, channelNames, type Channel } from './helpers';
+import { shop3, withDetail, withLinkedIn, workspaceRaw, openDrawing, saved, viewOf, outdatedOf, sorted, channelNames, type Channel } from './helpers';
+import { readDocument, persistedDoc } from './helpers-selections'; // the stored file is format 4: these read its one choice
 
 // The marks are written into the file by hand (this step has the tabs, not yet the edits that set them).
-test('H96 [NAV-2, FILE-2, EDIT-1] tabs show the four channels in order with their marks and counts, and Keep as it is empties a stage mark as one undoable edit', async ({ page, request }) => {
+test('H96 [NAV-2, FILE-2, EDIT-1, #185] tabs show the four channels in order with their marks and counts, and Keep as it is empties a stage mark as one undoable edit', async ({ page, request }) => {
   const doc = withLinkedIn(withDetail(shop3('Tabs shop')), { outdated: ['db', 'r2'] });
   doc.channels.overview.outdated = ['gone'];
   const { file } = await workspaceRaw('tabs', doc);
@@ -57,7 +58,8 @@ test('H96 [NAV-2, FILE-2, EDIT-1] tabs show the four channels in order with thei
   await tab('overview').click();
   await expect(editor).toHaveAttribute('data-channel', 'overview'); await expect(editor).toHaveAttribute('data-view', 'overview');
   await expect(page).not.toHaveURL(/channel=linkedin/);
-  await expect(page.getByTestId('crumbs')).toBeVisible(); await expect(page.getByTestId('views-button')).toBeVisible();
+  await expect(page.getByTestId('crumbs')).toBeVisible(); await expect(page.getByTestId('views-panel')).toBeVisible(); // its overview holds two views, so the panel shows
+  await expect(page.getByTestId('views-button')).toHaveCount(0);
   await page.getByTestId('channel-keep').click(); await saved(page);
   await persistedDoc(file, d => outdatedOf(d, 'overview').length === 0);
   await expect(page.getByTestId('channel-outdated')).toHaveCount(0);

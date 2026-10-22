@@ -1,9 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { agent3, withReadme, withPresentation, part, repo, writeJSON, cli, register, getDocument, outputLines, errorLines, warnLines, baseURL, type Doc3 } from './helpers';
+import { agent3, withReadme, withPresentation, part, repo, writeJSON, cli, register, outputLines, errorLines, warnLines, baseURL, type Doc3 } from './helpers';
+import { getDocument, wrapAs4 } from './helpers-selections'; // the stored document is format 4: `getDocument` gives its choice in the format 3 shape the cases break, `wrapAs4` puts it back
 
-const OVERVIEW = 'channels\\.overview\\.views\\[0\\]';
+// A violation's path starts at its choice (diagram contract, rule 1): these files are `archdraw/diagram@3`, converted first, one choice, `choices[0]`.
+const OVERVIEW = 'choices\\[0\\]\\.channels\\.overview\\.views\\[0\\]';
 const valid = () => withPresentation(withReadme(agent3('Rules agent')));
 const long = (n: number) => 'x'.repeat(n);
 
@@ -12,13 +14,13 @@ const long = (n: number) => 'x'.repeat(n);
 // same `<path>: <message>` lines in `errors`.
 const cases: { name: string; pattern: RegExp; break: (d: Doc3) => void }[] = [
   // rule 20: `within`
-  { name: 'within-itself', pattern: /^ERROR facts\.components\[2\]\.within/m, break: d => { d.facts.components[2].within = 'model-call'; } },
-  { name: 'within-a-fact-that-is-not-there', pattern: /^ERROR facts\.components\[2\]\.within/m, break: d => { d.facts.components[2].within = 'ghost'; } },
-  { name: 'within-a-mechanism', pattern: /^ERROR facts\.components\[(2|3)\]\.within/m, break: d => { d.facts.components[3].within = 'model-call'; } },
+  { name: 'within-itself', pattern: /^ERROR choices\[0\]\.facts\.components\[2\]\.within/m, break: d => { d.facts.components[2].within = 'model-call'; } },
+  { name: 'within-a-fact-that-is-not-there', pattern: /^ERROR choices\[0\]\.facts\.components\[2\]\.within/m, break: d => { d.facts.components[2].within = 'ghost'; } },
+  { name: 'within-a-mechanism', pattern: /^ERROR choices\[0\]\.facts\.components\[(2|3)\]\.within/m, break: d => { d.facts.components[3].within = 'model-call'; } },
   // rule 21: a limit's `on`
-  { name: 'limit-on-nothing', pattern: /^ERROR facts\.limits\[0\]\.on/m, break: d => { d.facts.limits![0].on = 'ghost'; } },
-  { name: 'limit-text-too-long', pattern: /^ERROR facts\.limits\[0\]\.text/m, break: d => { d.facts.limits![0].text = long(61); } },
-  { name: 'limit-id-is-a-fact-id', pattern: /^ERROR facts\.(limits\[0\]|components\[1\])\.id/m, break: d => { d.facts.limits![0].id = 'agent'; } },
+  { name: 'limit-on-nothing', pattern: /^ERROR choices\[0\]\.facts\.limits\[0\]\.on/m, break: d => { d.facts.limits![0].on = 'ghost'; } },
+  { name: 'limit-text-too-long', pattern: /^ERROR choices\[0\]\.facts\.limits\[0\]\.text/m, break: d => { d.facts.limits![0].text = long(61); } },
+  { name: 'limit-id-is-a-fact-id', pattern: /^ERROR choices\[0\]\.facts\.(limits\[0\]|components\[1\])\.id/m, break: d => { d.facts.limits![0].id = 'agent'; } },
   // rule 22: `held` and `limits` of a part
   { name: 'held-is-not-within-the-part', pattern: new RegExp(`^ERROR ${OVERVIEW}\\.nodes\\[1\\]\\.held`, 'm'),
     break: d => { d.channels.overview.views![0].nodes[1].held = ['model-call', 'store']; } },
@@ -31,32 +33,32 @@ const cases: { name: string; pattern: RegExp; break: (d: Doc3) => void }[] = [
   { name: 'more-than-twelve-rows', pattern: new RegExp(`^ERROR ${OVERVIEW}\\.nodes\\[1\\]`, 'm'), // 12 items of the fact + 2 held + 1 limit
     break: d => { d.facts.components[1].items = Array.from({ length: 12 }, (_, i) => `Item ${i + 1}`); } },
   // rule 23: evidence
-  { name: 'evidence-over-eight', pattern: /^ERROR facts\.components\[0\]\.evidence/m,
+  { name: 'evidence-over-eight', pattern: /^ERROR choices\[0\]\.facts\.components\[0\]\.evidence/m,
     break: d => { d.facts.components[0].evidence = Array.from({ length: 9 }, (_, i) => ({ file: 'src/web.ts', lines: [i + 1, i + 1] as [number, number] })); } },
-  { name: 'evidence-lines-reversed', pattern: /^ERROR facts\.components\[0\]\.evidence/m, break: d => { d.facts.components[0].evidence = [{ file: 'src/web.ts', lines: [5, 2] }]; } },
-  { name: 'evidence-line-zero', pattern: /^ERROR facts\.components\[0\]\.evidence/m, break: d => { d.facts.components[0].evidence = [{ file: 'src/web.ts', lines: [0, 3] }]; } },
-  { name: 'evidence-line-not-an-integer', pattern: /^ERROR facts\.components\[0\]\.evidence/m,
+  { name: 'evidence-lines-reversed', pattern: /^ERROR choices\[0\]\.facts\.components\[0\]\.evidence/m, break: d => { d.facts.components[0].evidence = [{ file: 'src/web.ts', lines: [5, 2] }]; } },
+  { name: 'evidence-line-zero', pattern: /^ERROR choices\[0\]\.facts\.components\[0\]\.evidence/m, break: d => { d.facts.components[0].evidence = [{ file: 'src/web.ts', lines: [0, 3] }]; } },
+  { name: 'evidence-line-not-an-integer', pattern: /^ERROR choices\[0\]\.facts\.components\[0\]\.evidence/m,
     break: d => { d.facts.components[0].evidence = [{ file: 'src/web.ts', lines: [1, 2.5] as unknown as [number, number] }]; } },
-  { name: 'evidence-file-outside-the-repository', pattern: /^ERROR facts\.components\[0\]\.evidence/m, break: d => { d.facts.components[0].evidence = [{ file: '../escape.ts', lines: null }]; } },
-  { name: 'relation-evidence-broken', pattern: /^ERROR facts\.relations\[0\]\.evidence/m, break: d => { d.facts.relations![0].evidence = [{ file: '/etc/passwd', lines: null }]; } },
-  { name: 'limit-evidence-broken', pattern: /^ERROR facts\.limits\[0\]\.evidence/m, break: d => { d.facts.limits![0].evidence = [{ file: 'src/web.ts', lines: [3, 1] }]; } },
+  { name: 'evidence-file-outside-the-repository', pattern: /^ERROR choices\[0\]\.facts\.components\[0\]\.evidence/m, break: d => { d.facts.components[0].evidence = [{ file: '../escape.ts', lines: null }]; } },
+  { name: 'relation-evidence-broken', pattern: /^ERROR choices\[0\]\.facts\.relations\[0\]\.evidence/m, break: d => { d.facts.relations![0].evidence = [{ file: '/etc/passwd', lines: null }]; } },
+  { name: 'limit-evidence-broken', pattern: /^ERROR choices\[0\]\.facts\.limits\[0\]\.evidence/m, break: d => { d.facts.limits![0].evidence = [{ file: 'src/web.ts', lines: [3, 1] }]; } },
   // rule 24: steps
-  { name: 'step-names-a-part-the-view-lacks', pattern: /^ERROR channels\.presentation\.steps\[0\]\.parts/m, break: d => { d.channels.presentation!.steps![0].parts = ['ghost']; } },
-  { name: 'step-names-a-part-twice', pattern: /^ERROR channels\.presentation\.steps\[0\]\.parts/m, break: d => { d.channels.presentation!.steps![0].parts = ['app', 'app']; } },
-  { name: 'step-names-no-part', pattern: /^ERROR channels\.presentation\.steps\[0\]\.parts/m, break: d => { d.channels.presentation!.steps![0].parts = []; } },
-  { name: 'step-text-too-long', pattern: /^ERROR channels\.presentation\.steps\[0\]\.text/m, break: d => { d.channels.presentation!.steps![0].text = long(121); } },
-  { name: 'step-note-too-long', pattern: /^ERROR channels\.presentation\.steps\[0\]\.note/m, break: d => { d.channels.presentation!.steps![0].note = long(1001); } },
-  { name: 'step-id-twice', pattern: /^ERROR channels\.presentation\.steps\[1\]/m, break: d => { d.channels.presentation!.steps![1].id = d.channels.presentation!.steps![0].id; } },
-  { name: 'more-than-twenty-steps', pattern: /^ERROR channels\.presentation\.steps/m,
+  { name: 'step-names-a-part-the-view-lacks', pattern: /^ERROR choices\[0\]\.channels\.presentation\.steps\[0\]\.parts/m, break: d => { d.channels.presentation!.steps![0].parts = ['ghost']; } },
+  { name: 'step-names-a-part-twice', pattern: /^ERROR choices\[0\]\.channels\.presentation\.steps\[0\]\.parts/m, break: d => { d.channels.presentation!.steps![0].parts = ['app', 'app']; } },
+  { name: 'step-names-no-part', pattern: /^ERROR choices\[0\]\.channels\.presentation\.steps\[0\]\.parts/m, break: d => { d.channels.presentation!.steps![0].parts = []; } },
+  { name: 'step-text-too-long', pattern: /^ERROR choices\[0\]\.channels\.presentation\.steps\[0\]\.text/m, break: d => { d.channels.presentation!.steps![0].text = long(121); } },
+  { name: 'step-note-too-long', pattern: /^ERROR choices\[0\]\.channels\.presentation\.steps\[0\]\.note/m, break: d => { d.channels.presentation!.steps![0].note = long(1001); } },
+  { name: 'step-id-twice', pattern: /^ERROR choices\[0\]\.channels\.presentation\.steps\[1\]/m, break: d => { d.channels.presentation!.steps![1].id = d.channels.presentation!.steps![0].id; } },
+  { name: 'more-than-twenty-steps', pattern: /^ERROR choices\[0\]\.channels\.presentation\.steps/m,
     break: d => { d.channels.presentation!.steps = Array.from({ length: 21 }, (_, i) => ({ id: `s${i + 1}`, parts: ['app'], text: `Step ${i + 1}`, note: '' })); } },
-  { name: 'steps-without-a-view', pattern: /^ERROR channels\.presentation/m, break: d => { d.channels.presentation!.views = []; } },
+  { name: 'steps-without-a-view', pattern: /^ERROR choices\[0\]\.channels\.presentation/m, break: d => { d.channels.presentation!.views = []; } },
   // rule 5, changed: README and presentation hold one view; only the presentation has steps
-  { name: 'presentation-holds-two-views', pattern: /^ERROR channels\.presentation/m,
+  { name: 'presentation-holds-two-views', pattern: /^ERROR choices\[0\]\.channels\.presentation/m,
     break: d => { const second = structuredClone(d.channels.presentation!.views![0]); second.id = 'presentation-two'; d.channels.presentation!.views!.push(second); } },
-  { name: 'readme-has-steps', pattern: /^ERROR channels\.readme/m, break: d => { (d.channels.readme as unknown as Record<string, unknown>).steps = []; } },
-  { name: 'linkedin-has-steps', pattern: /^ERROR channels\.linkedin/m,
+  { name: 'readme-has-steps', pattern: /^ERROR choices\[0\]\.channels\.readme/m, break: d => { (d.channels.readme as unknown as Record<string, unknown>).steps = []; } },
+  { name: 'linkedin-has-steps', pattern: /^ERROR choices\[0\]\.channels\.linkedin/m,
     break: d => { d.channels.linkedin = { views: [], steps: [{ id: 's1', parts: ['x'], text: 'x', note: '' }] }; } },
-  { name: 'readme-has-an-unknown-key', pattern: /^ERROR channels\.readme/m, break: d => { (d.channels.readme as unknown as Record<string, unknown>).pages = 3; } },
+  { name: 'readme-has-an-unknown-key', pattern: /^ERROR choices\[0\]\.channels\.readme/m, break: d => { (d.channels.readme as unknown as Record<string, unknown>).pages = 3; } },
   // rule 6, changed: a fact is shown or held by at most one part of a view
   { name: 'mechanism-held-and-also-shown', pattern: new RegExp(`^ERROR ${OVERVIEW}\\.nodes\\[(1|3)\\]\\.(facts|held)`, 'm'), // reported at the part that shows it again or at the one that holds it
     break: d => { d.channels.overview.views![0].nodes.push(part('loop', { facts: ['model-call'], x: 0, y: 0 })); } },
@@ -65,11 +67,11 @@ const cases: { name: string; pattern: RegExp; break: (d: Doc3) => void }[] = [
     break: d => { Object.assign(d.channels.overview.views![0].nodes[1], { held: [], limits: [] }); } },
   { name: 'card-with-held-rows', pattern: new RegExp(`^ERROR ${OVERVIEW}\\.nodes\\[1\\]\\.(form|held|limits)`, 'm'), break: d => { d.channels.overview.views![0].nodes[1].form = 'card'; } },
   // rule 16, changed: a mechanism is drawn when a part holds it; a mechanism nobody holds or shows is missing
-  { name: 'mechanisms-no-overview-part-draws', pattern: /^ERROR (facts\.components\[(2|3)\]|channels\.overview)/m,
+  { name: 'mechanisms-no-overview-part-draws', pattern: /^ERROR (choices\[0\]\.facts\.components\[(2|3)\]|choices\[0\]\.channels\.overview)/m,
     break: d => { d.channels.overview.views![0].nodes[1].held = []; } },
 ];
 
-test('H107 [FILE-2, READ-2, STORY-4, STORY-5] validate refuses each broken 0.3 rule with its path, writes nothing, and the server refuses the same file and the same save', async ({ request }) => {
+test('H107 [FILE-2, READ-2, STORY-4, STORY-5, #182] validate refuses each broken 0.3 rule with its path, writes nothing, and the server refuses the same file and the same save', async ({ request }) => {
   test.setTimeout(300_000); // every case runs the command twice and the server twice
   const folder = await repo('rules03');
   const fine = join(folder.dir, 'fine.json'); await writeJSON(fine, valid());
@@ -101,7 +103,7 @@ test('H107 [FILE-2, READ-2, STORY-4, STORY-5] validate refuses each broken 0.3 r
     expect(response.status(), rule.name).toBe(400);
     expect(((await response.json()).errors as string[]).join('\n'), rule.name).toMatch(new RegExp(rule.pattern.source.replace(/^\^ERROR /, '^'), 'm'));
     const edit = structuredClone(base); rule.break(edit);
-    const put = await request.put(`${baseURL()}/api/diagrams/${registered.id}`, { headers: { 'X-Archdraw-Token': auth }, data: edit });
+    const put = await request.put(`${baseURL()}/api/diagrams/${registered.id}`, { headers: { 'X-Archdraw-Token': auth }, data: wrapAs4(edit) });
     expect(put.status(), `${rule.name}: PUT`).toBe(400);
     const refusal = await put.json();
     expect(refusal.error, rule.name).toMatch(/^Invalid diagram/);
@@ -115,7 +117,7 @@ test('H107 [FILE-2, READ-2, STORY-4, STORY-5] validate refuses each broken 0.3 r
   const manyPath = join(folder.dir, 'many.json'); await writeJSON(manyPath, many);
   const everything = await cli(['validate', manyPath]); expect(everything.code).toBe(1);
   const listed = errorLines(everything);
-  for (const place of ['facts.components[2].within', 'facts.limits[0].on', 'channels.presentation.steps[0].parts', 'facts.components[0].evidence'])
+  for (const place of ['choices[0].facts.components[2].within', 'choices[0].facts.limits[0].on', 'choices[0].channels.presentation.steps[0].parts', 'choices[0].facts.components[0].evidence'])
     expect(listed.some(line => line.startsWith(`ERROR ${place}`)), place).toBe(true);
   expect(outputLines(everything)).toContain(`${listed.length} error(s)`);
 
@@ -135,8 +137,8 @@ test('H107 [FILE-2, READ-2, STORY-4, STORY-5] validate refuses each broken 0.3 r
   const missing = valid(); missing.facts.components[0].evidence = [{ file: 'src/not-written-yet.ts', lines: [1, 2] }];
   const missingPath = join(folder.dir, 'missing-evidence.json'); await writeJSON(missingPath, missing);
   const strict = await cli(['validate', missingPath]); expect(strict.code).toBe(1);
-  expect(errorLines(strict).some(line => line.startsWith('ERROR facts.components[0].evidence'))).toBe(true);
+  expect(errorLines(strict).some(line => line.startsWith('ERROR choices[0].facts.components[0].evidence'))).toBe(true);
   const lenientOpen = await cli(['open', missingPath, '--no-browser']); expect(lenientOpen.code, lenientOpen.stderr).toBe(0);
   const warned = warnLines(lenientOpen).filter(line => line.includes('src/not-written-yet.ts'));
-  expect(warned.length).toBeGreaterThanOrEqual(1); expect(warned[0]).toContain('facts.components[0].evidence');
+  expect(warned.length).toBeGreaterThanOrEqual(1); expect(warned[0]).toContain('choices[0].facts.components[0].evidence');
 });

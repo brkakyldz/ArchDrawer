@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { shop3, withDetail, withLinkedIn, legacyWithPost, workspaceRaw, openDrawing, cli, readDocument, persistedDoc, saved, factOf, outdatedOf,
+import { shop3, withDetail, withLinkedIn, legacyWithPost, workspaceRaw, openDrawing, cli, readDocument, readStoredRaw, persistedDoc, saved, factOf, outdatedOf,
   errorLines, outputLines, channelNames, type Doc3 } from './helpers';
 
 const CONVERTED = 'Converted from archdraw/diagram@2';
@@ -33,7 +33,8 @@ test('H108 [FILE-1, FILE-2, FILE-3] a drawing written before 0.3 stays valid, op
   expect(errorLines(checked)).toEqual([]); expect(await readFile(file, 'utf8')).toBe(written);
 
   const opened = await cli(['open', file, '--no-browser']); expect(opened.code, opened.stderr).toBe(0);
-  const stored = await readDocument(file);
+  const stored = await readDocument(file); // the first choice, `system`, in the shape the file had
+  expect((await readStoredRaw(file)).schema, 'opened, the file is written back as format 4').toBe('archdraw/diagram@4');
   gainedNothing(stored, 'opened');
   expect(core(stored)).toEqual(core(old)); // every fact as written
   expect(stored.facts.relations!.map(r => [r.id, r.from, r.to, r.label, r.style, r.both])).toEqual(old.facts.relations!.map(r => [r.id, r.from, r.to, r.label, r.style, r.both]));
@@ -52,13 +53,14 @@ test('H108 [FILE-1, FILE-2, FILE-3] a drawing written before 0.3 stays valid, op
   expect(outputLines(legacyChecked).some(line => line.includes(CONVERTED))).toBe(true); expect(await readFile(legacy.file, 'utf8')).toBe(legacyBytes);
   expect((await cli(['open', legacy.file, '--no-browser'])).code).toBe(0);
   const converted = await readDocument(legacy.file);
-  expect(converted.schema).toBe('archdraw/diagram@3'); expect(converted.warnings).toEqual([CONVERTED]); gainedNothing(converted, 'converted');
+  expect((await readStoredRaw(legacy.file)).schema).toBe('archdraw/diagram@4'); expect(converted.warnings).toEqual([CONVERTED]); gainedNothing(converted, 'converted');
   expect(converted.channels.linkedin!.views!.map(v => v.id)).toEqual(['overview-linkedin']);
 
-  // The editor opens the 0.2 file as it always did: rows only where a fact has items, and an edit stays an edit of the old shape.
+  // The editor opens the 0.2 file as it always did, except that no part draws rows any more (LOOK-3): the items stay on the fact and are
+  // listed in the callout; an edit stays an edit of the old shape.
   await openDrawing(page, request, file);
   for (const id of ['web', 'api', 'db']) await expect(page.getByTestId(`node-${id}`)).toBeVisible();
-  await expect(page.getByTestId('node-api').getByTestId('node-item')).toHaveCount(2); // `Validate order`, `Create order`: no mechanism row, no limit row
+  await expect(page.getByTestId('node-api').getByTestId('node-item')).toHaveCount(0); // no part draws a row; the items are in the callout, and no mechanism or limit appears
   await expect(page.getByTestId('node-web').getByTestId('node-item')).toHaveCount(0);
   await page.getByTestId('channel-tab-linkedin').click();
   await expect(page.getByTestId('node-intake')).toBeVisible(); await expect(page.getByTestId('node-ledger').getByTestId('node-label')).toHaveText('Orders ledger');

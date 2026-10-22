@@ -1,10 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
-import { component, drawing, workspace, openDrawing, readDrawing } from './helpers';
+import { component, drawing, workspace, openDrawing } from './helpers';
+import { readView } from './helpers-drawing';
 
 // SHARE-3 helpers (kept in this file: helpers.ts is not edited). The `readability` line is the sentence alone: the
 // details toggle and the details are cut out of a copy first, because the contract does not say whether they sit inside it.
 const WHERE: Record<string, string> = { 'format-feed': 'in the LinkedIn feed', 'format-readme': 'in a GitHub README', 'format-slide': 'on a projected slide', 'format-square': 'in a feed' };
-const SUGGESTIONS = ['hiding what each part holds would help', 'the LinkedIn version would help', 'a larger format would help'];
+const SUGGESTIONS = ['hiding the sub-lines would help', 'the LinkedIn version would help', 'a larger format would help'];
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 async function readabilitySentence(page: Page) {
   return (await page.getByTestId('share-dialog').getByTestId('readability').evaluate(el => {
@@ -27,11 +28,11 @@ async function expectSentence(page: Page, where: string, suggestions: string[], 
   }, { message: why }).toMatchObject({ ok: true });
 }
 
-test('H39 [SHARE-2, SHARE-3, LAYOUT-3] share the view as it is, keep keyboard focus inside sharing and call a drawing too wide to read too small in one plain sentence, in the report and the meter alike', async ({ page, request }) => {
+test('H39 [SHARE-2 SHARE-3 LAYOUT-3 LOOK-3 #177] share the view as it is, keep keyboard focus inside sharing and call a drawing too wide to read too small in one plain sentence that suggests hiding the sub-lines while they show, in the report and the meter alike', async ({ page, request }) => {
   const doc = drawing('Wide shop'), view = doc.views[0];
   view.nodes = Array.from({ length: 18 }, (_, i) => component(`wide-${i}`, { label: `Order station ${i + 1}`, form: 'panel', sub: 'Handle an order', items: ['Check order', 'Keep record'], x: i * 900, y: 160 }));
   view.edges = Array.from({ length: 17 }, (_, i) => ({ id: `wide-edge-${i}`, from: `wide-${i}`, to: `wide-${i + 1}`, label: 'Next station', style: 'call', both: false, step: i + 1 }));
-  const { file } = await workspace('readability', doc); await openDrawing(page, request, file); const source = (await readDrawing(file)).views[0];
+  const { file } = await workspace('readability', doc); await openDrawing(page, request, file); const source = await readView(file);
   await page.getByTestId('share-button').click(); const dialog = page.getByTestId('share-dialog'), actions = page.getByTestId('share-actions');
   await expect(dialog).toHaveAttribute('role', 'dialog'); expect(await dialog.evaluate(el => el.contains(document.activeElement))).toBe(true);
   // The details of the readability line are closed when the dialog opens.
@@ -43,9 +44,11 @@ test('H39 [SHARE-2, SHARE-3, LAYOUT-3] share the view as it is, keep keyboard fo
   for (const format of ['format-feed', 'format-readme', 'format-slide', 'format-square']) {
     await page.getByTestId(format).click(); await expect(page.getByTestId(format)).toHaveAttribute('aria-pressed', 'true');
     for (const id of removed) await expect(dialog.getByTestId(id), `${id} with ${format}`).toHaveCount(0);
+    await expect(dialog.getByTestId('show-items'), `no part draws rows, so no show-items with ${format}`).toHaveCount(0);
   }
   await page.getByTestId('share-advanced-toggle').click(); await expect(page.getByTestId('share-advanced')).toBeVisible();
   for (const id of removed) await expect(dialog.getByTestId(id), `${id} in advanced options`).toHaveCount(0);
+  await expect(page.getByTestId('show-sub'), 'the sub-line switch is offered').toBeVisible();
   await page.getByTestId('share-advanced-toggle').click();
   await page.getByTestId('format-readme').click(); await expect(page.getByTestId('format-readme')).toHaveAttribute('aria-pressed', 'true');
   // Exercise both wrapping boundaries using actual, enabled, visible dialog controls.
@@ -69,12 +72,19 @@ test('H39 [SHARE-2, SHARE-3, LAYOUT-3] share the view as it is, keep keyboard fo
   for (const format of ['format-feed', 'format-readme', 'format-slide', 'format-square']) {
     await page.getByTestId(format).click(); await expect(page.getByTestId(format)).toHaveAttribute('aria-pressed', 'true');
     if (await page.getByTestId('share-advanced-toggle').getAttribute('aria-expanded') !== 'true') await page.getByTestId('share-advanced-toggle').click();
-    const held = await page.getByTestId('show-items').isChecked();
+    // Sub-lines start as the view's switch (on here), whichever the format.
+    await expect(page.getByTestId('show-sub'), `${format}: sub-lines start on`).toBeChecked();
+    const shown = await page.getByTestId('show-sub').isChecked();
     if (format === 'format-feed' || format === 'format-readme') await expect(actions.getByTestId('readability')).toHaveAttribute('data-level', 'warn');
-    // With held items shown the one suggestion is the first one; otherwise any contracted suggestion.
-    await expectSentence(page, WHERE[format], held ? [SUGGESTIONS[0]] : SUGGESTIONS, `${format}, held items ${held ? 'shown' : 'hidden'}`);
-    if (held && format === 'format-readme') expect(await readabilitySentence(page)).toBe('The text will be too small to read in a GitHub README, even when the image is opened; hiding what each part holds would help.');
+    // With sub-lines shown the one suggestion is the first one; otherwise any contracted suggestion.
+    await expectSentence(page, WHERE[format], shown ? [SUGGESTIONS[0]] : SUGGESTIONS, `${format}, sub-lines ${shown ? 'shown' : 'hidden'}`);
+    if (shown && format === 'format-readme') expect(await readabilitySentence(page)).toBe('The text will be too small to read in a GitHub README, even when the image is opened; hiding the sub-lines would help.');
   }
+  // With the sub-lines hidden the suggestion is no longer that one.
+  await page.getByTestId('format-readme').click(); await page.getByTestId('show-sub').uncheck();
+  await expectSentence(page, WHERE['format-readme'], SUGGESTIONS.slice(1), 'format-readme, sub-lines hidden');
+  expect(await readabilitySentence(page)).not.toContain('sub-lines');
+  await page.getByTestId('show-sub').check();
   await page.getByTestId('share-advanced-toggle').click();
   await page.getByTestId('format-readme').click(); await expect(page.getByTestId('format-readme')).toHaveAttribute('aria-pressed', 'true');
   // The numbers live behind Details only.
@@ -94,8 +104,8 @@ test('H39 [SHARE-2, SHARE-3, LAYOUT-3] share the view as it is, keep keyboard fo
   await expect(actions.getByTestId('readability')).toHaveText(/\S/);
   await expect(actions.getByTestId('readability')).not.toContainText(/Share one part|Simplify/i);
   for (const id of removed) await expect(page.getByTestId(id)).toHaveCount(0);
-  // Reading the report writes nothing into the drawing.
-  expect((await readDrawing(file)).views[0]).toEqual(source);
+  // Must not happen: reading the report, or switching sub-lines in the dialog, writing anything into the drawing.
+  expect(await readView(file)).toEqual(source);
   // Closing with the details open: they are closed again when the dialog next opens.
   await toggle.click(); await expect(details).toBeVisible();
   await page.keyboard.press('Escape'); await expect(dialog).not.toBeVisible(); await expect(page.getByTestId('share-button')).toBeFocused();

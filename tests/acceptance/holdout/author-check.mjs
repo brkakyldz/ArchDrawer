@@ -12,17 +12,21 @@ const here = new URL('.', import.meta.url);
 // (START-6, STORY-7) built is 'today' now. 'landing' is PRES-1–3: `spec.md` keeps them To build until the integration of 0.5 marks
 // them Today, and the 0.5 scenarios (H158–H166) observe them, so a title may carry them. START-1 (To change), and START-2, NAV-4 and
 // QUAL-1/3 (To build) are the others.
+// The ADR 0013–0015 round (archdraw/diagram@4, calm connections, an outline per kind, choices) marks START-7, STORY-8, LAYOUT-5,
+// LAYOUT-6, LOOK-2, LOOK-3, LOOK-4 and EDIT-5 To build and changes START-1, SCAN-2, SCAN-3, STORY-1, LAYOUT-2, FILE-2, NAV-1 and
+// NAV-2: the ones To build are 'round' (a title may carry them, they are being landed by the issues of the round and each needs a
+// scenario, as PRES-1–3 did), the others 'change'. LOOK-2 and LOOK-3 carry 'today' from 0.4; the spec now calls them To build.
 const requirements = {
-  'START-1': 'change', 'START-2': 'build', 'START-3': 'today', 'START-4': 'today', 'START-5': 'today', 'START-6': 'today',
-  'SCAN-1': 'today', 'SCAN-2': 'today', 'SCAN-3': 'today', 'SCAN-4': 'today',
+  'START-1': 'change', 'START-2': 'build', 'START-3': 'today', 'START-4': 'today', 'START-5': 'today', 'START-6': 'today', 'START-7': 'round',
+  'SCAN-1': 'today', 'SCAN-2': 'change', 'SCAN-3': 'change', 'SCAN-4': 'today',
   'READ-1': 'today', 'READ-2': 'today', 'READ-3': 'today',
-  'STORY-1': 'today', 'STORY-2': 'today', 'STORY-3': 'today', 'STORY-4': 'today', 'STORY-5': 'today', 'STORY-6': 'today', 'STORY-7': 'today',
-  'LAYOUT-1': 'today', 'LAYOUT-2': 'today', 'LAYOUT-3': 'today', 'LAYOUT-4': 'today',
-  'LOOK-1': 'today', 'LOOK-2': 'today', 'LOOK-3': 'today',
-  'FILE-1': 'today', 'FILE-2': 'today', 'FILE-3': 'today',
-  'EDIT-1': 'today', 'EDIT-2': 'today', 'EDIT-3': 'today', 'EDIT-4': 'today',
+  'STORY-1': 'change', 'STORY-2': 'today', 'STORY-3': 'today', 'STORY-4': 'today', 'STORY-5': 'today', 'STORY-6': 'today', 'STORY-7': 'today', 'STORY-8': 'round',
+  'LAYOUT-1': 'today', 'LAYOUT-2': 'change', 'LAYOUT-3': 'today', 'LAYOUT-4': 'today', 'LAYOUT-5': 'round', 'LAYOUT-6': 'round',
+  'LOOK-1': 'today', 'LOOK-2': 'round', 'LOOK-3': 'round', 'LOOK-4': 'round',
+  'FILE-1': 'today', 'FILE-2': 'change', 'FILE-3': 'today',
+  'EDIT-1': 'today', 'EDIT-2': 'today', 'EDIT-3': 'today', 'EDIT-4': 'today', 'EDIT-5': 'round',
   'AI-1': 'today', 'AI-2': 'today', 'AI-3': 'today', 'AI-4': 'today', 'AI-5': 'today',
-  'NAV-1': 'today', 'NAV-2': 'today', 'NAV-3': 'today', 'NAV-4': 'build',
+  'NAV-1': 'change', 'NAV-2': 'change', 'NAV-3': 'today', 'NAV-4': 'build',
   'PRES-1': 'landing', 'PRES-2': 'landing', 'PRES-3': 'landing',
   'SHARE-1': 'today', 'SHARE-2': 'today', 'SHARE-3': 'today',
   'SAFE-1': 'today', 'SAFE-2': 'today', 'SAFE-3': 'today', 'SAFE-4': 'today', 'SAFE-5': 'today',
@@ -63,9 +67,13 @@ for (const [name, source] of sources) {
   assert.ok(!/from\s+['"]\.\.\//.test(source), `${name}: reaches outside the suite folder`);
 }
 
-// Scenarios: one test per file, its title is `H<nn> [IDS] journey`, the number matches the file name.
+// Scenarios: one test per file, its title is `H<nn> [IDS] journey`, the number matches the file name. Since the ADR 0013–0015 round the
+// bracket also holds the build issues the scenario accepts, as `#<number>` tokens, and its tokens are separated by commas or by spaces
+// (older titles use commas; the round's use spaces). Every title needs at least one requirement id; every scenario from H167 on
+// (the round that makes the build issues) names at least one issue; an issue number is written once per title.
 const scenarios = [];
 const used = new Set();
+const issuesOf = new Map();
 for (const [name, source] of sources) {
   if (!/^H\d+_/.test(name)) continue;
   assert.ok(name.endsWith('.spec.ts'), `${name}: scenario files end in .spec.ts`);
@@ -75,9 +83,13 @@ for (const [name, source] of sources) {
   const parts = title.match(/^(H\d+) \[([^\]]+)\] (\S.*)$/);
   assert.ok(parts, `${name}: title must read H<nn> [IDS] journey: ${title}`);
   assert.equal(parts[1], name.split('_')[0], `${name}: title number differs from the file name`);
-  const ids = parts[2].split(',').map(id => id.trim());
-  assert.ok(ids.length >= 1 && ids.every(Boolean), `${name}: at least one requirement id`);
-  assert.equal(new Set(ids).size, ids.length, `${name}: an id is repeated`);
+  const tokens = parts[2].split(/[\s,]+/).filter(Boolean);
+  assert.ok(tokens.every(token => /^[A-Z]+-\d+$/.test(token) || /^#\d+$/.test(token)), `${name}: the bracket holds requirement ids and #issue tokens only: ${parts[2]}`);
+  const ids = tokens.filter(token => !token.startsWith('#')), issues = tokens.filter(token => token.startsWith('#'));
+  assert.ok(ids.length >= 1, `${name}: at least one requirement id`);
+  assert.equal(new Set(tokens).size, tokens.length, `${name}: an id or an issue is repeated`);
+  if (Number(parts[1].slice(1)) >= 167) assert.ok(issues.length >= 1, `${name}: a scenario from H167 on names at least one build issue`);
+  issuesOf.set(parts[1], issues);
   for (const id of ids) {
     assert.ok(id in requirements, `${name}: ${id} is not a requirement of the spec`);
     assert.notEqual(requirements[id], 'build', `${name}: ${id} is not built yet, so nothing can observe it`);
@@ -119,13 +131,14 @@ for (const name of ['readDocument', 'readDrawing', 'writeDrawing', 'workspace', 
   'slideSized', 'slideBox', 'pixelGrids', 'gridDistance', 'gridMean'])
   assert.ok(new RegExp(`export (async )?(function|const) ${name}\\b`).test(helpers), `helpers.ts no longer exports ${name}`);
 
-// The ask box and the old one-click fold are gone (0.4): a scenario may name their test ids only to say they are not there.
+// The ask box and the old one-click fold are gone (0.4); the parts' rows, the `show-items` switch and the `views-button` are gone
+// (ADR 0014, ADR 0015): a scenario may name their test ids only to say they are not there.
 for (const [name, source] of sources) {
   if (!/^H\d+_/.test(name)) continue;
   for (const [i, line] of source.split(/\r?\n/).entries()) {
     if (/^\s*(\/\/|const ASK_BOX)/.test(line)) continue;
-    if (/['"`](ask-(input|send|expand|status|cancel|error|retry|saved)|simplify-overview)['"`]/.test(line))
-      assert.ok(/toHaveCount\(0\)/.test(line), `${name}:${i + 1}: uses a control that 0.4 removed, other than to assert it is gone`);
+    if (/['"`](ask-(input|send|expand|status|cancel|error|retry|saved)|simplify-overview|show-items|node-item|node-item-input|views-button)['"`]/.test(line))
+      assert.ok(/toHaveCount\(0\)/.test(line), `${name}:${i + 1}: uses a control that a later round removed, other than to assert it is gone`);
   }
 }
 
@@ -159,5 +172,27 @@ for (const [name, source] of sources) {
   if (/\bPRES-\d\b/.test(title)) assert.ok(number >= 158, `${name}: a PRES id in a scenario older than the 0.5 round`);
 }
 for (const id of ['PRES-1', 'PRES-2', 'PRES-3']) assert.ok(used.has(id), `no scenario observes ${id}`);
+
+// The ADR 0013–0015 round: every requirement it marks To build or To change has a scenario, and so has every build issue it makes
+// (ISSUES-drawing.md and ISSUES-selections.md); a title may name no other issue number.
+for (const id of Object.keys(requirements).filter(id => requirements[id] === 'round')) assert.ok(used.has(id), `no scenario observes ${id}`);
+for (const id of ['START-1', 'SCAN-2', 'SCAN-3', 'STORY-1', 'LAYOUT-2', 'FILE-2', 'NAV-1', 'NAV-2']) assert.ok(used.has(id), `no scenario observes ${id}`);
+const roundIssues = [44, 164, 165, 166, 167, 168, 170, 171, 172, 174, 175, 176, 177, 180, 181, 182, 183, 184, 185, 186].map(n => `#${n}`);
+const named = new Set([...issuesOf.values()].flat());
+for (const issue of named) assert.ok(roundIssues.includes(issue), `a title names ${issue}, which is not a build issue of the round`);
+for (const issue of roundIssues) assert.ok(named.has(issue), `no scenario accepts ${issue}`);
+
+// The round's helper files keep the names the batches' scenarios import (the reading of a stored file, whichever format it has).
+for (const [file, exported] of Object.entries({
+  'helpers-drawing.ts': ['readChoice', 'persistedChoice', 'sketch', 'shapeForKind', 'cardSize', 'pickUp', 'dragMarks', 'edgeSnaps', 'drawnRoutes', 'expectSameRoutes', 'inspectImage'],
+  'helpers-selections.ts': ['readChoice', 'readChoices', 'flat3', 'wrapAs4', 'workspace4', 'choice4', 'doc4'],
+  'helpers.ts': ['flattenChoice', 'readStoredRaw', 'getStoredRaw'],
+})) {
+  assert.ok(sources.has(file), `${file} is missing`);
+  for (const name of exported) assert.ok(new RegExp(`export (async )?(function|const) ${name}\\b`).test(sources.get(file)), `${file} no longer exports ${name}`);
+}
+// A reader of helpers.ts hands back one choice of a `@4` document in the `@3` shape, whichever format is on disk.
+for (const name of ['readDocument', 'getDocument', 'sessionWrite'])
+  assert.ok(new RegExp(`export async function ${name}\\b[\\s\\S]{0,900}?(flattenChoice|readStoredRaw|getStoredRaw)`).test(helpers), `helpers.ts: ${name} does not read a format 4 document as a choice`);
 
 console.log(`author-check: ${scenarios.length} scenarios, ${used.size} requirement ids observed, ${sources.size} typed files parse, imports stay inside the suite: ok`);

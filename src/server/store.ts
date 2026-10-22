@@ -229,7 +229,8 @@ export class Store extends EventEmitter {
     const v = validateDocument3({ ...(body as object), ...source, updatedAt });
     if (!v.ok) return { ok: false, conflict: false, error: v.error, errors: v.errors };
     const text = docText(v.doc);
-    writeAtomic(path, text);
+    // A short sentence for the editor's save status; the system error stays in the server log.
+    try { writeAtomic(path, text); } catch (e) { throw new Error("The drawing file cannot be written", { cause: e }); }
     this.unwritten.delete(id);
     this.known.set(id, hashOf(text));
     this.versions.set(id, updatedAt);

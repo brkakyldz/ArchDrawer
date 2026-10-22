@@ -96,7 +96,8 @@ describe("a drawing that cannot be written back", () => {
     const put = await req(`/api/diagrams/${id}`, { method: "PUT", json: { ...doc, title: "Edited" }, headers: { "If-Unmodified-Since-Version": doc.updatedAt } });
     expect(put.status).toBe(500);
     expect(put.headers.get("content-type")).toMatch(/^application\/json/);
-    expect(await put.json()).toEqual({ error: expect.stringContaining("EPERM") });
+    // A short sentence: the editor shows it on one line beside its Retry button.
+    expect(await put.json()).toEqual({ error: "The drawing file cannot be written" });
     const asked = await req(`/api/diagrams/${id}/requests`, { method: "POST", json: { view: "overview", text: "Add a cache" } });
     expect(asked.status).toBe(500);
     expect(await asked.json()).toEqual({ error: expect.any(String) });

@@ -3,7 +3,7 @@ import { shop3, withLinkedIn, workspaceRaw, openDrawing, readDocument, persisted
 
 // A channel marked as needing an update can be redrawn from the facts: its drawing is replaced, its marks go, and the
 // whole thing is one undo step.
-test('H103 [STORY-1, FILE-3, EDIT-1] Redraw it draws an outdated LinkedIn channel again from the facts, empties its marks and is one undo step', async ({ page, request }) => {
+test('H103 [STORY-1, FILE-3, EDIT-1, AI-3] Redraw it draws an outdated LinkedIn channel again from the facts, empties its marks and is one undo step', async ({ page, request }) => {
   const { file } = await workspaceRaw('redraw', withLinkedIn(shop3('Redraw shop'), { outdated: ['db'] }));
   await openDrawing(page, request, file);
   const before = await readDocument(file);
@@ -18,6 +18,8 @@ test('H103 [STORY-1, FILE-3, EDIT-1] Redraw it draws an outdated LinkedIn channe
   await persistedDoc(file, d => !!partOf(d, 'linkedin', 'zone-runtime'), 30_000);
   await expect(page.getByTestId('channel-outdated')).toHaveCount(0, { timeout: 15_000 }); await expect(tab).not.toHaveAttribute('data-outdated', /.*/);
   await expect(page.getByTestId('node-intake')).toBeVisible(); await expect(page.getByTestId('node-ledger')).toHaveCount(0);
+  // From 0.4 the redrawn channel arrives as a preview; keeping it is what makes it one undo step.
+  await expect(page.getByTestId('ai-preview')).toBeVisible(); await page.getByTestId('ai-accept').click(); await expect(page.getByTestId('ai-preview')).toHaveCount(0);
   await expect(page.getByTestId('tool-undo')).toBeEnabled();
   const redrawn = await readDocument(file);
   expect(outdatedOf(redrawn, 'linkedin')).toEqual([]);

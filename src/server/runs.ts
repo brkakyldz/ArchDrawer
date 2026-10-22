@@ -10,7 +10,8 @@ import { channelViewId, intentToChannel, parseIntent, STORY_SCHEMA, StoryError, 
 import { postPrompt, ROUTE_SCHEMA, routePrompt, storyPrompt } from "./engines/prompt";
 import { diffDocuments, type Changes } from "../core/diff";
 import { CoverageError, keepUnrelatedViews, missingFacts, SIMPLIFY_INSTRUCTION } from "../core/simplify";
-import { answerToDocument, documentToDraft, EmptyDiagramError, type RunScope } from "../core/repair";
+import { answerToDocument, documentToDraft, DRAFT_JSON_SCHEMA, EmptyDiagramError, type RunScope } from "../core/repair";
+import { removeReviseFolder, reviseOverviewPrompt, reviseStoryPrompt, type ReviseImage } from "./engines/revise";
 import { repoFileChecker } from "./files";
 import { nowIso, type Store } from "./store";
 import { EngineError, type Engine } from "./engines/types";
@@ -18,7 +19,7 @@ import { ReadAnswerError } from "../core/read";
 import { DrawError, runDraw, type DrawRequest } from "./draw";
 
 export type RunStatus = "running" | "succeeded" | "failed" | "cancelled";
-export type RunKind = "refine" | "story" | "post" | "simplify" | "draw";
+export type RunKind = "refine" | "story" | "post" | "simplify" | "revise" | "draw";
 /** The stage of a `draw` run (api contract, The draw run); null on other kinds. */
 export type DrawStage = "read" | "overview" | "channel";
 /** The channels a story is drawn in (a post is a story on LinkedIn). */
@@ -87,7 +88,12 @@ export interface StartRun {
   kind?: RunKind;
   /** A post designed from the facts alone (false: the engine reads no file); default true. */
   readCode?: boolean;
+  /** A revise's image, written by the server; its folder is removed when the run ends, whatever the outcome. */
+  image?: ReviseImage;
 }
+
+/** What a second look sees: the image and the layout report measured on the same view. */
+interface Look { image: ReviseImage; report: LayoutReport }
 
 /** The channel a story or post run draws; null for other kinds. */
 const storyChannelOf = (req: StartRun): StoryChannel | null =>
@@ -147,7 +153,10 @@ export class RunManager {
     const story = storyChannelOf(req);
     return this.launch(
       { kind: req.kind ?? "refine", channel: story ?? channelOfView(req.stored, req.view) ?? "overview", view: story ? channelViewId(req.stored, story) : req.view, engine: req.engine.id, model: req.model, target: req.base.id },
-      (signal, progress, run) => this.execute(req, signal, (m) => progress(m), (route) => (run.route = route)),
+      // A revise's image goes once the run has ended — succeeded, failed, cancelled or timed out — and,
+      // since every engine call settles only after its process tree has exited, after the engine is gone.
+      (signal, progress, run) => this.execute(req, signal, (m) => progress(m), (route) => (run.route = route))
+        .finally(() => { if (req.image) removeReviseFolder(req.image.dir); }),
     );
   }
 
@@ -225,6 +234,20 @@ export class RunManager {
     if (!root) throw new EngineError("This drawing has no repository folder to read");
     const story = storyChannelOf(req);
     if (story) return this.story(req, story, root, signal, progress);
+    // The second look (api contract, The second look): on a story channel the channel's story, on the
+    // overview an appearance-only draft, both told after looking at the image; it names no route.
+    const revise = req.kind === "revise";
+    let look: Look | null = null;
+    if (revise) {
+      if (!req.image) throw new EngineError("A revise needs the drawing's image");
+      progress("Looking at the drawing");
+      const channel = req.channel ?? "overview";
+      const format: FormatId = channel === "linkedin" ? "feed" : channel === "presentation" ? "slide" : "readme";
+      const shown = joinChannel(req.stored, channel);
+      const view = shown.views.find((v) => v.id === req.view) ?? shown.views[0];
+      look = { image: req.image, report: { ...layoutReport(shown, view.id, { ...startSwitches(format, channel === "linkedin"), format, theme: shown.theme }), channel } };
+      if (channel !== "overview") return this.story({ ...req, format, readCode: false, base: draftOf(req.stored, "overview") }, channel, root, signal, progress, look);
+    }
     // A simplification may change the overview and the detail it links to, nothing else (api contract).
     const simplify = req.kind === "simplify";
     const scope: RunScope = simplify ? { kind: "all" } : req.scope ?? { kind: "all" };
@@ -232,7 +255,7 @@ export class RunManager {
     const extra = req.instruction.trim().startsWith(SIMPLIFY_INSTRUCTION) ? req.instruction.trim().slice(SIMPLIFY_INSTRUCTION.length).replace(/^[.\s]+/, "") : req.instruction.trim();
     const instruction = simplify ? (extra ? `${SIMPLIFY_INSTRUCTION}. ${extra}` : SIMPLIFY_INSTRUCTION) : req.instruction;
     // A refine is routed first (api contract, Routing); a parts scope always changes the facts.
-    let appearance = false;
+    let appearance = revise;
     if ((req.kind ?? "refine") === "refine") {
       const route: Route = scope.kind === "parts" ? "facts" : await this.route(req, root, signal, progress);
       if (signal.aborted) throw new EngineError("Cancelled");
@@ -247,9 +270,17 @@ export class RunManager {
     }
     const inView = req.base.views.find((v) => v.id === req.view)?.nodes ?? [];
     const parts = scope.kind === "parts" ? scope.ids.map((id) => inView.find((n) => n.id === id)?.label ?? id) : [];
+    const base = documentToDraft(req.base);
     const answer = await req.engine.run({
       cwd: root, folderName: basename(root), instruction, view: req.view, model: req.model, scope, parts,
-      base: documentToDraft(req.base), signal, timeoutMs: this.opts.timeoutMs, progress, simplify, appearance,
+      base, signal, timeoutMs: this.opts.timeoutMs, progress, simplify, appearance,
+      ...(look ? {
+        image: look.image,
+        task: {
+          kind: "revise" as const, schema: DRAFT_JSON_SCHEMA, tools: "image" as const, data: { channel: "overview" },
+          prompt: reviseOverviewPrompt({ file: look.image.file, report: look.report, instruction: req.instruction, folderName: basename(root), view: req.view, base, facts: req.stored.facts, attached: req.engine.id === "codex" }),
+        },
+      } : {}),
     });
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the drawing");
@@ -303,7 +334,7 @@ export class RunManager {
    * A story run (a post is one on LinkedIn): the engine tells the channel's story from the facts,
    * code converts, places and measures it. It changes no fact (diagram contract, Story answers).
    */
-  private async story(req: StartRun, channel: StoryChannel, root: string, signal: AbortSignal, progress: (m: string) => void) {
+  private async story(req: StartRun, channel: StoryChannel, root: string, signal: AbortSignal, progress: (m: string) => void, look: Look | null = null) {
     const format: FormatId = channel === "linkedin" ? (req.format === "linkedin" ? "linkedin" : "feed") : channel === "readme" ? "readme" : "slide";
     // A post may read the code unless told not to; any other story reads none unless told to.
     const readCode = req.readCode ?? req.kind === "post";
@@ -311,13 +342,15 @@ export class RunManager {
     const source = req.base.views[0].id;
     const draft = documentToDraft(req.base);
     const current = req.stored.channels[channel].views.length ? documentToDraft(joinChannel(req.stored, channel)) : null;
-    const prompt = channel === "linkedin"
+    const prompt = look
+      ? reviseStoryPrompt({ file: look.image.file, report: look.report, instruction: req.instruction, channel, attached: req.engine.id === "codex", folderName: basename(root), view: source, base: current ? { overview: draft, current } : draft, facts: req.stored.facts, format: format as "feed" | "linkedin" })
+      : channel === "linkedin"
       ? postPrompt({ folderName: basename(root), view: source, base: draft, facts: req.stored.facts, format: format as "feed" | "linkedin", instruction: req.instruction, readCode })
       : storyPrompt({ channel, folderName: basename(root), view: source, base: current ? { overview: draft, current } : draft, facts: req.stored.facts, instruction: req.instruction, readCode });
     const answer = await req.engine.run({
       cwd: root, folderName: basename(root), instruction: req.instruction, view: source, model: req.model, scope: { kind: "view" }, parts: [],
-      base: draft, signal, timeoutMs: this.opts.timeoutMs, progress,
-      task: { kind: channel === "linkedin" ? "post" : "story", schema: STORY_SCHEMA, tools: readCode ? "read" : "none", prompt, data: { channel, overview: req.base.views[0] } },
+      base: draft, signal, timeoutMs: this.opts.timeoutMs, progress, ...(look ? { image: look.image } : {}),
+      task: { kind: look ? "revise" : channel === "linkedin" ? "post" : "story", schema: STORY_SCHEMA, tools: look ? "image" : readCode ? "read" : "none", prompt, data: { channel, overview: req.base.views[0] } },
     });
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the post");

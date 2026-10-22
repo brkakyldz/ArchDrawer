@@ -9,8 +9,8 @@ import { NOTHING } from "./types";
 import { toScreen, type Viewport } from "./viewport";
 import type { Palette } from "../../core/theme";
 
-/** Room kept free at the bottom of the stage for the ask box. */
-const ASK_CLEARANCE = 84;
+/** Room kept free at the bottom of the stage for the AI preview bar. */
+const BOTTOM_CLEARANCE = 84;
 
 /** A text input over the drawing. Enter (Ctrl/Cmd+Enter when multiline) or blur commits; Escape cancels. */
 export function InlineInput({ value, at, testid, multiline = false, select = true, fontSize = 14, onCommit, onCancel }: {
@@ -79,7 +79,7 @@ export function Picker({ ctl, onAdd }: { ctl: Ctl; onAdd: (kind: Kind, form: For
   const el = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 300, h: 360 });
   useLayoutEffect(() => { const r = el.current!.getBoundingClientRect(); setSize({ w: r.width, h: r.height }); }, []);
-  const bottom = ctl.stage.h - ASK_CLEARANCE;
+  const bottom = ctl.stage.h - BOTTOM_CLEARANCE;
   const left = Math.max(10, Math.min(ctl.stage.w - size.w - 10, p.screen.x + 8));
   const below = p.screen.y + 8, above = p.screen.y - 8 - size.h;
   const top = Math.max(10, below + size.h <= bottom ? below : above >= 10 ? above : bottom - size.h);
@@ -96,7 +96,7 @@ export function Picker({ ctl, onAdd }: { ctl: Ctl; onAdd: (kind: Kind, form: For
       <h4>Form</h4>
       <div className="grid forms">
         {FORMS.map((f) => (
-          <button key={f} className="opt form-opt" data-testid={`picker-form-${f}`} aria-pressed={form === f} onClick={() => setForm(f)}><FormThumb form={f} />{FORM_LABELS[f]}</button>
+          <button key={f} className="opt form-opt" data-testid={`picker-form-${f}`} aria-pressed={form === f} onClick={() => setForm(f)}><FormThumb form={f} kind={kind} />{FORM_LABELS[f]}</button>
         ))}
       </div>
       <button className="btn primary" data-testid="picker-add" onClick={() => onAdd(kind, form)}>Add component</button>

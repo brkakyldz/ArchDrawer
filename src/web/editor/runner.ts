@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Changes } from "../../core/diff";
 import type { LayoutReport } from "../../core/report";
-import type { ChannelId, Document3 } from "../../core/file3";
+import { CHANNEL_LABELS, type ChannelId, type Document3 } from "../../core/file3";
 import type { DiagramDocument } from "../../core/model";
 import type { RunScope } from "../../core/repair";
 import { api, ApiError, type EngineInfo } from "../api";
 
-/** Where a run was started: each place shows its own error and summary; every place shows a run going. */
-export type RunOrigin = "ask" | "panel" | "linkedin" | "story";
+/** Where a run was started: a channel's stage shows its own line for the runs started there; the AI panel shows every run. */
+export type RunOrigin = "panel" | "linkedin" | "story";
 
 export interface RunRequest {
   instruction: string;
+  /** What the conversation calls a run started by a control, not typed (`Draw it`, a suggestion's label). */
+  label?: string;
+  /** Typed in `ai-input`: it goes back there when the run fails or is cancelled (ui contract, ai-error). */
+  typed?: boolean;
   engine: string | null;
   model: string | null;
   scope: RunScope;
@@ -20,12 +24,16 @@ export interface RunRequest {
   /** Edits the stored drawing once the run has succeeded (an undoable edit). */
   after?: (doc: DiagramDocument) => DiagramDocument;
   /** A post run draws the LinkedIn channel (api contract, Run kinds); its instruction may be empty. A simplify run makes the overview a map. */
-  kind?: "refine" | "post" | "simplify" | "story";
+  kind?: "refine" | "post" | "simplify" | "story" | "revise";
   /** The channel a story draws (README or presentation; api contract, Run kinds). */
   channel?: ChannelId;
   format?: "feed" | "linkedin";
   /** A post drawn from the facts alone: the engine reads no file (STORY-1). */
   readCode?: boolean;
+  /** A revise's image: the view's share PNG in base64 (ui contract, ai-look-again). */
+  image?: string;
+  /** Set at the first start, with `channel` and `view`: Try again sends the same request on the same channel and view. */
+  frozen?: { postView: string | null };
 }
 
 export interface RunState {
@@ -44,11 +52,31 @@ export interface RunState {
 }
 
 export type Route = "facts" | "story";
-/** What `ai-route` and the ask box's toast say about a refine's route (ui contract, AI panel). */
+/** What `ai-route` says about a refine's route (ui contract, AI panel). */
 export const ROUTE_SENTENCE: Record<Route, string> = {
   facts: "Changed the facts: every channel that shows them shows it",
   story: "Redrew this channel from the facts, without reading the code",
 };
+
+/** A turn's state (ui contract, The conversation). */
+export type TurnState = "running" | "failed" | "cancelled" | "preview" | "accepted" | "undone" | "unchanged" | "saved";
+
+/** One run started on the open drawing, or one request saved without an engine (ui contract, The conversation). */
+export interface Turn {
+  key: number;
+  req: RunRequest;
+  /** `ai-turn-text`: the instruction as sent, or the name of the control that started it. */
+  text: string;
+  /** `ai-turn-where`: `<channel> · <scope>`. */
+  where: string;
+  state: TurnState;
+  runId: string | null;
+  lines: string[];
+  error: string | null;
+  changes: Changes | null;
+  layoutReport: LayoutReport | null;
+  route: Route | null;
+}
 
 const IDLE: RunState = { status: "idle", req: null, id: null, lines: [], error: null, changes: null, layoutReport: null, view: null, route: null };
 export const ENGINE_KEY = "archdraw-engine";
@@ -57,6 +85,9 @@ const local = (k: string) => { try { return localStorage.getItem(k); } catch { r
 
 /** How an engine is named in the editor: the fixture is the test engine, never an AI. */
 export const engineName = (e: EngineInfo) => (e.test ? "Test engine (no AI)" : e.label);
+
+/** `This view`, `Selected parts (2)` or `The whole channel` (ui contract, ai-scope-*). */
+export const scopeLabel = (s: RunScope) => (s.kind === "parts" ? `Selected parts (${s.ids.length})` : s.kind === "all" ? "The whole channel" : "This view");
 
 /**
  * The engine a run uses (ui contract, Choosing the engine): the one last chosen in this browser, if
@@ -76,86 +107,137 @@ export function rememberedModel(e: EngineInfo | null): string {
   return e.models.some((x) => x.id === m) ? m : "";
 }
 
+/** What the editor did with a succeeded run: the state its turn takes. */
+export type Outcome = Extract<TurnState, "preview" | "accepted" | "unchanged">;
+
+export interface Done {
+  /** The run's turn in the conversation. */
+  key: number;
+  stored: Document3;
+  changes: Changes | null;
+  req: RunRequest;
+  route: Route | null;
+  /** The channel and view the result is in. */
+  channel: ChannelId;
+  view: string;
+}
+
 interface Options {
   /** The drawing of the channel the canvas shows (`joinChannel`), and that channel. */
   doc: DiagramDocument | null;
   channel: ChannelId;
   vid: string | null;
   settle: () => Promise<boolean>;
+  /** A run is about to start (every control's): the editor gets ready for it. */
+  onStart?: (req: RunRequest) => void;
   /** A run succeeded: show the stored drawing (undo returns to the one before) and what changed. */
-  onUpdated: (doc: Document3, changes: Changes | null, req: RunRequest, route: Route | null) => void;
+  onUpdated: (done: Done) => Outcome;
   /** An instruction was saved for the next session (no engine). */
   onSaved: () => void;
+  /** A run failed or was cancelled. */
+  onEnded?: (req: RunRequest) => void;
 }
 
-/** One instruction run at a time, shared by the ask box, the AI panel and the LinkedIn channel. */
-export function useRunner({ doc, channel, vid, settle, onUpdated, onSaved }: Options) {
+/**
+ * One instruction run at a time, shared by the AI panel, the channel stages and the LinkedIn panel,
+ * and the conversation of the open drawing: one turn per run or saved request, in memory only.
+ */
+export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSaved, onEnded }: Options) {
   const [state, setState] = useState<RunState>(IDLE);
+  const [turns, setTurns] = useState<Turn[]>([]);
   const source = useRef<EventSource | null>(null);
   /** True from the moment a start begins until its run ends: a second start is ignored, never a failure. */
   const busy = useRef(false);
   /** Cancel was pressed before the server gave the run an id. */
   const cancelEarly = useRef(false);
-  const live = useRef({ doc, channel, vid, onUpdated, onSaved });
-  live.current = { doc, channel, vid, onUpdated, onSaved };
+  const nextKey = useRef(0);
+  const live = useRef({ doc, channel, vid, onStart, onUpdated, onSaved, onEnded });
+  live.current = { doc, channel, vid, onStart, onUpdated, onSaved, onEnded };
   useEffect(() => () => source.current?.close(), []);
+  // A drawing's conversation is its own: another drawing starts it empty.
+  const docId = doc?.id;
+  useEffect(() => setTurns([]), [docId]);
 
-  const start = useCallback(async (req: RunRequest) => {
+  const patch = useCallback((key: number, p: Partial<Turn>) => setTurns((ts) => ts.map((t) => (t.key === key ? { ...t, ...p } : t))), []);
+
+  const start = useCallback(async (asked: RunRequest) => {
     const { doc: d } = live.current;
     // A simplification works on the overview, whichever channel the canvas shows (api contract, Run kinds).
-    const channel: ChannelId = req.kind === "simplify" ? "overview" : req.channel ?? live.current.channel;
-    const v = req.view ?? live.current.vid;
-    const instruction = req.instruction.trim();
-    if (!d || !v || (!instruction && req.kind !== "post" && req.kind !== "story")) return;
+    const channel: ChannelId = asked.kind === "simplify" ? "overview" : asked.kind === "post" ? "linkedin" : asked.channel ?? live.current.channel;
+    const v = asked.view ?? live.current.vid;
+    const instruction = asked.instruction.trim();
+    if (!d || !v || (!instruction && asked.kind !== "post" && asked.kind !== "story" && asked.kind !== "revise")) return;
     if (busy.current) return;
+    // The channel and view are fixed when a request is first sent, so Try again sends it where it was sent,
+    // whichever channel the editor shows then. The canvas shows the overview behind a LinkedIn channel
+    // with no view: then a post names none.
+    const req: RunRequest = asked.frozen ? asked
+      : { ...asked, channel, view: v, frozen: { postView: asked.kind === "post" && live.current.channel === "linkedin" ? d.views[0]?.id ?? null : null } };
     busy.current = true;
     cancelEarly.current = false;
+    live.current.onStart?.(req);
+    const key = ++nextKey.current;
+    setTurns((ts) => [...ts, {
+      key, req, text: req.label ?? req.instruction, where: `${CHANNEL_LABELS[channel]} · ${scopeLabel(req.scope)}`, state: "running",
+      runId: null, lines: ["Starting"], error: null, changes: null, layoutReport: null, route: null,
+    }]);
     // Shown as going at once, so every send control is disabled while the start is on its way.
     setState({ ...IDLE, status: "running", req, lines: ["Starting"] });
-    const fail = (error: string) => { busy.current = false; setState({ ...IDLE, status: "failed", req, error }); };
+    const end = (status: "failed" | "cancelled", error: string, id: string | null = null) => {
+      busy.current = false;
+      setState({ ...IDLE, status, req, id, error });
+      patch(key, { state: status, error, lines: [] });
+      live.current.onEnded?.(req);
+    };
+    const fail = (error: string, id: string | null = null) => end("failed", error, id);
     if (!(await settle())) { fail("Your last edit is not saved yet; the instruction was not sent"); return; }
-    if (cancelEarly.current) { busy.current = false; setState({ ...IDLE, status: "cancelled", req, error: "Cancelled" }); return; }
+    if (cancelEarly.current) { end("cancelled", "Cancelled"); return; }
     if (!req.engine) {
       try {
         await api.request(d.id, channel, v, instruction);
         busy.current = false;
         setState({ ...IDLE, status: "saved", req });
+        patch(key, { state: "saved", lines: [] });
         live.current.onSaved();
       } catch (e) { fail((e as Error).message); }
       return;
     }
     let id: string;
     try {
-      // A post names the LinkedIn channel's view when there is one; the server designs it from the overview.
       // A post or a story draws a channel's one view: the server designs it from the overview.
-      const sent = req.kind === "post" ? (channel === "linkedin" ? d.views[0]?.id ?? null : null) : req.kind === "story" ? null : v;
-      id = await api.startRun(d.id, channel, sent, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format, readCode: req.readCode });
+      const sent = req.kind === "post" ? req.frozen!.postView : req.kind === "story" ? null : v;
+      id = await api.startRun(d.id, channel, sent, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format, readCode: req.readCode, image: req.image });
     } catch (e) {
       fail(e instanceof ApiError ? e.message : "Could not start the instruction");
       return;
     }
     setState({ ...IDLE, status: "running", req, id, lines: ["Starting"] });
+    patch(key, { runId: id });
     if (cancelEarly.current) void api.cancelRun(id).catch(() => {});
     const es = new EventSource(`/api/runs/${id}/events`);
     source.current = es;
     es.addEventListener("progress", (ev) => {
       const line = (JSON.parse((ev as MessageEvent).data) as { message: string }).message;
-      setState((s) => (s.id === id ? { ...s, lines: [...s.lines.filter((x) => x !== "Starting"), line].slice(-12) } : s));
+      const add = (lines: string[]) => [...lines.filter((x) => x !== "Starting"), line].slice(-12);
+      setState((s) => (s.id === id ? { ...s, lines: add(s.lines) } : s));
+      setTurns((ts) => ts.map((t) => (t.key === key ? { ...t, lines: add(t.lines) } : t)));
     });
     es.addEventListener("done", async (ev) => {
       es.close();
       source.current = null;
-      const r = JSON.parse((ev as MessageEvent).data) as { status: string; error: string | null; changes?: Changes | null; layoutReport?: LayoutReport | null; view?: string; route?: Route | null };
+      const r = JSON.parse((ev as MessageEvent).data) as { status: string; error: string | null; changes?: Changes | null; layoutReport?: LayoutReport | null; view?: string; channel?: ChannelId; route?: Route | null };
       const route = r.route === "facts" || r.route === "story" ? r.route : null;
       if (r.status === "succeeded") {
         try {
           const stored = await api.get(d.id);
           busy.current = false;
-          setState({ ...IDLE, status: "succeeded", req, id, changes: r.changes ?? null, layoutReport: r.layoutReport ?? null, view: r.view ?? null, route });
-          live.current.onUpdated(stored, r.changes ?? null, req, route);
-        } catch (e) { fail((e as Error).message); }
-      } else if (r.status === "cancelled") { busy.current = false; setState({ ...IDLE, status: "cancelled", req, id, error: "Cancelled" }); }
-      else fail(r.error ?? "The instruction failed");
+          const changes = r.changes ?? null, layoutReport = r.layoutReport ?? null;
+          setState({ ...IDLE, status: "succeeded", req, id, changes, layoutReport, view: r.view ?? null, route });
+          const outcome = live.current.onUpdated({ key, stored, changes, req, route, channel: r.channel ?? channel, view: r.view ?? v });
+          patch(key, { state: outcome, lines: [], changes, layoutReport, route });
+        } catch (e) { fail((e as Error).message, id); }
+      } else if (r.status === "cancelled") end("cancelled", "Cancelled", id);
+      else end("failed", r.error ?? "The instruction failed", id);
     });
     // The browser retries a dropped connection by itself; a refused one (the server restarted and
     // no longer knows the run) closes the stream for good, and `done` never comes.
@@ -164,9 +246,9 @@ export function useRunner({ doc, channel, vid, settle, onUpdated, onSaved }: Opt
       source.current = null;
       // Nothing may change the drawing behind the editor's back once the run cannot be followed.
       void api.cancelRun(id).catch(() => {});
-      fail("Lost the connection to the instruction, so it was stopped");
+      fail("Lost the connection to the instruction, so it was stopped", id);
     };
-  }, [settle]);
+  }, [settle, patch]);
 
   const cancel = useCallback(() => {
     if (state.status !== "running") return;
@@ -174,8 +256,9 @@ export function useRunner({ doc, channel, vid, settle, onUpdated, onSaved }: Opt
     else cancelEarly.current = true;
   }, [state]);
   const retry = useCallback(() => { if (state.req) void start(state.req); }, [state, start]);
-  const clear = useCallback(() => setState((s) => (s.status === "running" ? s : IDLE)), []);
+  /** A turn's state after the user chose (accepted, undone). */
+  const settleTurn = useCallback((key: number, s: TurnState) => patch(key, { state: s }), [patch]);
 
-  return { state, start, cancel, retry, clear };
+  return { state, turns, start, cancel, retry, settleTurn };
 }
 export type Runner = ReturnType<typeof useRunner>;

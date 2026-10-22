@@ -20,7 +20,7 @@ export interface RunRecord {
   engine: string; model: string | null; changes: Changes | null;
 }
 export interface Health { ok: boolean; app: string; version: string; build: string }
-export interface RunStart { engine: string | null; model: string | null; scope: RunScope; kind?: "refine" | "post" | "simplify" | "story"; format?: string; readCode?: boolean }
+export interface RunStart { engine: string | null; model: string | null; scope: RunScope; kind?: "refine" | "post" | "simplify" | "story" | "revise"; format?: string; readCode?: boolean; image?: string }
 
 export class ApiError extends Error {
   constructor(readonly status: number, message: string, readonly body: Record<string, unknown> | null = null) {
@@ -68,7 +68,7 @@ export const api = {
   request: (id: string, channel: string, view: string, text: string) => call<{ id: string }>("POST", `/api/diagrams/${encodeURIComponent(id)}/requests`, { channel, view, text }),
   startRun: (diagramId: string, channel: string, view: string | null, instruction: string, o: RunStart) =>
     call<{ runId: string }>("POST", "/api/runs", {
-      diagramId, ...(o.kind === "post" ? {} : { channel }), ...(view === null ? {} : { view }), instruction, engine: o.engine, model: o.model, scope: o.scope, ...(o.kind ? { kind: o.kind } : {}), ...(o.format ? { format: o.format } : {}), ...(o.readCode === false ? { readCode: false } : {}),
+      diagramId, ...(o.kind === "post" ? {} : { channel }), ...(view === null ? {} : { view }), instruction, engine: o.engine, model: o.model, scope: o.scope, ...(o.kind ? { kind: o.kind } : {}), ...(o.format ? { format: o.format } : {}), ...(o.readCode === false ? { readCode: false } : {}), ...(o.image ? { image: o.image } : {}),
     }).then((r) => r.runId),
   run: (id: string) => call<RunRecord>("GET", `/api/runs/${id}`),
   cancelRun: (id: string) => call<{ ok: true }>("POST", `/api/runs/${id}/cancel`),

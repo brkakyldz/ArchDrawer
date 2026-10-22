@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { drawing, workspace, freePort, cli, openDrawing, readDrawing, persisted, token } from './helpers';
 
-test('H25 [AI-1, START-5, SAFE-1, FILE-1] a machine without engines saves a literal request for the next session and stops only its own server', async ({ page, request }) => {
+test('H25 [AI-1, AI-2, START-5, SAFE-1, FILE-1] a machine without engines saves a literal request for the next session and stops only its own server', async ({ page, request }) => {
   const { dir, file } = await workspace('offline', drawing('Offline shop'));
   const data = await mkdtemp(join(tmpdir(), 'archdrawer-no-engine-')); const port = await freePort(); const base = `http://127.0.0.1:${port}`;
   const env = { PORT: String(port), ARCHDRAW_DATA_DIR: data, ARCHDRAW_ENGINES: '' };
@@ -17,8 +17,12 @@ test('H25 [AI-1, START-5, SAFE-1, FILE-1] a machine without engines saves a lite
     const opened = await openDrawing(page, request, file, base); const initial = await readDrawing(file);
     const marker = join(dir, 'shell-must-not-run.txt');
     const instruction = `Add a review gate; node -e "require('fs').writeFileSync('${marker.replace(/\\/g, '/')}', 'bad')"`;
-    await page.getByTestId('ask-input').fill(instruction); await page.getByTestId('ask-send').click();
-    await expect(page.getByTestId('ask-saved')).toHaveText('Saved in the file for your next archdrawer session');
+    await expect(page.getByTestId('ask-input')).toHaveCount(0); // the ask box is gone: the AI panel is the one place to type
+    await page.getByTestId('ai-button').click();
+    await page.getByTestId('ai-input').fill(instruction); await page.getByTestId('ai-send').click();
+    await expect(page.getByTestId('ai-saved')).toHaveText('Saved in the file for your next archdrawer session');
+    await expect(page.getByTestId('ai-thread').getByTestId('ai-turn')).toHaveCount(1);
+    await expect(page.getByTestId('ai-thread').getByTestId('ai-turn').first()).toHaveAttribute('data-state', 'saved');
     await persisted(file, d => d.requests?.length === 1 && d.requests[0].text === instruction);
     const stored = await readDrawing(file); expect(stored.views).toEqual(initial.views);
     // The request names the channel and the view it was typed in (drawing contract, Requests).
@@ -27,10 +31,13 @@ test('H25 [AI-1, START-5, SAFE-1, FILE-1] a machine without engines saves a lite
     expect(await stat(marker).then(() => true, () => false)).toBe(false); // Shell-looking text is data.
     await page.reload(); await expect(page.getByTestId('repo-name')).toHaveText('Offline shop');
     const fromHTTP = await (await request.get(`${base}/api/diagrams/${opened.id}`)).json(); expect(fromHTTP.requests).toEqual(stored.requests);
-    await page.getByTestId('ask-input').fill('');
-    if (await page.getByTestId('ask-send').isEnabled()) await page.getByTestId('ask-send').click();
-    else await expect(page.getByTestId('ask-send')).toBeDisabled();
+    // The conversation is the browser's memory: a reload starts it empty, while the request stays in the file.
+    await page.getByTestId('ai-button').click(); await expect(page.getByTestId('ai-thread').getByTestId('ai-turn')).toHaveCount(0);
+    await page.getByTestId('ai-input').fill('');
+    if (await page.getByTestId('ai-send').isEnabled()) await page.getByTestId('ai-send').click();
+    else await expect(page.getByTestId('ai-send')).toBeDisabled();
     expect((await readDrawing(file)).requests).toHaveLength(1); // An empty submission must not queue another request.
+    await expect(page.getByTestId('ai-thread').getByTestId('ai-turn')).toHaveCount(0);
     const status = await cli(['status'], env); expect(status.code).toBe(0); expect(status.stdout).toContain(`running on ${base}`);
   } finally {
     await page.goto('about:blank'); const stopped = await cli(['stop'], env); expect(stopped.code, stopped.stderr).toBe(0); expect(stopped.stdout).toMatch(/stopped/);

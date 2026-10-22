@@ -8,7 +8,7 @@ import { arrangeForFeed, explainInstruction, foldForFeed, importance, rearrangeF
 import { makeLinkedInView } from "../testkit";
 import { renderMermaid } from "./mermaid";
 import { DEFAULT_SHARE, FORMAT_IDS, FORMATS, readabilityOf, renderShare, shortenedIn, startSwitches, suggestionFor } from "./share";
-import { drawView } from "./svg";
+import { drawView, outlineOf, outlineSize, shapeOf } from "./svg";
 
 const load = (path: string) =>
   normalizeFile(validateFile(JSON.parse(readFileSync(path, "utf8"))).file!, { id: "d_test000001", now: "2026-10-13T00:00:00.000Z", source: null });
@@ -52,6 +52,87 @@ describe("drawing (editor/export parity)", () => {
     const body = drawView(v, PALETTES.light).body;
     expect(body).not.toContain("<script>");
     expect(body).toContain("&lt;script&gt;");
+  });
+});
+
+describe("shapes by kind (LOOK-2)", () => {
+  const SHAPED: [DiagramNode["kind"], string][] = [["llm", "agent"], ["actor", "person"], ["data", "store"], ["external", "external"], ["gate", "check"], ["service", "card"], ["client", "card"]];
+  const node = (id: string, kind: DiagramNode["kind"], form: DiagramNode["form"], extra: Partial<DiagramNode> = {}): DiagramNode => ({
+    id, label: "Probe", kind, form, icon: null, sub: "probe line", items: form === "panel" ? ["One"] : [], description: "D.",
+    files: [], parent: null, detail: null, place: null, x: 40 + (extra.place?.col ?? 0) * 260, y: 40 + (extra.place?.row ?? 3) * 200, ...extra,
+  });
+  const view = (id = "main"): DiagramView => {
+    const nodes = SHAPED.flatMap(([k], col) => [node(`card-${k}`, k, "card", { place: { row: 0, col } }), node(`compact-${k}`, k, "compact", { place: { row: 1, col } })]);
+    nodes.push(node("panel-llm", "llm", "panel", { place: { row: 2, col: 0 } }), node("group-data", "data", "group", { place: { row: 2, col: 2 } }), node("inner-gate", "gate", "compact", { parent: "group-data" }));
+    return { id, title: "T", caption: { title: "T", lede: "" }, postOf: null, nodes, edges: [], texts: [] };
+  };
+  /** Each part's outline: the one element with class `body` in its `g[data-node-id]`, whatever the order of its markup. */
+  const bodies = (svg: string) => new Map(svg.split('<g data-node-id="').slice(1).map((chunk) => {
+    const id = chunk.slice(0, chunk.indexOf('"'));
+    const els = [...chunk.matchAll(/<(?:rect|path)\b[^>]*>/g)].map((m) => m[0]).filter((el) => /\sclass="body"/.test(el));
+    expect(els, `${id}: one body`).toHaveLength(1);
+    return [id, els[0]] as const;
+  }));
+  const attr = (el: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(el)?.[1];
+  const shapes = (svg: string) => Object.fromEntries([...bodies(svg)].map(([id, el]) => [id, attr(el, "data-shape")]));
+  const expected: Record<string, string> = {
+    ...Object.fromEntries(SHAPED.flatMap(([k, s]) => [[`card-${k}`, s], [`compact-${k}`, s]])),
+    "panel-llm": "card", "group-data": "group", "inner-gate": "check",
+  };
+  /** Every point of a path's segments, and for an arc of a half ellipse its far side too. */
+  const extent = (d: string) => {
+    const xs: number[] = [], ys: number[] = [];
+    let x = 0, y = 0;
+    for (const [, c, args] of d.matchAll(/([MHVLA])([^MHVLAZ]*)/g)) {
+      const v = args.trim().split(/[\s,]+/).map(Number);
+      if (c === "H") x = v[0]; else if (c === "V") y = v[0];
+      else if (c === "A") { const [rx, ry, , , sweep, ex, ey] = v; if (ey === y && Math.abs(ex - x) === 2 * rx) ys.push(y + (ex > x === !!sweep ? -ry : ry)); x = ex; y = ey; }
+      else { x = v[0]; y = v[1]; }
+      xs.push(x); ys.push(y);
+    }
+    return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  };
+
+  it("names each card's and compact part's outline by its kind; a panel is a card and a group a group", () => {
+    for (const P of [PALETTES.light, PALETTES.dark]) expect(shapes(drawView(view(), P).body)).toEqual(expected);
+  });
+
+  it("draws every shape inside the unchanged box, with the box as the first rect", () => {
+    for (const id of ["main", "main-linkedin"]) {
+      const v = view(id), d = drawView(v, PALETTES.light), plain = layoutRects({ ...v, nodes: v.nodes.map((x) => ({ ...x, kind: x.form === "group" ? x.kind : "service" })) });
+      for (const x of v.nodes) {
+        const r = d.rects.get(x.id)!;
+        expect(r, `${id} ${x.id}: the box of a plain part`).toEqual(plain.get(x.id));
+        expect(firstRect(d.body, x.id), `${id} ${x.id}: first rect`).toEqual({ w: r.w, h: r.h });
+        const outline = attr(bodies(d.body).get(x.id)!, "d");
+        if (!outline || !["agent", "person", "store", "external", "check"].includes(expected[x.id])) continue;
+        const e = extent(outline);
+        expect(e.x0, `${id} ${x.id} left`).toBeGreaterThanOrEqual(r.x - 0.01); expect(e.x1, `${id} ${x.id} right`).toBeLessThanOrEqual(r.x + r.w + 0.01);
+        expect(e.y0, `${id} ${x.id} top`).toBeGreaterThanOrEqual(r.y - 0.01); expect(e.y1, `${id} ${x.id} bottom`).toBeLessThanOrEqual(r.y + r.h + 0.01);
+      }
+    }
+  });
+
+  it("strokes a shaped outline with round joins, so a browser measures it as it measures a rect", () => {
+    const body = drawView(view(), PALETTES.light).body;
+    const paths = [...body.matchAll(/<path\b[^>]*>/g)].map((m) => m[0]).filter((el) => /\sclass="(?:body|shape-mark)"/.test(el));
+    expect(paths.length).toBeGreaterThan(0);
+    for (const p of paths) expect(p).toContain('stroke-linejoin="round"');
+  });
+
+  it("draws the same shapes in the post style", () => {
+    expect(shapes(drawView(view("main-linkedin"), PALETTES.dark).body)).toEqual(expected);
+  });
+
+  it("gives every outline a measured edge: the store's ellipse and the head touch the box", () => {
+    const r = { x: 10, y: 20, w: 196, h: 108 }, s = outlineSize("card");
+    expect(extent(outlineOf("store", r, s).d)).toEqual({ x0: 10, x1: 206, y0: 20, y1: 128 });
+    expect(extent(outlineOf("person", r, s).d)).toMatchObject({ y0: 20, y1: 128 });
+    expect(outlineOf("check", r, s).d).toMatch(/^M22,20 H194 L206,32 V116 L194,128 H22 L10,116 V32 Z$/);
+    expect(outlineOf("external", r, s).dash).toBeTruthy();
+    expect(shapeOf({ kind: "llm", form: "panel" })).toBe("card");
+    expect(shapeOf({ kind: "data", form: "group" })).toBe("group");
+    expect(shapeOf({ kind: "actor", form: "compact" })).toBe("person");
   });
 });
 
@@ -307,8 +388,8 @@ describe("LinkedIn version", () => {
     const flat = Array.from({ length: 7 }, (_, i) => part(`q${i}`, { form: "card", items: [] }));
     const edges = flat.slice(1).map((n, i) => edge(`s${i}`, flat[i].id, n.id, i + 1));
     const views = (id: string) => [{ id, title: "T", caption: { title: "T", lede: "" }, postOf: null, nodes: flat, edges, texts: [] }];
-    expect(depthWarnings({ views: views("main") }).join(" ")).toMatch(/flat pipeline|lists what it holds/);
-    expect(depthWarnings({ views: views("main-linkedin") }).join(" ")).not.toMatch(/flat pipeline|lists what it holds/);
+    expect(depthWarnings({ views: views("main") }).join(" ")).toMatch(/flat pipeline/);
+    expect(depthWarnings({ views: views("main-linkedin") }).join(" ")).not.toMatch(/flat pipeline/);
   });
 
   it("asks the engine to rewrite only that view, in plain words", () => {

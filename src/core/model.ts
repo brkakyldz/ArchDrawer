@@ -405,8 +405,8 @@ const TUNING = /\d+(?:[.,]\d+)?\s*(?:%|(?:ms|s|secs?|seconds?|mins?|minutes?|h|h
 
 /**
  * A LinkedIn view is the share version of another view (ui contract, Share): its id is that view's id
- * plus `-linkedin`. It holds few cards in plain words, so the depth checks on panels and flat
- * pipelines do not apply to it.
+ * plus `-linkedin`. It holds few cards in plain words, so the flat pipeline check does not apply
+ * to it.
  */
 export const LINKEDIN_SUFFIX = "-linkedin";
 export const isLinkedInView = (viewId: string) => viewId.endsWith(LINKEDIN_SUFFIX);
@@ -416,6 +416,7 @@ export const isPostView = (v: { id?: string; postOf?: string | null }) => !!v.po
 /**
  * The depth checks: they never make a file invalid. The overview has no count targets (ADR 0007);
  * a tuning number is a warning on LinkedIn only, since elsewhere a limit may show one (STORY-5).
+ * A drawing without held items is not warned about: they are used only where a story needs them (LOOK-3).
  */
 export function depthWarnings(file: Pick<DiagramFile, "views">, o: { prefix?: string; share?: boolean } = {}): string[] {
   const out: string[] = [];
@@ -433,9 +434,6 @@ export function depthWarnings(file: Pick<DiagramFile, "views">, o: { prefix?: st
         const onPath = new Set(stepped.flatMap((e) => [e.from, e.to]));
         if (top.every((n) => onPath.has(n.id))) out.push(`${P}: every component is on the main path and none has a place — a flat pipeline; add place hints with side paths above or below`);
       }
-    }
-    if (v.nodes.length >= 6 && !share && !v.nodes.some((n) => n.form === "panel")) {
-      out.push(`${P}: no component lists what it holds; use form "panel" with items where the code shows distinct mechanisms`);
     }
     if (share) v.nodes.forEach((n, i) => {
       for (const [field, text] of [["label", n.label], ["sub", n.sub], ...n.items.map((t, j) => [`items[${j}]`, t])] as [string, string][]) {

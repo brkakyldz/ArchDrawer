@@ -70,7 +70,7 @@ describe("story runs", () => {
     expect((await refused({ kind: "story", channel: "presentation", format: "readme" })).body.error).toBe('Invalid format "readme"; use one of slide');
     expect((await refused({ kind: "draw" })).body.error).toBe("Scan the folder first: that scan is unknown or did not succeed");
     expect((await refused({ kind: "refine", instruction: "x", view: "overview", readCode: true })).body.error).toBe("readCode is for a story");
-    expect((await refused({ kind: "poster" })).body.error).toBe("Unknown run kind poster: use refine, story, post, simplify or draw");
+    expect((await refused({ kind: "poster" })).body.error).toBe("Unknown run kind poster: use refine, story, post, simplify, revise or draw");
   });
 });
 

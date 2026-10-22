@@ -69,7 +69,7 @@ test('H120 [START-4, SCAN-3, STORY-1] a draw request that names no scan, a scan 
   }
 
   // `draw` stays a known kind of run: none of the refusals above is about the kind, and the sentence for a wrong kind lists it.
-  expect(await ask({ ...good, kind: 'drawing' })).toEqual({ status: 400, error: 'Unknown run kind drawing: use refine, story, post, simplify or draw' });
+  expect(await ask({ ...good, kind: 'drawing' })).toEqual({ status: 400, error: 'Unknown run kind drawing: use refine, story, post, simplify, revise or draw' });
 
   // A draw needs the token like any run, and takes no `diagramId`: the one fault-free request is accepted.
   const noToken = await request.post(`${baseURL()}/api/runs`, { data: { kind: 'draw', ...good, engine: 'fixture', model: null } });

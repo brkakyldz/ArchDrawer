@@ -29,8 +29,12 @@ export class CodexEngine implements Engine {
     return { ...base, models: codexModels(outputOf(this.cmd, ["debug", "models"])), available: true, version, detail: "Uses your ChatGPT/Codex subscription through the codex CLI, read-only sandbox" };
   }
 
-  args(cwd: string, schemaFile: string, outFile: string, model: string | null): string[] {
-    const a = ["exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", "--output-schema", schemaFile, "-o", outFile, "-C", cwd];
+  /**
+   * With `image` (a revise) the image goes as `-i <abs path>`, one argument, right after `--json`: `-i`
+   * takes several files, so it is followed by an option, never by the `-` that reads the prompt.
+   */
+  args(cwd: string, schemaFile: string, outFile: string, model: string | null, image?: string): string[] {
+    const a = ["exec", "--json", ...(image ? ["-i", image] : []), "--sandbox", "read-only", "--skip-git-repo-check", "--output-schema", schemaFile, "-o", outFile, "-C", cwd];
     if (this.ephemeral) a.push("--ephemeral");
     if (model) a.push("-m", model);
     a.push("-");
@@ -49,7 +53,8 @@ export class CodexEngine implements Engine {
       const prompt = req.task?.prompt ?? instructionPrompt(req);
       const parser = new CodexEventParser(req.progress);
       req.progress("Starting Codex");
-      const r = await runProcess(this.cmd, this.args(req.cwd, schemaFile, outFile, req.model), {
+      const image = req.task?.tools === "image" && req.image ? req.image.file : undefined;
+      const r = await runProcess(this.cmd, this.args(req.cwd, schemaFile, outFile, req.model, image), {
         cwd: req.cwd, stdin: prompt, signal: req.signal, timeoutMs: req.timeoutMs, onLine: (l) => parser.line(l),
       });
       if (r.aborted) throw new EngineError("Cancelled");

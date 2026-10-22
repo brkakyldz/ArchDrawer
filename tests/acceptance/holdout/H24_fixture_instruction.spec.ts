@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { drawing, workspace, openDrawing, readDocument, readDrawing, persisted, saved, finishRun, startRun, baseURL, outsideWrite, svgInfo, overlaps } from './helpers';
 
-test('H24 [AI-1, FILE-1, LAYOUT-1] apply and repair an instruction, undo it, cancel and protect a concurrent session edit', async ({ page, request }) => {
+test('H24 [AI-1, AI-3, FILE-1, LAYOUT-1] apply and repair an instruction, undo it, cancel and protect a concurrent session edit', async ({ page, request }) => {
   const { file } = await workspace('fixture', drawing('Fixture shop')); const opened = await openDrawing(page, request, file);
   const baseline = await readDrawing(file);
   const responsePromise = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/runs');
@@ -16,6 +16,8 @@ test('H24 [AI-1, FILE-1, LAYOUT-1] apply and repair an instruction, undo it, can
   expect(lines.slice(-3)).toEqual(['Reading the drawing', 'Reading the code', 'Updating the drawing']);
   expect(success.progress).toContain('Changing the facts');
   await expect(page.getByTestId('node-cache')).toBeVisible(); await saved(page);
+  // From 0.4 the result arrives as a preview with the changed parts lit; the file already holds it.
+  await expect(page.getByTestId('ai-preview')).toBeVisible(); await expect(page.getByTestId('node-cache')).toHaveAttribute('data-changed', 'true');
   // The renamed copy and the dropped connection: one warning each (a copy that also points to a fact its original shows may add its own).
   let changed = await readDrawing(file); expect(changed.warnings!.length).toBeGreaterThanOrEqual(2);
   await expect(page.getByTestId('warnings')).toBeVisible(); expect(changed.views[0].nodes.find(n => n.id === 'web-2')?.label).toBe('Duplicate');
@@ -27,16 +29,16 @@ test('H24 [AI-1, FILE-1, LAYOUT-1] apply and repair an instruction, undo it, can
   for (const node of changed.views[0].nodes.filter(n => n.id !== 'cache')) {
     const size = shapes.find(n => n.id === node.id)!; expect(overlaps({ x: cache.x!, y: cache.y!, width: cacheSize.width, height: cacheSize.height }, { x: node.x!, y: node.y!, width: size.width, height: size.height })).toBe(false);
   }
+  // Kept, the result is one ordinary undo step; Undo of the whole run is the same step.
+  await page.getByTestId('ai-accept').click(); await expect(page.getByTestId('ai-preview')).toHaveCount(0);
   await page.getByTestId('tool-undo').click(); await expect(page.getByTestId('node-cache')).toHaveCount(0); await persisted(file, d => d.views[0].nodes.length === baseline.views[0].nodes.length);
   expect((await readDrawing(file)).views).toEqual(baseline.views); expect((await readDrawing(file)).warnings).toEqual(baseline.warnings);
-  await page.getByTestId('ai-close').click();
-  // A genuinely single-line quick ask still submits with Enter.
+  // A genuinely single-line instruction still submits with Enter in the one place to type, and changes nothing, so it shows no preview.
   const quickResponse = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/runs');
-  await page.getByTestId('ask-input').fill('leave it alone'); await page.getByTestId('ask-input').press('Enter');
+  await page.getByTestId('ai-input').fill('leave it alone'); await page.getByTestId('ai-input').press('Enter');
   await finishRun(request, (await (await quickResponse).json()).runId, 'succeeded');
-  await expect(page.getByTestId('toast')).toContainText(/updated/i); await saved(page);
+  await expect(page.getByTestId('ai-summary')).toHaveText('Nothing changed'); await expect(page.getByTestId('ai-preview')).toHaveCount(0); await saved(page);
   expect((await readDrawing(file)).views).toEqual(baseline.views);
-  await page.getByTestId('ai-button').click();
   const failResponse = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/runs');
   await page.getByTestId('ai-input').fill('leave it alone\n[fixture:fail]'); await page.getByTestId('ai-send').click();
   const failId = (await (await failResponse).json()).runId; await finishRun(request, failId, 'failed');

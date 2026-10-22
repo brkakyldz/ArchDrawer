@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { drawing, workspace, openDrawing, readDrawing, finishRun } from './helpers';
 
-test('H31 [AI-1, EDIT-1] retry failed and cancelled changes with the same text, model and selection', async ({ page, request }) => {
+test('H31 [AI-1, AI-2, AI-3, EDIT-1] retry failed and cancelled changes with the same text, model and selection', async ({ page, request }) => {
   const { file } = await workspace('retry', drawing('Retry shop')); await openDrawing(page, request, file);
   const baseline = await readDrawing(file);
   await page.getByTestId('node-api').getByTestId('node-label').click();
@@ -28,12 +28,26 @@ test('H31 [AI-1, EDIT-1] retry failed and cancelled changes with the same text, 
   await expect(page.getByTestId('node-api')).not.toHaveAttribute('data-changed', 'true');
   await page.getByTestId('ai-input').fill('hold Audit in Order API'); const recovered = await send('ai-send'); await finishRun(request, recovered.id, 'succeeded');
   await expect(page.getByTestId('ai-summary')).toHaveAttribute('data-changed', '1'); await expect(page.getByTestId('node-api').getByTestId('node-item')).toContainText(['Validate order', 'Create order', 'Audit']);
+  // The result arrived as a preview: keep it, and the ordinary undo then takes the whole run back.
+  await page.getByTestId('ai-accept').click(); await expect(page.getByTestId('ai-preview')).toHaveCount(0);
+  const thread = page.getByTestId('ai-thread').getByTestId('ai-turn');
+  await expect(thread).toHaveCount(5);
+  expect(await thread.evaluateAll(all => all.map(turn => turn.getAttribute('data-state')))).toEqual(['failed', 'failed', 'cancelled', 'cancelled', 'accepted']);
   await page.getByTestId('tool-undo').click(); await expect(page.getByTestId('node-api').getByTestId('node-item')).toHaveCount(2);
-  await page.getByTestId('ai-close').click();
-  const quick = 'keep everything [fixture:fail]'; await page.getByTestId('ask-input').fill(quick);
-  const quickRun = await send('ask-send'); expect(quickRun.body).toMatchObject({ engine: 'fixture', model: 'fixture-fast', scope: { kind: 'view' } }); await finishRun(request, quickRun.id, 'failed');
-  await expect(page.getByTestId('ask-input')).toHaveValue(quick); await expect(page.getByTestId('ask-error')).toContainText('Fixture failure requested');
-  const quickRetry = await send('ask-retry'); expect(quickRetry.body).toEqual(quickRun.body); await finishRun(request, quickRetry.id, 'failed');
-  await expect(page.getByTestId('ask-input')).toHaveValue(quick);
+  // The same panel with the whole view as its scope (there is no second box to type in): a failure and its retry, as above.
+  await page.getByTestId('ai-scope-view').check();
+  const quick = 'keep everything [fixture:fail]'; await page.getByTestId('ai-input').fill(quick);
+  const quickRun = await send('ai-send'); expect(quickRun.body).toMatchObject({ engine: 'fixture', model: 'fixture-fast', scope: { kind: 'view' } }); await finishRun(request, quickRun.id, 'failed');
+  await expect(page.getByTestId('ai-input')).toHaveValue(quick); await expect(page.getByTestId('ai-error')).toContainText('Fixture failure requested');
+  const quickRetry = await send('ai-retry'); expect(quickRetry.body).toEqual(quickRun.body); await finishRun(request, quickRetry.id, 'failed');
+  await expect(page.getByTestId('ai-input')).toHaveValue(quick);
   expect((await readDrawing(file)).views).toEqual(baseline.views);
+  // One turn per run, oldest first, each in the state it ended in; the retry of a failure is a turn of its own.
+  const turns = page.getByTestId('ai-thread').getByTestId('ai-turn');
+  await expect(turns).toHaveCount(7);
+  // The accepted turn's state after the ordinary undo is left open by the contract: it is checked above, before the undo.
+  const states = await turns.evaluateAll(all => all.map(turn => turn.getAttribute('data-state')));
+  expect(states.filter((_, i) => i !== 4)).toEqual(['failed', 'failed', 'cancelled', 'cancelled', 'failed', 'failed']);
+  await expect(turns.nth(4).getByTestId('ai-turn-where')).toHaveText('Overview · Selected parts (1)');
+  await expect(turns.nth(5).getByTestId('ai-turn-where')).toHaveText('Overview · This view');
 });

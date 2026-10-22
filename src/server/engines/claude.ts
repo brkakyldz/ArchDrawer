@@ -43,15 +43,18 @@ export class ClaudeEngine implements Engine {
     return { ...base, models: claudeModels(help), available: true, version, detail: "Uses your Claude subscription through the claude CLI, read-only" };
   }
 
-  /** With `tools` false the engine gets no tool at all (`--tools ""`): it answers from the prompt alone. */
-  args(model: string | null, schema: object = DRAFT_JSON_SCHEMA, tools = true): string[] {
+  /**
+   * With `tools` false the engine gets no tool at all (`--tools ""`): it answers from the prompt alone.
+   * With `image` (a revise) it gets `Read` only and the image's folder as one `--add-dir` argument.
+   */
+  args(model: string | null, schema: object = DRAFT_JSON_SCHEMA, tools = true, image?: string): string[] {
     const caps = this.caps ?? { safeMode: false, restricted: false, settingSources: false, strictMcp: false, noPersist: false };
     const a = [
       "-p",
       "--output-format", "stream-json",
       "--verbose",
       "--json-schema", JSON.stringify(schema),
-      ...(tools ? ["--tools", READ_TOOLS, "--allowedTools", READ_TOOLS] : ["--tools", ""]),
+      ...(image ? ["--tools", "Read", "--allowedTools", "Read", "--add-dir", image] : tools ? ["--tools", READ_TOOLS, "--allowedTools", READ_TOOLS] : ["--tools", ""]),
       "--permission-mode", "dontAsk",
     ];
     if (caps.noPersist) a.push("--no-session-persistence");
@@ -70,7 +73,8 @@ export class ClaudeEngine implements Engine {
     const prompt = req.task?.prompt ?? instructionPrompt(req);
     const parser = new ClaudeStreamParser(req.cwd, req.progress, writingLine(req.task?.kind));
     req.progress("Starting Claude Code");
-    const r = await runProcess(this.cmd, this.args(req.model, req.task?.schema, req.task ? req.task.tools !== "none" : !req.appearance), {
+    const image = req.task?.tools === "image" && req.image ? req.image.dir : undefined;
+    const r = await runProcess(this.cmd, this.args(req.model, req.task?.schema, req.task ? req.task.tools !== "none" : !req.appearance, image), {
       cwd: req.cwd, stdin: prompt, signal: req.signal, timeoutMs: req.timeoutMs, onLine: (l) => parser.line(l),
     });
     if (r.aborted) throw new EngineError("Cancelled");
@@ -81,7 +85,7 @@ export class ClaudeEngine implements Engine {
 
 /** The progress line when Claude Code writes its answer: what that call writes. */
 export function writingLine(kind: NonNullable<EngineRunRequest["task"]>["kind"] | undefined): string {
-  return kind === "scan" ? "Writing the card" : kind === "read" ? "Writing the facts" : kind === "route" ? "Choosing the way" : kind === "post" ? "Writing the post" : kind === "story" ? "Writing the story" : "Writing the diagram";
+  return kind === "scan" ? "Writing the card" : kind === "read" ? "Writing the facts" : kind === "route" ? "Choosing the way" : kind === "post" ? "Writing the post" : kind === "story" ? "Writing the story" : kind === "revise" ? "Writing the fixes" : "Writing the diagram";
 }
 
 /**

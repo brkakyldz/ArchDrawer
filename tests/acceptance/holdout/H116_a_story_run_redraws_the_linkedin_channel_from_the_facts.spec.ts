@@ -50,6 +50,6 @@ test('H116 [STORY-1, STORY-2, STORY-6, AI-1] a story run on the LinkedIn channel
   expect(await ask({ kind: 'refine', channel: 'linkedin', view: 'linkedin-post', instruction: 'Observe', readCode: true })).toEqual({ status: 400, error: 'readCode is for a story' });
   expect(await ask({ kind: 'story', channel: 'linkedin', instruction: 7 })).toEqual({ status: 400, error: 'instruction must be a string' });
   expect((await ask({ kind: 'story', channel: 'linkedin', format: 'readme' })).error).toMatch(/^Invalid format "?readme"?; use one of/);
-  expect(await ask({ kind: 'poster', channel: 'linkedin' })).toEqual({ status: 400, error: 'Unknown run kind poster: use refine, story, post, simplify or draw' });
+  expect(await ask({ kind: 'poster', channel: 'linkedin' })).toEqual({ status: 400, error: 'Unknown run kind poster: use refine, story, post, simplify, revise or draw' });
   expect(await readFile(story.file, 'utf8'), 'a refused request writes nothing').toBe(saved);
 });

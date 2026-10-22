@@ -7,10 +7,16 @@ LinkedIn, README and presentation versions from the same facts later. The
 drawing must carry the real architecture, at the same depth for any
 repository:
 
-- **What each component holds.** A component whose code shows distinct
-  mechanisms lists them as `items` in a `panel` (e.g. a tool gateway: "Schema
-  validation", "Scope re-check", "Idempotency key", "Typed errors", "Audit
-  event"). Items name mechanisms, rules or contents, 2–5 words each.
+- **Every part says what it does in one line.** Its `sub` is a one-line
+  description in plain words, on every part drawn; it is the default way a
+  part explains itself.
+- **What each component holds, where the story needs it.** In the overview,
+  a component whose code shows distinct mechanisms lists them as `items` in a
+  `panel` (e.g. a tool gateway: "Schema validation", "Scope re-check",
+  "Idempotency key", "Typed errors", "Audit event"): the overview holds every
+  mechanism. A README or presentation drawing holds them only on a part whose
+  working its story is about, and a LinkedIn post holds none. Items name
+  mechanisms, rules or contents, 2–5 words each.
 - **Components inside components.** When one component runs an inner loop or
   owns sub-parts that talk to each other, make it a `group` and put the parts
   inside it with `parent` (e.g. an agent runtime holding LLM → tool proposal →
@@ -89,9 +95,9 @@ Merge small helpers into what they serve; leave out tests and build scripts.
   "title": "Hotel Operations Agent",
   "facts": {
     "components": [
-      { "id": "runtime", "label": "Agent runtime", "kind": "llm", "sub": "OpenAI Agents SDK", "description": "Runs the agent loop for every guest request.",
+      { "id": "runtime", "label": "Agent runtime", "kind": "llm", "sub": "runs the agent loop", "description": "Runs the agent loop for every guest request.",
         "files": ["src/agent/"], "items": [] },
-      { "id": "llm", "label": "LLM", "kind": "llm", "sub": "", "description": "Chooses the next step from the conversation so far.",
+      { "id": "llm", "label": "LLM", "kind": "llm", "sub": "picks the next step", "description": "Chooses the next step from the conversation so far.",
         "files": [], "items": [] },
       { "id": "gateway", "label": "Tool gateway", "kind": "gate", "sub": "every call passes here", "description": "The only way the agent reaches a tool.",
         "files": ["src/tools/gateway.py"], "items": ["Schema validation", "Scope re-check", "Typed errors"] }

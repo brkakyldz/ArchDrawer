@@ -6,7 +6,7 @@ import type { DiagramDocument } from "../core/model";
 import { BUILD } from "./config";
 import { claudeModels } from "./engines/claude";
 import { codexModels } from "./engines/codex";
-import { fixtureAnswer, FixtureEngine } from "./engines/fixture";
+import { fixtureAnswer, FixtureEngine, fixtureRoute } from "./engines/fixture";
 import type { Engine, EngineInfo, EngineRunRequest } from "./engines/types";
 import { makeApp, shopRepo } from "./testkit";
 
@@ -142,5 +142,24 @@ describe("health and the example", () => {
     const b = (await (await req("/api/example", { method: "POST" })).json()) as { id: string };
     expect(b.id).not.toBe(id);
     expect((await req("/api/example", { method: "POST", token: null })).status).toBe(403);
+  });
+});
+
+describe("the fixture routes the suggestions as the testing contract says (AI-4)", () => {
+  it("hears Shorter for LinkedIn, Fewer details and Fewer steps as a story, and Show the loop as the facts", () => {
+    // The suggestions' instructions, as the ui contract (Suggestions) words them.
+    const SUGGESTED: Record<string, string> = {
+      loop: "Show the loop: draw the agent's loop and the checks around it as parts with numbered connections",
+      shorter: "Make it shorter for LinkedIn: fewer parts and shorter names",
+      "fewer-details": "Show fewer details: hold mechanisms only where the story is about them",
+      "fewer-steps": "Use fewer steps: merge steps that say the same thing",
+    };
+    const route = Object.fromEntries(Object.entries(SUGGESTED).map(([id, text]) => [id, fixtureRoute(text)]));
+    expect(route).toEqual({ loop: "facts", shorter: "story", "fewer-details": "story", "fewer-steps": "story" });
+  });
+  it("still hears the story marker anywhere, and anything else as the facts", () => {
+    expect(fixtureRoute("move Web app right of API [fixture:story]")).toBe("story");
+    expect(fixtureRoute("Please make it shorter for LinkedIn")).toBe("facts");
+    expect(fixtureRoute("add Cache")).toBe("facts");
   });
 });

@@ -24,6 +24,7 @@ import { addNode, addText, crumbsTo, deleteEdges, deleteNodes, deleteTexts, setN
 import { EdgeCallout, InlineInput, Picker, TextEditor, TextToolbar, Warnings } from "./Panels";
 import { ShareDialog } from "../share/ShareDialog";
 import { viewImage } from "../share/image";
+import { Present, PresentIcon, type PresentMode } from "../present/Present";
 import type { Ctl, Editing, Selection, Tool } from "./types";
 import { NOTHING } from "./types";
 import { chooseEngine, ENGINE_KEY, engineName, modelKey, rememberedModel, ROUTE_SENTENCE, useRunner, type Done, type Outcome, type Route, type RunRequest, type TurnState } from "./runner";
@@ -129,6 +130,13 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const [picker, setPicker] = useState<Ctl["picker"]>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  /** The presenting layer (ui contract, Presenting and the tour): while open the editor takes no input. */
+  const [layer, setLayer] = useState<PresentMode | null>(null);
+  const layerRef = useRef(layer);
+  layerRef.current = layer;
+  const presentBtn = useRef<HTMLButtonElement>(null);
+  const tourBtn = useRef<HTMLButtonElement>(null);
+  const backTo = useRef<HTMLButtonElement | null>(null);
   /** The presentation step being looked at (not an edit). */
   const [curStep, setCurStep] = useState<string | null>(null);
   const stageEl = useRef<HTMLElement>(null);
@@ -269,7 +277,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     es.addEventListener("changed", (ev) => {
       const { updatedAt } = JSON.parse((ev as MessageEvent).data) as { updatedAt: string };
       if (running.current || !clean() || docRef.current?.updatedAt === updatedAt) return;
-      api.get(id).then((d) => { if (!running.current && clean() && d.updatedAt !== docRef.current?.updatedAt) adoptRef.current(d, "Updated from the file"); }, () => {});
+      api.get(id).then((d) => { if (!running.current && clean() && d.updatedAt !== docRef.current?.updatedAt) adoptRef.current(d, layerRef.current ? null : "Updated from the file"); }, () => {});
     });
     return () => es.close();
   }, [id, clean]);
@@ -453,7 +461,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const c = ctlRef.current;
-      if (!c) return;
+      if (!c || layerRef.current) return;
       const mod = e.ctrlKey || e.metaKey;
       if (mod && !typing(e.target) && (e.key === "z" || e.key === "Z" || e.key === "y")) {
         e.preventDefault();
@@ -484,6 +492,8 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [hist, sharing]);
+  // Leaving the presenting layer gives the focus back to the button that opened it.
+  useEffect(() => { if (!layer && backTo.current) { backTo.current.focus(); backTo.current = null; } }, [layer]);
 
   /* ---------- in-place editing on the canvas ---------- */
   const onDouble = (e: React.MouseEvent) => {
@@ -646,6 +656,22 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   // Stepping selects the match and moves the view only when the match is off screen (ui contract, search).
   const step = (id: string) => { setSel({ ...NOTHING, nodes: [id] }); setCallout(null); setEditing(null); setVp((v) => revealIn(view, id, v)); };
   const openHit = (h: Hit) => goView(h.view, undefined, h.id);
+  // Present (ui contract, Editor frame): the presentation channel only, off without a drawing or a step.
+  const pres = stored.channels.presentation;
+  const noSlides = !pres.views.length || !pres.steps?.length;
+  const openLayer = (mode: PresentMode, from: HTMLButtonElement | null) => { backTo.current = from; setMenuOpen(false); setLayer(mode); };
+  const presentEl = chan !== "presentation" ? null : (
+    <button className="btn" data-testid="present-start" ref={presentBtn} aria-label="Present" title={noSlides ? "Add a step first" : undefined} disabled={noSlides}
+      onClick={() => openLayer("present", presentBtn.current)}>
+      <PresentIcon name="present" />{!narrow && <span className="lbl">Present</span>}
+    </button>
+  );
+  const tourEl = chan !== "presentation" ? null : (
+    <button className="btn" data-testid="tour-start" ref={tourBtn} aria-label="Tour" title={noSlides ? "Add a step first" : undefined} disabled={noSlides}
+      onClick={() => openLayer("tour", tourBtn.current)}>
+      <PresentIcon name="tour" />{!narrow && <span className="lbl">Tour</span>}
+    </button>
+  );
 
   return (
     <div className={`app${side ? " with-side" : ""}`} data-testid="editor" data-theme={doc.theme} data-channel={chan} data-view={view.id}>
@@ -689,6 +715,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
           {!narrow && <><span className="sep" />{undoEl}{redoEl}</>}
         </div>
         <div className="right">
+          {presentEl}{tourEl}
           <button className="btn icon-btn" data-testid="search-button" aria-label="Find a component" title="Find a component ( / )" onClick={() => setSearching(true)}>
             <Icon name="search" size={16} />
           </button>
@@ -761,6 +788,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       {sharing && (
         <ShareDialog doc={doc} view={view} channel={chan} onClose={() => setSharing(false)} toast={toast} />
       )}
+      {layer && <Present mode={layer} stored={stored} toast={toast} onLeave={(s) => { setCurStep(s); setLayer(null); }} />}
     </div>
   );
 }

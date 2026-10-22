@@ -93,6 +93,7 @@ a draw runs, the folder, focus and channel controls are disabled.
 | `views-button` | overview channel only, when it holds more than one view: opens `views-menu`: `view-item-<viewId>` for every overview view in file order (`data-kind` `Overview`/`Detail`), the current one `aria-current="true"`; choosing one goes there |
 | `search-button` | also `/` or Ctrl/Cmd+K when no text input has focus: opens `search` with `search-input` focused (`/` or Ctrl/Cmd+K focuses it again when it is already open). A component matches when its label contains the typed text, case-insensitively. As you type, the matches on the current view are lit on the canvas (`node-<id>` `data-match="true"`, a ring drawn around the part) and every other component dims (`data-dim="true"` on `node-<id>`, and on every `edge-<id>` that does not join two matches); nothing moves and no part changes size. `search-count` shows `<n> match(es)`, `<i> of <n>` once stepped, or `No match in this view`; any typing in `search-input`, even of the same text, ends the stepping (no current match). Enter steps to the next match on this view and Shift+Enter to the previous one, wrapping (also `search-next`, `search-prev`): the match becomes `data-match="current"` and the only selected component, and the view moves, at the same zoom, only when that part is not wholly on screen or is behind the search panel (it is then centred below the panel). Matches in other views are listed under `In other views` (at most 50): `search-result` with `data-view` and `data-node-id`, label and view title; a click, or the arrow keys then Enter, goes to that view (fitted, then moved the same way only if the part is still off screen or behind the panel) with that match selected and current; with no match on this view, Enter opens the first listed one. `No component is called that` when no view has a match. Search stays open until Escape (in it, or anywhere outside a text input), which closes it, ends the highlight and dimming and keeps the selection |
 | `ai-button` | toggles `ai-panel` |
+| `present-start`, `tour-start` | presentation channel only: `Present` and `Tour` open `present` (*Presenting and the tour*). Disabled, with the title `Add a step first`, when the channel has no view or no step. They stay in the header at every width (icon-only, with these accessible names, below 900 px wide); `header-menu` is unchanged |
 | `header-menu-button` | only below 900 px wide: opens `header-menu`, which then holds `repo-name`, `channel-tabs`, `crumbs`, `tool-undo`, `tool-redo`, `tool-theme`, `tool-steps` |
 
 Every icon-only button has an accessible name at every width.
@@ -196,8 +197,8 @@ presentation, `steps-panel` sits beside the drawn view (STORY-4):
 
 Every step edit is undoable, saved like any edit, and changes only the
 presentation channel. Escape on the canvas leaves the current step and
-un-dims the parts. Full-screen presenting and slide exports are 0.5
-(PRES-1, PRES-3).
+un-dims the parts. The steps are presented, toured and exported as slides
+(*Presenting and the tour*, *Share*, *The slide image*).
 
 ## Drawing
 
@@ -422,8 +423,67 @@ There is no `overview-suggestion` and no `simplify-overview` any more
 
 When the stored file changes outside the editor and the editor has no
 unsaved edit and no run going, it shows the new document within 2 s with the
-toast `Updated from the file`. With an unsaved edit, the next save gets 409
-and `save-status` says so.
+toast `Updated from the file`, except while `present` is open (*Presenting and
+the tour*). With an unsaved edit, the next save gets 409 and `save-status`
+says so.
+
+## Presenting and the tour
+
+`present` is a layer over the whole window (`role="dialog"`, `aria-modal`)
+with `data-mode` `present` or `tour`, `data-index` the slide shown and
+`data-fullscreen` `true` while the layer is the browser's full-screen
+element, else `false`. It shows the slides of *The slide image*: index 0 is
+the opening slide, index *i* the *i*-th of the *n* steps. Nothing in it edits
+the drawing, and the editor under it takes no key or pointer input while it
+is open.
+
+| Test id | Element and behaviour |
+|---|---|
+| `present-slide` | the slide's SVG, scaled to fit the space it has, keeping 16:9, centred on the canvas colour. In `present` mode it fills the layer; in `tour` mode it shares the layer with `tour-panel` |
+| `present-status` | a polite live region, visually hidden, independent of the toggles: `Step <i> of <n>: <text>` on a step, the presentation view's `caption.title` on the opening slide |
+| `present-hint` | `present` mode only: `← → to move · Esc to exit`, shown until `data-index` first changes |
+| `present-note-toggle` | `present` mode only, hidden on the opening slide: `Speaker note` (`aria-expanded`, closed when the layer opens, and kept open or closed from slide to slide); open, it shows `present-note`: the step's `note` with its newlines, or `No note for this step` |
+| `present-exit` | `Exit`; leaves as Escape does |
+| `tour-panel` | `tour` mode only: beside the slide when the window is at least 900 px wide, else under it. Holds `tour-note` (the step's `note` with its newlines, or `No note for this step`) and one `tour-part` per part in the step's `parts`, in the order of the view's `nodes` (`data-node-id`, the part's label) |
+| `tour-file` | in a `tour-part`: its files, each path once. They are gathered from the part's `facts` in order, then its `held` facts in order; for each fact its `files` first, then its `evidence` files not already listed. Text: the path, then for each evidence range on that path in that order `:<from>–<to>` (`:<from>` when `from` = `to`), joined by `, `. A part with no file shows `No files recorded` instead |
+| `tour-copy` | one per `tour-file`: `Copy path`; copies the path alone; toast `Copied the path`, or `Copying is not allowed here` |
+
+Entering:
+
+- `present-start` opens `present` mode on the opening slide and asks the
+  browser for full screen on the layer. A refused or unsupported full screen
+  leaves the layer open, filling the window, with `data-fullscreen="false"`.
+- `tour-start` opens `tour` mode on the first step, never full screen.
+- Focus moves to the layer itself (`tabindex="-1"`); Tab and Shift+Tab cycle
+  inside it. The theme is the drawing's `theme`. The share toggles are the
+  slide format's starting toggles (*Share*), except that the opening slide
+  always shows the caption's title and, when not empty, its lede.
+
+Keys, while the layer is open. Space and Enter on a focused button activate
+it and do not move; no other key acts on a focused button.
+
+| Key | `present` | `tour` |
+|---|---|---|
+| Right, Down, Space, PageDown | next slide | next step |
+| Left, Up, PageUp | previous slide | previous step |
+| Home | the opening slide | the first step |
+| End | the last step | the last step |
+| N | toggles `present-note` on a step; nothing on the opening slide | nothing |
+| Escape | leaves | leaves |
+
+A click on `present-slide` is the next slide. Moving past either end does
+nothing. In `present` mode, once the layer has been full screen, the browser
+leaving full screen (its own Escape, or F11) leaves the layer as well.
+
+Leaving returns focus to the button that opened the layer and makes the step
+shown current in `steps-panel` (no step current after the opening slide).
+
+While the layer is open, an outside change to the file (*External changes*)
+re-renders the slide shown, with no toast. A step is followed by its `id`:
+the step shown stays shown wherever it moved; when it was removed the last
+step is shown; the opening slide stays the opening slide. When no step is
+left the layer closes with the toast `The presentation has no steps any
+more`.
 
 ## Share
 
@@ -439,13 +499,23 @@ part (SHARE-2).
 | `format-feed`, `format-readme`, `format-slide`, `format-square` | `Where will you share it?` (`aria-pressed`): `LinkedIn` 1080×1350, `README` 1600×900, `Slide` 1920×1080, `Square post` 1080×1080. `format-feed` is also pressed for the wide post. Default `format-feed` on the LinkedIn channel, `format-slide` on the presentation, else `format-readme` |
 | `share-theme-light`, `share-theme-dark` | the image theme (default the drawing's) |
 | `share-advanced-toggle` | `Advanced options` (`aria-expanded`); shows `share-advanced`: `format-linkedin` (`Landscape LinkedIn post`, 1620×1080) and checkboxes `show-title`, `show-lede`, `show-items`, `show-steps`, `show-labels`, `show-legend`, `show-texts`. Starting toggles (reset when the format changes): on the LinkedIn channel, or with `format-feed`, title, description, held items, numbered path, labels and texts on, colour key off; Square: title, description, numbered path and texts on, held items, labels and colour key off; otherwise title, held items, numbered path, labels, colour key and texts on, description off |
-| `share-actions` | always visible: `readability`, `layout-report`, `download-png`, `download-svg`, `copy-image` |
+| `share-actions` | always visible: `readability`, `layout-report`, `download-png`, `download-svg`, `copy-image`; on the presentation channel also `download-slides-pdf` and `download-slides-png` |
 | `readability` | `data-level` `good`/`ok`/`warn`; one plain sentence for the chosen destination with at most one suggestion, and no numbers (Readability, below); `readability-details-toggle` (`Details`, `aria-expanded`, closed when the dialog opens) shows `readability-details`: `Names <a> px and text <b> px <where>, <c> px opened.` |
 | `share-clipped` | when component text is shortened with `…`: `Shortened in this image:` and `share-clipped-item` per text (`<label>: <full text>`) |
 | `download-png` | `<slug>-<view>-<format>.png`, at twice the image size |
 | `download-svg` | the same name with `.svg`; fonts embedded |
+| `download-slides-pdf` | `Slides as PDF`: `<slug>-slides.pdf`, one page per slide (*The slide image*), the opening slide first. Disabled, with the title `Add a step first`, without a step |
+| `download-slides-png` | `Slides as PNG`: `<slug>-slides.zip` holding `<slug>-slide-00.png` (the opening slide) to `<slug>-slide-<nn>.png`, two digits, each at twice the slide size. Disabled like `download-slides-pdf` |
 | `copy-image` | copies the PNG; toast `Copied the image` or `Copying images is not allowed here — use Download PNG` |
 | `share-close` | closes; also Escape or a click on the backdrop |
+
+Both slide downloads use the dialog's theme and its toggles as they are when
+pressed — they follow the format chosen, as always, and `format-slide` is the
+default on the presentation channel — with title and description on the
+opening slide only. The format sets nothing else: a slide is always
+1920 × 1080. While the slides are being made both buttons are
+disabled and the one pressed says `Making slides…`; a failure shows the toast
+`The slides could not be made` and no file.
 
 `<slug>`: the title lower-cased, accents removed, non-alphanumerics → `-`,
 trimmed (`diagram` when empty).
@@ -552,6 +622,33 @@ The same image comes from the preview, the downloads, `archdrawer svg` and
   `show-labels` off hides connection labels; `show-texts` off hides texts.
 - Caption sizes in image px (title / description / key): wide post 36/28/27,
   README 32/20/18, slide 38/24/21, square 30/19/18, feed 36/22/21.
+
+### The slide image
+
+The presenter, the tour and the slide downloads show one image per slide,
+made from the presentation view. It is the share image of the `slide` format
+(*The share image*) with these differences:
+
+- Root `<svg>` 1920 × 1080 with `data-format="slide"`, `data-slide` (the
+  index) and `data-theme`.
+- **Opening slide** (index 0): the caption as the toggles say and the whole
+  view; nothing dimmed; no band.
+- **Step slide** (index *i*, 1 ≤ *i* ≤ *n*, *n* the number of steps): no
+  caption. Dimmed, with `data-dim="true"` and `opacity="0.25"` on its group:
+  - every `<g data-node-id>` whose part is not in the step's `parts` — a
+    group part too, even when parts inside it are lit; a lit group does not
+    light its children;
+  - every `<g data-edge-id>` unless both its `from` and its `to` are in the
+    step's `parts` (its label and badge are inside the group and dim with it);
+  - every `<g data-text-id>`.
+
+  A dimmed part keeps its box. Along the bottom, `<g data-slide-band>` holds
+  the step's `text` (`data-slide-text`, weight 500, at most 1640 px wide,
+  never shortened: 34 px on up to two lines, else 28 px on up to three, else
+  22 px on as many as it needs) and the counter `<i> / <n>` (`data-slide-count`, mono 24 px,
+  right-aligned on the last line's baseline). The drawing is fitted into the
+  margins above the band.
+- Badges, labels, held items, texts and the key follow the toggles given.
 
 ### Readability
 

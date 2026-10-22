@@ -20,10 +20,15 @@ function useLocation() {
   return loc;
 }
 
+/** An id whose percent-encoding is broken (`/d/%ZZ`) stays as typed: no drawing has it, so the editor shows `not-found`. */
+function decodeId(raw: string): string {
+  try { return decodeURIComponent(raw); } catch { return raw; }
+}
+
 export function App() {
   const { path, search } = useLocation();
   const m = /^\/d\/([^/]+)\/?$/.exec(path);
   if (!m) return <Library />;
   const q = new URLSearchParams(search);
-  return <EditorBoundary key={m[1]}><Editor id={decodeURIComponent(m[1])} channel={q.get("channel")} view={q.get("view")} /></EditorBoundary>;
+  return <EditorBoundary key={m[1]}><Editor id={decodeId(m[1])} channel={q.get("channel")} view={q.get("view")} /></EditorBoundary>;
 }

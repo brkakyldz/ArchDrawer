@@ -10,6 +10,13 @@ export const VERSION: string = JSON.parse(readFileSync(join(APP_ROOT, "package.j
 /** The code this process runs (api contract health `build`). */
 export const BUILD: string = buildId(APP_ROOT);
 
+let fonts: { sans: string; mono: string } | null = null;
+/** The Geist fonts as base64, embedded in every share image (ui contract, The share image). */
+export function shareFonts(): { sans: string; mono: string } {
+  const font = (name: string) => readFileSync(join(APP_ROOT, "src", "web", "fonts", name)).toString("base64");
+  return (fonts ??= { sans: font("Geist-Variable.woff2"), mono: font("GeistMono-Variable.woff2") });
+}
+
 export interface Config {
   port: number;
   dataDir: string;
@@ -25,7 +32,9 @@ export interface Config {
 
 /** The environment of docs/contracts/testing.md, shared by the server and the CLI. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const port = Number.parseInt(env.PORT ?? "", 10);
+  // A whole decimal number only: parseInt would take "4405abc" as 4405 and "1e3" as 1.
+  const portText = (env.PORT ?? "").trim();
+  const port = /^\d{1,5}$/.test(portText) ? Number(portText) : NaN;
   const engines = (env.ARCHDRAW_ENGINES ?? "claude,codex")
     .split(",")
     .map((s) => s.trim().toLowerCase())

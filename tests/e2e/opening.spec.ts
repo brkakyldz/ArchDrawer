@@ -3,6 +3,14 @@ import { open } from "./helpers";
 
 // The empty library, an unreadable drawing, semantic zoom and visible editing are held-out H34,
 // H40 and H41. An older server needs a faked /api/health, which the held-out suite never does.
+// A drawing link with broken percent-encoding is in no held-out scenario.
+
+test("a drawing link with broken percent-encoding shows not-found, never a blank page", async ({ page }) => {
+  for (const path of ["/d/%ZZ", "/d/d_anything%"]) {
+    await page.goto(path);
+    await expect(page.getByTestId("not-found"), path).toContainText("This drawing is not in the library.");
+  }
+});
 
 test("a server older than the page is named instead of a blank page", async ({ page }) => {
   const { id } = await open(page);

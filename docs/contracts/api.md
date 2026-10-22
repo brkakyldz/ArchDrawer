@@ -321,6 +321,23 @@ On success the run has:
 
 A failure, cancel or timeout at any stage writes and registers nothing.
 
+**What a failed draw keeps** (ADR 0010). A draw that ends without a drawing
+after its read answer was checked keeps, in the server's memory only, the
+checked facts with their warnings and, when the overview call's answer was
+converted, the drawing with its overview. A later `draw` with the same
+`scan`, `focus`, engine and model (the channel may differ) starts from the
+first stage that did not finish, and makes no call for the stages before it:
+
+- the read is replaced by one line, `Using the facts already read`
+  (`stage: "read"`), with no engine lines and no `Checking the facts`;
+- a kept overview by `Drawing the overview`, then `Using the overview
+  already drawn` (`stage: "overview"`).
+
+The result's warnings are the kept ones, then the new stages', as if one run
+had made them all. Only the latest failed draw of a folder is kept; it goes
+when a draw of that folder succeeds, after one hour, or when the server
+stops. A draw that fails at the read keeps nothing.
+
 ## Runs
 
 `POST /api/runs` body for every kind but `draw` (below):
@@ -462,7 +479,8 @@ overview or channel) adds, right after its own check line, `Fixing <n>
 problem(s) in the answer`, then the repair turn's engine lines, then its check
 line once more. A post with a repair turn so reads: engine lines, `Checking
 the post`, `Fixing 2 problems in the answer`, engine lines, `Checking the
-post`, `Saved with 1 warning`. A draw's overview call has no check line, so
+post`, `Saved` (or `Saved with <n> warning(s)`; the repair turn itself adds
+none). With one problem the line is `Fixing 1 problem in the answer`. A draw's overview call has no check line, so
 there the line follows its engine lines; the channel call's check line is
 `Checking the drawing`. Each of these lines carries the stage of the call it
 repairs.

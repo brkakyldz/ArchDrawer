@@ -244,7 +244,11 @@ after a story call when its answer has a problem.
 - `[fixture:slow]` slows the read;
 - `[fixture:partial]` makes the overview story leave out `store`;
 - `[fixture:overlong]` and `[fixture:stubborn]` act on the overview call as
-  above.
+  above;
+- `[fixture:flaky:overview]` and `[fixture:flaky:channel]` fail that call
+  with `Fixture failure requested` the first time this server makes it for
+  the folder and the typed focus, and answer as usual after, so `Try again`
+  shows what a failed draw keeps (api contract, *What a failed draw keeps*).
 
 Each call has the fixture's progress lines.
 

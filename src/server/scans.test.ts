@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -35,7 +35,7 @@ describe("folders", () => {
     const ok = await json(await t.req("/api/folders/check", { method: "POST", json: { folder: join(dir, "src") } }));
     expect(ok.status).toBe(200);
     expect(ok.body).toMatchObject({ git: true, drawing: null });
-    expect(ok.body.root.toLowerCase()).toBe(dir.toLowerCase());
+    expect(ok.body.root).toBe(realpathSync.native(dir));
     expect((await json(await t.req("/api/folders/check", { method: "POST", json: { folder: dir } }))).body.drawing).toMatch(/architecture\.archdraw\.json$/);
     const plain = makeFolder({ "a.txt": "x" });
     expect((await json(await t.req("/api/folders/check", { method: "POST", json: { folder: plain } }))).body.git).toBe(false);

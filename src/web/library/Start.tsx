@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { api, ApiError, type DiagramSummary, type DrawChannel, type DrawFocus, type EngineInfo, type FocusOption, type RepoCard, type ScanRecord } from "../api";
 import { navigate } from "../App";
 import { chooseEngine, engineName, ENGINE_KEY, modelKey, rememberedModel } from "../editor/runner";
+import { afterPaint, paced } from "./pace";
 
 /**
  * Starting a drawing from a folder (ui contract, Starting a drawing from a folder; START-4): four
@@ -36,16 +38,19 @@ type End = { status: string; error: string | null; diagramId?: string | null };
 
 /**
  * Follow a scan's or a run's event stream until it is done. When the stream drops, its record is
- * read instead until it has finished; three failed reads in a row mean the server is gone.
+ * read instead until it has finished; three failed reads in a row mean the server is gone. Each
+ * progress line is rendered and painted before the next (`paced`), so a burst — the replay of a
+ * run's past lines, a reused stage's lines — never shows only its last line.
  */
 function follow(url: string, record: () => Promise<End>, onProgress: (data: { message: string; stage?: Stage | null }) => void, live: Set<() => void>): Promise<End> {
   return new Promise((done) => {
     let over = false, timer: ReturnType<typeof setTimeout> | null = null;
     const es = new EventSource(url);
-    const stop = () => { over = true; es.close(); if (timer) clearTimeout(timer); live.delete(stop); };
+    const lines = paced((data: { message: string; stage?: Stage | null }) => flushSync(() => onProgress(data)), afterPaint);
+    const stop = () => { over = true; es.close(); lines.stop(); if (timer) clearTimeout(timer); live.delete(stop); };
     live.add(stop);
     const finish = (e: End) => { if (!over) { stop(); done(e); } };
-    es.addEventListener("progress", (ev) => onProgress(JSON.parse((ev as MessageEvent).data)));
+    es.addEventListener("progress", (ev) => lines.push(JSON.parse((ev as MessageEvent).data)));
     es.addEventListener("done", (ev) => finish(JSON.parse((ev as MessageEvent).data)));
     let misses = 0;
     const poll = () => {

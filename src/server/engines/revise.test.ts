@@ -230,8 +230,13 @@ describe("the image's folder is gone however the run ends (api contract, The sec
   });
 });
 
-/** A pid no process has any more: a node that has already exited. */
+/**
+ * A pid no process has any more: a node that has already exited. Windows hands a freed pid out again
+ * almost at once, so a process started after this one may already hold it.
+ */
 const deadPid = () => spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" }).stdout.trim();
+/** A pid no process can ever have: odd (a Windows pid is a multiple of 4) and above Linux's pid_max. */
+const NEVER_PID = "2147483647";
 
 function leftovers(data: string, pids: Record<string, string>) {
   const dirs: Record<string, string> = {};
@@ -248,7 +253,7 @@ describe("a starting server removes a dead server's images, never a live one's",
     const live = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
     try {
       const data = tempDir("archdraw-data-");
-      const dirs = leftovers(data, { dead: deadPid(), live: String(live.pid), own: String(process.pid) });
+      const dirs = leftovers(data, { dead: NEVER_PID, live: String(live.pid), own: String(process.pid) });
       mkdirSync(join(reviseRoot(data), "not-a-pid"));
       expect(sweepReviseFolders(data)).toEqual([dirs.dead]);
       expect(existsSync(dirs.dead)).toBe(false);
@@ -262,14 +267,16 @@ describe("a starting server removes a dead server's images, never a live one's",
   it("a pid that is no process's is never running", () => {
     expect(isRunning(0)).toBe(false);
     expect(isRunning(-1)).toBe(false);
+    // A really exited process; its pid could in principle be handed out again before this line runs.
     expect(isRunning(Number(deadPid()))).toBe(false);
+    expect(isRunning(Number(NEVER_PID))).toBe(false);
     expect(isRunning(process.pid)).toBe(true);
   });
 
   it("the server sweeps once its port is bound", async () => {
     const live = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
     const data = tempDir("archdraw-data-");
-    const dirs = leftovers(data, { dead: deadPid(), live: String(live.pid) });
+    const dirs = leftovers(data, { dead: NEVER_PID, live: String(live.pid) });
     const server = startServer(data, await freePort());
     try {
       for (let i = 0; i < 300 && !server.out().includes("listening on"); i++) await wait(50);
@@ -284,7 +291,7 @@ describe("a starting server removes a dead server's images, never a live one's",
 
   it("a server that cannot bind its port sweeps nothing", async () => {
     const data = tempDir("archdraw-data-");
-    const dirs = leftovers(data, { dead: deadPid() });
+    const dirs = leftovers(data, { dead: NEVER_PID });
     // Another process holds the port: this server stops before it is bound.
     const holder = createServer();
     const port = await new Promise<number>((res) => holder.listen(0, "127.0.0.1", () => res((holder.address() as { port: number }).port)));

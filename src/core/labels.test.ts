@@ -12,7 +12,8 @@ const touching = (v: DiagramView, routes: Map<string, EdgeRoute>) => v.edges.fla
   if (!r?.labelAt || !e.label) return [];
   const half = labelWidth(e.label, false) / 2, hh = LABEL.h / 2;
   const box = { x: r.labelAt.x - half - 2, y: r.labelAt.y - hh - 2, w: half * 2 + 4, h: hh * 2 + 4 };
-  return [...routes].filter(([id, o]) => id !== e.id && polylineMeetsRect(drawnLine(o), box)).map(([id]) => `${e.id}~${id}`);
+  // Only drawn lines: a line a hub hides is not one (diagram contract, Parts many parts use).
+  return [...routes].filter(([id, o]) => id !== e.id && !o.hidden && polylineMeetsRect(drawnLine(o), box)).map(([id]) => `${e.id}~${id}`);
 });
 
 describe("a label belongs to its line (#172)", () => {
@@ -38,6 +39,20 @@ describe("a label belongs to its line (#172)", () => {
     for (const v of doc.views) {
       const rects = layoutRects(v), routes = routeEdges(v, rects);
       expect(touching(v, routes), v.id).toEqual([]);
+    }
+  });
+
+  // The editor routes on every pointer move of a drag: the hotel overview (32 connections) took 5.3 s at bcdbf51 and
+  // about 0.1 s since (review bcdbf51-1). A generous bound, so a slow machine still passes.
+  it("routing the hotel overview stays fast", () => {
+    const raw = JSON.parse(readFileSync(join(__dirname, "..", "..", "tests", "fixtures", "hotel.archdraw.json"), "utf8"));
+    const v = normalizeFile(validateFile(raw).file!, { id: "d_hotel", now: "2026-10-25T00:00:00.000Z", source: null }).views[0];
+    const rects = layoutRects(v);
+    routeEdges(v, rects);
+    for (const hubs of [false, true]) {
+      const t0 = performance.now();
+      routeEdges(v, rects, { hubs });
+      expect(performance.now() - t0, `hubs ${hubs}`).toBeLessThan(1500);
     }
   });
 });

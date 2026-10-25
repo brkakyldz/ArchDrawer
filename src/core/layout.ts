@@ -547,7 +547,7 @@ export function layoutView<V extends { nodes: NodeInput[]; edges: EdgeInput[]; i
   return drawn(sorted) <= drawn(plain) ? sorted : plain;
 }
 
-function layoutOnce<V extends { nodes: NodeInput[]; edges: EdgeInput[]; id?: string; postOf?: string | null }>(view: V, o: LayoutOptions): Omit<V, "nodes"> & { nodes: DiagramNode[] } {
+export function layoutOnce<V extends { nodes: NodeInput[]; edges: EdgeInput[]; id?: string; postOf?: string | null }>(view: V, o: LayoutOptions): Omit<V, "nodes"> & { nodes: DiagramNode[] } {
   const memo = new Map<string | null, Map<string, Cell>>();
   const kept = view.nodes.filter((n) => n.x !== undefined && n.y !== undefined && n.form !== "group");
   const fresh = new Set(view.nodes.filter((n) => n.x === undefined || n.y === undefined).map((n) => n.id));
@@ -615,7 +615,8 @@ function layoutOnce<V extends { nodes: NodeInput[]; edges: EdgeInput[]; id?: str
       const rects = layoutRects(placed, { post: o.post });
       blocked = new Set();
       for (const [id, r] of routeEdges(placed, rects, { post: o.post, labels: o.labels })) {
-        if (!r.blocked) continue;
+        // A connection a hub hides gets no room of its own (diagram contract, Parts many parts use).
+        if (!r.blocked || r.hidden) continue;
         const e = edges.find((x) => x.id === id), a = e && rects.get(e.from), b = e && rects.get(e.to);
         if (!e || !a || !b) continue;
         const parts = r.blocked.filter((part) => leaves.has(part));

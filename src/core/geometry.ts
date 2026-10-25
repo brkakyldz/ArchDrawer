@@ -198,6 +198,8 @@ export interface EdgeRoute {
   blocked?: string[];
   /** The trunk it shares (diagram contract, Trunks): its own curve then ends at the trunk's split point. */
   trunk?: Trunk;
+  /** A hub hides it (diagram contract, Parts many parts use): no export draws it and the layout report never counts it. */
+  hidden?: boolean;
 }
 
 /** A trunk (diagram contract, Trunks): one straight stretch from the split point to the port, drawn once for its members. */
@@ -269,6 +271,7 @@ export function edgesOverParts(view: Pick<DiagramView, "nodes" | "edges">, rects
   for (const e of view.edges) {
     const route = routes.get(e.id);
     if (!route) continue;
+    if (route.hidden) continue;
     const pts = drawnLine(route);
     for (const n of view.nodes) {
       if (n.form === "group" || n.id === e.from || n.id === e.to) continue;
@@ -366,30 +369,47 @@ export function nearestFree(mid: Point, curve: Point[], hw: number, hh: number, 
   let best: Point | null = null, bestD = Infinity;
   // With `prefer`, the nearest free spot it accepts wins over a nearer one it does not (a label off other lines).
   let liked: Point | null = null, likedD = Infinity;
-  const consider = (p: Point) => {
-    const q = { x: Math.round(p.x), y: Math.round(p.y) }, d = Math.hypot(q.x - mid.x, q.y - mid.y);
-    if (prefer && d < likedD - 1e-9 && fits(q) && prefer(q)) { liked = q; likedD = d; }
-    if (d < bestD - 1e-9 && fits(q)) { best = q; bestD = d; }
+  // Candidates are tried nearest first (ties in the order given), so the scan ends at the first spot that settles the
+  // answer: the first free one without `prefer`, the first liked one with it (review bcdbf51-1).
+  const scan = (ps: Point[]) => {
+    const cands = ps.map((p) => { const q = { x: Math.round(p.x), y: Math.round(p.y) }; return { q, d: Math.hypot(q.x - mid.x, q.y - mid.y) }; });
+    // Distances within a millionth of a pixel tie, as the old 1e-9 test let the earlier one stand.
+    cands.sort((a, b) => Math.round(a.d * 1e6) - Math.round(b.d * 1e6));
+    for (const { q, d } of cands) {
+      // Sorted: nothing after this one can win.
+      if (d >= (prefer ? likedD : bestD) - 1e-9) return;
+      if (!fits(q)) continue;
+      if (d < bestD - 1e-9) { best = q; bestD = d; }
+      if (!prefer) return;
+      if (prefer(q)) { liked = q; likedD = d; return; }
+    }
   };
-  consider(mid);
-  for (const p of curve) consider(p);
-  if (prefer) {
-    // Spots beside the curve, as far as the reach lets a box go, so a label can step off a crossing line.
-    for (const p of curve) for (const [dx, dy] of [[0, hh + 2], [0, -hh - 2], [0, hh + 8], [0, -hh - 8], [hw + 2, 0], [-hw - 2, 0], [hw + 8, 0], [-hw - 8, 0]]) consider({ x: p.x + dx, y: p.y + dy });
-  }
+  const first = [mid, ...curve];
+  // Spots beside the curve, as far as the reach lets a box go, so a label can step off a crossing line.
+  if (prefer) for (const p of curve) for (const [dx, dy] of [[0, hh + 2], [0, -hh - 2], [0, hh + 8], [0, -hh - 8], [hw + 2, 0], [-hw - 2, 0], [hw + 8, 0], [-hw - 8, 0]]) first.push({ x: p.x + dx, y: p.y + dy });
+  scan(first);
   // Edges near the middle first; all of them only when nothing near is free.
   for (const radius of [480, Infinity]) {
     const near = obstacles.filter((r) => Math.max(r.x - mid.x, mid.x - r.x - r.w, r.y - mid.y, mid.y - r.y - r.h) <= radius);
     const xs = [mid.x, ...near.flatMap((r) => [Math.floor(r.x - pad - hw), Math.ceil(r.x + r.w + pad + hw)])];
     const ys = [mid.y, ...near.flatMap((r) => [Math.floor(r.y - pad - hh), Math.ceil(r.y + r.h + pad + hh)])];
-    for (const x of xs) for (const y of ys) if (Math.hypot(x - mid.x, y - mid.y) < (prefer ? likedD : bestD)) consider({ x, y });
+    scan(xs.flatMap((x) => ys.map((y) => ({ x, y }))));
     if (prefer ? liked : best) break;
   }
   return liked ?? best;
 }
 
-/** Whether a polyline touches a box: a point inside it or a segment crossing one of its edges. */
-export function polylineMeetsRect(pts: Point[], r: Rect): boolean {
+/** The box of some points. */
+function pointsBox(pts: Point[]): Rect {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** Whether a polyline touches a box: a point inside it or a segment crossing one of its edges; `bounds`, the polyline's box, if known. */
+export function polylineMeetsRect(pts: Point[], r: Rect, bounds?: Rect): boolean {
+  // A polyline whose box misses the box meets nothing in it (review bcdbf51-1).
+  if (bounds && (bounds.x > r.x + r.w || bounds.x + bounds.w < r.x || bounds.y > r.y + r.h || bounds.y + bounds.h < r.y)) return false;
   const inside = (p: Point) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
   if (pts.some(inside)) return true;
   const corners = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }];
@@ -404,6 +424,42 @@ export interface RouteOptions {
   post?: boolean;
   /** Extra boxes labels must not cover (texts). */
   avoid?: Rect[];
+  /** Hide a hub's connections from its users (diagram contract, Parts many parts use). Default true. */
+  hubs?: boolean;
+  /** Share trunks (diagram contract, Trunks). Default true. */
+  trunks?: boolean;
+  /** Place labels only for these connections (the hidden ones, after the rest of the view). */
+  labelsFor?: Set<string>;
+}
+
+/** A part other than a group that four or more other parts use, with how many (diagram contract, Parts many parts use). */
+export function hubsOf(view: Pick<DiagramView, "nodes" | "edges">): Map<string, number> {
+  const users = new Map<string, Set<string>>();
+  const use = (part: string, by: string) => { if (part !== by) (users.get(part) ?? users.set(part, new Set()).get(part)!).add(by); };
+  // A user has a connection into the part, or a two-way connection with it.
+  for (const e of view.edges) { use(e.to, e.from); if (e.both) use(e.from, e.to); }
+  const out = new Map<string, number>();
+  for (const n of view.nodes) { const u = users.get(n.id); if (n.form !== "group" && u && u.size >= 4) out.set(n.id, u.size); }
+  return out;
+}
+
+/** The connections a hub hides: those from its users that have no step. */
+export function hiddenEdges(view: Pick<DiagramView, "nodes" | "edges">): Set<string> {
+  const hubs = hubsOf(view);
+  return new Set(view.edges.filter((e) => e.step === null && e.from !== e.to && (hubs.has(e.to) || (e.both && hubs.has(e.from)))).map((e) => e.id));
+}
+
+/** The `used by <n>` pill of each hub: 18 px tall, centred on its box's bottom edge (diagram contract, Parts many parts use). */
+export const USED_BY = { h: 18, pad: 7, size: 11, weight: 500 as const };
+export function usedByBoxes(view: Pick<DiagramView, "nodes" | "edges">, rects: Map<string, Rect>): Map<string, Rect> {
+  const out = new Map<string, Rect>();
+  for (const [id, n] of hubsOf(view)) {
+    const r = rects.get(id);
+    if (!r) continue;
+    const w = Math.ceil(widthOf(`used by ${n}`, { size: USED_BY.size, weight: USED_BY.weight })) + USED_BY.pad * 2;
+    out.set(id, { x: r.x + r.w / 2 - w / 2, y: r.y + r.h - USED_BY.h / 2, w, h: USED_BY.h });
+  }
+  return out;
 }
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
@@ -523,6 +579,29 @@ const opposite = (s: [Side, Side]) => NORMAL[s[0]][0] === -NORMAL[s[1]][0] && NO
  * spread up to 16 px apart, ordered by where the other end is, so lines never stack.
  */
 export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: string; postOf?: string | null }, rects: Map<string, Rect>, o: RouteOptions = {}): Map<string, EdgeRoute> {
+  // A hub's connections from its users are hidden: the view is routed as if they were not there, labels kept 4 px off
+  // the hubs' marks; they are then routed after it by the same rules, their labels clear of the view's, so showing
+  // one moves nothing. A hidden connection shares no trunk.
+  if (o.hubs !== false) {
+    const hidden = hiddenEdges(view);
+    const marks = [...usedByBoxes(view, rects).values()];
+    if (hidden.size || marks.length) {
+      const shown = routeEdges({ ...view, edges: view.edges.filter((e) => !hidden.has(e.id)) }, rects, { ...o, hubs: false, avoid: [...(o.avoid ?? []), ...marks] });
+      if (!hidden.size) return shown;
+      const post = styleOf(postOf(view, o)).post;
+      const labels = view.edges.flatMap((e) => {
+        const at = shown.get(e.id)?.labelAt, w = e.label ? labelWidth(e.label, post) : 0;
+        return at && e.label ? [{ x: at.x - w / 2, y: at.y - LABEL.h / 2, w, h: LABEL.h }] : [];
+      });
+      const all = routeEdges(view, rects, { ...o, hubs: false, trunks: false, labelsFor: hidden, avoid: [...(o.avoid ?? []), ...marks, ...labels] });
+      const out = new Map<string, EdgeRoute>();
+      for (const e of view.edges) {
+        const r = hidden.has(e.id) ? all.get(e.id) : shown.get(e.id);
+        if (r) out.set(e.id, hidden.has(e.id) ? { ...r, hidden: true } : r);
+      }
+      return out;
+    }
+  }
   const S = styleOf(postOf(view, o));
   type End = { e: DiagramEdge; end: 0 | 1; id: string; side: Side; other: Point };
   const ends: End[] = [];
@@ -602,7 +681,7 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
   // a run of angles at most 30° apart, taken greedily from the smallest — are one end of the side.
   const order = new Map(view.edges.map((e, i) => [e.id, i]));
   const trunkEnds = new Map<End, End[]>();
-  for (const [k, list] of groups) {
+  for (const [k, list] of o.trunks === false ? [] : groups) {
     const r = rects.get(list[0].id)!, side = list[0].side, mid = sideMid(r, side), [nx, ny] = NORMAL[side];
     const angle = (p: End) => { const vx = p.other.x - mid.x, vy = p.other.y - mid.y; return Math.atan2(nx * vy - ny * vx, nx * vx + ny * vy); };
     const byStyle = new Map<string, End[]>();
@@ -706,14 +785,14 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
   // 4 px clear of parts, names, texts and other labels, its box within 10 px of its curve; among those, the nearest
   // whose box, grown by 2 px, touches no other drawn connection's line or trunk, when there is one; with none free,
   // it is left out.
-  const drawn = new Map([...routes].map(([id, r]) => [id, drawnLine(r)]));
+  const drawn = new Map([...routes].map(([id, r]) => { const pts = drawnLine(r); return [id, { pts, box: pointsBox(pts) }] as const; }));
   for (const e of view.edges) {
     const route = routes.get(e.id);
-    if (!route || !e.label || o.labels === false) continue;
+    if (!route || !e.label || o.labels === false || (o.labelsFor && !o.labelsFor.has(e.id))) continue;
     const along = alongRoute(route);
     const half = labelWidth(e.label, S.post) / 2, hh = LABEL.h / 2, curve = Array.from({ length: 129 }, (_, i) => along(i / 128));
-    const others = [...drawn].filter(([id]) => id !== e.id).map(([, pts]) => pts);
-    const clearOfLines = (p: Point) => { const box = { x: p.x - half - 2, y: p.y - hh - 2, w: half * 2 + 4, h: hh * 2 + 4 }; return !others.some((pts) => polylineMeetsRect(pts, box)); };
+    const others = [...drawn].filter(([id]) => id !== e.id).map(([, line]) => line);
+    const clearOfLines = (p: Point) => { const box = { x: p.x - half - 2, y: p.y - hh - 2, w: half * 2 + 4, h: hh * 2 + 4 }; return !others.some((l) => polylineMeetsRect(l.pts, box, l.box)); };
     route.labelAt = nearestFree(along(0.5), curve, half, hh, [...blocked, ...taken], 4, 10, clearOfLines);
     // Its drawn box: later labels keep their 4 px from it, badges only stay off it.
     if (route.labelAt) taken.push({ x: route.labelAt.x - half, y: route.labelAt.y - hh, w: half * 2, h: LABEL.h });
@@ -750,10 +829,12 @@ export function viewBounds(view: Pick<DiagramView, "nodes" | "edges" | "texts"> 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   const add = (r: Rect) => { minX = Math.min(minX, r.x); minY = Math.min(minY, r.y); maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h); };
   for (const r of rects.values()) add(r);
+  // The hubs' `used by` marks are in the drawing's bounds.
+  for (const r of usedByBoxes(view, rects).values()) add(r);
   if (texts) for (const t of view.texts) add({ x: t.x, y: t.y, ...measureText(t) });
   for (const e of view.edges) {
     const r = routes.get(e.id);
-    if (!r) continue;
+    if (!r || r.hidden) continue;
     add(curveBounds(r));
     if (r.labelAt && e.label) { const w = labelWidth(e.label, S.post); add({ x: r.labelAt.x - w / 2, y: r.labelAt.y - LABEL.h / 2, w, h: LABEL.h }); }
     if (steps && e.step !== null) { const radius = S.BADGE.r + 3; add({ x: r.badgeAt.x - radius, y: r.badgeAt.y - radius, w: 2 * radius, h: 2 * radius }); }
@@ -773,7 +854,8 @@ const segmentsCross = (a: Point, b: Point, c: Point, d: Point) => {
  * the layout report reads (api contract, Layout report): the report and the layout count alike.
  */
 export function countCrossings(edges: readonly Pick<DiagramEdge, "id" | "from" | "to">[], routes: Map<string, EdgeRoute>): number {
-  const drawn = edges.filter((e) => routes.has(e.id));
+  // Only what is drawn counts: never a connection a hub hides.
+  const drawn = edges.filter((e) => routes.has(e.id) && !routes.get(e.id)!.hidden);
   const lines = new Map(drawn.map((e) => [e.id, drawnLine(routes.get(e.id)!)]));
   let crossings = 0;
   for (let i = 0; i < drawn.length; i++) for (const b of drawn.slice(i + 1)) {

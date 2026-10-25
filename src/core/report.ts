@@ -48,7 +48,8 @@ export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, v
   const whole = doc.views.find((v) => v.id === viewId) ?? doc.views[0];
   const post = isPostView(whole);
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
-  const edges = view.edges.filter((e) => routes.has(e.id));
+  // What is drawn: never a connection a hub hides (diagram contract, Parts many parts use).
+  const edges = view.edges.filter((e) => routes.has(e.id) && !routes.get(e.id)!.hidden);
 
   const crossings = countCrossings(edges, routes);
 

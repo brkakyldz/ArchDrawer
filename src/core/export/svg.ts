@@ -1,6 +1,6 @@
 import {
   COMPACT, contentBox, edgesOverParts, GROUP, INSIDE, LABEL, labelWidth, layoutRects, measureNode, measureText, postOf, styleOf, textStyle,
-  routeEdges, trunksOf, viewBounds, type EdgeRoute, type MeasureOptions, type Rect, type Trunk,
+  hubsOf, routeEdges, trunksOf, USED_BY, usedByBoxes, viewBounds, type EdgeRoute, type MeasureOptions, type Rect, type Trunk,
 } from "../geometry";
 import { CARD_SHAPE, COMPACT_SHAPE, OUTLINE, shapeGeometry, shapeOf, type PartShape } from "../shapes";
 import { iconOf, KINDS, type DiagramEdge, type DiagramNode, type DiagramText, type DiagramView, type Kind } from "../model";
@@ -82,7 +82,18 @@ function glowUnder(r: Rect, color: string, P: Palette, prefix: string, group = f
 
 /** A connection's trace over a part it passes behind (diagram contract, Traces): its path, colour and dash. */
 export interface Trace { edge: string; d: string; stroke: string; dash: string; offset?: number }
-export interface NodeMarkupOptions extends MarkupOptions, MeasureOptions { prefix?: string; traces?: Trace[] }
+export interface NodeMarkupOptions extends MarkupOptions, MeasureOptions {
+  prefix?: string; traces?: Trace[];
+  /** A hub's `used by <n>` mark and its box (diagram contract, Parts many parts use). */
+  usedBy?: { n: number; box: Rect };
+}
+
+/** The `used by <n>` pill: `surface2` edged with `line`, its text 11 px, weight 500, muted, centred. */
+function usedByMarkup(u: { n: number; box: Rect }, P: Palette, o: MarkupOptions): string {
+  const b = u.box;
+  return `<g data-used-by="${u.n}"${tid(o, "node-used-by")}${o.testIds ? ` data-count="${u.n}"` : ""}><rect x="${n(b.x + 0.5)}" y="${n(b.y + 0.5)}" width="${n(b.w - 1)}" height="${n(b.h - 1)}" rx="${n((b.h - 1) / 2)}" fill="${P.surface2}" stroke="${P.line}" stroke-width="1"/>` +
+    `<text x="${n(b.x + b.w / 2)}" y="${n(baseline(b.y, USED_BY.h, USED_BY.size))}" text-anchor="middle" font-size="${USED_BY.size}" font-weight="${USED_BY.weight}" fill="${P.muted}">used by ${u.n}</text></g>`;
+}
 
 /** A connection's stroke and dash as `edgeMarkup` draws it: its gradient while in kind colours, else the neutral colour. */
 export const strokeOf = (e: DiagramEdge, tone: Tone, prefix: string, P: Palette) => (tone === "kind" ? `url(#${prefix}-g-${e.id})` : P.edge);
@@ -278,6 +289,7 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
     y += box.lines.length * CARD.line;
     if (box.sub) out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(cx)}" y="${n(baseline(y, CARD.subLine, T.sub.size))}" text-anchor="middle" font-size="${T.sub.size}" fill="${P.muted}">${esc(box.sub)}</text>`);
     out.push(inside(g.front.x + g.front.w - 8 - INSIDE, g.front.y + 8));
+    if (o.usedBy) out.push(usedByMarkup(o.usedBy, P, o));
     return out.join("");
   }
 
@@ -296,6 +308,8 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
   if (box.sub) out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(cb.x + cb.w - insideW)}" y="${n(baseline(cy - 9, 18, T.subMono.size))}" text-anchor="end" font-family="${esc(FONT_MONO)}" font-size="${T.subMono.size}" fill="${P.soft}">${esc(box.sub)}</text>`);
   // 12 px inside the right end of the front body, centred on its height.
   out.push(inside(g.front.x + g.front.w - 12 - INSIDE, g.front.y + g.front.h / 2 - INSIDE / 2));
+  // The `used by` mark, after the text, centred on the box's bottom edge.
+  if (o.usedBy) out.push(usedByMarkup(o.usedBy, P, o));
   return out.join("");
 }
 
@@ -426,7 +440,8 @@ export function drawView(view: DiagramView, P: Palette, o: DrawOptions = {}): Dr
   // labels and badges sit in free spots, so drawing them before the parts covers nothing.
   for (const e of view.edges) {
     const r = routes.get(e.id);
-    if (!r) continue;
+    // A connection a hub hides is never drawn by an export (diagram contract, Parts many parts use).
+    if (!r || r.hidden) continue;
     const id = esc(e.id);
     const tone = toneOf(e), to = kind.get(e.to)!;
     const label = r.labelAt && e.label && o.labels !== false ? `<g data-edge-label="${id}" data-testid="edge-label-${id}">${labelMarkup(e.label, r.labelAt, P, o.post, tone === "kind" ? P.kinds[to] : P.line)}</g>` : "";
@@ -445,7 +460,11 @@ export function drawView(view: DiagramView, P: Palette, o: DrawOptions = {}): Dr
   // Each group's head goes over the connections and under the parts (diagram contract, A group's name).
   for (const node of order.filter((x) => x.form === "group")) out.push(`<g data-group-head="${esc(node.id)}">${groupHeadMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
   const traces = tracesOf(view, rects, routes, P, prefix);
-  for (const node of order.filter((x) => x.form !== "group")) out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="${node.form}"${opens(node)}>${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix, traces: traces.get(node.id) })}</g>`);
+  const used = hubsOf(view), marks = usedByBoxes(view, rects);
+  for (const node of order.filter((x) => x.form !== "group")) {
+    const usedBy = marks.has(node.id) ? { n: used.get(node.id)!, box: marks.get(node.id)! } : undefined;
+    out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="${node.form}"${opens(node)}>${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix, traces: traces.get(node.id), usedBy })}</g>`);
+  }
   for (const t of texts) out.push(`<g data-text-id="${esc(t.id)}" data-size="${t.size}">${textMarkup(t, P)}</g>`);
   return { body: out.join(""), defs: sharedDefs(P, prefix), bounds: viewBounds({ ...view, texts }, rects, routes, true, o.steps), rects, routes };
 }

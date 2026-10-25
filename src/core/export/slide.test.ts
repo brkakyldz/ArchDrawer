@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { validateFile, type DiagramDocument, type DiagramStep } from "../model";
+import { hiddenEdges } from "../geometry";
 import { normalizeFile } from "../normalize";
 import { textWidth } from "../text";
 import { renderShare, SWITCH_PRESETS } from "./share";
@@ -74,13 +75,16 @@ describe("the slide image (PRES-1, PRES-3)", () => {
     const d = deck([...STEPS, { id: "s4", parts: ["guest_api", "run_service", "scope"], text: "Three parts", note: "" }]);
     for (let i = 1; i < slideCount(d); i++) {
       const parts = new Set(d.steps![i - 1].parts);
-      const want = d.views[0].edges.filter((e) => parts.has(e.from) && parts.has(e.to)).map((e) => e.id).sort();
+      // A line a hub hides is drawn by no export, a slide included (diagram contract, Parts many parts use).
+      const hidden = hiddenEdges(d.views[0]);
+      const want = d.views[0].edges.filter((e) => parts.has(e.from) && parts.has(e.to) && !hidden.has(e.id)).map((e) => e.id).sort();
       const svg = renderSlide(d, i, OPTS).svg;
       expect(litIds(svg, "edge")).toEqual(want);
-      expect(groups(svg, "edge").size).toBe(d.views[0].edges.length);
+      expect(groups(svg, "edge").size).toBe(d.views[0].edges.length - hidden.size);
     }
-    // guest_api → run_service and guest_api → scope are lit; guest_api → domain_svc has one end out.
-    expect(litIds(renderSlide(d, 4, OPTS).svg, "edge")).toHaveLength(2);
+    // guest_api → run_service is lit; guest_api → scope would be, but scope is a hub that hides it (#186);
+    // guest_api → domain_svc has one end out.
+    expect(litIds(renderSlide(d, 4, OPTS).svg, "edge")).toHaveLength(1);
   });
 
   it("dims a group unless the step names it; a lit group does not light what it holds", () => {

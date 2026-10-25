@@ -110,6 +110,9 @@ svg.i { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin
 .drop-ring { fill: none; stroke: var(--accent); }
 .nd[data-drop-target="true"][data-drag-dim="true"] { opacity: 1; }
 .ed .hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; cursor: pointer; }
+/* A connection a hub hides: not visible, taking no pointer input (ui contract, Parts many parts use). */
+.ed[data-hidden="true"] { visibility: hidden; }
+.ed[data-hidden="true"] * { pointer-events: none !important; }
 .ed .line, .ed .glow { pointer-events: none; }
 .tk .trunk-hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; }
 /* Guides and equal gaps while dragging (ui contract, Dragging): editor-only. */

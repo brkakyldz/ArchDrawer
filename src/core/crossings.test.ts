@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { countCrossings, layoutRects, routeEdges } from "./geometry";
-import { fewerCrossings, layoutView } from "./layout";
-import { fillDefaults, type DiagramView } from "./model";
+import { fewerCrossings, layoutOnce, layoutView } from "./layout";
+import { fillDefaults, type DiagramNode, type DiagramView } from "./model";
 import { edge, node } from "./testkit";
 
 /** LAYOUT-6 (#175): barycentre sweeps reorder movable parts within rows and columns to cut crossings. */
@@ -103,12 +103,19 @@ describe("a laid-out view never draws more crossings with the sweeps than withou
 });
 
 describe("the reordered layout is kept only when it draws no more crossings (step 5)", () => {
-  it("the hotel without its place hints: the sweep lowers the cells' crossings but would draw more, so the plain layout stays", () => {
+  // Since #186 the count is of drawn lines, a hub's hidden ones left out: the hotel's sweep, which drew more when every
+  // line counted, now draws as few (1 and 1) and is kept.
+  it("the hotel without its place hints: the sweep is kept exactly when it draws no more crossings than the plain layout", () => {
     const raw = JSON.parse(readFileSync("tests/fixtures/hotel.archdraw.json", "utf8"));
     const v = fillDefaults(raw).views[0] as DiagramView;
     const bare = { ...v, nodes: v.nodes.map(({ x: _x, y: _y, ...n }) => ({ ...n, place: null })) };
-    const plain = layoutView(bare, { reorder: false }), kept = layoutView(bare);
-    expect(kept.nodes.map((n) => [n.id, n.x, n.y])).toEqual(plain.nodes.map((n) => [n.id, n.x, n.y]));
+    const plain = layoutOnce(bare, { reorder: false, post: false }), sweep = layoutOnce(bare, { post: false }), kept = layoutView(bare);
+    const edges = bare.edges.map((e, i) => ({ ...e, id: e.id ?? ` ${i}` }));
+    const drawn = (lv: { nodes: DiagramNode[] }) => { const placed = { ...bare, nodes: lv.nodes, edges }; return countCrossings(edges, routeEdges(placed, layoutRects(placed))); };
+    const at = (lv: { nodes: DiagramNode[] }) => lv.nodes.map((n) => [n.id, n.x, n.y]);
+    expect(at(sweep)).not.toEqual(at(plain));
+    expect(at(kept)).toEqual(at(drawn(sweep) <= drawn(plain) ? sweep : plain));
+    expect(drawn(kept)).toBeLessThanOrEqual(drawn(plain));
   });
 });
 

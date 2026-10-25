@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fillDefaults3, validateDocument3, type Document3, type File3 } from "./file3";
-import { mapAsOneView, panelOrder, splitMap, storyDraft } from "./map";
+import { mapAsOneView, panelDepths, panelOrder, splitMap, storyDraft } from "./map";
 import { prepareChannel } from "./simple";
 import { prepareLinkedIn } from "./export/feed";
 import { isMapView, layoutReport } from "./report";
@@ -132,6 +132,7 @@ describe("what a system choice's channels are told from (ui contract, Simple ver
   it("lists the views in panel order: links depth first in the order of the linking parts, then the views no link reaches", () => {
     const v = (id: string, ...links: string[]) => ({ id, nodes: links.map((l) => ({ detail: l })) });
     expect(panelOrder([v("m", "b", "a"), v("a", "a2"), v("b"), v("stray"), v("a2")]).map((x) => x.id)).toEqual(["m", "b", "a", "a2", "stray"]);
+    expect(panelDepths([v("m", "b", "a"), v("a", "a2"), v("b"), v("stray"), v("a2")]).map((x) => `${x.view.id}:${x.depth}`)).toEqual(["m:0", "b:1", "a:1", "a2:2", "stray:1"]);
   });
   it("the simple README, presentation and LinkedIn post of the system choice draw the map's and detail views' parts, skipping those with an inside", () => {
     const want = ["api", "cache", "log", "web", "worker"];

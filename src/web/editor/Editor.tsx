@@ -14,7 +14,7 @@ import { Icon } from "../ui/Icon";
 import { Logo } from "../ui/Logo";
 import { AiPanel, type ScopeChoice } from "./AiPanel";
 import { Search, type Found, type Hit } from "./Find";
-import { ViewsMenu } from "./Views";
+import { hasViewsPanel, useViewsFolded, ViewsPanel } from "./Views";
 import { ChannelStart, ChannelTabs, EmptyStage, OutdatedBanner } from "./Channels";
 import { StepsPanel } from "./Steps";
 import { drawFromFacts, LinkedInPanel, LinkedInStart, RunLine } from "./LinkedIn";
@@ -211,6 +211,9 @@ export function Editor({ id, choice: wantedChoice, channel: wantedChannel, view:
   const [pinned, setPinnedState] = useState(() => { try { return localStorage.getItem(PIN_KEY) === "1"; } catch { return false; } });
   const setPinned = (on: boolean) => { try { if (on) localStorage.setItem(PIN_KEY, "1"); else localStorage.removeItem(PIN_KEY); } catch { /* private mode */ } setPinnedState(on); };
   const narrow = useNarrow();
+  const [viewsFolded, setViewsFolded] = useViewsFolded();
+  /** The views panel shows for more than one choice, or one choice whose overview holds more than one view. */
+  const panelOn = !!whole && hasViewsPanel(whole);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuEl = useRef<HTMLDivElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -401,6 +404,15 @@ export function Editor({ id, choice: wantedChoice, channel: wantedChannel, view:
     ro.observe(el);
     return () => ro.disconnect();
   }, [doc !== null]);
+
+  /** A views-panel entry: the view in the overview channel of its choice, fitted (ui contract, Choices and the views panel). */
+  const goEntry = useCallback((c: string, v: string) => {
+    setMenuOpen(false);
+    if (c === choiceRef.current) { goView(v); return; }
+    // The other choice's document shows on the next render; the view is gone to once it does.
+    goTo.current = v;
+    setCid(c);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Go to a view of any channel, fitted; with `focus`, select that component and move the view further only if it is still off screen. */
   const goView = useCallback((v: string, next?: DiagramDocument, focus?: string) => {
@@ -774,7 +786,7 @@ export function Editor({ id, choice: wantedChoice, channel: wantedChannel, view:
   );
 
   return (
-    <div className={`app${side ? " with-side" : ""}`} data-testid="editor" data-theme={doc.theme} data-choice={choiceId ?? ""} data-channel={chan} data-view={view.id}>
+    <div className={`app${side ? " with-side" : ""}${panelOn && !narrow ? ` with-views${viewsFolded ? " views-folded" : ""}` : ""}`} data-testid="editor" data-theme={doc.theme} data-choice={choiceId ?? ""} data-channel={chan} data-view={view.id}>
       <header className="bar">
         <div className="where">
           <button className="brand-link" title="All drawings" aria-label="archdrawer: all drawings" onClick={() => navigate("/")}><Logo wordmark={!narrow} /></button>
@@ -789,6 +801,7 @@ export function Editor({ id, choice: wantedChoice, channel: wantedChannel, view:
                   {repoEl}
                   {tabsEl}
                   {crumbsEl}
+                  {panelOn && <ViewsPanel whole={whole!} choice={choiceId!} channel={chan} view={view.id} onGo={goEntry} folded={false} onFold={() => {}} inMenu />}
                   <div className="row">{undoEl}{redoEl}{themeEl}{stepsEl}{sublinesEl}</div>
                 </div>
               )}
@@ -796,7 +809,6 @@ export function Editor({ id, choice: wantedChoice, channel: wantedChannel, view:
           ) : (
             repoEl
           )}
-          {narrow && chan === "overview" && <ViewsMenu doc={doc} current={view.id} goView={(v) => goView(v)} />}
           <span className="save" data-testid="save-status" data-state={save.status} role="status">
             <i />{save.status === "saved" ? "Saved" : save.status === "saving" ? "Saving…" : save.error}
             {save.status === "error" && <button className="btn" data-testid="save-retry" onClick={save.retry}>Retry</button>}
@@ -828,10 +840,10 @@ export function Editor({ id, choice: wantedChoice, channel: wantedChannel, view:
         {!narrow && (
           <div className="nav-row">
             {tabsEl}{crumbsEl}
-            {chan === "overview" && <ViewsMenu doc={doc} current={view.id} goView={(v) => goView(v)} />}
           </div>
         )}
       </header>
+      {panelOn && !narrow && <ViewsPanel whole={whole!} choice={choiceId!} channel={chan} view={view.id} onGo={goEntry} folded={viewsFolded} onFold={setViewsFolded} />}
 
       <main className="stage" ref={stageEl}>
         {blank ? <EmptyStage channel={chan}>

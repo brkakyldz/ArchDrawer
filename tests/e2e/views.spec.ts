@@ -58,8 +58,7 @@ test("going to another view shows it at its own fitted zoom from its first frame
     for (let i = 0; i < 14; i++) f.views[0].nodes.push({ ...db, id: `part${i}`, label: `Part ${i}`, place: { row: 3, col: i } });
     return f;
   })());
-  await page.getByTestId("views-button").click();
-  await page.getByTestId("view-item-api-inside").click();
+  await page.getByTestId("views-entry-api-inside").click();
   await expect(page.getByTestId("editor")).toHaveAttribute("data-view", "api-inside");
   await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
   const seen = await page.evaluate(() => (window as unknown as { seen: string[] }).seen);

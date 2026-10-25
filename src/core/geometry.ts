@@ -253,6 +253,44 @@ export function edgesOverParts(view: Pick<DiagramView, "nodes" | "edges">, rects
   return out;
 }
 
+/** The part of a cubic curve between `a` and `b` (0 ≤ a < b ≤ 1), as a cubic of its own (de Casteljau). */
+function subCurve(c: Curve, a: number, b: number): Curve {
+  const lerp = (p: Point, q: Point, t: number): Point => ({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t });
+  const split = (k: Curve, t: number): [Curve, Curve] => {
+    const ab = lerp(k.p0, k.c1, t), bc = lerp(k.c1, k.c2, t), cd = lerp(k.c2, k.p1, t);
+    const abc = lerp(ab, bc, t), bcd = lerp(bc, cd, t), mid = lerp(abc, bcd, t);
+    return [{ p0: k.p0, c1: ab, c2: abc, p1: mid }, { p0: mid, c1: bcd, c2: cd, p1: k.p1 }];
+  };
+  const left = split(c, b)[0];
+  return b > 0 && a > 0 ? split(left, a / b)[1] : left;
+}
+
+/**
+ * The pieces of a curve inside a box, as path data: the same curve, cut where it crosses the box's edges. The
+ * editor draws a part's traces with it, so the part's element measures as the part (a clipped whole path would not).
+ */
+export function curveInside(c: Curve, r: Rect, steps = 96): string {
+  const inside = (t: number) => { const p = bezierAt(c, t); return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h; };
+  // Where the inside changes between two samples, the edge is found by halving the step.
+  const edge = (lo: number, hi: number, inAtLo: boolean) => {
+    for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (inside(mid) === inAtLo) lo = mid; else hi = mid; }
+    return inAtLo ? lo : hi;
+  };
+  const spans: [number, number][] = [];
+  let start = inside(0) ? 0 : -1;
+  for (let i = 1; i <= steps; i++) {
+    const t0 = (i - 1) / steps, t1 = i / steps, now = inside(t1);
+    if (start < 0 && now) start = edge(t0, t1, false);
+    else if (start >= 0 && !now) { spans.push([start, edge(t0, t1, true)]); start = -1; }
+  }
+  if (start >= 0) spans.push([start, 1]);
+  const f = (v: number) => String(Math.round(v * 100) / 100);
+  return spans.filter(([a, b]) => b > a).map(([a, b]) => {
+    const k = subCurve(c, a, b);
+    return `M${f(k.p0.x)},${f(k.p0.y)} C${f(k.c1.x)},${f(k.c1.y)} ${f(k.c2.x)},${f(k.c2.y)} ${f(k.p1.x)},${f(k.p1.y)}`;
+  }).join(" ");
+}
+
 /**
  * Points along a curve that measure what it passes over: both ends, and inner samples shifted off
  * the middle so two mirrored lines never cross exactly on a sample point. The routing's

@@ -105,11 +105,13 @@ export function tracesOf(view: Pick<DiagramView, "nodes" | "edges">, rects: Map<
 }
 
 /** A part's traces, clipped to its box: thin, faint, no glow and no arrowhead. */
-function traceMarkup(id: string, r: Rect, traces: Trace[] | undefined, prefix: string): string {
+function traceMarkup(r: Rect, traces: Trace[] | undefined): string {
   if (!traces?.length) return "";
-  const cid = `${prefix}-tc-${esc(id)}`;
-  return `<clipPath id="${cid}"><rect x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}"/></clipPath><g clip-path="url(#${cid})" pointer-events="none">` +
-    traces.map((t) => `<path class="trace" data-edge-of="${esc(t.edge)}" d="${t.d}" fill="none" stroke="${t.stroke}" stroke-width="1" opacity="0.25"${t.dash}/>`).join("") + "</g>";
+  // A viewport of the part's box in the drawing's own coordinates clips the whole path to it, and keeps the part's
+  // box its own: a clip-path would leave the whole path in the part's bounding box (editor and export measure it).
+  const box = `x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}"`;
+  return `<svg class="traces" ${box} viewBox="${n(r.x)} ${n(r.y)} ${n(r.w)} ${n(r.h)}" overflow="hidden" pointer-events="none">` +
+    traces.map((t) => `<path class="trace" data-edge-of="${esc(t.edge)}" d="${t.d}" fill="none" stroke="${t.stroke}" stroke-width="1" opacity="0.25"${t.dash}/>`).join("") + "</svg>";
 }
 
 /**
@@ -255,7 +257,7 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
   out.push(`<path d="${d}" fill="url(#${prefix}-tint-${node.kind})" pointer-events="none"/>`);
   out.push(shapeMarks(shape, compact, post, r, g.front, P, K, prefix, !!node.detail));
   // Connections passing behind the part show as a trace over its outline, under its icon and text.
-  out.push(traceMarkup(node.id, r, o.traces, prefix));
+  out.push(traceMarkup(r, o.traces));
   const ig = `${prefix}-ig-${node.kind}`;
   const cb = contentBox(node, r, post);
 

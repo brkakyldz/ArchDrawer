@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
-import { edgesOverParts, layoutRects, measureText, routeEdges, textStyle, type EdgeRoute, type Rect } from "../../core/geometry";
+import { curveInside, edgesOverParts, layoutRects, measureText, routeEdges, textStyle, type EdgeRoute, type Rect } from "../../core/geometry";
 import { badgeMarkup, drawOrder, edgeMarkup, groupHeadMarkup, labelMarkup, nodeMarkup, dashOf, sharedDefs, strokeOf, textMarkup, toneOf, type Trace } from "../../core/export/svg";
 import { descendants, isPostView, LIMITS, type DiagramEdge, type DiagramNode, type DiagramText, type Kind } from "../../core/model";
 import type { Palette } from "../../core/theme";
@@ -177,8 +177,10 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   const [space, setSpace] = useState(false);
   useEffect(() => {
     const typing = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.("input, textarea, select, [contenteditable]");
+    // Space on a views-panel entry goes to its view (ui contract, Choices and the views panel), so it is not held for panning there.
+    const entry = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest?.('[data-testid="views-panel"]');
     const down = (e: KeyboardEvent) => {
-      if (e.code !== "Space" || typing(e.target)) return;
+      if (e.code !== "Space" || typing(e.target) || entry(e.target)) return;
       e.preventDefault();
       if (!spaceRef.current) { spaceRef.current = true; setSpace(true); }
     };
@@ -365,7 +367,8 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   const tracesFor = (id: string): string | undefined => {
     const list = over.filter((o) => o.node === id).map((o) => {
       const e = view.edges.find((x) => x.id === o.edge)!;
-      return { edge: e.id, d: routes.get(e.id)!.d, stroke: strokeOf(e, toneOf(e, inFocus(e)), "ad", P), dash: dashOf(e) };
+      // The pieces of the line inside the part: the part's element keeps the part's own box (node-<id> measures as the part).
+      return { edge: e.id, d: curveInside(routes.get(e.id)!, rects.get(id)!), stroke: strokeOf(e, toneOf(e, inFocus(e)), "ad", P), dash: dashOf(e) };
     });
     // A string, so the memoised part draws again only when its traces change.
     return list.length ? JSON.stringify(list) : undefined;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { edgesOverParts, layoutRects, routeEdges } from "../geometry";
+import { bezierAt, curveInside, edgesOverParts, layoutRects, routeEdges } from "../geometry";
 import { fillDefaults, type DiagramView } from "../model";
 import { edge, node } from "../testkit";
 import { PALETTES } from "../theme";
@@ -28,9 +28,9 @@ describe("traces of a line over the parts it passes behind (#171)", () => {
       expect(trace[1]).toBe(routes.get("ab")!.d);
       expect(trace[2]).toBe(PALETTES[theme].edge);
       expect(trace[3]).toContain('stroke-dasharray="6 5"');
-      // Clipped to the part's box; over its outline, under its label.
+      // Clipped to the part's box (a viewport of the box in the drawing's coordinates); over its outline, under its label.
       const r = rects.get("mid")!;
-      expect(mid).toContain(`<clipPath id="ad-tc-mid"><rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}"/></clipPath>`);
+      expect(mid).toContain(`<svg class="traces" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" viewBox="${r.x} ${r.y} ${r.w} ${r.h}" overflow="hidden" pointer-events="none">`);
       expect(mid.indexOf('class="body"')).toBeLessThan(mid.indexOf('class="trace"'));
       expect(mid.indexOf('class="trace"')).toBeLessThan(mid.indexOf("<text"));
       // No glow and no arrowhead on a trace; no other part has one.
@@ -46,5 +46,28 @@ describe("traces of a line over the parts it passes behind (#171)", () => {
     const mid = partOf(drawView(v, PALETTES.light, { prefix: "ad" }).body, "mid");
     expect(mid).toContain('data-edge-of="ab" d="');
     expect(mid).toMatch(/data-edge-of="ab"[^>]*stroke="url\(#ad-g-ab\)"/);
+  });
+});
+
+describe("the pieces of a line inside a part (the editor's traces)", () => {
+  it("is the same curve cut at the part's edges: every point of it inside the box, both ends on its edges", () => {
+    const v = view(), rects = layoutRects(v), routes = routeEdges(v, rects);
+    const r = rects.get("mid")!, route = routes.get("ab")!;
+    const d = curveInside(route, r);
+    const pieces = d.split("M").filter(Boolean);
+    expect(pieces).toHaveLength(1);
+    const [p0, c1, c2, p1] = pieces[0].replace("C", "").trim().split(/\s+/).map((xy) => { const [x, y] = xy.split(",").map(Number); return { x, y }; });
+    for (let i = 0; i <= 20; i++) {
+      const p = bezierAt({ p0, c1, c2, p1 }, i / 20);
+      expect(p.x).toBeGreaterThanOrEqual(r.x - 0.05); expect(p.x).toBeLessThanOrEqual(r.x + r.w + 0.05);
+      expect(p.y).toBeGreaterThanOrEqual(r.y - 0.05); expect(p.y).toBeLessThanOrEqual(r.y + r.h + 0.05);
+      // On the original curve: the nearest of its samples is within a hundredth of a pixel or so.
+      const near = Math.min(...Array.from({ length: 2001 }, (_, k) => { const q = bezierAt(route, k / 2000); return Math.hypot(q.x - p.x, q.y - p.y); }));
+      expect(near).toBeLessThan(0.5);
+    }
+    const onEdge = (q: { x: number; y: number }) => Math.min(Math.abs(q.x - r.x), Math.abs(q.x - r.x - r.w), Math.abs(q.y - r.y), Math.abs(q.y - r.y - r.h));
+    expect(onEdge(p0)).toBeLessThan(0.05); expect(onEdge(p1)).toBeLessThan(0.05);
+    // A box the line misses has no piece.
+    expect(curveInside(route, { x: r.x, y: r.y + 1000, w: r.w, h: r.h })).toBe("");
   });
 });

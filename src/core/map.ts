@@ -141,23 +141,26 @@ function mergeLifted(list: Connection[], factsOf: (id: string) => Set<string>, r
 }
 
 /**
- * An overview's views in the views panel's order (ui contract, Choices and the views panel): the first view; then
- * the views `detail` links reach from it, depth first, each after the view linking to it, in the order of the
- * linking parts; then the views no link reaches, in file order.
+ * An overview's views as the views panel lists them (ui contract, Choices and the views panel), with their depth:
+ * the first view at 0; then the views `detail` links reach from it, depth first, each after the view linking to it,
+ * in the order of the linking parts, one level deeper; then the views no link reaches, in file order, at 1.
  */
-export function panelOrder<V extends { id: string; nodes: { detail: string | null }[] }>(views: V[]): V[] {
-  if (!views.length) return views;
+export function panelDepths<V extends { id: string; nodes: { detail: string | null }[] }>(views: V[]): { view: V; depth: number }[] {
+  if (!views.length) return [];
   const byId = new Map(views.map((v) => [v.id, v]));
-  const out: V[] = [];
+  const out: { view: V; depth: number }[] = [];
   const seen = new Set<string>();
-  const visit = (v: V) => {
+  const visit = (v: V, depth: number) => {
     if (seen.has(v.id)) return;
-    seen.add(v.id); out.push(v);
-    for (const n of v.nodes) { const next = n.detail ? byId.get(n.detail) : undefined; if (next) visit(next); }
+    seen.add(v.id); out.push({ view: v, depth });
+    for (const n of v.nodes) { const next = n.detail ? byId.get(n.detail) : undefined; if (next) visit(next, depth + 1); }
   };
-  visit(views[0]);
-  return [...out, ...views.filter((v) => !seen.has(v.id))];
+  visit(views[0], 0);
+  return [...out, ...views.filter((v) => !seen.has(v.id)).map((view) => ({ view, depth: 1 }))];
 }
+
+/** An overview's views in the views panel's order (`panelDepths`). */
+export const panelOrder = <V extends { id: string; nodes: { detail: string | null }[] }>(views: V[]): V[] => panelDepths(views).map((e) => e.view);
 
 /**
  * The map and its detail views as the one view a channel is told from (diagram contract, The map; ui contract,

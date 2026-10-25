@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { contentBox, layoutRects, measureNode, routeEdges } from "./geometry";
 import { PALETTES } from "./theme";
 import { drawView, nodeMarkup } from "./export/svg";
-import { CARD_SHAPE, COMPACT_SHAPE, outlineDepth, PART_SHAPES, SHAPE_OF_KIND, shapeGeometry, shapeOf } from "./shapes";
+import { CARD_SHAPE, COMPACT_SHAPE, outlineDepth, PART_SHAPES, SHAPE_OF_KIND, shapeGeometry, shapeOf, type PartShape } from "./shapes";
 import { KINDS, type DiagramNode, type DiagramView, type Kind } from "./model";
 
 /** LOOK-2 and LOOK-3 (#177, ADR 0014): an outline per kind, a content box that sizes the part, the sub-line switch. */
@@ -11,6 +11,19 @@ const part = (id: string, kind: Kind, form: DiagramNode["form"], extra: Partial<
 } as DiagramNode);
 
 describe("an outline per kind", () => {
+  it("every body's stroke reaches at most half a pixel past the part's box, the agent's wider one too", () => {
+    const r = { x: 10, y: 20, w: 200, h: 120 };
+    for (const kind of KINDS) for (const form of ["card", "compact"] as const) {
+      const html = nodeMarkup(part("p", kind, form), r, PALETTES.light);
+      const m = /class="body" data-shape="[a-z]+" d="([^"]+)"[^>]*stroke-width="([\d.]+)"/.exec(html)!;
+      // Each command's end point (its last two numbers); the outline's extremes are end points on the box's edges.
+      const ends = m[1].split(/(?=[MLCAZ])/).map((c) => [...c.matchAll(/-?\d+(?:\.\d+)?/g)].map((x) => Number(x[0]))).filter((v) => v.length >= 2).map((v) => v.slice(-2));
+      const xs = ends.map((e) => e[0]), ys = ends.map((e) => e[1]), half = Number(m[2]) / 2;
+      const reach = Math.max(r.x - Math.min(...xs), Math.max(...xs) - (r.x + r.w), r.y - Math.min(...ys), Math.max(...ys) - (r.y + r.h)) + half;
+      expect(reach, `${kind} ${form}`).toBeLessThanOrEqual(0.51);
+    }
+  });
+
   it("names each kind's data-shape, for a card, a compact part and a panel; a group is a group", () => {
     expect(SHAPE_OF_KIND).toEqual({ actor: "person", client: "window", api: "port", service: "card", worker: "stack", llm: "agent", external: "external", ops: "pulse", gate: "check", data: "store" });
     for (const kind of KINDS) for (const form of ["card", "compact", "panel"] as const) {
@@ -112,7 +125,25 @@ describe("ends attach to the outline", () => {
       expect(e.side1, id).toBe("b");
       const depth = outlineDepth(loops, r, "b", { x: e.p1.x, y: r.y + r.h });
       expect(depth, id).toBeGreaterThan(0.2);
-      expect(e.p1.y, id).toBeCloseTo(r.y + r.h - depth, 0);
+      // Ends are rounded to 0.1, so within 0.06 of the outline; an end left on the box would miss by the depth (review R177-2).
+      expect(Math.abs(e.p1.y - (r.y + r.h - depth)), id).toBeLessThan(0.06);
+    }
+  });
+
+  it("every end of every kind, card and compact, from all four directions lies on its part's outline", () => {
+    const near = (p: { x: number; y: number }, loops: { x: number; y: number }[][]) => Math.min(...loops.flatMap((l) => l.slice(1).map((b, i) => {
+      const a = l[i], dx = b.x - a.x, dy = b.y - a.y, len = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len));
+      return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+    })));
+    for (const kind of KINDS) for (const form of ["card", "compact"] as const) {
+      const v: DiagramView = { id: "v", title: "V", caption: { title: "", lede: "" }, postOf: null, texts: [], nodes: [
+        part("c", kind, form, { x: 400, y: 400 }), part("n", "service", "card", { x: 400, y: 0 }), part("s", "service", "card", { x: 400, y: 800 }),
+        part("w", "service", "card", { x: 0, y: 400 }), part("o", "service", "card", { x: 800, y: 400 })],
+        edges: ["n", "s", "w", "o"].map((id) => ({ id, from: id, to: "c", label: "", style: "call", both: false, step: null })) } as unknown as DiagramView;
+      const rects = layoutRects(v), routes = routeEdges(v, rects), r = rects.get("c")!;
+      const loops = shapeGeometry(shapeOf({ kind, form }) as PartShape, form === "compact", false, r).loops;
+      for (const id of ["n", "s", "w", "o"]) expect(near(routes.get(id)!.p1, loops), `${kind} ${form} from ${id}`).toBeLessThan(0.06);
     }
   });
 });

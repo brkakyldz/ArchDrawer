@@ -7,7 +7,7 @@ import { PALETTES } from "../theme";
 import { arrangeForFeed, explainInstruction, foldForFeed, importance, rearrangeForFeed } from "./feed";
 import { makeLinkedInView } from "../testkit";
 import { renderMermaid } from "./mermaid";
-import { DEFAULT_SHARE, FORMAT_IDS, FORMATS, readabilityOf, renderShare, shortenedIn, startSwitches, suggestionFor } from "./share";
+import { DEFAULT_SHARE, FORMAT_IDS, FORMATS, readabilityOf, renderShare, shortenedIn, startSwitches, subLinesOf, suggestionFor, withSubLines } from "./share";
 import { drawView, esc, shapeOf, sharedDefs as sharedDefsOf } from "./svg";
 import { shapeGeometry, type PartShape } from "../shapes";
 import { textWidth } from "../text";
@@ -154,6 +154,27 @@ describe("share image", () => {
           expect(img.svg.toLowerCase()).not.toContain("archdrawer");
           expect(img.svg.toLowerCase()).not.toContain("archdraw ");
         }
+  });
+
+  it("draws sub-lines as the view's switch says unless show-sub is given, each part kept around its own centre (review R177-4, R177-5)", () => {
+    const doc = shop(), v = doc.views[0];
+    expect(v.nodes.some((n) => n.form !== "group" && n.sub)).toBe(true);
+    const off: DiagramDocument = { ...doc, views: [{ ...v, subLines: false }, ...doc.views.slice(1)] };
+    const subs = (d: DiagramDocument, sub?: boolean) => renderShare(d, v.id, { ...DEFAULT_SHARE, theme: "light", ...(sub === undefined ? {} : { sub }) }).svg.includes('class="sub"');
+    expect([subs(doc), subs(off), subs(off, true), subs(doc, false)]).toEqual([true, false, true, false]);
+    expect([subLinesOf({}), subLinesOf({ subLines: false }), subLinesOf({ subLines: false }, true), subLinesOf({}, false), subLinesOf({}, null)]).toEqual([true, false, true, false, true]);
+    expect(withSubLines(withSubLines(v, false), true).subLines).toBeUndefined();
+    // In the post style a long sub-line widens its card, so hiding it narrows the card as well as shortening it.
+    const first = v.nodes.find((x) => x.form === "card")!;
+    const post: DiagramView = { ...v, postOf: "elsewhere", nodes: v.nodes.map((x) => (x.id === first.id ? { ...x, sub: "a sub-line long enough to widen" } : x)) };
+    const own = layoutRects(post), hidden = withSubLines(post, false), drawn = layoutRects(hidden);
+    expect(hidden.subLines).toBe(false);
+    expect(drawn.get(first.id)!.w).toBeLessThan(own.get(first.id)!.w);
+    for (const n of post.nodes.filter((x) => x.form !== "group")) {
+      const a = own.get(n.id)!, b = drawn.get(n.id)!;
+      expect(Math.abs(a.x + a.w / 2 - (b.x + b.w / 2)), n.id).toBeLessThanOrEqual(1);
+      expect(Math.abs(a.y + a.h / 2 - (b.y + b.h / 2)), n.id).toBeLessThanOrEqual(1);
+    }
   });
 
   it("carries a figure caption and colour key, and drops them when switched off; the user's texts switch off", () => {

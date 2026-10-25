@@ -201,8 +201,10 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
   // The stack's cards behind, then the body: its stroke round-joined, so the stroke's box stays inside the part's.
   for (const d of g.back) out.push(`<path class="shape-back" d="${d}" fill="${P.surface}" stroke="${P.line2}" stroke-width="1" stroke-linejoin="round" pointer-events="none"/>`);
   const stroke = shape === "agent" ? `url(#${prefix}-agent)` : P.line2, width = shape === "agent" ? 1.5 : 1;
-  out.push(`<path class="body" data-shape="${shape}" d="${g.d}" fill="${P.surface}" stroke="${stroke}" stroke-width="${width}" stroke-linejoin="round"${shape === "external" ? ' stroke-dasharray="6 4"' : ""}/>`);
-  out.push(`<path d="${g.d}" fill="url(#${prefix}-tint-${node.kind})" pointer-events="none"/>`);
+  // The agent's wider stroke is drawn a quarter pixel in, so it reaches no further past the box than every other 1 px outline (review R177-3).
+  const d = shape === "agent" ? shapeGeometry(shape, compact, post, { x: r.x + 0.25, y: r.y + 0.25, w: r.w - 0.5, h: r.h - 0.5 }).d : g.d;
+  out.push(`<path class="body" data-shape="${shape}" d="${d}" fill="${P.surface}" stroke="${stroke}" stroke-width="${width}" stroke-linejoin="round"${shape === "external" ? ' stroke-dasharray="6 4"' : ""}/>`);
+  out.push(`<path d="${d}" fill="url(#${prefix}-tint-${node.kind})" pointer-events="none"/>`);
   out.push(shapeMarks(shape, compact, post, r, g.front, P, K, prefix, !!node.detail));
   const ig = `${prefix}-ig-${node.kind}`;
   const cb = contentBox(node, r, post);

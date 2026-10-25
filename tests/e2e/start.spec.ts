@@ -1,11 +1,13 @@
 import { expect, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // Starting a drawing from a folder. The journeys (folder, card, focus, channel, draw, retry, no engine,
 // the keyboard path) are held-out H121–H123 and H41. What stays here needs a faked server: the server
-// going away during a scan or a draw, which must end the wait with a sentence, never a screen stuck busy.
+// going away during a scan or a draw, which must end the wait with a sentence, never a screen stuck busy; and a
+// scan of a git folder on Windows, which the held-out H121 and H191 reach only past steps of later milestones.
 
 function project(): string {
   const dir = mkdtempSync(join(tmpdir(), "archdraw-e2e-start-"));
@@ -14,6 +16,19 @@ function project(): string {
   writeFileSync(join(dir, "README.md"), "# Project\n");
   return dir;
 }
+
+test("a scan of a folder in git lands on the home screen: its card and options show", async ({ page }) => {
+  // The held-out H121 and H191 once stopped at a finished scan whose card never showed (review R180-1).
+  const dir = project();
+  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args], { cwd: dir, stdio: "pipe" });
+  git("init", "-q"); git("add", "--all"); git("commit", "-qm", "first");
+  await page.goto("/");
+  await page.getByTestId("start-folder").fill(dir);
+  await page.getByTestId("start-scan").click();
+  await expect(page.getByTestId("scan-card")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("scan-progress")).toHaveCount(0);
+  await expect(page.getByTestId("focus-option").first()).toBeVisible();
+});
 
 test("a scan whose server goes away ends with a sentence and the controls come back", async ({ page }) => {
   await page.route("**/api/scans/*/events", (r) => r.abort());

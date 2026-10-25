@@ -178,7 +178,11 @@ export function withSubLines(view: DiagramView, sub: boolean): DiagramView {
   return {
     ...rest,
     ...(sub ? {} : { subLines: false }),
-    nodes: view.nodes.map((n): DiagramNode => (n.form === "group" ? n : { ...n, y: Math.round(n.y + (own.get(n.id)!.h - drawn.get(n.id)!.h) / 2) })),
+    nodes: view.nodes.map((n): DiagramNode => {
+      if (n.form === "group") return n;
+      const a = own.get(n.id)!, b = drawn.get(n.id)!;
+      return { ...n, x: Math.round(n.x + (a.w - b.w) / 2), y: Math.round(n.y + (a.h - b.h) / 2) };
+    }),
   };
 }
 

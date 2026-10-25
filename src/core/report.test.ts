@@ -35,6 +35,9 @@ describe("layout report", () => {
     const long = "a description far too long for one line of a small card in any image";
     const d = doc([node("a", { sub: long, x: 0, y: 0 }), node("p", { form: "panel", items: ["one"], x: 400, y: 0 })]);
     expect(layoutReport(d, "overview", opts()).cutText).toEqual([{ id: "a", field: "sub", text: long }]);
+    // With the sub-lines switched off nothing of them is drawn, so none is cut (review R177-1).
+    const subs = doc([node("a", { sub: long, x: 0, y: 0 }), node("b", { sub: "short", x: 400, y: 0 })]);
+    expect(layoutReport(subs, "overview", opts({ sub: false })).cutText).toEqual([]);
     const hidden = doc([node("p", { form: "panel", items: ["an item far too long to fit into the narrow panel it sits in"] })]);
     expect(layoutReport(hidden, "overview", opts()).cutText).toEqual([]);
   });

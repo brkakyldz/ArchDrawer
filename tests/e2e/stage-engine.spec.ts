@@ -4,7 +4,7 @@ import { open } from "./helpers";
 /**
  * The empty LinkedIn stage's engine and model (#44; ui contract, The LinkedIn flow). Defers to H183 for the
  * whole journey; this file keeps the steps H183 cannot reach: a run started on the overview turns the stage's
- * choice off, and Draw it sends the model chosen on the stage.
+ * choice off, Draw it sends the model chosen on the stage, and with no engine the stage has no choice at all.
  */
 test("the empty LinkedIn stage shows and changes the AI panel's engine and model, both ways, and Draw it uses them", async ({ page }) => {
   await open(page);
@@ -40,4 +40,17 @@ test("the empty LinkedIn stage shows and changes the AI panel's engine and model
   await page.getByTestId("channel-draw").click();
   const body = (await sent).postDataJSON();
   expect(body).toMatchObject({ engine: "fixture", model: "fixture-careful", readCode: false });
+});
+
+test("with no engine the empty LinkedIn stage has no engine or model choice, only the simple version (review R44-1)", async ({ page }) => {
+  await page.route("**/api/engines", (r) => r.fulfill({ json: { engines: [
+    { id: "claude", label: "Claude Code", available: false, version: null, detail: "not found", test: false, models: [] },
+  ] } }));
+  await open(page);
+  await page.getByTestId("channel-tab-linkedin").click();
+  const flow = page.getByTestId("linkedin-flow");
+  await expect(flow.getByTestId("linkedin-prepare")).toBeVisible();
+  await expect(flow.getByTestId("post-engine-note")).toHaveText("No engine available — prepared without AI");
+  await expect(page.getByTestId("stage-engine")).toHaveCount(0);
+  await expect(page.getByTestId("stage-model")).toHaveCount(0);
 });

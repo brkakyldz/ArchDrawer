@@ -56,14 +56,14 @@ export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, v
   }
 
   const cutText: LayoutReport["cutText"] = [];
-  const style = postOf(view);
+  const style = postOf(view), subLines = view.subLines !== false;
   for (const n of view.nodes) {
     if (n.form === "group") continue;
-    const m = measureNode(n, { subLines: view.subLines !== false, post: style });
+    const m = measureNode(n, { subLines, post: style });
     const last = m.lines[m.lines.length - 1] ?? "";
     if (last.endsWith("…") && !n.label.trimEnd().endsWith("…")) cutText.push({ id: n.id, field: "label", text: n.label });
-    if (n.sub && m.sub !== n.sub) cutText.push({ id: n.id, field: "sub", text: n.sub });
-
+    // A sub-line the image does not draw is not cut text (review R177-1).
+    if (subLines && n.sub && m.sub !== n.sub) cutText.push({ id: n.id, field: "sub", text: n.sub });
   }
   if (o.labels) for (const e of edges) if (e.label && !routes.get(e.id)!.labelAt) cutText.push({ id: e.id, field: "label", text: e.label });
 

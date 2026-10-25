@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
-import { layoutRects, measureText, routeEdges, textStyle, type EdgeRoute, type Rect } from "../../core/geometry";
-import { badgeMarkup, drawOrder, edgeMarkup, groupHeadMarkup, labelMarkup, nodeMarkup, sharedDefs, textMarkup, toneOf } from "../../core/export/svg";
+import { edgesOverParts, layoutRects, measureText, routeEdges, textStyle, type EdgeRoute, type Rect } from "../../core/geometry";
+import { badgeMarkup, drawOrder, edgeMarkup, groupHeadMarkup, labelMarkup, nodeMarkup, dashOf, sharedDefs, strokeOf, textMarkup, toneOf, type Trace } from "../../core/export/svg";
 import { descendants, isPostView, LIMITS, type DiagramEdge, type DiagramNode, type DiagramText, type Kind } from "../../core/model";
 import type { Palette } from "../../core/theme";
 import { clampTextSize, connect, groupAt, moveNodes, moveTexts, setText, settleNodes, VIEW_FULL, withInside } from "./ops";
@@ -13,11 +13,11 @@ import { detailAt, toWorld, zoomAt } from "./viewport";
 /** A drag's marks on a part or a connection (ui contract, Dragging): lifted, or dimmed while others move. */
 type DragMark = "lifted" | "dim" | undefined;
 
-const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, changed, open = false, post, match, on = false, drag, subLines = true, dropTarget = false }: { node: DiagramNode; rect: Rect; P: Palette; selected: boolean; dim: boolean; changed: boolean; open?: boolean; post: boolean; match?: "true" | "current"; on?: boolean; drag?: DragMark; subLines?: boolean; dropTarget?: boolean }) {
+const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, changed, open = false, post, match, on = false, drag, subLines = true, dropTarget = false, traces }: { node: DiagramNode; rect: Rect; P: Palette; selected: boolean; dim: boolean; changed: boolean; open?: boolean; post: boolean; match?: "true" | "current"; on?: boolean; drag?: DragMark; subLines?: boolean; dropTarget?: boolean; traces?: string }) {
   return (
     <g className={`nd${dim ? " dim" : ""}${changed ? " changed" : ""}${open ? " open" : ""}`} data-changed={changed ? "true" : undefined} data-dim={dim ? "true" : undefined} data-match={match} data-step={on ? "on" : undefined} data-testid={`node-${node.id}`} data-node-id={node.id} data-kind={node.kind} data-form={node.form}
       data-parent={node.parent ?? ""} data-selected={String(selected)} data-lifted={drag === "lifted" ? "true" : undefined} data-drag-dim={drag === "dim" ? "true" : undefined} data-drop-target={dropTarget ? "true" : undefined} style={{ ["--hover-k" as string]: P.kinds[node.kind] }}
-      dangerouslySetInnerHTML={{ __html: nodeMarkup(node, rect, P, { testIds: true, post, subLines }) }} />
+      dangerouslySetInnerHTML={{ __html: nodeMarkup(node, rect, P, { testIds: true, post, subLines, traces: traces ? (JSON.parse(traces) as Trace[]) : undefined }) }} />
   );
 });
 
@@ -360,6 +360,16 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
     || (!live && !!hover && ends(e, (id) => id === hover)) || ends(e, (id) => selNodes.has(id) || id === ctl.callout)
     || (!!step && step.has(e.from) && step.has(e.to)) || (!!found && found.ids.has(e.from) && found.ids.has(e.to));
   const dragMark = (id: string): DragMark => (!moving ? undefined : moving.has(id) ? "lifted" : "dim");
+  // A connection passing behind a part shows as a faint trace over it (diagram contract, Traces), coloured as its line is now.
+  const over = useMemo(() => edgesOverParts(view, rects, routes), [view, rects, routes]);
+  const tracesFor = (id: string): string | undefined => {
+    const list = over.filter((o) => o.node === id).map((o) => {
+      const e = view.edges.find((x) => x.id === o.edge)!;
+      return { edge: e.id, d: routes.get(e.id)!.d, stroke: strokeOf(e, toneOf(e, inFocus(e)), "ad", P), dash: dashOf(e) };
+    });
+    // A string, so the memoised part draws again only when its traces change.
+    return list.length ? JSON.stringify(list) : undefined;
+  };
 
   const enterNode = (id: string | null) => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
@@ -392,7 +402,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
               focus={inFocus(e)} dragDim={!!moving && !touches(e)} /> : null;
           })}
           {groups.map((n) => <GroupHead key={`head-${n.id}`} node={n} rect={rects.get(n.id)!} P={P} dim={dimNode(n.id)} open={ctl.callout === n.id} post={post} drag={dragMark(n.id)} subLines={view.subLines !== false} />)}
-          {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} drag={dragMark(n.id)} subLines={view.subLines !== false} />)}
+          {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} drag={dragMark(n.id)} subLines={view.subLines !== false} traces={tracesFor(n.id)} />)}
           {view.edges.map((e) => {
             const r = routes.get(e.id);
             if (!r) return null;

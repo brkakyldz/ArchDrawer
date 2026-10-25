@@ -1,5 +1,5 @@
 import {
-  COMPACT, contentBox, GROUP, INSIDE, LABEL, labelWidth, layoutRects, measureNode, measureText, postOf, styleOf, textStyle,
+  COMPACT, contentBox, edgesOverParts, GROUP, INSIDE, LABEL, labelWidth, layoutRects, measureNode, measureText, postOf, styleOf, textStyle,
   routeEdges, viewBounds, type EdgeRoute, type MeasureOptions, type Rect,
 } from "../geometry";
 import { CARD_SHAPE, COMPACT_SHAPE, OUTLINE, shapeGeometry, shapeOf, type PartShape } from "../shapes";
@@ -80,7 +80,37 @@ function glowUnder(r: Rect, color: string, P: Palette, prefix: string, group = f
   );
 }
 
-export interface NodeMarkupOptions extends MarkupOptions, MeasureOptions { prefix?: string }
+/** A connection's trace over a part it passes behind (diagram contract, Traces): its path, colour and dash. */
+export interface Trace { edge: string; d: string; stroke: string; dash: string }
+export interface NodeMarkupOptions extends MarkupOptions, MeasureOptions { prefix?: string; traces?: Trace[] }
+
+/** A connection's stroke and dash as `edgeMarkup` draws it: its gradient while in kind colours, else the neutral colour. */
+export const strokeOf = (e: DiagramEdge, tone: Tone, prefix: string, P: Palette) => (tone === "kind" ? `url(#${prefix}-g-${e.id})` : P.edge);
+export const dashOf = (e: DiagramEdge) => (e.style === "async" ? ` stroke-dasharray="6 5"` : e.style === "dep" ? ` stroke-dasharray="2 5" stroke-linecap="round"` : "");
+
+/**
+ * The traces of every part (diagram contract, Traces): each connection the layout report lists over a part is drawn
+ * again over it. `toneOf` gives each connection's tone (the editor's focus colours some).
+ */
+export function tracesOf(view: Pick<DiagramView, "nodes" | "edges">, rects: Map<string, Rect>, routes: Map<string, EdgeRoute>, P: Palette, prefix: string, tone: (e: DiagramEdge) => Tone = (e) => toneOf(e)): Map<string, Trace[]> {
+  const out = new Map<string, Trace[]>();
+  const byId = new Map(view.edges.map((e) => [e.id, e]));
+  for (const { edge, node } of edgesOverParts(view, rects, routes)) {
+    const e = byId.get(edge)!, r = routes.get(edge)!;
+    const list = out.get(node) ?? [];
+    list.push({ edge, d: r.d, stroke: strokeOf(e, tone(e), prefix, P), dash: dashOf(e) });
+    out.set(node, list);
+  }
+  return out;
+}
+
+/** A part's traces, clipped to its box: thin, faint, no glow and no arrowhead. */
+function traceMarkup(id: string, r: Rect, traces: Trace[] | undefined, prefix: string): string {
+  if (!traces?.length) return "";
+  const cid = `${prefix}-tc-${esc(id)}`;
+  return `<clipPath id="${cid}"><rect x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}"/></clipPath><g clip-path="url(#${cid})" pointer-events="none">` +
+    traces.map((t) => `<path class="trace" data-edge-of="${esc(t.edge)}" d="${t.d}" fill="none" stroke="${t.stroke}" stroke-width="1" opacity="0.25"${t.dash}/>`).join("") + "</g>";
+}
 
 /**
  * What an outline draws over its body in the kind colour (diagram contract, Shapes): the service's rule, the
@@ -224,6 +254,8 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
   out.push(`<path class="body" data-shape="${shape}" d="${d}" fill="${P.surface}" stroke="${stroke}" stroke-width="${width}" stroke-linejoin="round"${shape === "external" ? ' stroke-dasharray="6 4"' : ""}/>`);
   out.push(`<path d="${d}" fill="url(#${prefix}-tint-${node.kind})" pointer-events="none"/>`);
   out.push(shapeMarks(shape, compact, post, r, g.front, P, K, prefix, !!node.detail));
+  // Connections passing behind the part show as a trace over its outline, under its icon and text.
+  out.push(traceMarkup(node.id, r, o.traces, prefix));
   const ig = `${prefix}-ig-${node.kind}`;
   const cb = contentBox(node, r, post);
 
@@ -293,7 +325,7 @@ export function edgeMarkup(e: DiagramEdge, r: EdgeRoute, P: Palette, o: EdgeMark
     `<marker id="${mid}" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="8.5" markerHeight="8.5" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1.4 8.8 5 1 8.6z" fill="${b}"/></marker>` +
     (e.both ? `<marker id="${sid}" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="8.5" markerHeight="8.5" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M1 1.4 8.8 5 1 8.6z" fill="${a}"/></marker>` : "") +
     `</defs>`;
-  const dash = e.style === "async" ? ` stroke-dasharray="6 5"` : e.style === "dep" ? ` stroke-dasharray="2 5" stroke-linecap="round"` : "";
+  const dash = dashOf(e);
   const width = e.style === "dep" ? 1.9 : 1.75;
   const glow = !kind || e.style === "dep" ? "" : `<path class="glow" d="${r.d}" fill="none" stroke="${stroke}" stroke-width="7" opacity="${P.edgeGlow}"/>`;
   const start = e.both ? ` marker-start="url(#${sid})"` : "";
@@ -373,7 +405,8 @@ export function drawView(view: DiagramView, P: Palette, o: DrawOptions = {}): Dr
   }
   // Each group's head goes over the connections and under the parts (diagram contract, A group's name).
   for (const node of order.filter((x) => x.form === "group")) out.push(`<g data-group-head="${esc(node.id)}">${groupHeadMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
-  for (const node of order.filter((x) => x.form !== "group")) out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="${node.form}">${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
+  const traces = tracesOf(view, rects, routes, P, prefix);
+  for (const node of order.filter((x) => x.form !== "group")) out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="${node.form}">${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix, traces: traces.get(node.id) })}</g>`);
   for (const t of texts) out.push(`<g data-text-id="${esc(t.id)}" data-size="${t.size}">${textMarkup(t, P)}</g>`);
   return { body: out.join(""), defs: sharedDefs(P, prefix), bounds: viewBounds({ ...view, texts }, rects, routes, true, o.steps), rects, routes };
 }

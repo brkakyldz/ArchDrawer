@@ -1,4 +1,4 @@
-import { bezierAt, countCrossings, measureNode, postOf, routeSamples, type EdgeRoute, type Point, type Rect } from "./geometry";
+import { bezierAt, countCrossings, edgesOverParts as overParts, measureNode, postOf, type EdgeRoute, type Point, type Rect } from "./geometry";
 import { isPostView, type DiagramDocument } from "./model";
 import { renderShare, type ShareImage, type ShareOptions } from "./export/share";
 
@@ -27,7 +27,6 @@ export const STORY_LIMITS = { label: 28, sub: 28, chip: 22, lede: 140, titleWord
 const POST_TARGETS = { parts: 12, zones: { min: 0, max: 4 }, connections: 14 };
 const DETAIL_TARGETS = { parts: null, zones: null, connections: null };
 
-const inside = (p: Point, r: Rect) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
 const length = (pts: Point[]) => pts.slice(1).reduce((s, p, i) => s + Math.hypot(p.x - pts[i].x, p.y - pts[i].y), 0);
 const words = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
 const finite = (v: number) => (Number.isFinite(v) ? v : 0);
@@ -43,17 +42,11 @@ export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, v
   const post = isPostView(whole);
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
   const edges = view.edges.filter((e) => routes.has(e.id));
-  const lines = new Map(edges.map((e) => [e.id, routeSamples(routes.get(e.id)!)]));
 
   const crossings = countCrossings(edges, routes);
 
-  // A group's boundary alone never counts; a route over one of its unrelated members does.
-  const edgesOverParts: LayoutReport["edgesOverParts"] = [];
-  for (const e of edges) for (const n of view.nodes) {
-    if (n.form === "group" || n.id === e.from || n.id === e.to) continue;
-    const r = rects.get(n.id);
-    if (r && lines.get(e.id)!.some((p) => inside(p, r))) edgesOverParts.push({ edge: e.id, node: n.id });
-  }
+  // A group's boundary alone never counts; a route over one of its unrelated members does. The traces draw the same list.
+  const edgesOverParts: LayoutReport["edgesOverParts"] = overParts({ nodes: view.nodes, edges }, rects, routes);
 
   const cutText: LayoutReport["cutText"] = [];
   const style = postOf(view), subLines = view.subLines !== false;

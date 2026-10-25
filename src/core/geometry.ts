@@ -238,6 +238,26 @@ export function alongRoute(r: Curve): (t: number) => Point {
  * the middle so two mirrored lines never cross exactly on a sample point. The routing's
  * `blocked` and the layout report's `edgesOverParts` both read these, so they always agree.
  */
+/**
+ * The parts each drawn connection passes behind (layout report `edgesOverParts`; diagram contract, Traces): a part
+ * that is not a group and not one of its ends, holding a point of its curve. Groups' boundaries never count.
+ */
+export function edgesOverParts(view: Pick<DiagramView, "nodes" | "edges">, rects: Map<string, Rect>, routes: Map<string, EdgeRoute>): { edge: string; node: string }[] {
+  const out: { edge: string; node: string }[] = [];
+  const within = (p: Point, r: Rect) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
+  for (const e of view.edges) {
+    const route = routes.get(e.id);
+    if (!route) continue;
+    const pts = routeSamples(route);
+    for (const n of view.nodes) {
+      if (n.form === "group" || n.id === e.from || n.id === e.to) continue;
+      const r = rects.get(n.id);
+      if (r && pts.some((p) => within(p, r))) out.push({ edge: e.id, node: n.id });
+    }
+  }
+  return out;
+}
+
 export const routeSamples = (r: Curve, steps = 64): Point[] =>
   [bezierAt(r, 0), ...Array.from({ length: steps - 1 }, (_, i) => bezierAt(r, (i + 1.31) / steps)), bezierAt(r, 1)];
 

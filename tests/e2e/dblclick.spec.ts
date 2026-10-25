@@ -4,7 +4,7 @@ import { open, shop } from "./helpers";
 // #184 with the ui contract's double-click on a label (H108 renames a part with an inside whose inside holds no part
 // under the pointer). What stays here: an inside that holds another part with an inside under the pointer (review
 // 85af372-1), the sub-line, and below the label of a part with no sub-line (review fbb2e5d-2), a slow second click that
-// still goes in with no callout (review fbb2e5d-1), and a double-click in a detail view soon after going in (H20).
+// still goes in with no callout (review fbb2e5d-1), a cancelled press (review cbe4f6a-1), and a double-click in a detail view soon after going in (H20).
 
 const part = (id: string, label: string, detail: string | null, sub = "") =>
   ({ id, label, kind: "service", form: "card", icon: null, sub, items: [], description: "A part.", files: [], parent: null, detail, place: { row: 0, col: 0 } });
@@ -46,6 +46,23 @@ test("a second click after the double-click time goes in again, selecting nothin
   await expect(page.getByTestId("editor")).toHaveAttribute("data-view", "b-inside");
   await expect(page.locator('[data-testid^="callout-"]')).toHaveCount(0);
   await expect(page.getByTestId("node-c")).toHaveAttribute("data-selected", "false");
+});
+
+test("a cancelled press on a part with an inside goes nowhere, now or on the next click", async ({ page }) => {
+  await open(page, nested(""));
+  const a = (await page.getByTestId("node-a").boundingBox())!;
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  // The browser takes the pointer away (a pen's press-and-hold, a touch scroll): pointercancel, and no click follows.
+  await page.getByTestId("canvas").dispatchEvent("pointercancel", { bubbles: true, pointerId: 1, isPrimary: true });
+  const header = (await page.getByTestId("crumbs").boundingBox())!;
+  await page.mouse.move(header.x + header.width / 2, header.y + header.height / 2);
+  await page.mouse.up();
+  await expect(page.getByTestId("editor")).toHaveAttribute("data-view", "overview");
+  // A later ordinary click on empty canvas must not carry the cancelled press into A's inside (review cbe4f6a-1).
+  const canvas = (await page.getByTestId("canvas").boundingBox())!;
+  await page.mouse.click(canvas.x + 12, canvas.y + canvas.height - 12);
+  await expect(page.getByTestId("editor")).toHaveAttribute("data-view", "overview");
 });
 
 test("a double-click on a plain part right after going in renames that part where it is", async ({ page }) => {

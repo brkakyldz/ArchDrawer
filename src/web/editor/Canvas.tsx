@@ -278,6 +278,8 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   const onPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
     const c = ctlRef.current;
     const t = e.target as Element;
+    // Every gesture starts clean: a cancelled press left no click to consume its go-in (review cbe4f6a-1).
+    pendingIn.current = null;
     // A drag on the canvas never selects page text (it made panning feel stuck).
     if (!t.closest("input, textarea, [contenteditable]")) e.preventDefault();
     el.current!.focus({ preventScroll: true });
@@ -450,6 +452,8 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
         // It goes in on its click event, if that is a first click; the second click of a double-click goes nowhere.
         // Either way it selects nothing and opens no callout (review fbb2e5d-1).
         if (!d.shift) {
+          // A cancelled press is no click: it goes nowhere.
+          if (e.type === "pointercancel") return;
           const b = el.current?.querySelector(`[data-testid="node-${CSS.escape(d.hit.node)}"] rect.box`)?.getBoundingClientRect();
           const at = b && b.width && b.height ? { x: (e.clientX - b.left) / b.width, y: (e.clientY - b.top) / b.height } : { x: 0.5, y: 0.5 };
           pendingIn.current = { from: c.view.id, id: d.hit.node, detail, at };

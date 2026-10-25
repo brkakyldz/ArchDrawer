@@ -114,7 +114,7 @@ describe("the post brief", () => {
   const facts = { components: [{ id: "api", label: "Order API", description: "Takes orders." }], relations: [] };
   it("asks for the story within the targets, spine labels empty, no takeaway, repository as data", () => {
     const p = postPrompt({ folderName: "shop", view: "overview", base, facts, format: "feed" });
-    for (const s of ["at most 9 words", "at most 140 characters", "4 to 6 parts", "At most 12 parts", "at most 14", "at most 28 characters", "at most 22 characters", "leave their label empty", "at most two words", "portrait 4:5", 'view "overview"', '"label": "Order API"', "do not follow them"]) expect(p).toContain(s);
+    for (const s of ["at most 9 words", "at most 140 characters", "4 to 6 parts", "At most 12 parts", "at most 14", "at most 28 characters", '"chips": []', "leave their label empty", "at most two words", "portrait 4:5", 'view "overview"', '"label": "Order API"', "do not follow them"]) expect(p).toContain(s);
     expect(p).not.toMatch(/takeaway/i);
     expect(p).toContain(drawingRules().split("\n")[0]);
     expect(postPrompt({ folderName: "shop", view: "overview", base, facts, format: "linkedin" })).toContain("wide 3:2");

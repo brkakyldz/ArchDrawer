@@ -31,7 +31,9 @@ export const FORMATS: Record<FormatId, Format> = {
 export interface ShareOptions {
   format: FormatId;
   theme: Theme;
-  title: boolean; lede: boolean; items: boolean; steps: boolean; labels: boolean; legend: boolean; texts: boolean;
+  title: boolean; lede: boolean; steps: boolean; labels: boolean; legend: boolean; texts: boolean;
+  /** `show-sub`: draw every part with (true) or without (false) its sub-line; absent or null follows the view's switch. */
+  sub?: boolean | null;
   /** Base64 woff2 of Geist and Geist Mono, embedded so a downloaded file renders the same anywhere. */
   fonts?: { sans: string; mono: string } | null;
   /** Share only these components (a group with all it holds) and the connections between them. */
@@ -41,17 +43,16 @@ export interface ShareOptions {
 /** Text the image draws shorter than it is, with `…` (ui contract, share-clipped). */
 export interface Shortened { id: string; label: string; text: string }
 
-/** Every component text a view's forms shorten: labels, sub-lines and held items (when shown). */
-export function shortenedIn(view: Pick<DiagramView, "nodes"> & { id?: string; postOf?: string | null }, o: { items: boolean }): Shortened[] {
+/** Every component text a view's forms shorten: labels and sub-lines (when drawn). */
+export function shortenedIn(view: Pick<DiagramView, "nodes"> & { id?: string; postOf?: string | null }, o: { sub: boolean }): Shortened[] {
   const out: Shortened[] = [];
   const post = postOf(view);
   for (const n of view.nodes) {
     if (n.form === "group") continue;
-    const b = measureNode(n, { items: o.items, post });
+    const b = measureNode(n, { subLines: o.sub, post });
     const last = b.lines[b.lines.length - 1] ?? "";
     if (last.endsWith("…") && !n.label.trimEnd().endsWith("…")) out.push({ id: n.id, label: n.label, text: n.label });
-    if (n.sub && b.sub !== n.sub) out.push({ id: n.id, label: n.label, text: n.sub });
-    b.items.forEach((t, i) => { if (t !== n.items[i]) out.push({ id: n.id, label: n.label, text: n.items[i] }); });
+    if (o.sub && n.sub && b.sub !== n.sub) out.push({ id: n.id, label: n.label, text: n.sub });
   }
   return out;
 }
@@ -71,16 +72,17 @@ export function partOf(view: DiagramView, ids: readonly string[]): DiagramView {
   };
 }
 /** The switches the share dialog offers. */
-export type ShareSwitches = Pick<ShareOptions, "title" | "lede" | "items" | "steps" | "labels" | "legend" | "texts">;
+export type ShareSwitches = Pick<ShareOptions, "title" | "lede" | "steps" | "labels" | "legend" | "texts">;
+/** The starting switches; `show-sub` always starts as the view's own sub-line switch (`sub` absent). */
 export const SWITCH_PRESETS: Record<"simple" | "detailed" | "version", ShareSwitches> = {
-  simple: { title: true, lede: true, items: false, steps: true, labels: false, legend: false, texts: true },
-  detailed: { title: true, lede: false, items: true, steps: true, labels: true, legend: true, texts: true },
-  version: { title: true, lede: true, items: true, steps: true, labels: true, legend: false, texts: true },
+  simple: { title: true, lede: true, steps: true, labels: false, legend: false, texts: true },
+  detailed: { title: true, lede: false, steps: true, labels: true, legend: true, texts: true },
+  version: { title: true, lede: true, steps: true, labels: true, legend: false, texts: true },
 };
 /** The switches a format starts with: the post's for a post view or the feed, Simple for Square, else Detailed. */
 export const startSwitches = (format: FormatId, post: boolean): ShareSwitches =>
   ({ ...(post || format === "feed" ? SWITCH_PRESETS.version : format === "square" ? SWITCH_PRESETS.simple : SWITCH_PRESETS.detailed) });
-export const DEFAULT_SHARE: Omit<ShareOptions, "theme"> = { format: "linkedin", title: true, lede: false, items: true, steps: true, labels: true, legend: true, texts: true };
+export const DEFAULT_SHARE: Omit<ShareOptions, "theme"> = { format: "linkedin", title: true, lede: false, steps: true, labels: true, legend: true, texts: true };
 
 /**
  * The readability meter (ui contract): the smallest component or zone name and the smallest
@@ -162,13 +164,21 @@ export function keyBlock(kinds: Kind[], f: Format, P: Palette, width: number, al
   };
 }
 
-/** Panels without their items shrink around their own centre (ui contract, Share). */
-export function shrinkPanels(view: DiagramView): DiagramView {
-  const full = layoutRects(view, { items: true });
-  const bare = layoutRects(view, { items: false });
+/** Whether a share image draws sub-lines: `show-sub` when given, else the view's own switch. */
+export const subLinesOf = (view: Pick<DiagramView, "subLines">, sub?: boolean | null): boolean => sub ?? view.subLines !== false;
+
+/**
+ * A view drawn with sub-lines other than its own switch says (ui contract, The share image): every part is
+ * measured with or without its sub-line and shrunk or grown around its own centre; groups follow their members.
+ */
+export function withSubLines(view: DiagramView, sub: boolean): DiagramView {
+  if (sub === (view.subLines !== false)) return view;
+  const own = layoutRects(view), drawn = layoutRects(view, { subLines: sub });
+  const { subLines: _was, ...rest } = view;
   return {
-    ...view,
-    nodes: view.nodes.map((n): DiagramNode => (n.form === "panel" ? { ...n, y: Math.round(n.y + (full.get(n.id)!.h - bare.get(n.id)!.h) / 2) } : n)),
+    ...rest,
+    ...(sub ? {} : { subLines: false }),
+    nodes: view.nodes.map((n): DiagramNode => (n.form === "group" ? n : { ...n, y: Math.round(n.y + (own.get(n.id)!.h - drawn.get(n.id)!.h) / 2) })),
   };
 }
 
@@ -176,9 +186,9 @@ export function shrinkPanels(view: DiagramView): DiagramView {
  * The one change the readability sentence suggests (ui contract, readability): never one already
  * made. `null` when the image reads in place.
  */
-export function suggestionFor(level: Readability["level"], s: { items: boolean; format: FormatId; linkedInVersion: boolean }): string | null {
+export function suggestionFor(level: Readability["level"], s: { sub: boolean; format: FormatId; linkedInVersion: boolean }): string | null {
   if (level === "good") return null;
-  if (s.items) return "hiding what each part holds would help";
+  if (s.sub) return "hiding the sub-lines would help";
   if ((s.format === "feed" || s.format === "linkedin" || s.format === "square") && !s.linkedInVersion) return "the LinkedIn version would help";
   return "a larger format would help";
 }
@@ -196,14 +206,14 @@ export function drawnSizes(body: string, k: number): { names: number[]; all: num
   return { names, all };
 }
 
-export function readabilityOf(sizes: { names: number[]; all: number[] }, f: Format, s: { items: boolean; whole: DiagramView }): Readability {
+export function readabilityOf(sizes: { names: number[]; all: number[] }, f: Format, s: { sub: boolean; whole: DiagramView }): Readability {
   const least = (xs: number[]) => (xs.length ? Math.min(...xs) : 0);
   const opened = least(sizes.all), named = least(sizes.names);
   const seen = (px: number) => px * (f.seen / f.w);
   const inPlace = seen(opened), names = { inPlace: seen(named), opened: named };
   const level = sizes.all.length && names.inPlace >= 9 && inPlace >= 6.5 ? "good" : opened >= 8 ? "ok" : "warn";
   const hint = suggestionFor(level, {
-    items: s.items, format: f.id, linkedInVersion: !!s.whole.postOf,
+    sub: s.sub, format: f.id, linkedInVersion: !!s.whole.postOf,
   });
   const said = {
     good: `The text is readable ${f.where} as it is`,
@@ -226,11 +236,10 @@ export function renderShare(doc: Pick<DiagramDocument, "views">, viewId: string,
   // no steps list, takeaway or key strip (ui contract, The share image).
   const post = o.format === "feed" || o.format === "linkedin";
   const P = PALETTES[o.theme];
-  let view: DiagramView = source;
   const notes: string[] = [];
-  const items = o.items;
-  if (!items) view = shrinkPanels(view);
-  const drawing = drawView(view, P, { items, labels: o.labels, steps: o.steps, texts: o.texts, prefix: "sh" });
+  const sub = subLinesOf(source, o.sub);
+  const view: DiagramView = withSubLines(source, sub);
+  const drawing = drawView(view, P, { subLines: sub, labels: o.labels, steps: o.steps, texts: o.texts, prefix: "sh" });
   const b = drawing.bounds.w > 0 ? drawing.bounds : { x: 0, y: 0, w: 1, h: 1 };
   const kinds: Kind[] = [];
   for (const n of view.nodes) if (!kinds.includes(n.kind)) kinds.push(n.kind);
@@ -327,8 +336,8 @@ export function renderShare(doc: Pick<DiagramDocument, "views">, viewId: string,
   for (const m of caption.join("").matchAll(/<text\b[^>]*font-size="([\d.]+)"/g)) sizes.all.push(Number(m[1]));
   return {
     svg, width: f.w, height: f.h, scale: place.k, kinds, notes,
-    readability: readabilityOf(sizes, f, { items, whole }),
-    shortened: shortenedIn(view, { items }),
+    readability: readabilityOf(sizes, f, { sub, whole }),
+    shortened: shortenedIn(view, { sub }),
     drawn: { view, rects: drawing.rects, routes: drawing.routes },
   };
 }

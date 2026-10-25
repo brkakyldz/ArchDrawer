@@ -87,6 +87,8 @@ export interface DiagramText { id: string; text: string; x: number; y: number; s
 export interface Caption { title: string; lede: string }
 export interface DiagramView {
   id: string; title: string; caption: Caption;
+  /** The view's sub-line switch (diagram contract, View): absent or true draws sub-lines; false draws none. */
+  subLines?: boolean;
   /** The source view of a generated post (diagram contract, Post-view identity); null otherwise. */
   postOf: string | null;
   nodes: DiagramNode[]; edges: DiagramEdge[]; texts: DiagramText[];

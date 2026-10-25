@@ -337,7 +337,7 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .meter .disclose { font-size: 12px; }
 .meter .detail { margin: 2px 0 0; font-variant-numeric: tabular-nums; }
 /* The bottom row (ui-v2 share-actions): how readable it is, then the downloads. */
-.share > .actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--surface); }
+.share > .actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--surface); max-height: min(300px, 40vh); overflow: auto; }
 .share > .actions .meter { flex: 1 1 280px; min-width: 0; padding: 7px 12px; }
 .share > .actions .btn { height: 36px; flex: none; }
 .layout-report { font-size: 12px; line-height: 1.45; color: var(--muted); font-variant-numeric: tabular-nums; }

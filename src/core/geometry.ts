@@ -1,5 +1,6 @@
-import { isPostView, type DiagramEdge, type DiagramNode, type DiagramText, type DiagramView } from "./model";
+import { isPostView, type DiagramEdge, type DiagramNode, type DiagramText, type DiagramView, type Kind } from "./model";
 import { fitLine, textWidth, wrapText, widthOf, type TextStyle } from "./text";
+import { CARD_SHAPE, COMPACT_SHAPE, outlineDepth, shapeGeometry, shapeOf, type PartShape, type Pt } from "./shapes";
 
 /**
  * One geometry for the editor and every export (invariant 5): every size here is a
@@ -59,17 +60,13 @@ export interface NodeBox {
   /** Label lines (a card wraps; other forms use one line). */
   lines: string[];
   sub: string;
+  /** Always empty: no part draws a row (ADR 0014); the rows are listed in the part's callout. */
   items: string[];
-  /** How many of the last rows are limits (drawn muted after a timer icon). */
-  limits?: number;
 }
 
-/** A limit row's timer icon and the gap after it (diagram contract, What a channel draws). */
-export const LIMIT_ROW = { icon: 11, gap: 4 } as const;
-
 export interface MeasureOptions {
-  /** false: panels drawn without their items (share toggle). Default true. */
-  items?: boolean;
+  /** The view's sub-line switch (diagram contract, View, Sub-lines). Default true. */
+  subLines?: boolean;
   /** The dense post style. Default: whether the view is a post view. */
   post?: boolean;
 }
@@ -77,57 +74,57 @@ export interface MeasureOptions {
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const ceil = (v: number) => Math.ceil(v);
 
-/** Size and text of a card, compact or panel (a group's size comes from its children: `layoutRects`). */
-export function measureNode(n: Pick<DiagramNode, "label" | "form" | "sub" | "items" | "detail" | "limitIds">, o: MeasureOptions = {}): NodeBox {
-  const { T, CARD, PANEL } = styleOf(o.post);
+/** A part's content box: its box less its shape's insets (diagram contract, Content box). */
+export function contentBox(n: Pick<DiagramNode, "form"> & { kind?: Kind }, r: Rect, post = false): Rect {
+  const shape = shapeOf({ kind: n.kind ?? "service", form: n.form });
+  if (shape === "group") return r;
+  const [t, rt, b, l] = n.form === "compact" ? COMPACT_SHAPE[shape].insets : CARD_SHAPE[shape][post ? "post" : "plain"];
+  return { x: r.x + l, y: r.y + t, w: r.w - l - rt, h: r.h - t - b };
+}
+
+/**
+ * Size and text of a card, compact or panel (a group's size comes from its children: `layoutRects`).
+ * The shape of its kind gives the insets round its content box and any extra width (Content box); a
+ * panel measures and draws as a card of its kind, its rows never drawn.
+ */
+export function measureNode(n: Pick<DiagramNode, "label" | "form" | "sub" | "detail"> & { kind?: Kind }, o: MeasureOptions = {}): NodeBox {
+  const { T, CARD } = styleOf(o.post);
   const inside = n.detail ? 8 + INSIDE : 0;
-  if (n.form === "card") {
-    const w = n.sub ? clamp(ceil(CARD.padX * 2 + widthOf(n.sub, T.sub) + 2), CARD.w, CARD.maxW) : CARD.w;
-    const width = w - CARD.padX * 2;
+  const subOn = o.subLines !== false;
+  const shape = shapeOf({ kind: n.kind ?? "service", form: n.form });
+  if (shape !== "group" && n.form !== "compact") {
+    const S = CARD_SHAPE[shape], [t, r, b, l] = o.post ? S.post : S.plain;
+    // The plain card's width (196; a post card widens up to 204 for its sub-line, inside its shape's insets) plus the shape's extra width.
+    const extra = S.extra[o.post ? 1 : 0];
+    const base = subOn && n.sub ? clamp(ceil(l + r - extra + widthOf(n.sub, T.sub) + 2), CARD.w, CARD.maxW) : CARD.w;
+    const w = base + extra, width = w - l - r;
     const lines = wrapText(n.label, T.title.size, width, 600, CARD.maxLines, T.title.tracking);
-    return { w, h: CARD.h + CARD.line * (lines.length - 1), lines, sub: n.sub ? fitLine(n.sub, width, T.sub) : "", items: [] };
+    const h = t + (shape === "person" ? 0 : CARD.icon + CARD.iconGap) + CARD.line * lines.length + (subOn ? CARD.subLine : 0) + b;
+    return { w, h, lines, sub: subOn && n.sub ? fitLine(n.sub, width, T.sub) : "", items: [] };
   }
-  if (n.form === "compact") {
-    const fixed = COMPACT.padX * 2 + COMPACT.icon + COMPACT.gap + inside;
+  if (shape !== "group") {
+    const S = COMPACT_SHAPE[shape], [, r, , l] = S.insets;
+    const icon = shape === "person" ? 0 : COMPACT.icon + COMPACT.gap;
+    const fixed = l + r + icon + inside;
     const titleW = widthOf(n.label, T.compactTitle);
-    const subW = n.sub ? COMPACT.gap + widthOf(n.sub, T.subMono) : 0;
-    const w = clamp(ceil(fixed + titleW + subW + 2), COMPACT.minW, COMPACT.maxW);
+    const subW = subOn && n.sub ? COMPACT.gap + widthOf(n.sub, T.subMono) : 0;
+    const w = clamp(ceil(fixed + titleW + subW + 2), COMPACT.minW, COMPACT.maxW) + S.extra;
     const label = fitLine(n.label, w - fixed, T.compactTitle);
     const room = w - fixed - widthOf(label, T.compactTitle) - COMPACT.gap;
-    const sub = n.sub && room > 24 ? fitLine(n.sub, room, T.subMono) : "";
-    return { w, h: COMPACT.h, lines: [label], sub, items: [] };
-  }
-  if (n.form === "panel") {
-    const items = o.items === false ? [] : n.items;
-    // The last rows that are limits keep room for their timer icon.
-    const lim = Math.min(n.limitIds?.length ?? 0, items.length);
-    const mark = (i: number) => (i >= items.length - lim ? LIMIT_ROW.icon + LIMIT_ROW.gap : 0);
-    const head = PANEL.padX * 2 + PANEL.icon + PANEL.gap + inside;
-    const need = Math.max(
-      head + widthOf(n.label, T.title),
-      n.sub ? PANEL.padX * 2 + PANEL.icon + PANEL.gap + widthOf(n.sub, T.sub) : 0,
-      ...items.map((t, i) => PANEL.padX * 2 + PANEL.itemPad * 2 + 2 + mark(i) + widthOf(t, T.item)),
-    );
-    const w = clamp(ceil(need + 2), PANEL.minW, PANEL.maxW);
-    const k = items.length;
-    const h = PANEL.base + PANEL.titleLine + (n.sub ? PANEL.subLine : 0) + (k ? PANEL.listGap + k * PANEL.itemH + (k - 1) * PANEL.itemGap : 0);
-    return {
-      w, h,
-      lines: [fitLine(n.label, w - head, T.title)],
-      sub: n.sub ? fitLine(n.sub, w - PANEL.padX * 2 - PANEL.icon - PANEL.gap, T.sub) : "",
-      items: items.map((t, i) => fitLine(t, w - PANEL.padX * 2 - PANEL.itemPad * 2 - 2 - mark(i), T.item)),
-      ...(lim ? { limits: lim } : {}),
-    };
+    const sub = subOn && n.sub && room > 24 ? fitLine(n.sub, room, T.subMono) : "";
+    return { w, h: S.h, lines: [label], sub, items: [] };
   }
   // group: the header only; layoutRects adds the children.
-  const head = GROUP.padHead * 2 + GROUP.icon + GROUP.gap + widthOf(n.label, T.title) + (n.sub ? GROUP.gap + widthOf(n.sub, T.sub) : 0) + inside;
-  return { w: Math.max(GROUP.emptyW, ceil(head + 2)), h: GROUP.emptyH, lines: [n.label], sub: n.sub, items: [] };
+  const sub = subOn ? n.sub : "";
+  const head = GROUP.padHead * 2 + GROUP.icon + GROUP.gap + widthOf(n.label, T.title) + (sub ? GROUP.gap + widthOf(sub, T.sub) : 0) + inside;
+  return { w: Math.max(GROUP.emptyW, ceil(head + 2)), h: GROUP.emptyH, lines: [n.label], sub, items: [] };
 }
 
 /** Header width a group needs for its own text. */
-export function groupHeaderWidth(n: Pick<DiagramNode, "label" | "sub" | "detail">, post = false): number {
+export function groupHeaderWidth(n: Pick<DiagramNode, "label" | "sub" | "detail">, post = false, subLines = true): number {
   const { T } = styleOf(post);
-  return ceil(GROUP.padHead * 2 + GROUP.icon + GROUP.gap + widthOf(n.label, T.title) + (n.sub ? GROUP.gap + widthOf(n.sub, T.sub) : 0) + (n.detail ? 8 + INSIDE : 0) + 2);
+  const sub = subLines ? n.sub : "";
+  return ceil(GROUP.padHead * 2 + GROUP.icon + GROUP.gap + widthOf(n.label, T.title) + (sub ? GROUP.gap + widthOf(sub, T.sub) : 0) + (n.detail ? 8 + INSIDE : 0) + 2);
 }
 
 /** The box a group's name is drawn in, at the left of its header: labels and badges keep off it. */
@@ -149,8 +146,8 @@ export const groupNameText = (n: Pick<DiagramNode, "label" | "sub" | "detail">, 
  * Every component's box in a view: cards, compacts and panels from their content at their
  * position; groups from their children's boxes plus padding (bottom-up), or 260×140 when empty.
  */
-export function layoutRects(view: Pick<DiagramView, "nodes"> & { id?: string; postOf?: string | null }, o: MeasureOptions = {}): Map<string, Rect> {
-  o = { ...o, post: postOf(view, o) };
+export function layoutRects(view: Pick<DiagramView, "nodes"> & { id?: string; postOf?: string | null; subLines?: boolean }, o: MeasureOptions = {}): Map<string, Rect> {
+  o = { ...o, post: postOf(view, o), subLines: o.subLines ?? view.subLines !== false };
   const rects = new Map<string, Rect>();
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
   const kids = new Map<string, DiagramNode[]>();
@@ -166,12 +163,12 @@ export function layoutRects(view: Pick<DiagramView, "nodes"> & { id?: string; po
     } else {
       const children = visiting.has(n.id) ? [] : kids.get(n.id) ?? [];
       visiting.add(n.id);
-      if (!children.length) r = { x: n.x, y: n.y, w: Math.max(GROUP.emptyW, groupHeaderWidth(n, o.post)), h: GROUP.emptyH };
+      if (!children.length) r = { x: n.x, y: n.y, w: Math.max(GROUP.emptyW, groupHeaderWidth(n, o.post, o.subLines)), h: GROUP.emptyH };
       else {
         const cs = children.map(rectOf);
         const minX = Math.min(...cs.map((c) => c.x)), minY = Math.min(...cs.map((c) => c.y));
         const maxX = Math.max(...cs.map((c) => c.x + c.w)), maxY = Math.max(...cs.map((c) => c.y + c.h));
-        const w = Math.max(maxX - minX + GROUP.padX * 2, groupHeaderWidth(n, o.post));
+        const w = Math.max(maxX - minX + GROUP.padX * 2, groupHeaderWidth(n, o.post, o.subLines));
         r = { x: minX - GROUP.padX, y: minY - GROUP.head, w, h: maxY - minY + GROUP.head + GROUP.padBottom };
       }
       visiting.delete(n.id);
@@ -488,6 +485,12 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
     bulge.set(e.id, best.c);
     for (const p of ends) if (p.e === e) p.side = best.side;
   }
+  // Each part's outline (diagram contract, Shapes): ends attach to it, not to the box.
+  const outlines = new Map<string, { shape: PartShape; loops: Pt[][] }>();
+  for (const n of view.nodes) {
+    const r = rects.get(n.id), shape = shapeOf(n);
+    if (r && shape !== "group") outlines.set(n.id, { shape, loops: shapeGeometry(shape, n.form === "compact", S.post, r).loops });
+  }
   const groups = new Map<string, End[]>();
   for (const p of ends) { const k = `${p.id}:${p.side}`; (groups.get(k) ?? groups.set(k, []).get(k)!).push(p); }
   const pts = new Map<string, Point>();
@@ -496,7 +499,9 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
     list.sort((p, q) => (vert ? p.other.y - q.other.y : p.other.x - q.other.x) || p.e.id.localeCompare(q.e.id) || p.end - q.end);
     const r = rects.get(list[0].id)!;
     const span = (vert ? r.h : r.w) * 0.6;
-    let step = list.length > 1 ? Math.min(16, span / (list.length - 1)) : 0;
+    // On the left and right sides of an API's port every end attaches at the point: those ends are not spread.
+    const atPoint = vert && outlines.get(list[0].id)?.shape === "port";
+    let step = list.length > 1 && !atPoint ? Math.min(16, span / (list.length - 1)) : 0;
     let first = (vert ? r.h : r.w) / 2 - (list.length - 1) / 2 * step;
     // Ends entering from above come in right of the group's name, closer together if the part leaves room.
     const clear = list[0].side === "t" ? clearOfName(list[0].id) - r.x : -Infinity;
@@ -510,7 +515,10 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
         r: { x: r.x + r.w, y: r.y + r.h / 2 + off }, l: { x: r.x, y: r.y + r.h / 2 + off },
         b: { x: r.x + r.w / 2 + off, y: r.y + r.h }, t: { x: r.x + r.w / 2 + off, y: r.y },
       };
-      pts.set(`${p.e.id}:${p.end}`, { x: Math.round(P[p.side].x), y: Math.round(P[p.side].y) });
+      const at = { x: Math.round(P[p.side].x), y: Math.round(P[p.side].y) };
+      // Where the outline lies inside the box, the end moves straight in along its side's normal to meet it.
+      const ol = outlines.get(p.id), depth = ol && !atPoint ? outlineDepth(ol.loops, r, p.side, at) : 0;
+      pts.set(`${p.e.id}:${p.end}`, depth > 0.05 ? { x: r1(at.x - NORMAL[p.side][0] * depth), y: r1(at.y - NORMAL[p.side][1] * depth) } : at);
     });
   }
 

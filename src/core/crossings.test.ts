@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { countCrossings, layoutRects, routeEdges } from "./geometry";
 import { fewerCrossings, layoutView } from "./layout";
@@ -51,6 +52,13 @@ describe("barycentre sweeps", () => {
     expect(count(out)).toBeLessThanOrEqual(count(start));
   });
 
+  it("undoes a round that moves parts but does not lower the crossings", () => {
+    // Row 1 would sort d, e, f into its movable cells, which crosses as much as before: the round is undone.
+    const start = new Map([["a", cell(1, 2)], ["b", cell(0, 0)], ["c", cell(0, 3)], ["d", cell(1, 3)], ["e", cell(1, 0)], ["f", cell(1, 1)]]);
+    const out = fewerCrossings(start, [link("e", "a"), link("d", "f"), link("b", "a"), link("c", "e")], new Map(["c", "d", "e", "f"].map((id) => [id, ""])));
+    expect([...out]).toEqual([...start]);
+  });
+
   it("is pure and deterministic", () => {
     const lifted = [link("a", "d"), link("b", "c")], movable = new Map([["c", ""], ["d", ""]]);
     const input = cells();
@@ -91,6 +99,16 @@ describe("a laid-out view never draws more crossings with the sweeps than withou
       const p = out.nodes.find((n) => n.id === id)!, q = plain.nodes.find((n) => n.id === id)!;
       expect([p.x, p.y], id).toEqual([q.x, q.y]);
     }
+  });
+});
+
+describe("the reordered layout is kept only when it draws no more crossings (step 5)", () => {
+  it("the hotel without its place hints: the sweep lowers the cells' crossings but would draw more, so the plain layout stays", () => {
+    const raw = JSON.parse(readFileSync("tests/fixtures/hotel.archdraw.json", "utf8"));
+    const v = fillDefaults(raw).views[0] as DiagramView;
+    const bare = { ...v, nodes: v.nodes.map(({ x: _x, y: _y, ...n }) => ({ ...n, place: null })) };
+    const plain = layoutView(bare, { reorder: false }), kept = layoutView(bare);
+    expect(kept.nodes.map((n) => [n.id, n.x, n.y])).toEqual(plain.nodes.map((n) => [n.id, n.x, n.y]));
   });
 });
 

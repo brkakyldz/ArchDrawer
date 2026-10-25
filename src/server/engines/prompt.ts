@@ -96,8 +96,8 @@ Design the story:
 - Side parts (at most 6): each serves exactly one spine part. anchor is that spine part's id; side is "above" (people, approvals, notifications, things that start work) or "below" (stores, logs, observability, evaluation). Spine parts have anchor null and side null.
 - Zones (0 to 4): a zone encloses parts that belong together, for example a runtime that holds its loop and its limits. A part's zone is a zone id or null. A zone holds spine parts that are next to each other with their side parts, or side parts of one anchor. Zones never hold zones.
 - At most 12 parts in total. Merge or leave out the rest on purpose; "facts" lists the ids of the existing components each part shows, each id once and on one part only ([] for a part that is new).
-- Every part: label at most 28 characters; sub at most 28 characters in plain words saying what it does (not a file name or a list of technologies). Give 2 to 4 chips of at most 22 characters each when a part needs to show what it holds or guarantees (mechanisms, rules), never tuning numbers; an empty chip list is fine for a simple part.
-- Every part has "inside": null, "held": [] and "limits": [] (a post holds no rows but its chips), and "steps" is [].
+- Every part: label at most 28 characters; sub at most 28 characters in plain words saying what it does (not a file name or a list of technologies).
+- Every part has "inside": null, "held": [], "limits": [] and "chips": [] (a post shows each part by its name and sub-line; nothing it holds is drawn), and "steps" is [].
 - Connections: at most 14, between parts only, never to a zone or to themselves. Number the spine's connections 1, 2, 3 … with step and leave their label empty: the number and the direction carry the path. A side connection gets a label only when the reader needs it, at most two words. One connection per pair of parts; for a reply, use the same connection. style: call, async (events, queues, triggers) or dep (logs, telemetry, read-only).
 
 ${hardLimitsText("linkedin")}
@@ -185,7 +185,7 @@ The story's shape:
 - zones: a zone encloses parts that belong together; a part's zone is a zone id or null. A zone holds spine parts that are next to each other with their side parts, or side parts of one anchor.
 - inside: the id of the part this part is drawn in (that part becomes a frame around it), or null. Parts inside one holder have their own spine and sides, and take the holder's zone.
 - sub: on every part, one line in plain words saying what it does.
-- facts: the ids of the component facts a part shows ([] for a part that is only a frame). held: ids of mechanisms within those facts, drawn as rows, where the brief asks for them ([] elsewhere). limits: ids of limit facts on them, drawn as rows. chips: other short rows of your own (2–5 words each).
+- facts: the ids of the component facts a part shows ([] for a part that is only a frame). held: ids of mechanisms within those facts, where the brief asks for them ([] elsewhere). limits: ids of limit facts on them. chips: other short things it holds, in your own words (2–5 words each). What a part holds is listed in its callout and never drawn on the part, so a part is never a list.
 - Connections: between parts, never to a zone or to themselves; number the main path with step 1, 2, 3 …; one connection per pair. style: call, async (events, queues, triggers) or dep (logs, telemetry, read-only).
 - steps: ${p.channel === "presentation" ? "as the brief says." : "[] (only a presentation has steps)."}
 

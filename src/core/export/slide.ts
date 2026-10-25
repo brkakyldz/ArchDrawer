@@ -4,7 +4,7 @@ import { isPostView, type DiagramDocument, type DiagramView, type Kind, type The
 import { wrapText } from "../text";
 import { FONT_MONO, FONT_SANS, PALETTES } from "../theme";
 import {
-  drawnSizes, FORMATS, keyBlock, readabilityOf, renderShare, shortenedIn, shrinkPanels, WHOLE, type Block, type ShareImage, type ShareSwitches,
+  drawnSizes, FORMATS, keyBlock, readabilityOf, renderShare, shortenedIn, subLinesOf, WHOLE, withSubLines, type Block, type ShareImage, type ShareSwitches,
 } from "./share";
 import { baseline, drawView, esc } from "./svg";
 
@@ -17,6 +17,8 @@ import { baseline, drawView, esc } from "./svg";
 
 export interface SlideOptions extends ShareSwitches {
   theme: Theme;
+  /** `show-sub`: absent or null follows the view's sub-line switch. */
+  sub?: boolean | null;
   /** Base64 woff2 of Geist and Geist Mono, embedded as in the share image. */
   fonts?: { sans: string; mono: string } | null;
 }
@@ -62,8 +64,9 @@ export function renderSlide(doc: SlideDocument, index: number, o: SlideOptions):
   const step = steps[index - 1];
   // Laid out as the opening slide is, so a part sits where it sat there.
   const whole = placedForSwitches(found, { portrait: true, labels: o.labels, post: isPostView(found) });
-  const view: DiagramView = o.items ? whole : shrinkPanels(whole);
-  const drawing = drawView(view, P, { items: o.items, labels: o.labels, steps: o.steps, texts: o.texts, prefix: "sh" });
+  const sub = subLinesOf(whole, o.sub);
+  const view: DiagramView = withSubLines(whole, sub);
+  const drawing = drawView(view, P, { subLines: sub, labels: o.labels, steps: o.steps, texts: o.texts, prefix: "sh" });
   const b = drawing.bounds.w > 0 ? drawing.bounds : { x: 0, y: 0, w: 1, h: 1 };
   const kinds: Kind[] = [];
   for (const n of view.nodes) if (!kinds.includes(n.kind)) kinds.push(n.kind);
@@ -137,8 +140,8 @@ export function renderSlide(doc: SlideDocument, index: number, o: SlideOptions):
   for (const m of (extra.join("") + bandMarkup).matchAll(/<text\b[^>]*font-size="([\d.]+)"/g)) sizes.all.push(Number(m[1]));
   return {
     svg, width: f.w, height: f.h, scale: place.k, kinds, notes,
-    readability: readabilityOf(sizes, f, { items: o.items, whole }),
-    shortened: shortenedIn(view, { items: o.items }),
+    readability: readabilityOf(sizes, f, { sub, whole }),
+    shortened: shortenedIn(view, { sub }),
     drawn: { view, rects: drawing.rects, routes: drawing.routes },
   };
 }

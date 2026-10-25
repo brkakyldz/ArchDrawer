@@ -14,12 +14,13 @@ describe("sizes are a function of content", () => {
     expect(two.h).toBe(126);
   });
 
-  it("panel height follows its formula and shrinks without items", () => {
+  it("a panel measures exactly as a card of its kind: its rows change no size (ADR 0014)", () => {
     const p = node("p", { form: "panel", sub: "every call passes here", items: ["Schema validation", "Scope re-check", "Typed errors"] });
-    expect(measureNode(p).h).toBe(24 + 22 + 17 + 10 + 3 * 26 + 2 * 4);
-    expect(measureNode(p, { items: false }).h).toBe(24 + 22 + 17);
-    expect(measureNode(p).w).toBeGreaterThanOrEqual(184);
-    expect(measureNode(p).w).toBeLessThanOrEqual(320);
+    const card = node("p", { form: "card", sub: "every call passes here" });
+    expect(measureNode(p)).toEqual(measureNode(card));
+    expect(measureNode(p).items).toEqual([]);
+    // With the view's sub-lines off, a card loses its 18 px sub-line row.
+    expect(measureNode(p, { subLines: false }).h).toBe(90);
   });
 
   it("compact is 46 tall and as wide as its text needs, within 140–320", () => {

@@ -5,7 +5,7 @@ import { open, painted, shop } from "./helpers";
 
 // Part sizes, and the editor and the image agreeing on them, are held-out H17 and H87; they compare
 // boxes, not the glyphs painted inside them. What stays here is a stricter check: every label,
-// sub-line and row is painted no wider than the width its part was measured for, in the editor and
+// sub-line is painted no wider than the width its part was measured for, in the editor and
 // in the exported image. Linux is where it bites: unless told to draw text at its geometric size,
 // Chromium there rounds each glyph's advance to a whole pixel, so a label sized to fit exactly can
 // overrun its part (docs/contracts/diagram.md, Geometry). The editor and the image must also paint
@@ -53,8 +53,9 @@ async function paintedTexts(surface: Locator): Promise<Painted[]> {
 
 function expectWithinMeasure(texts: Painted[], where: string) {
   const checked = texts.filter((t) => t.role !== "other" && t.text);
-  // Every label, sub-line and row of the four parts: 4 labels, 4 sub-lines, 2 rows.
-  expect(checked.length, `${where}: texts found`).toBe(10);
+  // Every label and sub-line of the four parts: 4 labels, 4 sub-lines; no part draws a row (ADR 0014).
+  expect(checked.length, `${where}: texts found`).toBe(8);
+  expect(checked.filter((t) => t.role === "item"), `${where}: no row is drawn`).toEqual([]);
   for (const t of checked) {
     const measured = widthOf(t.text, styleOf(t.id, t.role));
     // 0.25 px: positions are kept in 1/64 px and letter-spacing is written to 0.01 px.

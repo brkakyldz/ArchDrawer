@@ -161,7 +161,7 @@ describe("the slide image (PRES-1, PRES-3)", () => {
     expect(on).toContain("data-text-id");
     expect(on).toContain("data-key=");
     expect(on).toContain("base64,U0FOUw==");
-    const off = renderSlide(d, 1, { ...OPTS, steps: false, labels: false, texts: false, legend: false, items: false }).svg;
+    const off = renderSlide(d, 1, { ...OPTS, steps: false, labels: false, texts: false, legend: false, sub: false }).svg;
     for (const s of ["data-step-badge", "data-edge-label", "data-text-id", "data-key=", "node-item", "@font-face"]) expect(off).not.toContain(s);
     expect(off).toContain("data-slide-band");
   });

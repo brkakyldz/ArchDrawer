@@ -36,7 +36,7 @@ describe("layout report", () => {
     const d = doc([node("a", { sub: long, x: 0, y: 0 }), node("p", { form: "panel", items: ["one"], x: 400, y: 0 })]);
     expect(layoutReport(d, "overview", opts()).cutText).toEqual([{ id: "a", field: "sub", text: long }]);
     const hidden = doc([node("p", { form: "panel", items: ["an item far too long to fit into the narrow panel it sits in"] })]);
-    expect(layoutReport(hidden, "overview", opts({ items: false })).cutText).toEqual([]);
+    expect(layoutReport(hidden, "overview", opts()).cutText).toEqual([]);
   });
 
   it("reports a post's text over its story targets, a spine label against a limit of 0, and keeps the text whole", () => {

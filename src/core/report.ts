@@ -59,11 +59,11 @@ export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, v
   const style = postOf(view);
   for (const n of view.nodes) {
     if (n.form === "group") continue;
-    const m = measureNode(n, { items: o.items, post: style });
+    const m = measureNode(n, { subLines: view.subLines !== false, post: style });
     const last = m.lines[m.lines.length - 1] ?? "";
     if (last.endsWith("…") && !n.label.trimEnd().endsWith("…")) cutText.push({ id: n.id, field: "label", text: n.label });
     if (n.sub && m.sub !== n.sub) cutText.push({ id: n.id, field: "sub", text: n.sub });
-    m.items.forEach((t, i) => { if (t !== n.items[i]) cutText.push({ id: n.id, field: "items", text: n.items[i] }); });
+
   }
   if (o.labels) for (const e of edges) if (e.label && !routes.get(e.id)!.labelAt) cutText.push({ id: e.id, field: "label", text: e.label });
 
@@ -77,7 +77,7 @@ export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, v
       over(n.id, "label", n.label, STORY_LIMITS.label);
       if (n.form === "group") continue;
       over(n.id, "sub", n.sub, STORY_LIMITS.sub);
-      if (o.items) for (const t of n.items) over(n.id, "items", t, STORY_LIMITS.chip);
+
     }
     for (const e of edges) {
       if (!e.label) continue;

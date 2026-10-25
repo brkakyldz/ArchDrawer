@@ -8,7 +8,8 @@ import { arrangeForFeed, explainInstruction, foldForFeed, importance, rearrangeF
 import { makeLinkedInView } from "../testkit";
 import { renderMermaid } from "./mermaid";
 import { DEFAULT_SHARE, FORMAT_IDS, FORMATS, readabilityOf, renderShare, shortenedIn, startSwitches, suggestionFor } from "./share";
-import { drawView, esc, outlineOf, outlineSize, shapeOf } from "./svg";
+import { drawView, esc, shapeOf, sharedDefs as sharedDefsOf } from "./svg";
+import { shapeGeometry, type PartShape } from "../shapes";
 import { textWidth } from "../text";
 
 const load = (path: string) =>
@@ -41,10 +42,12 @@ describe("drawing (editor/export parity)", () => {
     expect(strip(drawView(v, PALETTES.light).body)).toEqual(strip(drawView(v, PALETTES.dark).body));
   });
 
-  it("leaves held items out when asked, and panels shrink", () => {
+  it("never draws a panel's rows, and leaves the sub-lines out when the switch is off", () => {
     const v = shop().views[0];
-    expect(drawView(v, PALETTES.light).body).toContain("Validate order");
-    expect(drawView(v, PALETTES.light, { items: false }).body).not.toContain("Validate order");
+    expect(drawView(v, PALETTES.light).body).not.toContain("Validate order");
+    expect(drawView(v, PALETTES.light).body).toContain("Postgres");
+    expect(drawView(v, PALETTES.light, { subLines: false }).body).not.toContain("Postgres");
+    expect(drawView({ ...v, subLines: false }, PALETTES.light).body).not.toContain("Postgres");
   });
 
   it("escapes text", () => {
@@ -56,8 +59,9 @@ describe("drawing (editor/export parity)", () => {
   });
 });
 
-describe("shapes by kind (LOOK-2)", () => {
-  const SHAPED: [DiagramNode["kind"], string][] = [["llm", "agent"], ["actor", "person"], ["data", "store"], ["external", "external"], ["gate", "check"], ["service", "card"], ["client", "card"]];
+describe("shapes by kind (LOOK-2, ADR 0014)", () => {
+  const SHAPED: [DiagramNode["kind"], string][] = [["actor", "person"], ["client", "window"], ["api", "port"], ["service", "card"], ["worker", "stack"],
+    ["llm", "agent"], ["external", "external"], ["ops", "pulse"], ["gate", "check"], ["data", "store"]];
   const node = (id: string, kind: DiagramNode["kind"], form: DiagramNode["form"], extra: Partial<DiagramNode> = {}): DiagramNode => ({
     id, label: "Probe", kind, form, icon: null, sub: "probe line", items: form === "panel" ? ["One"] : [], description: "D.",
     files: [], parent: null, detail: null, place: null, x: 40 + (extra.place?.col ?? 0) * 260, y: 40 + (extra.place?.row ?? 3) * 200, ...extra,
@@ -78,45 +82,37 @@ describe("shapes by kind (LOOK-2)", () => {
   const shapes = (svg: string) => Object.fromEntries([...bodies(svg)].map(([id, el]) => [id, attr(el, "data-shape")]));
   const expected: Record<string, string> = {
     ...Object.fromEntries(SHAPED.flatMap(([k, s]) => [[`card-${k}`, s], [`compact-${k}`, s]])),
-    "panel-llm": "card", "group-data": "group", "inner-gate": "check",
+    "panel-llm": "agent", "group-data": "group", "inner-gate": "check",
   };
-  /** Every point of a path's segments, and for an arc of a half ellipse its far side too. */
-  const extent = (d: string) => {
-    const xs: number[] = [], ys: number[] = [];
-    let x = 0, y = 0;
-    for (const [, c, args] of d.matchAll(/([MHVLA])([^MHVLAZ]*)/g)) {
-      const v = args.trim().split(/[\s,]+/).map(Number);
-      if (c === "H") x = v[0]; else if (c === "V") y = v[0];
-      else if (c === "A") { const [rx, ry, , , sweep, ex, ey] = v; if (ey === y && Math.abs(ex - x) === 2 * rx) ys.push(y + (ex > x === !!sweep ? -ry : ry)); x = ex; y = ey; }
-      else { x = v[0]; y = v[1]; }
-      xs.push(x); ys.push(y);
-    }
-    return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  const extent = (loops: { x: number; y: number }[][]) => {
+    const pts = loops.flat();
+    return { x0: Math.min(...pts.map((p) => p.x)), x1: Math.max(...pts.map((p) => p.x)), y0: Math.min(...pts.map((p) => p.y)), y1: Math.max(...pts.map((p) => p.y)) };
   };
 
-  it("names each card's and compact part's outline by its kind; a panel is a card and a group a group", () => {
+  it("names each card's, compact part's and panel's outline by its kind; a group is a group", () => {
     for (const P of [PALETTES.light, PALETTES.dark]) expect(shapes(drawView(view(), P).body)).toEqual(expected);
   });
 
-  it("draws every shape inside the unchanged box, with the box as the first rect", () => {
-    for (const id of ["main", "main-linkedin"]) {
-      const v = view(id), d = drawView(v, PALETTES.light), plain = layoutRects({ ...v, nodes: v.nodes.map((x) => ({ ...x, kind: x.form === "group" ? x.kind : "service" })) });
-      for (const x of v.nodes) {
-        const r = d.rects.get(x.id)!;
-        expect(r, `${id} ${x.id}: the box of a plain part`).toEqual(plain.get(x.id));
-        expect(firstRect(d.body, x.id), `${id} ${x.id}: first rect`).toEqual({ w: r.w, h: r.h });
-        const outline = attr(bodies(d.body).get(x.id)!, "d");
-        if (!outline || !["agent", "person", "store", "external", "check"].includes(expected[x.id])) continue;
-        const e = extent(outline);
-        expect(e.x0, `${id} ${x.id} left`).toBeGreaterThanOrEqual(r.x - 0.01); expect(e.x1, `${id} ${x.id} right`).toBeLessThanOrEqual(r.x + r.w + 0.01);
-        expect(e.y0, `${id} ${x.id} top`).toBeGreaterThanOrEqual(r.y - 0.01); expect(e.y1, `${id} ${x.id} bottom`).toBeLessThanOrEqual(r.y + r.h + 0.01);
-      }
+  it("sizes each part by its shape's content box, with the box as the first rect and every outline inside it", () => {
+    const tall: Record<string, number> = { person: 108, window: 108, port: 108, card: 108, stack: 116, agent: 108, external: 118, pulse: 108, check: 126, store: 124 };
+    const compactTall: Record<string, number> = { person: 46, window: 46, port: 46, card: 46, stack: 52, agent: 46, external: 52, pulse: 46, check: 54, store: 54 };
+    const v = view(), d = drawView(v, PALETTES.light);
+    for (const x of v.nodes) {
+      const r = d.rects.get(x.id)!;
+      expect(firstRect(d.body, x.id), `${x.id}: first rect`).toEqual({ w: r.w, h: r.h });
+      if (x.form === "group") continue;
+      const shape = expected[x.id] as PartShape;
+      if (x.form !== "compact") expect([r.w, r.h], x.id).toEqual([196 + (shape === "port" ? 28 : shape === "stack" ? 8 : 0), tall[shape]]);
+      else expect(r.h, x.id).toBe(compactTall[shape]);
+      const e = extent(shapeGeometry(shape, x.form === "compact", false, r).loops);
+      expect(e.x0, `${x.id} left`).toBeGreaterThanOrEqual(r.x - 0.01); expect(e.x1, `${x.id} right`).toBeLessThanOrEqual(r.x + r.w + 0.01);
+      expect(e.y0, `${x.id} top`).toBeGreaterThanOrEqual(r.y - 0.01); expect(e.y1, `${x.id} bottom`).toBeLessThanOrEqual(r.y + r.h + 0.01);
     }
   });
 
-  it("strokes a shaped outline with round joins, so a browser measures it as it measures a rect", () => {
+  it("strokes every outline with round joins, so a browser measures it as it measures a rect", () => {
     const body = drawView(view(), PALETTES.light).body;
-    const paths = [...body.matchAll(/<path\b[^>]*>/g)].map((m) => m[0]).filter((el) => /\sclass="(?:body|shape-mark)"/.test(el));
+    const paths = [...body.matchAll(/<path\b[^>]*>/g)].map((m) => m[0]).filter((el) => /\sclass="(?:body|shape-back)"/.test(el));
     expect(paths.length).toBeGreaterThan(0);
     for (const p of paths) expect(p).toContain('stroke-linejoin="round"');
   });
@@ -125,13 +121,22 @@ describe("shapes by kind (LOOK-2)", () => {
     expect(shapes(drawView(view("main-linkedin"), PALETTES.dark).body)).toEqual(expected);
   });
 
-  it("gives every outline a measured edge: the store's ellipse and the head touch the box", () => {
-    const r = { x: 10, y: 20, w: 196, h: 108 }, s = outlineSize("card");
-    expect(extent(outlineOf("store", r, s).d)).toEqual({ x0: 10, x1: 206, y0: 20, y1: 128 });
-    expect(extent(outlineOf("person", r, s).d)).toMatchObject({ y0: 20, y1: 128 });
-    expect(outlineOf("check", r, s).d).toMatch(/^M22,20 H194 L206,32 V116 L194,128 H22 L10,116 V32 Z$/);
-    expect(outlineOf("external", r, s).dash).toBeTruthy();
-    expect(shapeOf({ kind: "llm", form: "panel" })).toBe("card");
+  it("an agent's outline is the kind-to-violet gradient; an external one is dashed; no part draws a row", () => {
+    const body = drawView(view(), PALETTES.dark).body;
+    expect(bodies(body).get("card-llm")).toContain('stroke="url(#ad-agent)"');
+    expect(sharedDefsOf(PALETTES.dark)).toContain(`<stop offset="1" stop-color="${PALETTES.dark.agentEnd}"/>`);
+    expect(bodies(body).get("card-external")).toContain('stroke-dasharray="6 4"');
+    expect(body).not.toContain('class="item"');
+    expect(body).not.toContain(">One<");
+  });
+
+  it("gives every outline a measured edge inside the box: the cylinder, the avatar and the shield's point touch it", () => {
+    const r = { x: 10, y: 20, w: 196, h: 124 };
+    expect(extent(shapeGeometry("store", false, false, r).loops)).toMatchObject({ y0: 20, y1: 144 });
+    expect(extent(shapeGeometry("person", false, false, r).loops)).toMatchObject({ y0: 20, y1: 144 });
+    expect(extent(shapeGeometry("check", false, false, r).loops)).toEqual({ x0: 10, x1: 206, y0: 20, y1: 144 });
+    expect(shapeGeometry("port", false, false, r).d).toBe("M24,20 L192,20 L206,82 L192,144 L24,144 L10,82 Z");
+    expect(shapeOf({ kind: "llm", form: "panel" })).toBe("agent");
     expect(shapeOf({ kind: "data", form: "group" })).toBe("group");
     expect(shapeOf({ kind: "actor", form: "compact" })).toBe("person");
   });
@@ -167,7 +172,7 @@ describe("share image", () => {
   it("reports readability honestly: a large drawing in the feed is too small, a small one is readable", () => {
     const big = renderShare(hotel(), hotel().views[0].id, { ...DEFAULT_SHARE, theme: "light", format: "linkedin" });
     expect(big.readability.level).toBe("warn");
-    expect(big.readability.text).toBe("The text will be too small to read in the LinkedIn feed, even when the image is opened; hiding what each part holds would help.");
+    expect(big.readability.text).toBe("The text will be too small to read in the LinkedIn feed, even when the image is opened; hiding the sub-lines would help.");
     expect(big.readability.detail).toMatch(/^Names \d+\.\d px and text \d+\.\d px in the LinkedIn feed, \d+\.\d px opened\.$/);
     const small = renderShare(shop(), "overview", { ...DEFAULT_SHARE, theme: "light", format: "slide" });
     expect(small.readability.level).toBe("good");
@@ -177,13 +182,13 @@ describe("share image", () => {
 
   it("says readability in one plain sentence per destination, with the numbers apart", () => {
     const whole = { id: "v", postOf: null } as DiagramView;
-    const say = (px: number, format: keyof typeof FORMATS, o: { items?: boolean; whole?: DiagramView } = {}) =>
-      readabilityOf({ names: [px], all: [px] }, FORMATS[format], { items: false, whole, ...o });
+    const say = (px: number, format: keyof typeof FORMATS, o: { sub?: boolean; whole?: DiagramView } = {}) =>
+      readabilityOf({ names: [px], all: [px] }, FORMATS[format], { sub: false, whole, ...o });
     // ok: readable once opened (8 px or more in the image), too small where it lands.
     expect(say(10, "readme").level).toBe("ok");
     expect(say(10, "readme").text).toBe("The text is too small to read in a GitHub README until the image is opened; a larger format would help.");
     expect(say(10, "square").text).toBe("The text is too small to read in a feed until the image is opened; the LinkedIn version would help.");
-    expect(say(4, "slide", { items: true }).text).toBe("The text will be too small to read on a projected slide, even when the image is opened; hiding what each part holds would help.");
+    expect(say(4, "slide", { sub: true }).text).toBe("The text will be too small to read on a projected slide, even when the image is opened; hiding the sub-lines would help.");
     expect(say(20, "slide").text).toBe("The text is readable on a projected slide as it is.");
     for (const f of FORMAT_IDS) {
       const r = say(4, f);
@@ -191,7 +196,7 @@ describe("share image", () => {
       expect(r.text.split(/[.;] /)).toHaveLength(r.text.includes(";") ? 2 : 1);
       expect(r.detail).toContain(`${(4 * FORMATS[f].seen / FORMATS[f].w).toFixed(1)} px ${FORMATS[f].where}, 4.0 px opened.`);
     }
-    expect(readabilityOf({ names: [], all: [] }, FORMATS.readme, { items: false, whole })).toMatchObject({ level: "warn", text: "The image has no text to read." });
+    expect(readabilityOf({ names: [], all: [] }, FORMATS.readme, { sub: false, whole })).toMatchObject({ level: "warn", text: "The image has no text to read." });
   });
 
   it("embeds fonts when given", () => {
@@ -368,26 +373,26 @@ describe("LinkedIn version", () => {
     const f = foldForFeed(v);
     expect(f.nodes.map((n) => n.form)).toEqual(["compact", "card"]);
     const cut = { ...v.nodes[1], form: "card" as const, sub: long };
-    expect(shortenedIn({ nodes: [cut] }, { items: true })).toEqual([{ id: "b", label: "Part b", text: long }]);
-    expect(shortenedIn({ nodes: [v.nodes[1]] }, { items: true })).toEqual([]);
+    expect(shortenedIn({ nodes: [cut] }, { sub: true })).toEqual([{ id: "b", label: "Part b", text: long }]);
+    expect(shortenedIn({ nodes: [v.nodes[1]] }, { sub: true })).toEqual([]);
   });
 
   it("starts each destination with its own toggles: the post's for a post or LinkedIn, fewer for Square", () => {
     const on = (format: Parameters<typeof startSwitches>[0], post = false) =>
       Object.entries(startSwitches(format, post)).filter(([, v]) => v).map(([k]) => k).sort();
-    expect(on("feed")).toEqual(["items", "labels", "lede", "steps", "texts", "title"]);
+    expect(on("feed")).toEqual(["labels", "lede", "steps", "texts", "title"]);
     expect(on("readme", true)).toEqual(on("feed"));
     expect(on("square")).toEqual(["lede", "steps", "texts", "title"]);
-    for (const f of ["readme", "slide", "linkedin"] as const) expect(on(f)).toEqual(["items", "labels", "legend", "steps", "texts", "title"]);
+    for (const f of ["readme", "slide", "linkedin"] as const) expect(on(f)).toEqual(["labels", "legend", "steps", "texts", "title"]);
   });
 
   it("suggests one change that has not been made yet", () => {
     const s = (o: Partial<Parameters<typeof suggestionFor>[1]>, level: "ok" | "warn" | "good" = "warn") =>
-      suggestionFor(level, { items: false, format: "readme", linkedInVersion: false, ...o });
-    expect(s({ items: true })).toBe("hiding what each part holds would help");
+      suggestionFor(level, { sub: false, format: "readme", linkedInVersion: false, ...o });
+    expect(s({ sub: true })).toBe("hiding the sub-lines would help");
     expect(s({ format: "feed" })).toBe("the LinkedIn version would help");
     expect(s({ format: "feed", linkedInVersion: true })).toBe("a larger format would help");
-    expect(s({ items: true }, "good")).toBeNull();
+    expect(s({ sub: true }, "good")).toBeNull();
   });
 
   it("wraps a long title instead of cutting it short, and never shortens a numbered label", () => {
@@ -411,8 +416,8 @@ describe("LinkedIn version", () => {
   it("suggests the LinkedIn version on an ordinary -linkedin view and not on a post", () => {
     const tiny = { names: [4], all: [4] };
     const plain = { ...grouped(), id: "main-linkedin", postOf: null };
-    expect(readabilityOf(tiny, FORMATS.feed, { items: false, whole: plain }).text).toContain("the LinkedIn version would help");
-    expect(readabilityOf(tiny, FORMATS.feed, { items: false, whole: { ...plain, id: "story", postOf: "main" } }).text).not.toContain("the LinkedIn version");
+    expect(readabilityOf(tiny, FORMATS.feed, { sub: false, whole: plain }).text).toContain("the LinkedIn version would help");
+    expect(readabilityOf(tiny, FORMATS.feed, { sub: false, whole: { ...plain, id: "story", postOf: "main" } }).text).not.toContain("the LinkedIn version");
   });
 
   it("re-arranges a LinkedIn view without changing the forms the user chose", () => {

@@ -1,7 +1,8 @@
 import {
-  COMPACT, GROUP, groupNameText, INSIDE, LABEL, LIMIT_ROW, labelWidth, layoutRects, measureNode, measureText, postOf, styleOf, textStyle,
+  COMPACT, contentBox, GROUP, groupNameText, INSIDE, LABEL, labelWidth, layoutRects, measureNode, measureText, postOf, styleOf, textStyle,
   routeEdges, viewBounds, type EdgeRoute, type MeasureOptions, type Rect,
 } from "../geometry";
+import { CARD_SHAPE, COMPACT_SHAPE, OUTLINE, shapeGeometry, shapeOf, type PartShape } from "../shapes";
 import { iconOf, KINDS, type DiagramEdge, type DiagramNode, type DiagramText, type DiagramView, type Kind } from "../model";
 import { FONT_MONO, ICON_PATHS, mix, type Palette } from "../theme";
 import { widthOf } from "../text";
@@ -40,6 +41,10 @@ export function sharedDefs(P: Palette, prefix = "ad"): string {
     out.push(`<filter id="${prefix}-ig-${k}" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="3.5" flood-color="${P.kinds[k]}" flood-opacity="0.65"/></filter>`);
     out.push(`<radialGradient id="${prefix}-tint-${k}" cx="0" cy="0" r="1" gradientTransform="translate(0.5 0) scale(1.2 0.7)"><stop offset="0" stop-color="${P.kinds[k]}" stop-opacity="${P.tint}"/><stop offset="0.7" stop-color="${P.kinds[k]}" stop-opacity="0"/></radialGradient>`);
   }
+  // The AI agent's outline runs from its kind colour to the agent end colour; a cylinder's rims fade over the middle third.
+  out.push(`<linearGradient id="${prefix}-agent" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${P.kinds.llm}"/><stop offset="1" stop-color="${P.agentEnd}"/></linearGradient>`);
+  const rim = mix(P.kinds.data, P.line2, 0.55);
+  out.push(`<linearGradient id="${prefix}-rim" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${rim}"/><stop offset="0.33" stop-color="${rim}" stop-opacity="0"/><stop offset="0.67" stop-color="${rim}" stop-opacity="0"/><stop offset="1" stop-color="${rim}"/></linearGradient>`);
   out.push(`<filter id="${prefix}-badge" x="-100%" y="-100%" width="300%" height="300%"><feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="${P.accent}" flood-opacity="0.5"/></filter>`);
   return out.join("");
 }
@@ -56,63 +61,8 @@ function roundedRectPath(r: Rect, rad: number): string {
   return `M${n(x + rad)},${n(y)} H${n(x + w - rad)} A${rad},${rad} 0 0 1 ${n(x + w)},${n(y + rad)} V${n(y + h - rad)} A${rad},${rad} 0 0 1 ${n(x + w - rad)},${n(y + h)} H${n(x + rad)} A${rad},${rad} 0 0 1 ${n(x)},${n(y + h - rad)} V${n(y + rad)} A${rad},${rad} 0 0 1 ${n(x + rad)},${n(y)} Z`;
 }
 
-/** The outline a part draws (diagram contract, Geometry, Shapes): `data-shape` of its `body`. */
-export type Shape = "card" | "agent" | "person" | "store" | "external" | "check" | "group";
-export const SHAPES_BY_KIND: Partial<Record<Kind, Shape>> = { llm: "agent", actor: "person", data: "store", external: "external", gate: "check" };
-/** The kind alone gives a card's or compact part's outline; a panel is a card and a group a group. */
-export function shapeOf(node: Pick<DiagramNode, "kind" | "form">): Shape {
-  if (node.form === "group") return "group";
-  if (node.form === "panel") return "card";
-  return SHAPES_BY_KIND[node.kind] ?? "card";
-}
-
-/** The measures of an outline: corner radius, agent inset, person head radius and x offset, store ellipse height, check corner cut. */
-export interface OutlineSize { rad: number; inset: number; head: number; headX: number; ry: number; cut: number }
-export function outlineSize(form: "card" | "compact", post = false): OutlineSize {
-  return form === "compact"
-    ? { rad: 12, inset: 4, head: 6, headX: COMPACT.padX + COMPACT.icon / 2, ry: 4, cut: 9 }
-    : { rad: 12, inset: 4, head: 6, headX: 22, ry: post ? 5 : 7, cut: 12 };
-}
-
-export interface Outline {
-  /** The silhouette, inside the box `r`. */
-  d: string;
-  /** Strokes drawn over the body in the kind's colour: the agent's inner outline, the store's rim, the lower half of the head. */
-  marks: string[];
-  /** The person's head, filled in the kind's colour. */
-  dot?: { cx: number; cy: number; r: number };
-  dash?: string;
-}
-
-/** The outline of a shape inside the box `r`. Every point lies inside the box, so no size changes with the shape. */
-export function outlineOf(shape: Shape, r: Rect, s: OutlineSize): Outline {
-  const { x, y, w, h } = r;
-  switch (shape) {
-    case "agent":
-      return { d: roundedRectPath(r, s.rad), marks: [roundedRectPath({ x: x + s.inset, y: y + s.inset, w: w - s.inset * 2, h: h - s.inset * 2 }, Math.max(1, s.rad - s.inset))] };
-    case "external":
-      return { d: roundedRectPath(r, s.rad), marks: [], dash: "6 4" };
-    case "person": {
-      // The box's top edge is the top of the head; the rounded rectangle starts at the head's centre.
-      const top = y + s.head, hx = x + s.headX, k = s.head, rad = Math.min(s.rad, (h - s.head) / 2);
-      const d = `M${n(x + rad)},${n(top)} H${n(hx - k)} A${k},${k} 0 0 1 ${n(hx + k)},${n(top)} H${n(x + w - rad)} A${rad},${rad} 0 0 1 ${n(x + w)},${n(top + rad)} V${n(y + h - rad)} A${rad},${rad} 0 0 1 ${n(x + w - rad)},${n(y + h)} H${n(x + rad)} A${rad},${rad} 0 0 1 ${n(x)},${n(y + h - rad)} V${n(top + rad)} A${rad},${rad} 0 0 1 ${n(x + rad)},${n(top)} Z`;
-      return { d, marks: [`M${n(hx - k)},${n(top)} A${k},${k} 0 0 0 ${n(hx + k)},${n(top)}`], dot: { cx: hx, cy: top, r: Math.max(1, k - 2.5) } };
-    }
-    case "store": {
-      const rx = w / 2, ry = s.ry;
-      return {
-        d: `M${n(x)},${n(y + ry)} A${n(rx)},${ry} 0 0 1 ${n(x + w)},${n(y + ry)} V${n(y + h - ry)} A${n(rx)},${ry} 0 0 1 ${n(x)},${n(y + h - ry)} Z`,
-        marks: [`M${n(x)},${n(y + ry)} A${n(rx)},${ry} 0 0 0 ${n(x + w)},${n(y + ry)}`],
-      };
-    }
-    case "check": {
-      const c = s.cut;
-      return { d: `M${n(x + c)},${n(y)} H${n(x + w - c)} L${n(x + w)},${n(y + c)} V${n(y + h - c)} L${n(x + w - c)},${n(y + h)} H${n(x + c)} L${n(x)},${n(y + h - c)} V${n(y + c)} Z`, marks: [] };
-    }
-    default:
-      return { d: roundedRectPath(r, s.rad), marks: [] };
-  }
-}
+export type { Shape } from "../shapes";
+export { shapeOf } from "../shapes";
 
 /** Ambient shadow and kind glow under a box (DESIGN.md, Elevation): depth by light, not by lift. */
 function glowUnder(r: Rect, color: string, P: Palette, prefix: string, group = false): string {
@@ -133,12 +83,93 @@ function glowUnder(r: Rect, color: string, P: Palette, prefix: string, group = f
 export interface NodeMarkupOptions extends MarkupOptions, MeasureOptions { prefix?: string }
 
 /**
+ * What an outline draws over its body in the kind colour (diagram contract, Shapes): the service's rule, the
+ * avatar, the title bar, the port's dots, the agent's inner outline and spark, the pulse, the cylinder's lid,
+ * deeper slab and rims. Every mark lies inside the part's box but the port's dots, centred on its points.
+ */
+function shapeMarks(shape: PartShape, compact: boolean, post: boolean, r: Rect, front: Rect, P: Palette, K: string, prefix: string, detail: boolean): string {
+  const s = post ? 1 : 0, mark = mix(K, P.line2, 0.55), out: string[] = [];
+  const pe = ` pointer-events="none"`;
+  switch (shape) {
+    case "card":
+      out.push(compact
+        ? `<rect class="shape-mark" x="${n(r.x + 1)}" y="${n(r.y + 10)}" width="3" height="${n(Math.max(0, r.h - 20))}" rx="1.5" fill="${K}"${pe}/>`
+        : `<rect class="shape-mark" x="${n(r.x + 12)}" y="${n(r.y + 1)}" width="${n(Math.max(0, r.w - 24))}" height="3" rx="1.5" fill="${K}"${pe}/>`);
+      break;
+    case "person": {
+      const a = compact ? r.h / 2 : OUTLINE.avatar[s] / 2, cx = compact ? r.x + a : r.x + r.w / 2, cy = r.y + a;
+      out.push(`<circle class="shape-mark" cx="${n(cx)}" cy="${n(cy)}" r="${n(a - 0.5)}" fill="${P.surface}" stroke="${mark}" stroke-width="1"${pe}/>`);
+      out.push(`<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(a - 0.5)}" fill="url(#${prefix}-tint-actor)"${pe}/>`);
+      break;
+    }
+    case "window": {
+      const bar = compact ? OUTLINE.compactTitleBar : OUTLINE.titleBar[s], R = OUTLINE.rad;
+      const cut = (h: number) => (h >= R ? 0 : R - Math.sqrt(R * R - (R - h) * (R - h)));
+      const d = bar >= R
+        ? `M${n(r.x)},${n(r.y + bar)} V${n(r.y + R)} A${R},${R} 0 0 1 ${n(r.x + R)},${n(r.y)} H${n(r.x + r.w - R)} A${R},${R} 0 0 1 ${n(r.x + r.w)},${n(r.y + R)} V${n(r.y + bar)} Z`
+        : `M${n(r.x + cut(bar))},${n(r.y + bar)} A${R},${R} 0 0 1 ${n(r.x + R)},${n(r.y)} H${n(r.x + r.w - R)} A${R},${R} 0 0 1 ${n(r.x + r.w - cut(bar))},${n(r.y + bar)} Z`;
+      out.push(`<path class="shape-mark" d="${d}" fill="${K}" fill-opacity="0.16"${pe}/>`);
+      if (!compact) {
+        for (let i = 0; i < 3; i++) out.push(`<circle cx="${n(r.x + OUTLINE.dotLeft + i * OUTLINE.dotGap)}" cy="${n(r.y + bar / 2)}" r="${OUTLINE.dotR}" fill="${K}" opacity="0.75"${pe}/>`);
+        const cw = r.w * OUTLINE.capsuleW, ch = Math.min(OUTLINE.capsuleH, bar - 2);
+        out.push(`<rect x="${n(r.x + (r.w - cw) / 2)}" y="${n(r.y + (bar - ch) / 2)}" width="${n(cw)}" height="${n(ch)}" rx="${n(ch / 2)}" fill="${P.surface}" opacity="0.85"${pe}/>`);
+      }
+      break;
+    }
+    case "port": {
+      const dot = compact ? OUTLINE.compactPortDot : OUTLINE.portDot;
+      // Each dot sits on its point, inside the box, so the part measures as its box.
+      for (const x of [r.x + dot, r.x + r.w - dot]) out.push(`<circle class="shape-mark" cx="${n(x)}" cy="${n(r.y + r.h / 2)}" r="${dot}" fill="${K}"${pe}/>`);
+      break;
+    }
+    case "agent": {
+      const i = compact ? OUTLINE.compactAgentInset : OUTLINE.agentInset;
+      out.push(`<path class="shape-mark" d="${roundedRectPath({ x: r.x + i, y: r.y + i, w: r.w - 2 * i, h: r.h - 2 * i }, Math.max(1, OUTLINE.rad - i))}" fill="none" stroke="${K}" stroke-width="1" opacity="0.35"${pe}/>`);
+      const sz = compact ? OUTLINE.compactSpark : OUTLINE.spark, at = compact ? OUTLINE.compactSparkIn : OUTLINE.sparkIn;
+      // With the open mark there, the spark moves left of it.
+      const right = detail ? front.x + front.w - 8 - INSIDE - 6 : r.x + r.w - at;
+      out.push(iconMarkup("spark", right - sz, compact ? r.y + at : r.y + at, sz, K, 1.6));
+      break;
+    }
+    case "pulse": {
+      const b = compact ? COMPACT_SHAPE.pulse.insets[2] : CARD_SHAPE.pulse[post ? "post" : "plain"][2];
+      const yc = r.y + r.h - b, base = r.y + r.h - Math.max(3, b * 0.35), tip = yc + 2, sx = r.x + r.w * 0.6, half = compact ? 4 : 6;
+      const x0 = r.x + OUTLINE.rad, x1 = r.x + r.w - OUTLINE.rad;
+      const line = `M${n(x0)},${n(base)} H${n(sx - half)} L${n(sx)},${n(tip)} L${n(sx + half)},${n(base)} H${n(x1)}`;
+      out.push(`<path d="${line} V${n(r.y + r.h - 1)} H${n(x0)} Z" fill="${K}" opacity="${P.tint}"${pe}/>`);
+      out.push(`<path class="shape-mark" d="${line}" fill="none" stroke="${K}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"${pe}/>`);
+      break;
+    }
+    case "store": {
+      const ry = compact ? OUTLINE.compactLidRy : OUTLINE.lidRy[s], rx = r.w / 2, cx = r.x + rx, slabs = compact ? 2 : 3, sh = (r.h - 2 * ry) / slabs;
+      const rim = (y: number, sweep: 0 | 1) => `A${n(rx)},${ry} 0 0 ${sweep} ${n(sweep ? r.x : r.x + r.w)},${n(y)}`;
+      for (let i = 1; i < slabs; i += 2) {
+        const y0 = r.y + ry + sh * i, y1 = y0 + sh;
+        out.push(`<path d="M${n(r.x)},${n(y0)} A${n(rx)},${ry} 0 0 0 ${n(r.x + r.w)},${n(y0)} V${n(y1)} ${rim(y1, 1)} Z" fill="${K}" opacity="${P.tint}"${pe}/>`);
+      }
+      for (let i = 1; i < slabs; i++) {
+        const y = r.y + ry + sh * i;
+        out.push(`<path class="shape-mark" d="M${n(r.x)},${n(y)} A${n(rx)},${ry} 0 0 0 ${n(r.x + r.w)},${n(y)}" fill="none" stroke="url(#${prefix}-rim)" stroke-width="1"${pe}/>`);
+      }
+      out.push(`<ellipse class="shape-mark" cx="${n(cx)}" cy="${n(r.y + ry)}" rx="${n(rx - 0.5)}" ry="${n(ry - 0.5)}" fill="${K}" fill-opacity="${P.tint * 2}" stroke="${mark}" stroke-width="1"${pe}/>`);
+      break;
+    }
+    default:
+      break;
+  }
+  return out.join("");
+}
+
+/**
  * One component's shapes and text inside its box `r` (from layoutRects). Groups draw only their
- * frame and header; their children are drawn as components of their own.
+ * frame and header; their children are drawn as components of their own. Every other part draws
+ * the outline of its kind and its icon, label and sub-line inside its shape's content box; no part
+ * draws a row (ADR 0014).
  */
 export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkupOptions = {}): string {
   const prefix = o.prefix ?? "ad";
-  const { T, CARD, PANEL } = styleOf(o.post);
+  const post = !!o.post, subOn = o.subLines !== false;
+  const { T, CARD } = styleOf(o.post);
   const K = P.kinds[node.kind];
   const icon = iconOf(node);
   // The first rect is the component's box (ui contract: editor/export parity check).
@@ -156,7 +187,7 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
     out.push(iconMarkup(icon, r.x + GROUP.padHead, cy - GROUP.icon / 2, GROUP.icon, K, 1.75, `${prefix}-ig-${node.kind}`));
     const lx = r.x + GROUP.padHead + GROUP.icon + GROUP.gap;
     out.push(label(node.label, lx, baseline(cy - 11, 22, T.title.size), "start", T.title.size));
-    if (node.sub) {
+    if (node.sub && subOn) {
       const sx = lx + widthOf(node.label, T.title) + GROUP.gap;
       out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(sx)}" y="${n(baseline(cy - 9, 18, T.sub.size))}" font-size="${T.sub.size}" fill="${P.muted}">${esc(node.sub)}</text>`);
     }
@@ -165,71 +196,50 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
   }
 
   out.push(glowUnder(r, K, P, prefix));
-  const shape = shapeOf(node);
-  if (shape === "card") {
-    out.push(`<rect class="body" data-shape="card" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="12" fill="${P.surface}" stroke="${P.line2}" stroke-width="1"/>`);
-    out.push(`<rect x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="12" fill="url(#${prefix}-tint-${node.kind})" pointer-events="none"/>`);
-  } else {
-    // The shape lies inside the box; the tint follows it, and its marks are drawn in the kind's colour. Round joins keep
-    // the stroke's box as a rect's (Chromium widens a path's box by the miter limit), so the part measures the same.
-    const ol = outlineOf(shape, r, outlineSize(node.form === "compact" ? "compact" : "card", o.post));
-    const mark = mix(K, P.line2, 0.55);
-    out.push(`<path class="body" data-shape="${shape}" d="${ol.d}" fill="${P.surface}" stroke="${P.line2}" stroke-width="1" stroke-linejoin="round"${ol.dash ? ` stroke-dasharray="${ol.dash}"` : ""}/>`);
-    out.push(`<path d="${ol.d}" fill="url(#${prefix}-tint-${node.kind})" pointer-events="none"/>`);
-    for (const d of ol.marks) out.push(`<path class="shape-mark" d="${d}" fill="none" stroke="${mark}" stroke-width="1" stroke-linejoin="round" pointer-events="none"/>`);
-    if (ol.dot) out.push(`<circle class="shape-mark" cx="${n(ol.dot.cx)}" cy="${n(ol.dot.cy)}" r="${n(ol.dot.r)}" fill="${K}" pointer-events="none"/>`);
-  }
+  const shape = shapeOf(node) as PartShape, compact = node.form === "compact";
+  const g = shapeGeometry(shape, compact, post, r);
+  // The stack's cards behind, then the body: its stroke round-joined, so the stroke's box stays inside the part's.
+  for (const d of g.back) out.push(`<path class="shape-back" d="${d}" fill="${P.surface}" stroke="${P.line2}" stroke-width="1" stroke-linejoin="round" pointer-events="none"/>`);
+  const stroke = shape === "agent" ? `url(#${prefix}-agent)` : P.line2, width = shape === "agent" ? 1.5 : 1;
+  out.push(`<path class="body" data-shape="${shape}" d="${g.d}" fill="${P.surface}" stroke="${stroke}" stroke-width="${width}" stroke-linejoin="round"${shape === "external" ? ' stroke-dasharray="6 4"' : ""}/>`);
+  out.push(`<path d="${g.d}" fill="url(#${prefix}-tint-${node.kind})" pointer-events="none"/>`);
+  out.push(shapeMarks(shape, compact, post, r, g.front, P, K, prefix, !!node.detail));
   const ig = `${prefix}-ig-${node.kind}`;
+  const cb = contentBox(node, r, post);
 
-  if (node.form === "card") {
-    const content = CARD.icon + CARD.iconGap + box.lines.length * CARD.line + (box.sub ? CARD.subLine : 0);
-    let y = r.y + (r.h - content) / 2;
-    out.push(iconMarkup(icon, r.x + r.w / 2 - CARD.icon / 2, y, CARD.icon, K, 1.6, ig));
-    y += CARD.icon + CARD.iconGap;
-    const cx = r.x + r.w / 2;
+  if (!compact) {
+    // Card (and panel): icon, label lines and the sub-line row, top to bottom from the content box's top, centred across it.
+    const cx = cb.x + cb.w / 2;
+    let y = cb.y;
+    if (shape === "person") {
+      const a = OUTLINE.avatar[post ? 1 : 0] / 2, size = OUTLINE.avatarIcon[post ? 1 : 0];
+      out.push(iconMarkup(icon, r.x + r.w / 2 - size / 2, r.y + a - size / 2, size, K, 1.6, ig));
+    } else {
+      out.push(iconMarkup(icon, cx - CARD.icon / 2, y, CARD.icon, K, 1.6, ig));
+      y += CARD.icon + CARD.iconGap;
+    }
     const spans = box.lines.map((l, i) => `<tspan x="${n(cx)}" y="${n(baseline(y + i * CARD.line, CARD.line, T.title.size))}">${esc(l)}${i < box.lines.length - 1 ? " " : ""}</tspan>`).join("");
     out.push(`<text${tid(o, "node-label")} class="label" text-anchor="middle" font-size="${T.title.size}" font-weight="600"${track(T.title.size, -0.012)} fill="${P.ink}">${spans}</text>`);
     y += box.lines.length * CARD.line;
     if (box.sub) out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(cx)}" y="${n(baseline(y, CARD.subLine, T.sub.size))}" text-anchor="middle" font-size="${T.sub.size}" fill="${P.muted}">${esc(box.sub)}</text>`);
-    out.push(inside(r.x + r.w - 8 - INSIDE, r.y + 8));
+    out.push(inside(g.front.x + g.front.w - 8 - INSIDE, g.front.y + 8));
     return out.join("");
   }
 
-  if (node.form === "compact") {
-    const cy = r.y + r.h / 2;
-    out.push(iconMarkup(icon, r.x + COMPACT.padX, cy - COMPACT.icon / 2, COMPACT.icon, K, 1.75, ig));
-    const lx = r.x + COMPACT.padX + COMPACT.icon + COMPACT.gap;
-    out.push(label(box.lines[0], lx, baseline(cy - 10, 20, T.compactTitle.size), "start", T.compactTitle.size));
-    const insideW = node.detail ? 8 + INSIDE : 0;
-    if (box.sub) out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(r.x + r.w - COMPACT.padX - insideW)}" y="${n(baseline(cy - 9, 18, T.subMono.size))}" text-anchor="end" font-family="${esc(FONT_MONO)}" font-size="${T.subMono.size}" fill="${P.soft}">${esc(box.sub)}</text>`);
-    out.push(inside(r.x + r.w - COMPACT.padX - INSIDE, cy - INSIDE / 2));
-    return out.join("");
+  // Compact: one row centred in the content box: icon (in the avatar for a person), label, then the sub-line at its right end.
+  const cy = cb.y + cb.h / 2;
+  let lx = cb.x;
+  if (shape === "person") {
+    const size = OUTLINE.compactAvatarIcon;
+    out.push(iconMarkup(icon, r.x + r.h / 2 - size / 2, r.y + r.h / 2 - size / 2, size, K, 1.75, ig));
+  } else {
+    out.push(iconMarkup(icon, cb.x, cy - COMPACT.icon / 2, COMPACT.icon, K, 1.75, ig));
+    lx += COMPACT.icon + COMPACT.gap;
   }
-
-  // panel
-  const top = r.y + PANEL.padTop + 1;
-  out.push(iconMarkup(icon, r.x + PANEL.padX, top + 1, PANEL.icon, K, 1.75, ig));
-  const lx = r.x + PANEL.padX + PANEL.icon + PANEL.gap;
-  out.push(label(box.lines[0], lx, baseline(top, PANEL.titleLine, T.title.size), "start", T.title.size));
-  let y = top + PANEL.titleLine;
-  if (box.sub) {
-    out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(lx)}" y="${n(baseline(y, PANEL.subLine, T.sub.size))}" font-size="${T.sub.size}" fill="${P.muted}">${esc(box.sub)}</text>`);
-    y += PANEL.subLine;
-  }
-  if (box.items.length) {
-    y += PANEL.listGap;
-    const iw = r.w - PANEL.padX * 2;
-    const firstLimit = box.items.length - (box.limits ?? 0);
-    box.items.forEach((t, i) => {
-      const iy = y + i * (PANEL.itemH + PANEL.itemGap);
-      const limit = i >= firstLimit;
-      const tx = r.x + PANEL.padX + PANEL.itemPad + 1 + (limit ? LIMIT_ROW.icon + LIMIT_ROW.gap : 0);
-      out.push(`<g${tid(o, limit ? "node-limit" : "node-item")} class="${limit ? "limit" : "item"}" data-index="${i}"><rect x="${n(r.x + PANEL.padX + 0.5)}" y="${n(iy + 0.5)}" width="${n(iw - 1)}" height="${PANEL.itemH - 1}" rx="7" fill="${limit ? "none" : P.surface2}" stroke="${P.line}" stroke-width="1"${limit ? ' stroke-dasharray="3 3"' : ""}/>` +
-        (limit ? iconMarkup("timer", r.x + PANEL.padX + PANEL.itemPad + 1, iy + (PANEL.itemH - LIMIT_ROW.icon) / 2, LIMIT_ROW.icon, P.soft, 1.75) : "") +
-        `<text x="${n(tx)}" y="${n(baseline(iy, PANEL.itemH, T.item.size))}" font-size="${T.item.size}" fill="${limit ? P.muted : P.ink}">${esc(t)}</text></g>`);
-    });
-  }
-  out.push(inside(r.x + r.w - 8 - INSIDE, r.y + 8));
+  out.push(label(box.lines[0], lx, baseline(cy - 10, 20, T.compactTitle.size), "start", T.compactTitle.size));
+  const insideW = node.detail ? 8 + INSIDE : 0;
+  if (box.sub) out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(cb.x + cb.w - insideW)}" y="${n(baseline(cy - 9, 18, T.subMono.size))}" text-anchor="end" font-family="${esc(FONT_MONO)}" font-size="${T.subMono.size}" fill="${P.soft}">${esc(box.sub)}</text>`);
+  out.push(inside(cb.x + cb.w - INSIDE, cy - INSIDE / 2));
   return out.join("");
 }
 
@@ -335,7 +345,7 @@ export function drawOrder(view: Pick<DiagramView, "nodes">): DiagramNode[] {
 /** The whole drawing of a view: frames, connections, components, labels, badges, texts. */
 export function drawView(view: DiagramView, P: Palette, o: DrawOptions = {}): Drawing {
   const prefix = o.prefix ?? "ad";
-  o = { ...o, post: postOf(view, o) };
+  o = { ...o, post: postOf(view, o), subLines: o.subLines ?? view.subLines !== false };
   const rects = layoutRects(view, o);
   const texts = o.texts === false ? [] : view.texts;
   const avoid = texts.map((t) => ({ x: t.x, y: t.y, ...measureText(t) }));

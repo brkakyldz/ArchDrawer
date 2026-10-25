@@ -678,6 +678,14 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       <Icon name="steps" size={16} /><span className="lbl">Steps</span>
     </button>
   );
+  // The current view's sub-line switch (ui contract, tool-sublines): one undoable edit of this channel; on again removes the field.
+  const subOn = view.subLines !== false;
+  const sublinesEl = (
+    <button className="btn" data-testid="tool-sublines" aria-label="Sub-lines" aria-pressed={subOn} disabled={blank}
+      onClick={() => apply((d) => ({ ...d, views: d.views.map((v) => (v.id === view.id ? { ...v, subLines: !subOn } : v)) }))}>
+      <Icon name="text" size={16} /><span className="lbl">Sub-lines</span>
+    </button>
+  );
   const docked = pinned && callout ? <Callout key={`d-${callout}`} ctl={ctl} id={callout} docked /> : null;
   const post = chan === "linkedin" && !blank && view.postOf ? view : null;
   const engineProps = { runner, engine: engine?.id ?? null, engineLabel: engine ? engineName(engine) : null, model };
@@ -721,7 +729,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
                   {repoEl}
                   {tabsEl}
                   {crumbsEl}
-                  <div className="row">{undoEl}{redoEl}{themeEl}{stepsEl}</div>
+                  <div className="row">{undoEl}{redoEl}{themeEl}{stepsEl}{sublinesEl}</div>
                 </div>
               )}
             </div>
@@ -751,7 +759,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
           <button className="btn icon-btn" data-testid="search-button" aria-label="Find a component" title="Find a component ( / )" onClick={() => setSearching(true)}>
             <Icon name="search" size={16} />
           </button>
-          {!narrow && <>{themeEl}{stepsEl}</>}
+          {!narrow && <>{themeEl}{stepsEl}{sublinesEl}</>}
           <button className="btn" data-testid="ai-button" aria-pressed={!!ai} aria-label="Ask AI" onClick={() => (ai ? setAi(null) : openAi())}>
             <Icon name="spark" size={16} /><span className="lbl">AI</span>
           </button>

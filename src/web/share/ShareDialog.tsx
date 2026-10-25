@@ -13,18 +13,19 @@ const WHERE: { id: FormatId; label: string }[] = [
   { id: "slide", label: "Slide" },
   { id: "square", label: "Square post" },
 ];
-type Show = ShareSwitches;
+/** The toggles; `sub` is `show-sub`, which starts as the view's own sub-line switch. */
+type Show = ShareSwitches & { sub: boolean };
 const SHOW: { key: keyof Show; label: string }[] = [
   { key: "title", label: "Title" },
   { key: "lede", label: "Description" },
-  { key: "items", label: "What each part holds" },
+  { key: "sub", label: "Sub-lines" },
   { key: "steps", label: "Numbered main path" },
   { key: "labels", label: "Connection labels" },
   { key: "legend", label: "Colour key" },
   { key: "texts", label: "Texts" },
 ];
-/** The toggles a choice starts with: Detailed for README, Slide and the landscape post, Simple for Square. */
-const startFor = startSwitches;
+/** The toggles a choice starts with: Detailed for README, Slide and the landscape post, Simple for Square; sub-lines as the view says. */
+const startFor = (format: FormatId, post: boolean, view: Pick<DiagramView, "subLines">): Show => ({ ...startSwitches(format, post), sub: view.subLines !== false });
 
 function download(blob: Blob, name: string) {
   const a = document.createElement("a");
@@ -63,7 +64,7 @@ export function ShareDialog({ doc, view, channel, onClose, toast }: Props) {
   const pv = useMemo(() => (onVersion && postFormat ? orient(stored, format === "feed") : stored), [stored, onVersion, postFormat, format]);
   const shown = pv === stored ? doc : { ...doc, views: doc.views.map((v) => (v.id === pv.id ? pv : v)) };
   const [theme, setTheme] = useState<Theme>(doc.theme);
-  const [show, setShow] = useState<Show>(() => startFor(format, onVersion));
+  const [show, setShow] = useState<Show>(() => startFor(format, onVersion, stored));
   const [advanced, setAdvanced] = useState(false);
   const [details, setDetails] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -76,7 +77,7 @@ export function ShareDialog({ doc, view, channel, onClose, toast }: Props) {
   // A new choice of place (or the version appearing) starts from that place's toggles.
   const startKey = `${format}:${onVersion}`;
   const lastStart = useRef(startKey);
-  useEffect(() => { if (lastStart.current !== startKey) { lastStart.current = startKey; setShow(startFor(format, onVersion)); } }, [startKey, format, onVersion]);
+  useEffect(() => { if (lastStart.current !== startKey) { lastStart.current = startKey; setShow(startFor(format, onVersion, stored)); } }, [startKey, format, onVersion, stored]);
 
   const opts: ShareOptions = { format, theme, ...show };
   const img = useMemo(() => renderShare(shown, pv.id, opts), [shown, pv.id, format, theme, show]); // eslint-disable-line react-hooks/exhaustive-deps

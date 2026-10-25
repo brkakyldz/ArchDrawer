@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { layoutRects, measureText, routeEdges, textStyle, type EdgeRoute, type Rect } from "../../core/geometry";
-import { badgeMarkup, drawOrder, edgeMarkup, labelMarkup, namesClip, nodeMarkup, sharedDefs, textMarkup, toneOf } from "../../core/export/svg";
+import { badgeMarkup, drawOrder, edgeMarkup, groupHeadMarkup, labelMarkup, nodeMarkup, sharedDefs, textMarkup, toneOf } from "../../core/export/svg";
 import { descendants, isPostView, LIMITS, type DiagramEdge, type DiagramNode, type DiagramText, type Kind } from "../../core/model";
 import type { Palette } from "../../core/theme";
 import { clampTextSize, connect, moveNodes, moveTexts, setText, settleNodes, VIEW_FULL, withInside } from "./ops";
@@ -21,14 +21,22 @@ const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, change
   );
 });
 
-const EdgeShape = memo(function EdgeShape({ edge, route, P, from, to, selected, dim, flow, open = false, clip, focus = false, dragDim = false }: { edge: DiagramEdge; route: EdgeRoute; P: Palette; from: Kind; to: Kind; selected: boolean; dim: boolean; flow: boolean; open?: boolean; clip?: string; focus?: boolean; dragDim?: boolean }) {
+/** A group's head (ui contract, `node-head-<id>`): over the connections and under the parts, its name on a halo. */
+const GroupHead = memo(function GroupHead({ node, rect, P, dim, open = false, post, drag, subLines = true }: { node: DiagramNode; rect: Rect; P: Palette; dim: boolean; open?: boolean; post: boolean; drag?: DragMark; subLines?: boolean }) {
+  return (
+    <g className={`gh${dim ? " dim" : ""}${open ? " open" : ""}`} data-testid={`node-head-${node.id}`} data-group-head={node.id} data-node-id={node.id}
+      data-lifted={drag === "lifted" ? "true" : undefined} data-drag-dim={drag === "dim" ? "true" : undefined}
+      dangerouslySetInnerHTML={{ __html: groupHeadMarkup(node, rect, P, { testIds: true, post, subLines }) }} />
+  );
+});
+
+const EdgeShape = memo(function EdgeShape({ edge, route, P, from, to, selected, dim, flow, open = false, focus = false, dragDim = false }: { edge: DiagramEdge; route: EdgeRoute; P: Palette; from: Kind; to: Kind; selected: boolean; dim: boolean; flow: boolean; open?: boolean; focus?: boolean; dragDim?: boolean }) {
   const tone = toneOf(edge, focus);
   return (
     <g className={`ed${dim ? " dim" : ""}${open ? " open" : ""}`} data-dim={dim ? "true" : undefined} data-testid={`edge-${edge.id}`} data-edge-id={edge.id} data-style={edge.style} data-both={String(edge.both)}
       data-step={edge.step ?? ""} data-selected={String(selected)} data-tone={tone} data-focus={focus ? "true" : undefined} data-drag-dim={dragDim ? "true" : undefined}>
-      {/* The line is clipped at group names as in the export; the hit path is not, so a line stays selectable there. */}
-      <g clipPath={clip} dangerouslySetInnerHTML={{ __html: edgeMarkup(edge, route, P, { fromKind: from, toKind: to, tone }) }} />
-      {flow && <path className="flow" d={route.d} clipPath={clip} />}
+      <g dangerouslySetInnerHTML={{ __html: edgeMarkup(edge, route, P, { fromKind: from, toKind: to, tone }) }} />
+      {flow && <path className="flow" d={route.d} />}
       <path className="hit" d={route.d} />
       <EdgeBounds route={route} />
     </g>
@@ -113,7 +121,6 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
     return out;
   }, [view, rects, texts, restRoutes, moving, dragOff]);
   const order = useMemo(() => drawOrder(view), [view]);
-  const clip = useMemo(() => namesClip(view, rects, "ad-names", post), [view, rects, post]);
   const kindOf = useMemo(() => new Map(view.nodes.map((n) => [n.id, n.kind])), [view]);
   const defs = useMemo(() => sharedDefs(P, "ad"), [P]);
 
@@ -368,13 +375,13 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
         <defs dangerouslySetInnerHTML={{ __html: defs }} />
         <g transform={`translate(${vp.x} ${vp.y}) scale(${k})`}>
           {groups.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} drag={dragMark(n.id)} subLines={view.subLines !== false} />)}
-          {clip && <defs dangerouslySetInnerHTML={{ __html: clip }} />}
           {/* A dragged part's own connections are drawn above every other one, still under the parts. */}
           {[...view.edges.filter((e) => !touches(e)), ...view.edges.filter(touches)].map((e) => {
             const r = routes.get(e.id);
-            return r ? <EdgeShape key={e.id} edge={e} route={r} P={P} from={kindOf.get(e.from)!} to={kindOf.get(e.to)!} selected={selEdges.has(e.id)} dim={dimEdge(e)} flow={steps && e.step !== null} open={touchesOpen(e)} clip={clip ? "url(#ad-names)" : undefined}
+            return r ? <EdgeShape key={e.id} edge={e} route={r} P={P} from={kindOf.get(e.from)!} to={kindOf.get(e.to)!} selected={selEdges.has(e.id)} dim={dimEdge(e)} flow={steps && e.step !== null} open={touchesOpen(e)}
               focus={inFocus(e)} dragDim={!!moving && !touches(e)} /> : null;
           })}
+          {groups.map((n) => <GroupHead key={`head-${n.id}`} node={n} rect={rects.get(n.id)!} P={P} dim={dimNode(n.id)} open={ctl.callout === n.id} post={post} drag={dragMark(n.id)} subLines={view.subLines !== false} />)}
           {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} drag={dragMark(n.id)} subLines={view.subLines !== false} />)}
           {view.edges.map((e) => {
             const r = routes.get(e.id);

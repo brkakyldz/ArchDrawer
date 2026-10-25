@@ -1,5 +1,5 @@
 import {
-  COMPACT, contentBox, GROUP, groupNameText, INSIDE, LABEL, labelWidth, layoutRects, measureNode, measureText, postOf, styleOf, textStyle,
+  COMPACT, contentBox, GROUP, INSIDE, LABEL, labelWidth, layoutRects, measureNode, measureText, postOf, styleOf, textStyle,
   routeEdges, viewBounds, type EdgeRoute, type MeasureOptions, type Rect,
 } from "../geometry";
 import { CARD_SHAPE, COMPACT_SHAPE, OUTLINE, shapeGeometry, shapeOf, type PartShape } from "../shapes";
@@ -160,15 +160,41 @@ function shapeMarks(shape: PartShape, compact: boolean, post: boolean, r: Rect, 
   return out.join("");
 }
 
+/** The colour of a group's header as painted, made solid: the kind at 5 % over the surface at 60 % over the canvas (diagram contract, A group's name). */
+export const headerColour = (P: Palette, kind: Kind): string => mix(P.kinds[kind], mix(P.surface, P.canvas, 0.6), 0.05);
+
+/**
+ * A group's head (diagram contract, A group's name): its icon, name, sub-line and open mark, drawn over the
+ * connections and under the parts. The name and the sub-line stand on a halo in the header's colour, so a
+ * line crossing the header is hidden only under the letters and 2 px round them; nothing is cut out of it.
+ */
+export function groupHeadMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkupOptions = {}): string {
+  const prefix = o.prefix ?? "ad";
+  const { T } = styleOf(o.post);
+  const K = P.kinds[node.kind];
+  const halo = ` stroke="${headerColour(P, node.kind)}" stroke-width="4" stroke-linejoin="round" paint-order="stroke"`;
+  const out: string[] = [];
+  const cy = r.y + GROUP.head / 2;
+  out.push(iconMarkup(iconOf(node), r.x + GROUP.padHead, cy - GROUP.icon / 2, GROUP.icon, K, 1.75, `${prefix}-ig-${node.kind}`));
+  const lx = r.x + GROUP.padHead + GROUP.icon + GROUP.gap;
+  out.push(`<text${tid(o, "node-label")} class="label" x="${n(lx)}" y="${n(baseline(cy - 11, 22, T.title.size))}" text-anchor="start" font-size="${T.title.size}" font-weight="600"${track(T.title.size, -0.012)} fill="${P.ink}"${halo}>${esc(node.label)}</text>`);
+  if (node.sub && o.subLines !== false) {
+    const sx = lx + widthOf(node.label, T.title) + GROUP.gap;
+    out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(sx)}" y="${n(baseline(cy - 9, 18, T.sub.size))}" font-size="${T.sub.size}" fill="${P.muted}"${halo}>${esc(node.sub)}</text>`);
+  }
+  if (node.detail) out.push(`<g${tid(o, "node-inside")} class="inside">${iconMarkup("stack", r.x + r.w - GROUP.padHead - INSIDE, cy - INSIDE / 2, INSIDE, P.soft, 1.75)}</g>`);
+  return out.join("");
+}
+
 /**
  * One component's shapes and text inside its box `r` (from layoutRects). Groups draw only their
- * frame and header; their children are drawn as components of their own. Every other part draws
+ * frame here (their head is `groupHeadMarkup`); their children are drawn as components of their own. Every other part draws
  * the outline of its kind and its icon, label and sub-line inside its shape's content box; no part
  * draws a row (ADR 0014).
  */
 export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkupOptions = {}): string {
   const prefix = o.prefix ?? "ad";
-  const post = !!o.post, subOn = o.subLines !== false;
+  const post = !!o.post;
   const { T, CARD } = styleOf(o.post);
   const K = P.kinds[node.kind];
   const icon = iconOf(node);
@@ -180,18 +206,10 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
     `<text${tid(o, "node-label")} class="label" x="${n(x)}" y="${n(y)}" text-anchor="${anchor}" font-size="${size}" font-weight="600"${track(size, -0.012)} fill="${P.ink}">${esc(text)}</text>`;
 
   if (node.form === "group") {
+    // A group's frame, drawn under the connections; its head is `groupHeadMarkup`, drawn over them (ADR 0013).
     out.push(glowUnder(r, K, P, prefix, true));
     out.push(`<rect class="body" data-shape="group" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="18" fill="${P.surface}" fill-opacity="0.6" stroke="${mix(K, P.line2, 0.38)}" stroke-width="1"/>`);
     out.push(`<rect x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="18" fill="${K}" fill-opacity="0.05" pointer-events="none"/>`);
-    const cy = r.y + GROUP.head / 2;
-    out.push(iconMarkup(icon, r.x + GROUP.padHead, cy - GROUP.icon / 2, GROUP.icon, K, 1.75, `${prefix}-ig-${node.kind}`));
-    const lx = r.x + GROUP.padHead + GROUP.icon + GROUP.gap;
-    out.push(label(node.label, lx, baseline(cy - 11, 22, T.title.size), "start", T.title.size));
-    if (node.sub && subOn) {
-      const sx = lx + widthOf(node.label, T.title) + GROUP.gap;
-      out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(sx)}" y="${n(baseline(cy - 9, 18, T.sub.size))}" font-size="${T.sub.size}" fill="${P.muted}">${esc(node.sub)}</text>`);
-    }
-    out.push(inside(r.x + r.w - GROUP.padHead - INSIDE, cy - INSIDE / 2));
     return out.join("");
   }
 
@@ -322,21 +340,6 @@ export interface Drawing {
   routes: Map<string, EdgeRoute>;
 }
 
-/**
- * Connections pass behind group names as they pass behind parts: a clip with a hole where each
- * group's name text lies. Null when the view has no group.
- */
-export function namesClip(view: Pick<DiagramView, "nodes">, rects: Map<string, Rect>, id: string, post = false): string | null {
-  const holes = view.nodes.flatMap((x) => {
-    const r = rects.get(x.id);
-    if (x.form !== "group" || !r) return [];
-    const b = groupNameText(x, r, post);
-    return b.w > 0 ? [`M${n(b.x)},${n(b.y)} L${n(b.x)},${n(b.y + b.h)} L${n(b.x + b.w)},${n(b.y + b.h)} L${n(b.x + b.w)},${n(b.y)} Z`] : [];
-  });
-  if (!holes.length) return null;
-  return `<clipPath id="${id}" clipPathUnits="userSpaceOnUse"><path clip-rule="evenodd" d="M-1e6,-1e6 L1e6,-1e6 L1e6,1e6 L-1e6,1e6 Z ${holes.join(" ")}"/></clipPath>`;
-}
-
 /** Groups outermost first, so children draw on top of their frames. */
 export function drawOrder(view: Pick<DiagramView, "nodes">): DiagramNode[] {
   const byId = new Map(view.nodes.map((x) => [x.id, x]));
@@ -358,8 +361,6 @@ export function drawView(view: DiagramView, P: Palette, o: DrawOptions = {}): Dr
   for (const node of order.filter((x) => x.form === "group")) out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="group">${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
   // One group per drawn connection holds its line, its label and its badge (ui contract, The share image);
   // labels and badges sit in free spots, so drawing them before the parts covers nothing.
-  const clip = namesClip(view, rects, `${prefix}-names`, o.post);
-  if (clip) out.push(`<defs>${clip}</defs>`);
   for (const e of view.edges) {
     const r = routes.get(e.id);
     if (!r) continue;
@@ -367,11 +368,11 @@ export function drawView(view: DiagramView, P: Palette, o: DrawOptions = {}): Dr
     const tone = toneOf(e), to = kind.get(e.to)!;
     const label = r.labelAt && e.label && o.labels !== false ? `<g data-edge-label="${id}" data-testid="edge-label-${id}">${labelMarkup(e.label, r.labelAt, P, o.post, tone === "kind" ? P.kinds[to] : P.line)}</g>` : "";
     const badge = o.steps && e.step !== null ? `<g data-step-badge="${id}" data-testid="step-badge-${id}">${badgeMarkup(e.step, r.badgeAt, P, prefix, o.post)}</g>` : "";
-    // Only the line is clipped at group names: its label and badge already keep off them.
-    const markup = edgeMarkup(e, r, P, { prefix, fromKind: kind.get(e.from)!, toKind: to, tone });
-    const line = clip ? `<g clip-path="url(#${prefix}-names)">${markup}</g>` : markup;
+    const line = edgeMarkup(e, r, P, { prefix, fromKind: kind.get(e.from)!, toKind: to, tone });
     out.push(`<g data-edge-id="${id}" data-style="${e.style}" data-both="${e.both}" data-tone="${tone}">${line}${label}${badge}</g>`);
   }
+  // Each group's head goes over the connections and under the parts (diagram contract, A group's name).
+  for (const node of order.filter((x) => x.form === "group")) out.push(`<g data-group-head="${esc(node.id)}">${groupHeadMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
   for (const node of order.filter((x) => x.form !== "group")) out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="${node.form}">${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
   for (const t of texts) out.push(`<g data-text-id="${esc(t.id)}" data-size="${t.size}">${textMarkup(t, P)}</g>`);
   return { body: out.join(""), defs: sharedDefs(P, prefix), bounds: viewBounds({ ...view, texts }, rects, routes, true, o.steps), rects, routes };

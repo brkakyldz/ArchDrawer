@@ -99,13 +99,13 @@ svg.i { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin
 /* Text at its geometric size, as the export draws it: otherwise Chromium on Linux rounds each glyph's
    advance to a whole pixel and paints wider than the measured width (diagram contract, Geometry). */
 .canvas svg.world, .text-editor, .inline { text-rendering: geometricPrecision; }
-.nd { cursor: grab; }
+.nd, .gh { cursor: grab; }
 .nd.dim, .ed.dim, .lb.dim { opacity: .16; transition: opacity .18s; }
-.nd.dim { opacity: .4; }
+.nd.dim, .gh.dim { opacity: .4; }
 .nd:hover .body { stroke: var(--hover-k, var(--line-2)); }
 /* A drag (ui contract, Dragging): the dragged parts lift with a stronger shadow and no size change; the rest dims. */
 .nd[data-lifted="true"] { filter: drop-shadow(0 12px 18px rgba(15, 23, 42, .28)) drop-shadow(0 3px 6px rgba(15, 23, 42, .18)); cursor: grabbing; }
-.nd[data-drag-dim="true"]:not(.dim), .ed[data-drag-dim="true"]:not(.dim) { opacity: .6; }
+.nd[data-drag-dim="true"]:not(.dim), .gh[data-drag-dim="true"]:not(.dim), .ed[data-drag-dim="true"]:not(.dim) { opacity: .6; }
 .ed .hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; cursor: pointer; }
 .ed .line, .ed .glow { pointer-events: none; }
 .ed[data-selected="true"] .line { stroke-width: 2.6; }
@@ -421,7 +421,7 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .canvas[data-detail="overview"] .nd:not(.open) [data-testid="node-item"] text,
 .canvas[data-detail="outline"] .lb:not(.open) > *,
 .canvas[data-detail="overview"] .lb:not(.open) > *,
-.canvas[data-detail="overview"] .nd:not(.open) [data-testid="node-sub"] { opacity: 0; }
+.canvas[data-detail="overview"] .nd:not(.open) [data-testid="node-sub"], .canvas[data-detail="overview"] .gh:not(.open) [data-testid="node-sub"] { opacity: 0; }
 .canvas[data-detail="outline"] .nd:not(.open) [data-testid="node-item"] rect,
 .canvas[data-detail="overview"] .nd:not(.open) [data-testid="node-item"] rect { opacity: .5; }
 .canvas[data-detail="overview"] .ed[data-step=""]:not(.open) { opacity: .3; }

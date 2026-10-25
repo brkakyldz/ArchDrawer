@@ -593,16 +593,19 @@ export function Editor({ id, choice: wantedChoice, channel: wantedChannel, view:
     const textId = t.closest("[data-text-id]")?.getAttribute("data-text-id");
     const tx = textId ? ctl?.view.texts.find((x) => x.id === textId) : null;
     if (tx) { setEditing({ kind: "text", id: tx.id, at: { x: tx.x, y: tx.y }, size: tx.size }); return; }
-    const nodeEl = t.closest("[data-node-id]");
-    if (!nodeEl) return;
-    const nid = nodeEl.getAttribute("data-node-id")!;
+    const hit = t.closest("[data-node-id]");
+    if (!hit) return;
+    const nid = hit.getAttribute("data-node-id")!;
     const node = ctl.view.nodes.find((n) => n.id === nid)!;
+    // A group is drawn as its frame and, over the connections, its head holding its name (ui contract, node-head).
+    const nodeEl = stageEl.current!.querySelector(`[data-testid="node-${CSS.escape(nid)}"]`) ?? hit;
+    const headEl = stageEl.current!.querySelector(`[data-testid="node-head-${CSS.escape(nid)}"]`);
     const nb = boxOf(nodeEl.querySelector(".body") ?? nodeEl);
     const item = t.closest("[data-testid=node-item]");
     if (item) { setEditing({ kind: "item", id: nid, index: Number(item.getAttribute("data-index")), at: boxOf(item) }); return; }
     const sub = t.closest("[data-testid=node-sub]");
     if (sub) { setEditing({ kind: "sub", id: nid, at: { ...boxOf(sub), x: nb.x + 6, w: nb.w - 12 } }); return; }
-    const label = nodeEl.querySelector("[data-testid=node-label]");
+    const label = (headEl ?? nodeEl).querySelector("[data-testid=node-label]");
     const lb = label ? boxOf(label) : nb;
     if (t.closest("[data-testid=node-label]") || node.form === "group" && e.clientY - s.top < lb.y + lb.h) {
       setEditing({ kind: "label", id: nid, at: { x: nb.x + 6, y: lb.y - 3, w: nb.w - 12, h: lb.h + 6 } });
@@ -663,8 +666,8 @@ export function Editor({ id, choice: wantedChoice, channel: wantedChannel, view:
     setSel({ ...NOTHING, nodes: [created] });
     requestAnimationFrame(() => {
       const s = stageEl.current!.getBoundingClientRect();
-      const nodeEl = document.querySelector(`[data-node-id="${created}"]`);
-      const label = nodeEl?.querySelector("[data-testid=node-label]");
+      const nodeEl = document.querySelector(`[data-testid="node-${CSS.escape(created)}"]`);
+      const label = (document.querySelector(`[data-testid="node-head-${CSS.escape(created)}"]`) ?? nodeEl)?.querySelector("[data-testid=node-label]");
       const body = nodeEl?.querySelector(".body");
       if (!label || !body) return;
       const lb = label.getBoundingClientRect(), nb = body.getBoundingClientRect();

@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
-import { curvePieces, edgesOverParts, hubsOf, layoutRects, measureText, routeEdges, textStyle, trunksOf, usedByBoxes, type EdgeRoute, type Rect } from "../../core/geometry";
+import { curvePieces, edgesOverParts, hubsOf, layoutRects, measureText, routeEdges, textStyle, trunksOf, usedByBoxes, type EdgeRoute, type Rect, type Side } from "../../core/geometry";
 import { badgeMarkup, drawOrder, edgeMarkup, groupHeadMarkup, labelMarkup, nodeMarkup, dashOf, sharedDefs, strokeOf, textMarkup, toneOf, trunkMarkup, type Trace } from "../../core/export/svg";
 import { descendants, isPostView, LIMITS, type DiagramEdge, type DiagramNode, type DiagramText, type Kind } from "../../core/model";
 import type { Palette } from "../../core/theme";
@@ -42,7 +42,49 @@ const GroupHead = memo(function GroupHead({ node, rect, P, dim, open = false, po
   );
 });
 
-const EdgeShape = memo(function EdgeShape({ edge, route, P, from, to, selected, dim, flow, open = false, focus = false, dragDim = false, hidden = false }: { edge: DiagramEdge; route: EdgeRoute; P: Palette; from: Kind; to: Kind; selected: boolean; dim: boolean; flow: boolean; open?: boolean; focus?: boolean; dragDim?: boolean; hidden?: boolean }) {
+/** A route's ends and handles, in order. */
+const curvePoints = (r: EdgeRoute) => [r.p0, r.c1, r.c2, r.p1];
+/** `r` with each end and handle moved by `k` × its offset in `delta`. */
+function shifted(r: EdgeRoute, delta: [number, number][], k: number): EdgeRoute {
+  const [p0, c1, c2, p1] = curvePoints(r).map((p, i) => ({ x: Math.round((p.x + delta[i][0] * k) * 10) / 10, y: Math.round((p.y + delta[i][1] * k) * 10) / 10 }));
+  return { ...r, p0, c1, c2, p1, d: `M${p0.x},${p0.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${p1.x},${p1.y}` };
+}
+const GLIDE_MS = 120;
+
+/**
+ * The route a connection is drawn on. While `on` (a drag, and once on its release), when its sides or an end's place on
+ * its part change (`key`), it glides there over 120 ms: drawn at the new route plus the old offset, shrinking to none,
+ * so it still follows a moving part. Otherwise, and at the end of every glide, exactly `route` (invariant 5).
+ */
+function useGlide(route: EdgeRoute, key: string, on: boolean): EdgeRoute {
+  const glide = useRef<{ delta: [number, number][]; t0: number } | null>(null);
+  const prev = useRef({ key, route, shown: route });
+  const [, tick] = useState(0);
+  const now = performance.now();
+  if (!on) glide.current = null;
+  else if (prev.current.route !== route && prev.current.key !== key) {
+    const from = curvePoints(prev.current.shown), to = curvePoints(route);
+    glide.current = { delta: from.map((p, i) => [p.x - to[i].x, p.y - to[i].y]), t0: now };
+  }
+  let shown = route;
+  if (glide.current) {
+    const t = Math.min(1, (now - glide.current.t0) / GLIDE_MS);
+    // Ease out: quick at first, settling on the route.
+    if (t >= 1) glide.current = null;
+    else shown = shifted(route, glide.current.delta, (1 - t) * (1 - t));
+  }
+  prev.current = { key, route, shown };
+  const active = !!glide.current;
+  useEffect(() => {
+    if (!active) return;
+    const raf = requestAnimationFrame(() => tick((n) => n + 1));
+    return () => cancelAnimationFrame(raf);
+  });
+  return shown;
+}
+
+const EdgeShape = memo(function EdgeShape({ edge, route: target, P, from, to, selected, dim, flow, open = false, focus = false, dragDim = false, hidden = false, glide = false, glideKey = "" }: { edge: DiagramEdge; route: EdgeRoute; P: Palette; from: Kind; to: Kind; selected: boolean; dim: boolean; flow: boolean; open?: boolean; focus?: boolean; dragDim?: boolean; hidden?: boolean; glide?: boolean; glideKey?: string }) {
+  const route = useGlide(target, glideKey, glide);
   const tone = toneOf(edge, focus);
   return (
     <g className={`ed${dim ? " dim" : ""}${open ? " open" : ""}`} data-dim={dim ? "true" : undefined} data-testid={`edge-${edge.id}`} data-edge-id={edge.id} data-style={edge.style} data-both={String(edge.both)}
@@ -131,9 +173,26 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
     const r = layoutRects(shifted).get(piece);
     return r ? groupAt(shifted, { x: r.x + r.w / 2, y: r.y + r.h / 2 }, piece) : null;
   }, [view, moving, dragOff, live]);
+  // A drag just ended: its ends may glide once to the stateless routes (diagram contract, While dragging).
+  const dragged = useRef(false);
+  const [afterDrag, setAfterDrag] = useState(false);
+  useEffect(() => {
+    if (moving) { dragged.current = true; return; }
+    if (!dragged.current) return;
+    dragged.current = false;
+    setAfterDrag(true);
+    const t = setTimeout(() => setAfterDrag(false), GLIDE_MS + 60);
+    return () => clearTimeout(t);
+  }, [moving]);
+  // The sides each dragged part's connections had at the previous move (diagram contract, While dragging): held until
+  // a pair is clearly cheaper. They start from the drawing at rest and are forgotten on release.
+  const heldSides = useRef<Map<string, [Side, Side]> | null>(null);
   const routes = useMemo(() => {
-    if (!dragOff || !moving) return restRoutes;
-    const again = routeEdges(view, rects, { avoid: texts.map((t) => ({ x: t.x, y: t.y, ...measureText(t) })) });
+    if (!dragOff || !moving) { heldSides.current = null; return restRoutes; }
+    const own = view.edges.filter((e) => moving.has(e.from) || moving.has(e.to));
+    const before = heldSides.current ?? new Map(own.flatMap((e) => { const r = restRoutes.get(e.id); return r ? [[e.id, [r.side0, r.side1] as [Side, Side]] as const] : []; }));
+    const again = routeEdges(view, rects, { avoid: texts.map((t) => ({ x: t.x, y: t.y, ...measureText(t) })), held: before });
+    heldSides.current = new Map(own.flatMap((e) => { const r = again.get(e.id); return r ? [[e.id, [r.side0, r.side1] as [Side, Side]] as const] : []; }));
     const out = new Map(restRoutes);
     for (const e of view.edges) {
       if (!moving.has(e.from) && !moving.has(e.to)) continue;
@@ -421,6 +480,13 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
     || (!live && !!hover && ends(e, (id) => id === hover)) || ends(e, (id) => selNodes.has(id) || id === ctl.callout)
     || (!!step && step.has(e.from) && step.has(e.to)) || (!!found && found.ids.has(e.from) && found.ids.has(e.to));
   const dragMark = (id: string): DragMark => (!moving ? undefined : moving.has(id) ? "lifted" : "dim");
+  // Ends glide while a drag is on and once on its release, to the stateless routes (diagram contract, While dragging).
+  const gliding = !!moving || afterDrag || dragged.current;
+  // Its sides and where each end sits on its part: a change of these glides, a part carrying its ends does not.
+  const endsKey = (e: DiagramEdge, r: EdgeRoute) => {
+    const a = rects.get(e.from), b = rects.get(e.to);
+    return a && b ? `${r.side0}${r.side1} ${Math.round(r.p0.x - a.x)},${Math.round(r.p0.y - a.y)} ${Math.round(r.p1.x - b.x)},${Math.round(r.p1.y - b.y)}` : "";
+  };
   // A connection a hub hides shows while one of its ends is hovered, selected or dragged (ui contract, Parts many parts
   // use), where the routing put it: nothing else moves.
   const showing = (e: DiagramEdge) => touches(e) || selEdges.has(e.id) || (!live && !!hover && ends(e, (id) => id === hover)) || ends(e, (id) => selNodes.has(id));
@@ -478,7 +544,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
           {[...view.edges.filter((e) => !touches(e)), ...view.edges.filter(touches)].map((e) => {
             const r = routes.get(e.id);
             return r ? <EdgeShape key={e.id} edge={e} route={r} P={P} from={kindOf.get(e.from)!} to={kindOf.get(e.to)!} selected={selEdges.has(e.id)} dim={dimEdge(e)} flow={steps && e.step !== null} open={touchesOpen(e)}
-              focus={inFocus(e)} dragDim={!!moving && !touches(e)} hidden={hiddenNow(e)} /> : null;
+              focus={inFocus(e)} dragDim={!!moving && !touches(e)} hidden={hiddenNow(e)} glide={gliding && (!moving || touches(e))} glideKey={endsKey(e, r)} /> : null;
           })}
           {/* Each trunk once, after the connections (diagram contract, Trunks): coloured while a member is, dim when all are. */}
           {trunksOf(routes).map((t) => {

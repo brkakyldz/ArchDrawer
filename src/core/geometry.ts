@@ -430,7 +430,16 @@ export interface RouteOptions {
   trunks?: boolean;
   /** Place labels only for these connections (the hidden ones, after the rest of the view). */
   labelsFor?: Set<string>;
+  /**
+   * The editor only, while a drag is on (diagram contract, While dragging): each connection's sides at the previous
+   * move, `[from side, to side]`, kept until the cheapest pair costs less than `HOLD` × theirs or one no longer faces.
+   * Exports, the layout report and stored state never pass it.
+   */
+  held?: Map<string, [Side, Side]>;
 }
+
+/** A held pair gives way only to a pair cheaper than this share of its cost (diagram contract, While dragging). */
+export const HOLD = 0.8;
 
 /** A part other than a group that four or more other parts use, with how many (diagram contract, Parts many parts use). */
 export function hubsOf(view: Pick<DiagramView, "nodes" | "edges">): Map<string, number> {
@@ -571,6 +580,31 @@ function cheapestSides(list: FreeSides[], rects: Map<string, Rect>, load: Map<st
   }
 }
 
+/**
+ * While dragging (diagram contract): a free connection keeps the sides it had at the previous move unless its cheapest
+ * pair costs less than `HOLD` × the kept pair, both counted at this move with the ends the other connections hold, or a
+ * kept side no longer faces the other end (or its curve would go inside one of its own parts). In view order; `load`
+ * is kept up to date.
+ */
+function holdSides(list: FreeSides[], rects: Map<string, Rect>, load: Map<string, number>, held: Map<string, [Side, Side]>): void {
+  for (const c of list) {
+    const h = held.get(c.id);
+    if (!h || (h[0] === c.s[0] && h[1] === c.s[1])) continue;
+    const a = rects.get(c.from)!, b = rects.get(c.to)!;
+    if (!facingSides(a, b).includes(h[0]) || !facingSides(b, a).includes(h[1]) || intoOwn(plainCurve(a, b, h), a, b)) continue;
+    // Its own ends are on its current sides: they do not count against those.
+    const others = (part: string, s: Side, end: 0 | 1) => (load.get(`${part}:${s}`) ?? 0) - (s === c.s[end] ? 1 : 0);
+    const cost = (p: [Side, Side]) => sideCost(a, b, p[0], others(c.from, p[0], 0)) + sideCost(b, a, p[1], others(c.to, p[1], 1));
+    if (cost(c.s) < HOLD * cost(h)) continue;
+    for (const end of [0, 1] as const) {
+      const me = end === 0 ? c.from : c.to;
+      load.set(`${me}:${c.s[end]}`, (load.get(`${me}:${c.s[end]}`) ?? 0) - 1);
+      load.set(`${me}:${h[end]}`, (load.get(`${me}:${h[end]}`) ?? 0) + 1);
+      c.s[end] = h[end];
+    }
+  }
+}
+
 /** Two sides that face each other: a right and a left, or a bottom and a top. */
 const opposite = (s: [Side, Side]) => NORMAL[s[0]][0] === -NORMAL[s[1]][0] && NORMAL[s[0]][1] === -NORMAL[s[1]][1];
 
@@ -617,6 +651,7 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
     if (movable) free.push({ id: e.id, from: e.from, to: e.to, s });
   }
   cheapestSides(free, rects, load);
+  if (o.held) holdSides(free, rects, load, o.held);
   for (const e of view.edges) {
     const s = sides.get(e.id);
     if (s) ends.push({ e, end: 0, id: e.from, side: s[0], other: centre(rects.get(e.to)!) }, { e, end: 1, id: e.to, side: s[1], other: centre(rects.get(e.from)!) });

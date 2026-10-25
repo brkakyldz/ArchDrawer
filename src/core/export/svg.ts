@@ -142,7 +142,7 @@ function shapeMarks(shape: PartShape, compact: boolean, post: boolean, r: Rect, 
       break;
     case "person": {
       const a = compact ? r.h / 2 : OUTLINE.avatar[s] / 2, cx = compact ? r.x + a : r.x + r.w / 2, cy = r.y + a;
-      out.push(`<circle class="shape-mark" cx="${n(cx)}" cy="${n(cy)}" r="${n(a - 0.5)}" fill="${P.surface}" stroke="${mark}" stroke-width="1"${pe}/>`);
+      out.push(`<circle class="shape-mark" cx="${n(cx)}" cy="${n(cy)}" r="${n(a - 0.5)}" fill="${P.surface}" stroke="${mark}" stroke-width="1" stroke-linejoin="round"${pe}/>`);
       out.push(`<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(a - 0.5)}" fill="url(#${prefix}-tint-actor)"${pe}/>`);
       break;
     }
@@ -197,7 +197,7 @@ function shapeMarks(shape: PartShape, compact: boolean, post: boolean, r: Rect, 
         // limit, which would put the rims' ends 2 px past the part's box instead of half a pixel (H17, H132).
         out.push(`<path class="shape-mark" d="M${n(r.x)},${n(y)} A${n(rx)},${ry} 0 0 0 ${n(r.x + r.w)},${n(y)}" fill="none" stroke="url(#${prefix}-rim)" stroke-width="1" stroke-linejoin="round"${pe}/>`);
       }
-      out.push(`<ellipse class="shape-mark" cx="${n(cx)}" cy="${n(r.y + ry)}" rx="${n(rx - 0.5)}" ry="${n(ry - 0.5)}" fill="${K}" fill-opacity="${P.tint * 2}" stroke="${mark}" stroke-width="1"${pe}/>`);
+      out.push(`<ellipse class="shape-mark" cx="${n(cx)}" cy="${n(r.y + ry)}" rx="${n(rx - 0.5)}" ry="${n(ry - 0.5)}" fill="${K}" fill-opacity="${P.tint * 2}" stroke="${mark}" stroke-width="1" stroke-linejoin="round"${pe}/>`);
       break;
     }
     default:

@@ -50,8 +50,6 @@ function shifted(r: EdgeRoute, delta: [number, number][], k: number): EdgeRoute 
   return { ...r, p0, c1, c2, p1, d: `M${p0.x},${p0.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${p1.x},${p1.y}` };
 }
 const GLIDE_MS = 120;
-/** A double-click's second click comes within this long of its first. */
-const DOUBLE_MS = 600;
 
 /**
  * The route a connection is drawn on. While `on` (a drag, and once on its release), when its sides or an end's place on
@@ -147,12 +145,15 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   const [hoverEdge, setHoverEdge] = useState<string | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /**
-   * The last click that went into a part's inside. A double-click on that part goes in on its first click; the
-   * double-click then steps back and edits the part's label, as a double-click on a label does (ui contract).
+   * A press and release on a part with an inside, waiting for its click event, which goes in when it is a first click
+   * (the browser's click count is 1). `at`: where it was pressed, as a share of the part's box.
    */
-  const lastOpen = useRef<{ from: string; id: string; at: number; sub: boolean } | null>(null);
-  /** A click within a double-click's time of the last way in, in the view it opened: the second click of that double-click. */
-  const secondClick = () => { const o = lastOpen.current; return !!o && performance.now() - o.at <= DOUBLE_MS && ctlRef.current.view.id !== o.from; };
+  const pendingIn = useRef<{ from: string; id: string; detail: string; at: { x: number; y: number } } | null>(null);
+  /**
+   * The click that went in, while it is the latest first click. A double-click whose first click it was steps back and
+   * acts at the press point, as a double-click there does (ui contract: a double-click on a label or below it edits).
+   */
+  const lastOpen = useRef<{ from: string; id: string; at: { x: number; y: number } } | null>(null);
   const onDoubleRef = useRef(onDouble);
   onDoubleRef.current = onDouble;
   const ctlRef = useRef(ctl);
@@ -446,12 +447,12 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
         // A part with an inside (ui contract, Opening a part's inside): a click goes to its view, selecting nothing;
         // Shift+click toggles it in the selection and opens its callout when it is then the only part selected.
         const detail = view.nodes.find((n) => n.id === d.hit.node)!.detail!;
-        // The second click of a double-click lands in the view the first opened: it goes nowhere (review 85af372-1).
-        if (!d.shift && !secondClick()) {
-          // Whether the press was on the sub-line: a double-click there edits the sub-line (review 85af372-2).
-          const sub = !!document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-testid="node-sub"]');
-          lastOpen.current = { from: c.view.id, id: d.hit.node, at: performance.now(), sub };
-          c.goView(detail);
+        // It goes in on its click event, if that is a first click; the second click of a double-click goes nowhere.
+        // Either way it selects nothing and opens no callout (review fbb2e5d-1).
+        if (!d.shift) {
+          const b = el.current?.querySelector(`[data-testid="node-${CSS.escape(d.hit.node)}"] rect.box`)?.getBoundingClientRect();
+          const at = b && b.width && b.height ? { x: (e.clientX - b.left) / b.width, y: (e.clientY - b.top) / b.height } : { x: 0.5, y: 0.5 };
+          pendingIn.current = { from: c.view.id, id: d.hit.node, detail, at };
         }
         else if (d.ids.length === 1 && d.ids[0] === d.hit.node) c.setCallout(d.hit.node);
       } else if (!d.shift && d.hit.node) {
@@ -552,21 +553,28 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
       onKeyDown={onOpenKey}
       onContextMenu={(e) => e.preventDefault()}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+      onClick={(e) => {
+        const p = pendingIn.current;
+        pendingIn.current = null;
+        // The second click of a double-click: nothing here; the double-click decides.
+        if (e.detail >= 2) return;
+        lastOpen.current = null;
+        if (p) { lastOpen.current = { from: p.from, id: p.id, at: p.at }; ctlRef.current.goView(p.detail); }
+      }}
       onDoubleClick={(e) => {
         const o = lastOpen.current;
         lastOpen.current = null;
-        if (!o || performance.now() - o.at > DOUBLE_MS) { onDouble(e); return; }
-        // The first click of this double-click went in: back, then the label of the part it started on.
+        if (!o) { onDouble(e); return; }
+        // The first click of this double-click went in: back, then a double-click where it was pressed on the part,
+        // once the view is fitted again (review fbb2e5d-2: below the label of a part with no sub-line adds one).
         ctlRef.current.goView(o.from);
-        const edit = () => {
-          const root = el.current, id = CSS.escape(o.id);
-          const field = o.sub ? "node-sub" : "node-label";
-          const label = root?.querySelector(`[data-testid="node-head-${id}"] [data-testid="${field}"]`) ?? root?.querySelector(`[data-testid="node-${id}"] [data-testid="${field}"]`);
-          if (!label) return;
-          const b = label.getBoundingClientRect();
-          onDoubleRef.current({ clientX: b.left + b.width / 2, clientY: b.top + b.height / 2, target: label } as unknown as React.MouseEvent);
+        const replay = () => {
+          const b = el.current?.querySelector(`[data-testid="node-${CSS.escape(o.id)}"] rect.box`)?.getBoundingClientRect();
+          if (!b) return;
+          const x = b.left + o.at.x * b.width, y = b.top + o.at.y * b.height;
+          onDoubleRef.current({ clientX: x, clientY: y, target: document.elementFromPoint(x, y) ?? el.current } as unknown as React.MouseEvent);
         };
-        requestAnimationFrame(() => requestAnimationFrame(edit));
+        requestAnimationFrame(() => requestAnimationFrame(replay));
       }}
       // Leaving the canvas (for the zoom controls or a callout) ends any hover focus.
       onPointerLeave={() => { setHoverEdge(null); enterNode(null); }}

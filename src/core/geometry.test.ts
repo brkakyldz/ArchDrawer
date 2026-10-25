@@ -68,10 +68,11 @@ describe("connections", () => {
     const v = view();
     const routes = routeEdges(v, layoutRects(v));
     const [r1, r2, r3, r4] = ["e1", "e2", "e3", "e4"].map((id) => routes.get(id)!);
-    expect([r1.side0, r2.side0, r3.side0]).toEqual(["r", "r", "r"]);
+    // e3 leaves the busy right side by the free bottom: 0.553 there against 0.106 + 2 × 0.25 on the right.
+    expect([r1.side0, r2.side0, r3.side0]).toEqual(["r", "r", "b"]);
+    expect(r3.side1).toBe("l");
     expect([r4.side0, r4.side1]).toEqual(["b", "t"]);
     expect(r1.p0.y).toBeLessThan(r2.p0.y);
-    expect(r2.p0.y).toBeLessThan(r3.p0.y);
     expect(r2.p0.y - r1.p0.y).toBeLessThanOrEqual(16);
     expect(r1.d).toMatch(/^M[\d.-]+,[\d.-]+ C/);
   });

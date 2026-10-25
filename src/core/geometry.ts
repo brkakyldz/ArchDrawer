@@ -306,11 +306,21 @@ export interface RouteOptions {
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
+/**
+ * A handle's length: 0.42 × the distance between the ends, 24–160 px, and between sides that face
+ * each other across a gap never longer than that gap or 8 px (diagram contract, Short gaps).
+ */
+function handle(p0: Point, p1: Point, s: [Side, Side]): number {
+  const c = clamp(Math.hypot(p1.x - p0.x, p1.y - p0.y) * 0.42, MIN_HANDLE, 160);
+  const gap = (p1.x - p0.x) * NORMAL[s[0]][0] + (p1.y - p0.y) * NORMAL[s[0]][1];
+  return opposite(s) && gap > 0 ? Math.min(c, Math.max(gap, 8)) : c;
+}
+
 /** The middle of a side of a box. */
 const sideMid = (r: Rect, s: Side): Point => ({ x: r.x + r.w * (s === "l" ? 0 : s === "r" ? 1 : 0.5), y: r.y + r.h * (s === "t" ? 0 : s === "b" ? 1 : 0.5) });
 /** The plain cubic between the middles of two sides, with the usual handles. */
 function plainCurve(a: Rect, b: Rect, s: [Side, Side]): Curve {
-  const p0 = sideMid(a, s[0]), p1 = sideMid(b, s[1]), c = clamp(Math.hypot(p1.x - p0.x, p1.y - p0.y) * 0.42, MIN_HANDLE, 160);
+  const p0 = sideMid(a, s[0]), p1 = sideMid(b, s[1]), c = handle(p0, p1, s);
   return { p0, p1, c1: { x: p0.x + NORMAL[s[0]][0] * c, y: p0.y + NORMAL[s[0]][1] * c }, c2: { x: p1.x + NORMAL[s[1]][0] * c, y: p1.y + NORMAL[s[1]][1] * c } };
 }
 /** A curve with no length, or one that goes inside either of its own two parts (it may start on their borders). */
@@ -328,14 +338,19 @@ const holds = (outer: Rect, inner: Rect) => inner.x >= outer.x && inner.y >= out
  * overlap), the shortest pair of like sides whose curve stays out of both, right first on a tie.
  */
 export function sidesFor(a: Rect, b: Rect): [Side, Side] {
+  return sidesOf(a, b).s;
+}
+
+/** `sidesFor`, and whether the sides are the facing pair, free to move to a cheaper facing side. */
+function sidesOf(a: Rect, b: Rect): { s: [Side, Side]; free: boolean } {
   if (holds(a, b) || holds(b, a)) {
     const [inner, outer] = holds(b, a) ? [a, b] : [b, a];
     const gaps: [Side, number][] = [["b", outer.y + outer.h - inner.y - inner.h], ["r", outer.x + outer.w - inner.x - inner.w], ["t", inner.y - outer.y], ["l", inner.x - outer.x]];
     const s = gaps.reduce((p, q) => (q[1] < p[1] ? q : p))[0];
-    return [s, s];
+    return { s: [s, s], free: false };
   }
   const facing = chooseSides(a, b);
-  if (!intoOwn(plainCurve(a, b, facing), a, b)) return facing;
+  if (!intoOwn(plainCurve(a, b, facing), a, b)) return { s: facing, free: true };
   let best: { s: [Side, Side]; length: number } | null = null;
   for (const x of ["r", "l", "b", "t"] as const) {
     const c = plainCurve(a, b, [x, x]);
@@ -345,8 +360,57 @@ export function sidesFor(a: Rect, b: Rect): [Side, Side] {
     for (let i = 1; i < pts.length; i++) length += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
     if (!best || length < best.length - 1e-9) best = { s: [x, x], length };
   }
-  return best?.s ?? facing;
+  return { s: best?.s ?? facing, free: false };
 }
+
+/** The extra cost of a side for each end of another connection it holds (diagram contract, Sides). */
+export const SIDE_LOAD = 0.25;
+const SIDES: Side[] = ["r", "b", "l", "t"];
+
+/** The sides of `a` whose outward normal points towards the centre of `b` (a positive dot product). */
+export function facingSides(a: Rect, b: Rect): Side[] {
+  const ca = centre(a), cb = centre(b), v = { x: cb.x - ca.x, y: cb.y - ca.y };
+  return SIDES.filter((s) => NORMAL[s][0] * v.x + NORMAL[s][1] * v.y > 1e-9);
+}
+
+/** A side's cost towards `b`: `1 − cos θ` of its normal against the centres' vector, plus `SIDE_LOAD` per end it holds. */
+export function sideCost(a: Rect, b: Rect, s: Side, load = 0): number {
+  const ca = centre(a), cb = centre(b), v = { x: cb.x - ca.x, y: cb.y - ca.y }, len = Math.hypot(v.x, v.y);
+  const cos = len ? (NORMAL[s][0] * v.x + NORMAL[s][1] * v.y) / len : 0;
+  return 1 - cos + SIDE_LOAD * load;
+}
+
+/** A connection whose sides are the facing pair, free to move each end to a cheaper facing side. */
+interface FreeSides { id: string; from: string; to: string; s: [Side, Side] }
+
+/**
+ * Each end of each free connection takes its part's cheapest facing side, in view order, counting the
+ * ends the other connections hold at that moment; one pass; a tie (within 0.001) keeps the facing
+ * pair's side (diagram contract, Sides). Stateless: one view, one answer. `load` holds every end's
+ * side (`<part id>:<side>` → count) and is kept up to date.
+ */
+function cheapestSides(list: FreeSides[], rects: Map<string, Rect>, load: Map<string, number>): void {
+  const count = (k: string) => load.get(k) ?? 0;
+  for (const c of list) {
+    for (const end of [0, 1] as const) {
+      const me = end === 0 ? c.from : c.to, other = end === 0 ? c.to : c.from;
+      const a = rects.get(me)!, b = rects.get(other)!, cur = c.s[end];
+      let best = cur, bestCost = sideCost(a, b, cur, count(`${me}:${cur}`) - 1);
+      for (const s of facingSides(a, b)) {
+        if (s === cur) continue;
+        const cost = sideCost(a, b, s, count(`${me}:${s}`));
+        if (cost < bestCost - 0.001) { best = s; bestCost = cost; }
+      }
+      if (best === cur) continue;
+      load.set(`${me}:${cur}`, count(`${me}:${cur}`) - 1);
+      load.set(`${me}:${best}`, count(`${me}:${best}`) + 1);
+      c.s[end] = best;
+    }
+  }
+}
+
+/** Two sides that face each other: a right and a left, or a bottom and a top. */
+const opposite = (s: [Side, Side]) => NORMAL[s[0]][0] === -NORMAL[s[1]][0] && NORMAL[s[0]][1] === -NORMAL[s[1]][1];
 
 /**
  * Curves for every connection whose ends are drawn. Connections on one side of a component are
@@ -357,12 +421,20 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
   type End = { e: DiagramEdge; end: 0 | 1; id: string; side: Side; other: Point };
   const ends: End[] = [];
   const sides = new Map<string, [Side, Side]>();
+  // Every connection first takes its facing pair; then each free one moves an end to a cheaper facing side.
+  const load = new Map<string, number>(), free: FreeSides[] = [];
   for (const e of view.edges) {
     const a = rects.get(e.from), b = rects.get(e.to);
     if (!a || !b || e.from === e.to) continue;
-    const s = sidesFor(a, b);
+    const { s, free: movable } = sidesOf(a, b);
     sides.set(e.id, s);
-    ends.push({ e, end: 0, id: e.from, side: s[0], other: centre(b) }, { e, end: 1, id: e.to, side: s[1], other: centre(a) });
+    for (const k of [`${e.from}:${s[0]}`, `${e.to}:${s[1]}`]) load.set(k, (load.get(k) ?? 0) + 1);
+    if (movable) free.push({ id: e.id, from: e.from, to: e.to, s });
+  }
+  cheapestSides(free, rects, load);
+  for (const e of view.edges) {
+    const s = sides.get(e.id);
+    if (s) ends.push({ e, end: 0, id: e.from, side: s[0], other: centre(rects.get(e.to)!) }, { e, end: 1, id: e.to, side: s[1], other: centre(rects.get(e.from)!) });
   }
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
   // The x a top port must keep right of: a group's name sits just above its first row.
@@ -456,8 +528,7 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
     const a = pts.get(`${e.id}:0`), b = pts.get(`${e.id}:1`);
     if (!s || !a || !b) continue;
     const n0 = NORMAL[s[0]], n1 = NORMAL[s[1]];
-    const dist = Math.hypot(b.x - a.x, b.y - a.y);
-    const c = bulge.get(e.id) ?? clamp(dist * 0.42, MIN_HANDLE, 160);
+    const c = bulge.get(e.id) ?? handle(a, b, s);
     // Both ends sit on the borders: the arrowhead's tip touches the part it points at.
     const p1 = { ...b }, p0 = { ...a };
     const c1 = { x: a.x + n0[0] * c, y: a.y + n0[1] * c };

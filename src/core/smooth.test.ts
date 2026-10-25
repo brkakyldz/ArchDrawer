@@ -85,12 +85,17 @@ describe("a connection in the way of a part", () => {
 });
 
 describe("handles", () => {
-  it.each(cases.map((c) => [c.name, c] as const))("every handle is at least 24 px: %s", (_name, { view, post }) => {
+  // At least 24 px, except across a short gap between sides that face each other: never longer than the gap (or 8 px).
+  const shortest = (r: { p0: { x: number; y: number }; p1: { x: number; y: number }; side0: keyof typeof NORMAL; side1: keyof typeof NORMAL }) => {
+    const n0 = NORMAL[r.side0], n1 = NORMAL[r.side1], gap = (r.p1.x - r.p0.x) * n0[0] + (r.p1.y - r.p0.y) * n0[1];
+    return n0[0] === -n1[0] && n0[1] === -n1[1] && gap > 0 ? Math.min(24, Math.max(gap, 8)) : 24;
+  };
+  it.each(cases.map((c) => [c.name, c] as const))("every handle is at least 24 px, or the short gap: %s", (_name, { view, post }) => {
     const rects = layoutRects(view, { post }), routes = routeEdges(view, rects, { post });
     // Edges without an id (the raw example file) are given one when a file is read.
     for (const c of view.edges.filter((e) => e.id).map((e) => routes.get(e.id)!).filter(Boolean)) {
-      expect(Math.hypot(c.c1.x - c.p0.x, c.c1.y - c.p0.y), c.id).toBeGreaterThanOrEqual(24 - 1e-6);
-      expect(Math.hypot(c.p1.x - c.c2.x, c.p1.y - c.c2.y), c.id).toBeGreaterThanOrEqual(24 - 1e-6);
+      expect(Math.hypot(c.c1.x - c.p0.x, c.c1.y - c.p0.y), c.id).toBeGreaterThanOrEqual(shortest(c) - 1e-6);
+      expect(Math.hypot(c.p1.x - c.c2.x, c.p1.y - c.c2.y), c.id).toBeGreaterThanOrEqual(shortest(c) - 1e-6);
     }
     // And as drawn: the path's numbers are rounded to 0.1 px.
     for (const e of view.edges.filter((x) => x.id)) {
@@ -98,8 +103,8 @@ describe("handles", () => {
       if (!r) continue;
       const n = r.d.match(/-?[\d.]+/g)!.map(Number), pts = Array.from({ length: n.length / 2 }, (_, i) => ({ x: n[2 * i], y: n[2 * i + 1] }));
       for (let i = 0; i + 3 < pts.length; i += 3) {
-        expect(Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y), `${e.id} drawn`).toBeGreaterThanOrEqual(24);
-        expect(Math.hypot(pts[i + 3].x - pts[i + 2].x, pts[i + 3].y - pts[i + 2].y), `${e.id} drawn`).toBeGreaterThanOrEqual(24);
+        expect(Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y), `${e.id} drawn`).toBeGreaterThanOrEqual(shortest(r) - 0.1);
+        expect(Math.hypot(pts[i + 3].x - pts[i + 2].x, pts[i + 3].y - pts[i + 2].y), `${e.id} drawn`).toBeGreaterThanOrEqual(shortest(r) - 0.1);
       }
     }
   });

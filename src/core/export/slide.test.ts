@@ -88,6 +88,9 @@ describe("the slide image (PRES-1, PRES-3)", () => {
     const inside = renderSlide(d, 2, OPTS).svg;
     expect(litIds(inside, "node")).toEqual(["history", "llm"]);
     expect(dimmed(groups(inside, "node").get("runtime")!)).toBe(true);
+    // Its head, drawn over the connections, dims with it (review 222ed43-1).
+    expect(inside).toContain(`<g data-group-head="runtime" data-dim="true" opacity="0.25">`);
+    expect(renderSlide(d, 3, OPTS).svg).toContain(`<g data-group-head="runtime">`);
     const group = renderSlide(d, 3, OPTS).svg;
     expect(litIds(group, "node")).toEqual(["runtime"]);
     expect(dimmed(groups(group, "node").get("llm")!)).toBe(true);

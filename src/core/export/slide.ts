@@ -77,6 +77,8 @@ export function renderSlide(doc: SlideDocument, index: number, o: SlideOptions):
   const ends = new Map(view.edges.map((e) => [esc(e.id), lit.has(esc(e.from)) && lit.has(esc(e.to))]));
   const body = drawing.body
     .replace(/<g data-node-id="([^"]*)"/g, (m, id: string) => (lit.has(id) ? m : m + DIM))
+    // A group's head (its icon and name) dims with its frame (review 222ed43-1).
+    .replace(/<g data-group-head="([^"]*)"/g, (m, id: string) => (lit.has(id) ? m : m + DIM))
     .replace(/<g data-edge-id="([^"]*)"/g, (m, id: string) => (ends.get(id) ? m : m + DIM))
     .replace(/<g data-text-id="([^"]*)"/g, (m) => m + DIM);
 

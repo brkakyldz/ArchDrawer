@@ -80,12 +80,15 @@ test('H200 [FILE-2 FILE-3 EDIT-1 NAV-2 #182 #185] a move, a rename, a new part a
   await expect(page.getByTestId('step-badge-api-store')).toBeVisible();
   await page.getByTestId('views-entry-overview').click(); await expect(page.getByTestId('tool-steps')).toHaveAttribute('aria-pressed', 'false');
 
-  // 5. One history over every choice: undo walks back through the four edits, whichever choice is on screen, and the file follows.
+  // 5. One history over every choice: undo walks back through the edits, whichever choice is on screen, and the file follows. Every edit
+  //    is one step (ui contract, Undo/redo): the move, the rename, the insertion of the part, the typing of its first name, the switch.
   await expect(page.getByTestId('tool-undo')).toBeEnabled();
   await page.getByTestId('tool-undo').click(); await saved(page);
   await persistedRaw(file, d => choice(d, 'server').channels.overview.showSteps !== true);
   await page.getByTestId('tool-undo').click(); await saved(page);
   await persistedRaw(file, d => !choice(d, 'server').facts.components.some(f => f.label === 'Cache'));
+  await page.getByTestId('tool-undo').click(); await saved(page);
+  await persistedRaw(file, d => choice(d, 'server').facts.components.length === 2);
   expect(choice(await readRaw(file) as Doc4, 'server').channels.linkedin!.outdated ?? [], 'the mark goes with the edit').toEqual([]);
   await page.getByTestId('tool-undo').click(); await saved(page);
   await persistedRaw(file, d => labelOf(d, 'server', 'api') === 'Order API');

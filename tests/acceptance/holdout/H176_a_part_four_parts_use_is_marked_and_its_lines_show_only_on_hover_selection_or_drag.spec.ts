@@ -83,7 +83,9 @@ test('H176 [LOOK-4 LAYOUT-3 EDIT-2 #186] a part five parts use is marked used by
   await hiddenIs(page, HIDDEN, false);
   const hovered = await edgeSnaps(page);
   for (const id of HIDDEN) { expect(hovered[id].focus, `${id} is in focus`).toBe(true); expect(hovered[id].tone).toBe('kind'); }
-  for (const id of ['g1', 'g2', 'g3']) { expect(hovered[id].d, `${id} did not move`).toBe(snapsBefore[id].d); expect(sameBox(hovered[id].label, snapsBefore[id].label), `${id} label`).toBe(true); }
+  for (const id of ['g1', 'g2', 'g3']) { expect(hovered[id].d, `${id} did not move`).toBe(snapsBefore[id].d); 
+    // g1–g3 have no label: none appears on hover (both null); a label there would have to stay where it was.
+    if (snapsBefore[id].label === null) expect(hovered[id].label, `${id} grew no label`).toBeNull(); else expect(sameBox(hovered[id].label, snapsBefore[id].label), `${id} label`).toBe(true); }
   expect(hovered.a5.d, 'the step line did not move').toBe(snapsBefore.a5.d);
   const nodesHover = await nodeSnaps(page); for (const id of Object.keys(nodesBefore)) expect(sameBox(nodesBefore[id], nodesHover[id]), `${id} did not move`).toBe(true);
   expectSameRoutes(only(await drawnRoutes(page.getByTestId('canvas'), 'hub'), DRAWN), editorBefore, 'showing the lines moves nothing');

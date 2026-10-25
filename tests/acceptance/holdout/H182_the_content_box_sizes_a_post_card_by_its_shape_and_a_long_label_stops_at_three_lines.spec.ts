@@ -4,8 +4,10 @@ import { workspaceRaw, openDrawing, part, svgInfo, svgShapes, editorShapes, type
 import { ALL_KINDS, sketch, withPost, shapeForKind, cardSize, compactHeight, fullDetail, nodeSize, sizeIs, imageOf, countPuts, type SketchPart } from './helpers-drawing';
 import { inDrawingFonts } from './helpers-svg-parity';
 
-const LONG = 'A deliberately long label that keeps going and going and going and going and going and going and going';
-const WRAP = 'Probe probe probe probe probe probe probe probe probe probe probe probe probe probe probe';
+// 47 characters (a label is 48 at most): wide capitals, so a compact part's row reaches its 320 px stop.
+const LONG = 'ENTERPRISE IDENTITY FEDERATION GATEWAY WORKLOAD';
+// Three words of 14 characters, each wider than half the content box: three lines at 172 px and at 152 px alike.
+const WRAP = 'Authentication Reconciliation Orchestration';
 
 // The overview draws the facts as plain cards and compacts; the post view draws the same facts again in the post style.
 function postDoc(title: string, subLines: boolean) {

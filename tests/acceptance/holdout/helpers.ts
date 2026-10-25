@@ -325,7 +325,11 @@ export async function exportOf(request: APIRequestContext, id: string, kind: 'sv
 export async function saved(page: Page) { await expect(page.getByTestId('save-status')).toHaveText('Saved'); }
 export async function callout(page: Page, id: string) {
   const result = page.getByTestId(`callout-${id}`);
-  if (!await result.isVisible()) await page.getByTestId(`node-${id}`).getByTestId('node-label').click();
+  // A group's `node-label` sits in its `node-head-<id>` row, not inside `node-<id>` (ui contract); any other part holds it itself.
+  if (!await result.isVisible()) {
+    const head = page.getByTestId(`node-head-${id}`);
+    await ((await head.count()) > 0 ? head : page.getByTestId(`node-${id}`)).getByTestId('node-label').click();
+  }
   await expect(result).toBeVisible(); return result;
 }
 export async function persisted(file: string, predicate: (doc: Drawing) => boolean, timeout = 10_000) {
@@ -534,9 +538,11 @@ export async function previewTextSizes(page: Page) {
   const url = new URL(page.url()), id = url.pathname.split('/').at(-1)!;
   const response = await page.request.get(`${url.origin}/api/diagrams/${id}`);
   expect(response.status()).toBe(200);
-  const doc = await response.json() as Doc3;
+  const raw = await response.json();
   const preview = page.getByTestId('share-preview'), viewId = await preview.getAttribute('data-view');
-  const shown = allViews(doc).find(v => v.id === viewId); expect(shown).toBeTruthy();
+  // The served document is `@4` (api contract): look for the shown view in every choice (a view id belongs to one choice).
+  const choiceIds: (string | undefined)[] = Array.isArray(raw.choices) ? raw.choices.map((c: { id: string }) => c.id) : [undefined];
+  const shown = choiceIds.flatMap(c => allViews(flattenChoice(raw, c))).find(v => v.id === viewId); expect(shown).toBeTruthy();
   return await visibleTextSizes(preview, shown!);
 }
 
@@ -670,7 +676,9 @@ export function agent3(title: string): Doc3 {
       texts: [] }] } } };
 }
 function overviewCopy(doc: Doc3, id: string, title: string): View3 {
-  return { ...structuredClone(doc.channels.overview.views![0]), id, title, texts: [] };
+  // `detail` is null outside the overview channel (diagram contract, validation rule 10), so the copy keeps no inside.
+  const copy = structuredClone(doc.channels.overview.views![0]);
+  return { ...copy, id, title, texts: [], nodes: copy.nodes.map(n => ({ ...n, detail: null })) };
 }
 // A README channel drawn over the same facts: the overview's first view under the id `readme`.
 export function withReadme(doc: Doc3, opts: { outdated?: string[]; id?: string } = {}): Doc3 {

@@ -43,7 +43,10 @@ test('H17 [LAYOUT-1 START-5 LOOK-2 LOOK-3 #177] a hinted system and nested loop 
   for (const node of nodes) {
     const ui = page.getByTestId(`node-${node.id}`);
     await expect(ui).toHaveAttribute('data-kind', node.kind); await expect(ui).toHaveAttribute('data-form', node.form);
-    await expect(ui).toHaveAttribute('data-parent', node.parent ?? ''); await expect(ui.getByTestId('node-label')).toHaveText(node.label);
+    await expect(ui).toHaveAttribute('data-parent', node.parent ?? '');
+    // A group's `node-label` is in its `node-head-<id>`, not inside `node-<id>` (ui contract, Drawing); any other part holds it itself.
+    const labelHost = node.form === 'group' ? page.getByTestId(`node-head-${node.id}`) : ui;
+    await expect(labelHost.getByTestId('node-label')).toHaveText(node.label);
     await expect(ui.getByTestId('node-item'), `${node.id} draws no row`).toHaveCount(0); // Must not happen: a row drawn on the canvas.
     const shape = svg.nodes.find(n => n.id === node.id)!; const size = await box(ui);
     // zoom-level is rounded to a whole percent; account only for that rounding and subpixels.

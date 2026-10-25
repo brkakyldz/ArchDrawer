@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { networkInterfaces } from 'node:os';
-import { drawing, workspace, openDrawing, readDocument, readDrawing, writeJSON, baseURL, token, root, startRun, finishRun, project } from './helpers';
+import { drawing, workspace, openDrawing, readDocument, readDrawing, writeJSON, baseURL, token, root, startRun, finishRun, project, flattenChoice } from './helpers';
 
 test('H29 [SAFE-1, SAFE-3, SAFE-4, START-1] use a local drawing while forged writes are refused, and find the plugin manifests and launcher in place', async ({ page, request }) => {
   const doc = drawing('Safe local shop'); doc.views[0].nodes[0].label = '<b>Web app</b>';
@@ -63,7 +63,7 @@ test('H29 [SAFE-1, SAFE-3, SAFE-4, START-1] use a local drawing while forged wri
   const instruction = `keep the drawing; node -e "require('fs').writeFileSync('${marker.replace(/\\/g, '/')}', 'bad')"`;
   const runId = await startRun(request, opened.id, opened.token, instruction); await finishRun(request, runId, 'succeeded');
   expect(await stat(marker).then(() => true, () => false)).toBe(false);
-  expect((await readDrawing(file)).views).toEqual(project(JSON.parse(initial)).views); // "keep the drawing" changed nothing drawn.
+  expect((await readDrawing(file)).views).toEqual(project(flattenChoice(JSON.parse(initial))).views); // "keep the drawing" changed nothing drawn.
   expect((await readDrawing(file)).views[0].nodes[0]).toMatchObject({ label: '<b>Web app</b>', description: doc.views[0].nodes[0].description });
   expect(outbound).toEqual([]); // The observed browser journey must make no external request.
 

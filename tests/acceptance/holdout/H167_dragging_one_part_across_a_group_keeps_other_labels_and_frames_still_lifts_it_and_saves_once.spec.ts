@@ -61,10 +61,17 @@ test('H167 [EDIT-5 LOOK-4 #166 #170] dragging one part across a group keeps the 
   await saved(page);
   await page.waitForTimeout(1500);
   expect(puts.count, 'one PUT for the whole drag').toBe(1);
-  await expect.poll(async () => { const m = await dragMarks(page); return [m.lifted, m.dimmedParts, m.dimmedEdges, m.litEdges, m.dropTargets].map(x => x.length).join(','); }).toBe('0,0,0,0,0');
+  await expect.poll(async () => { const m = await dragMarks(page); return [m.lifted, m.dimmedParts, m.dimmedEdges, m.dropTargets].map(x => x.length).join(','); }).toBe('0,0,0,0');
   sizeIs(await nodeSize(page, 'e'), before.size, 'e after release');
+  // The dragged part is still selected, so its own lines may stay in focus (ui contract, Connections in focus); the lines it does not touch never are.
+  for (const id of (await dragMarks(page)).litEdges) expect(['ed', 'ef'], `${id} is one of the dragged part's lines`).toContain(id);
+  expect((await edgeSnaps(page)).cd.tone).toBe('neutral'); expect((await edgeSnaps(page)).ab.tone).toBe('kind');
+  // A click on empty canvas clears the selection: then no line is in focus and every line without a step is neutral.
+  const corner = await box(page.getByTestId('canvas')); await page.mouse.click(corner.x + 6, corner.y + corner.height - 6);
+  await expect.poll(async () => (await dragMarks(page)).litEdges).toEqual([]);
   const after = await edgeSnaps(page);
   expect(after.cd.tone).toBe('neutral'); expect(after.ed.tone).toBe('neutral'); expect(after.ef.tone).toBe('neutral');
+  expect(puts.count, 'selecting and deselecting is not an edit').toBe(1);
   const eNow = await nodeOf(file, 'e');
   expect([eNow.x, eNow.y], 'e was moved').not.toEqual([eStart.x, eStart.y]);
 

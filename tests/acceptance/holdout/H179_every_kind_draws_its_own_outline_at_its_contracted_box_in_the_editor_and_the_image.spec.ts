@@ -4,7 +4,7 @@ import { workspaceRaw, openDrawing, saved, svgInfo, svgShapes, editorShapes } fr
 import { ALL_KINDS, sketch, shapeForKind, cardSize, compactHeight, compactShortWidth, fullDetail, nodeSize, sizeIs, imageOf, readChoice, type SketchPart } from './helpers-drawing';
 
 // One card, one compact (with a sub-line), one short compact (label `Pr`, no sub-line) of each of the ten kinds, a panel of three kinds that hold rows,
-// a group, and two cards whose label wraps. Every label and sub-line is the same, so a size can only come from the shape.
+// a group, and two cards whose label wraps (three words of 14 characters: a label is 48 characters at most). Every label and sub-line is the same, so a size can only come from the shape.
 function kindsDoc(title: string) {
   const parts: SketchPart[] = [];
   ALL_KINDS.forEach((kind, i) => {
@@ -16,7 +16,7 @@ function kindsDoc(title: string) {
     items: ['One'], held: ['Held row'], limits: ['Stops soon'], x: i * 320, y: 440 }));
   parts.push({ id: 'group-data', form: 'group', kind: 'data', label: 'Zone', x: 1200, y: 440 });
   parts.push({ id: 'wrap2', label: 'Probe probe probe probe probe probe', sub: 'probe line', x: 0, y: 700 });
-  parts.push({ id: 'wrap3', label: 'Probe probe probe probe probe probe probe probe probe probe probe probe probe probe probe', sub: 'probe line', x: 320, y: 700 });
+  parts.push({ id: 'wrap3', label: 'Authentication Reconciliation Orchestration', sub: 'probe line', x: 320, y: 700 });
   return sketch(title, parts);
 }
 

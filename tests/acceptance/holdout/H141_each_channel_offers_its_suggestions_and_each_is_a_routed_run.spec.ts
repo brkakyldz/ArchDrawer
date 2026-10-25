@@ -61,7 +61,9 @@ test('H141 [AI-4, AI-5, AI-2, STORY-6] each channel offers its own suggestions, 
   }
   await persistedDoc(file, d => sorted(viewOf(d, 'linkedin')!.nodes.map(n => n.id)).join() === POST_PARTS.join());
   const stories = await readDocument(file);
-  expect(sorted(viewOf(stories, 'readme')!.nodes.map(n => n.id))).toEqual(['api', 'db', 'web']);
+  // The file is one `system` choice: its README story is built from the map and its detail views, skipping the part with a `detail`
+  // (`api`), so it holds the map's other parts and the inside of `api` (testing contract, Story, README).
+  expect(sorted(viewOf(stories, 'readme')!.nodes.map(n => n.id))).toEqual(['db', 'validator', 'web', 'writer']);
   expect(stories.channels.presentation!.steps!.map(s => s.id)).toEqual(['s1', 's2', 's3']); expect(stories.channels.presentation!.steps![0].text).toMatch(/^Step 1: /);
   expect(stories.facts, 'a story changes no fact').toEqual(before.facts);
 

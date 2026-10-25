@@ -80,7 +80,9 @@ test('H184 [NAV-1 SHARE-1 LOOK-2 #184] a part with an inside draws the same open
   }
 
   // Must not happen: the file gaining anything because of a mark, the editor-only marks in the image.
-  const raw = await readFile(file, 'utf8');
+  // The stored `source.path` holds this scenario's own folder (`archdrawer-open-marks-…`), so the file is read without it.
+  const stored = JSON.parse(await readFile(file, 'utf8')); delete stored.source;
+  const raw = JSON.stringify(stored);
   expect(raw).not.toMatch(/open-mark|"open"\s*:/);
   for (const [what, svg] of sources) expect(svg, `${what} carries no editor-only mark`).not.toMatch(/data-lifted|data-drop-target|drag-guide/);
 });

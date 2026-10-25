@@ -52,7 +52,10 @@ test('H183 [AI-1 STORY-1 SHARE-2 #44] the empty LinkedIn stage chooses the engin
   await expect(page.getByTestId('stage-model'), 'the choice survives a reload of the drawing').toHaveValue('fixture-careful');
 
   // While a run is going the stage's choice is off, and so is the rest.
+  // The send is on another channel (the empty stage keeps ai-send disabled), and it uses the engine and model chosen on the stage.
+  await page.getByTestId('channel-tab-overview').click(); await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'overview');
   const slow = await sendInPanel(page, '[fixture:slow] Show the loop');
+  expect(slow.body.model, 'a run from the panel uses the model chosen on the stage').toBe('fixture-careful'); expect(slow.body.engine).toBe('fixture');
   await expect(page.getByTestId('channel-tab-linkedin')).toBeEnabled(); await page.getByTestId('channel-tab-linkedin').click();
   await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin');
   await expect(page.getByTestId('stage-engine')).toBeDisabled(); await expect(page.getByTestId('stage-model')).toBeDisabled();

@@ -75,9 +75,40 @@ test("a drag moves only the part and its own line, lifts it, dims the rest and s
   expect(Math.abs(after.width - still.size.width) + Math.abs(after.height - still.size.height), "and after release").toBeLessThan(0.1);
   const moved = onDisk(path).views[0].nodes.find((n) => n.id === "e")!;
   expect(moved.x).toBeLessThan(1100 - 500);
-  expect(moved.x % 8).toBe(0);
+  // Release keeps where it was dropped, in whole pixels (the 8 px grid is the drag's own snap, ui contract, Dragging).
+  expect(Number.isInteger(moved.x) && Number.isInteger(moved.y)).toBe(true);
 
   // One undo step brings it back.
   await page.getByTestId("tool-undo").click();
   await expect.poll(() => onDisk(path).views[0].nodes.find((n) => n.id === "e")!.x).toBe(1100);
+});
+
+test("while dragging, the group a release would join is marked; outside every group none is, and after release none is; the drop covers nothing (#167)", async ({ page }) => {
+  const { path } = await open(page, file());
+  const target = () => page.getByTestId("canvas").evaluate((root) => Array.from(root.querySelectorAll('[data-drop-target="true"]')).map((n) => n.getAttribute("data-testid")));
+  const e = await boxOf(page, "node-e"), c = await boxOf(page, "node-c"), zone = await boxOf(page, "node-zone");
+  const from = { x: e.x + e.width / 2, y: e.y + e.height / 2 };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  // Over the zone, between its members: the zone is the target, with its ring.
+  const over = { x: c.x + c.width + 20, y: c.y + c.height / 2 };
+  for (let i = 1; i <= 8; i++) await page.mouse.move(from.x + ((over.x - from.x) * i) / 8, from.y + ((over.y - from.y) * i) / 8);
+  await expect.poll(target).toEqual(["node-zone"]);
+  await expect(page.getByTestId("drop-target-ring")).toHaveCount(1);
+  // Far below every group: no target.
+  const away = { x: over.x, y: zone.y + zone.height + 400 };
+  for (let i = 1; i <= 6; i++) await page.mouse.move(over.x, over.y + ((away.y - over.y) * i) / 6);
+  await expect.poll(target).toEqual([]);
+  await expect(page.getByTestId("drop-target-ring")).toHaveCount(0);
+  // Back over the zone and released: none is marked, the part joined the zone and covers neither member.
+  for (let i = 1; i <= 6; i++) await page.mouse.move(over.x, away.y + ((over.y - away.y) * i) / 6);
+  await expect.poll(target).toEqual(["node-zone"]);
+  await page.mouse.up();
+  await expect.poll(target).toEqual([]);
+  await expect(page.getByTestId("node-e")).toHaveAttribute("data-parent", "zone");
+  await expect(page.getByTestId("save-status")).toHaveText("Saved");
+  const overlap = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  const after = await boxOf(page, "node-e");
+  for (const id of ["node-c", "node-d", "node-a", "node-b"]) expect(overlap(after, await boxOf(page, id)), id).toBe(false);
+  await expect.poll(() => onDisk(path).views[0].nodes.find((n) => n.id === "e")?.parent).toBe("zone");
 });

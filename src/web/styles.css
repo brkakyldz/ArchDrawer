@@ -106,6 +106,9 @@ svg.i { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin
 /* A drag (ui contract, Dragging): the dragged parts lift with a stronger shadow and no size change; the rest dims. */
 .nd[data-lifted="true"] { filter: drop-shadow(0 12px 18px rgba(15, 23, 42, .28)) drop-shadow(0 3px 6px rgba(15, 23, 42, .18)); cursor: grabbing; }
 .nd[data-drag-dim="true"]:not(.dim), .gh[data-drag-dim="true"]:not(.dim), .ed[data-drag-dim="true"]:not(.dim) { opacity: .6; }
+/* The group a dragged piece would join on release (ui contract, Dragging): a box-shaped ring in the accent colour. */
+.drop-ring { fill: none; stroke: var(--accent); }
+.nd[data-drop-target="true"][data-drag-dim="true"] { opacity: 1; }
 .ed .hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; cursor: pointer; }
 .ed .line, .ed .glow { pointer-events: none; }
 .ed[data-selected="true"] .line { stroke-width: 2.6; }

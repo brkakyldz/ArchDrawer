@@ -31,12 +31,12 @@ const ok = (d: DiagramDocument) => { const r = validateDocument(d); if (!r.ok) t
 const n = (d: DiagramDocument, id: string) => viewOf(d, V).nodes.find((x) => x.id === id)!;
 
 describe("editor edits", () => {
-  it("moving a group moves what it holds; settling snaps to 8 px", () => {
+  it("moving a group moves what it holds; settling keeps where it was released, in whole pixels", () => {
     const d0 = doc();
-    const d1 = moveNodes(d0, V, ["rt"], 13, 21);
-    expect(n(d1, "llm").x - n(d0, "llm").x).toBe(13);
+    const d1 = moveNodes(d0, V, ["rt"], 13.4, 21);
+    expect(n(d1, "llm").x - n(d0, "llm").x).toBeCloseTo(13.4, 5);
     const d2 = ok(settleNodes(d1, V, ["rt"]));
-    expect(n(d2, "llm").x % 8).toBe(0);
+    expect(n(d2, "llm").x).toBe(Math.round(n(d0, "llm").x + 13.4));
     expect(n(d2, "llm").parent).toBe("rt");
   });
 
@@ -53,6 +53,62 @@ describe("editor edits", () => {
     let step = one;
     for (let i = 0; i < 20; i++) step = moveNodes(step, V, ["llm"], -40, -40);
     expect(n(ok(settleNodes(step, V, ["llm"])), "llm").parent).toBeNull();
+  });
+
+  it("a drop onto a part ends at the nearest free spot on the 8 px grid, 24 px clear (ui contract, A drop never covers)", () => {
+    const d0 = doc();
+    const r0 = layoutRects(viewOf(d0, V));
+    const web = r0.get("web")!, api = r0.get("api")!;
+    // web dropped right on top of api.
+    const dropped = ok(settleNodes(moveNodes(d0, V, ["web"], api.x - web.x, api.y - web.y), V, ["web"]));
+    const r = layoutRects(viewOf(dropped, V)), w = r.get("web")!;
+    expect(n(dropped, "web").parent).toBeNull();
+    expect([Math.abs(n(dropped, "web").x % 8), Math.abs(n(dropped, "web").y % 8)]).toEqual([0, 0]);
+    for (const id of ["api", "rt", "llm", "tool"]) expect(overlaps(w, r.get(id)!, 24 - 0.01), id).toBe(false);
+    // The nearest such spot, searched ring by ring on the grid from where it was dropped: no free spot lies on a nearer ring.
+    const at = { x: api.x + api.w / 2, y: api.y + api.h / 2 };
+    const others = ["api", "rt", "llm", "tool"].map((id) => r.get(id)!);
+    const x0 = Math.round((at.x - w.w / 2) / 8) * 8, y0 = Math.round((at.y - w.h / 2) / 8) * 8;
+    const ring = (x: number, y: number) => Math.max(Math.abs(x - x0), Math.abs(y - y0)) / 8;
+    for (let dx = -40; dx <= 40; dx++) for (let dy = -40; dy <= 40; dy++) {
+      const x = x0 + dx * 8, y = y0 + dy * 8;
+      if (others.every((o) => !overlaps({ x, y, w: w.w, h: w.h }, o, 24 - 0.01))) expect(ring(x, y)).toBeGreaterThanOrEqual(ring(w.x, w.y));
+    }
+  });
+
+  it("a drop that overlaps nothing stays exactly where it was released, inside a group's empty area too; a member dropped on a sibling stays in its group", () => {
+    const d0 = doc();
+    const r0 = layoutRects(viewOf(d0, V));
+    // Far right of everything: stays exactly there (on the grid it was snapped to).
+    const far = ok(settleNodes(moveNodes(d0, V, ["web"], 1600, 0), V, ["web"]));
+    expect([n(far, "web").x, n(far, "web").y]).toEqual([n(d0, "web").x + 1600, n(d0, "web").y]);
+    // Into the group's empty area: with its members 600 px apart, a part dropped between them joins it and stays put.
+    const rt = r0.get("rt")!, llm = r0.get("llm")!, tool = r0.get("tool")!;
+    const wide = ok(moveNodes(d0, V, ["tool"], llm.x + 600 - tool.x, llm.y - tool.y));
+    const w = layoutRects(viewOf(wide, V)).get("web")!, l = layoutRects(viewOf(wide, V)).get("llm")!;
+    const dx = l.x + 300 - w.x, dy = l.y - w.y;
+    const inside = ok(settleNodes(moveNodes(wide, V, ["web"], dx, dy), V, ["web"]));
+    expect(n(inside, "web").parent).toBe("rt");
+    expect([n(inside, "web").x, n(inside, "web").y]).toEqual([Math.round(n(wide, "web").x + dx), Math.round(n(wide, "web").y + dy)]);
+    // A member dropped on its sibling moves clear of it and keeps its group.
+    const onSibling = ok(settleNodes(moveNodes(d0, V, ["llm"], tool.x - llm.x, tool.y - llm.y), V, ["llm"]));
+    const r = layoutRects(viewOf(onSibling, V));
+    expect(n(onSibling, "llm").parent).toBe("rt");
+    expect(overlaps(r.get("llm")!, r.get("tool")!)).toBe(false);
+    expect(rt.w).toBeGreaterThan(0);
+  });
+
+  it("a dropped group that covers a part moves with everything it holds", () => {
+    const d0 = doc();
+    const r0 = layoutRects(viewOf(d0, V));
+    const rt = r0.get("rt")!, api = r0.get("api")!;
+    const dropped = ok(settleNodes(moveNodes(d0, V, ["rt"], api.x - rt.x, api.y - rt.y), V, ["rt"]));
+    const r = layoutRects(viewOf(dropped, V));
+    expect(overlaps(r.get("rt")!, r.get("api")!)).toBe(false);
+    expect(overlaps(r.get("rt")!, r.get("web")!)).toBe(false);
+    // Its members kept their places inside it.
+    expect(n(dropped, "tool").x - n(dropped, "llm").x).toBe(n(d0, "tool").x - n(d0, "llm").x);
+    expect([n(dropped, "llm").parent, n(dropped, "tool").parent]).toEqual(["rt", "rt"]);
   });
 
   it("adds a component at a free spot, inside the group under the click", () => {

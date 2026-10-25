@@ -3,7 +3,7 @@ import { layoutRects, measureText, routeEdges, textStyle, type EdgeRoute, type R
 import { badgeMarkup, drawOrder, edgeMarkup, groupHeadMarkup, labelMarkup, nodeMarkup, sharedDefs, textMarkup, toneOf } from "../../core/export/svg";
 import { descendants, isPostView, LIMITS, type DiagramEdge, type DiagramNode, type DiagramText, type Kind } from "../../core/model";
 import type { Palette } from "../../core/theme";
-import { clampTextSize, connect, moveNodes, moveTexts, setText, settleNodes, VIEW_FULL, withInside } from "./ops";
+import { clampTextSize, connect, groupAt, moveNodes, moveTexts, setText, settleNodes, VIEW_FULL, withInside } from "./ops";
 import type { Ctl, Selection } from "./types";
 import { NOTHING } from "./types";
 import { detailAt, toWorld, zoomAt } from "./viewport";
@@ -13,10 +13,10 @@ import { detailAt, toWorld, zoomAt } from "./viewport";
 /** A drag's marks on a part or a connection (ui contract, Dragging): lifted, or dimmed while others move. */
 type DragMark = "lifted" | "dim" | undefined;
 
-const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, changed, open = false, post, match, on = false, drag, subLines = true }: { node: DiagramNode; rect: Rect; P: Palette; selected: boolean; dim: boolean; changed: boolean; open?: boolean; post: boolean; match?: "true" | "current"; on?: boolean; drag?: DragMark; subLines?: boolean }) {
+const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, changed, open = false, post, match, on = false, drag, subLines = true, dropTarget = false }: { node: DiagramNode; rect: Rect; P: Palette; selected: boolean; dim: boolean; changed: boolean; open?: boolean; post: boolean; match?: "true" | "current"; on?: boolean; drag?: DragMark; subLines?: boolean; dropTarget?: boolean }) {
   return (
     <g className={`nd${dim ? " dim" : ""}${changed ? " changed" : ""}${open ? " open" : ""}`} data-changed={changed ? "true" : undefined} data-dim={dim ? "true" : undefined} data-match={match} data-step={on ? "on" : undefined} data-testid={`node-${node.id}`} data-node-id={node.id} data-kind={node.kind} data-form={node.form}
-      data-parent={node.parent ?? ""} data-selected={String(selected)} data-lifted={drag === "lifted" ? "true" : undefined} data-drag-dim={drag === "dim" ? "true" : undefined} style={{ ["--hover-k" as string]: P.kinds[node.kind] }}
+      data-parent={node.parent ?? ""} data-selected={String(selected)} data-lifted={drag === "lifted" ? "true" : undefined} data-drag-dim={drag === "dim" ? "true" : undefined} data-drop-target={dropTarget ? "true" : undefined} style={{ ["--hover-k" as string]: P.kinds[node.kind] }}
       dangerouslySetInnerHTML={{ __html: nodeMarkup(node, rect, P, { testIds: true, post, subLines }) }} />
   );
 });
@@ -109,6 +109,16 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
     return out;
   }, [restRects, moving, dragOff]);
   const touches = (e: DiagramEdge) => !!moving && (moving.has(e.from) || moving.has(e.to));
+  // The group the piece under the pointer would join on release, by its centre (ui contract, Dragging: The target group).
+  const dropTarget = useMemo(() => {
+    if (!dragOff || !moving || live?.kind !== "move" || !live.hit.node || !moving.has(live.hit.node)) return null;
+    const parentOf = (id: string) => view.nodes.find((n) => n.id === id)?.parent ?? null;
+    let piece = live.hit.node;
+    for (let p = parentOf(piece); p && moving.has(p); p = parentOf(p)) piece = p;
+    const shifted = { ...view, nodes: view.nodes.map((n) => (moving.has(n.id) ? { ...n, x: n.x + dragOff.x, y: n.y + dragOff.y } : n)) };
+    const r = layoutRects(shifted).get(piece);
+    return r ? groupAt(shifted, { x: r.x + r.w / 2, y: r.y + r.h / 2 }, piece) : null;
+  }, [view, moving, dragOff, live]);
   const routes = useMemo(() => {
     if (!dragOff || !moving) return restRoutes;
     const again = routeEdges(view, rects, { avoid: texts.map((t) => ({ x: t.x, y: t.y, ...measureText(t) })) });
@@ -374,7 +384,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
       <svg className="world" aria-label={view.title}>
         <defs dangerouslySetInnerHTML={{ __html: defs }} />
         <g transform={`translate(${vp.x} ${vp.y}) scale(${k})`}>
-          {groups.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} drag={dragMark(n.id)} subLines={view.subLines !== false} />)}
+          {groups.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} drag={dragMark(n.id)} subLines={view.subLines !== false} dropTarget={dropTarget === n.id} />)}
           {/* A dragged part's own connections are drawn above every other one, still under the parts. */}
           {[...view.edges.filter((e) => !touches(e)), ...view.edges.filter(touches)].map((e) => {
             const r = routes.get(e.id);
@@ -401,6 +411,10 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
           {texts.map((t) => <TextShape key={t.id} text={t} P={P} selected={selTexts.has(t.id)} typing={ctl.editing?.kind === "text" && ctl.editing.id === t.id} />)}
 
           {/* editor-only marks: search matches, selection, ports, drag feedback (never in an export) */}
+          {dropTarget && rects.get(dropTarget) && (() => {
+            const r = rects.get(dropTarget)!;
+            return <rect className="drop-ring" data-testid="drop-target-ring" x={r.x - 4} y={r.y - 4} width={r.w + 8} height={r.h + 8} rx={22} strokeWidth={2 / k} pointerEvents="none" />;
+          })()}
           {found && [...found.ids].map((id) => {
             const r = rects.get(id);
             if (!r) return null;

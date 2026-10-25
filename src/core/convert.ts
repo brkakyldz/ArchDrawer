@@ -1,13 +1,15 @@
 /**
- * Reading older drawing files as `archdraw/diagram@3` (docs/contracts/diagram.md, *Reading
- * `archdraw/diagram@2`*; ADR 0006). Pure (invariant 4). Every change of meaning adds one warning.
+ * Reading older drawing files (docs/contracts/diagram.md, *Reading `archdraw/diagram@3`* and *Reading
+ * `archdraw/diagram@2`*; ADR 0006, ADR 0015): `@2` becomes `@3`, and `@3` becomes `@4`. Pure (invariant 4).
+ * Every change of meaning adds one warning; `@3` to `@4` changes none.
  */
-import { SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, validateFile, type DiagramFile, type EdgeInput, type FileCheck, type NodeInput, type ViewInput } from "./model";
+import { SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, validateFile, type DiagramFile, type EdgeInput, type FileCheck, type NodeInput, type ViewInput } from "./model";
 import { migrateV1 } from "./migrate";
 import {
   validateFile3,
   type ComponentFact, type ConnectionInput, type File3, type PartInput, type RelationFact, type Request3, type ViewInput3,
 } from "./file3";
+import { convertV3, validateFile4, type File4 } from "./file4";
 
 export const CONVERTED_V2 = "Converted from archdraw/diagram@2";
 const EDGE_TEXT = ["label", "style", "both"] as const;
@@ -137,12 +139,26 @@ function nextR(used: Set<string>): string {
   for (let k = 1; ; k++) if (!used.has(`r${k}`)) return `r${k}`;
 }
 
-export interface ReadReport { ok: boolean; errors: string[]; warnings: string[]; file: File3 | null; from: "@3" | "@2" | "@1" | null }
+export interface ReadReport { ok: boolean; errors: string[]; warnings: string[]; file: File4 | null; from: "@4" | "@3" | "@2" | "@1" | null }
 
 /**
- * Read any drawing file as `@3`: an `@3` file is validated; an `@2` file is validated as `@2`,
- * converted, and the result validated; an `@1` file only when `allowV1` (import, `migrate`).
- * The returned warnings are the file's own plus the conversion's.
+ * An `@3` report carried on as `@4`: a valid file converted, its warnings under its one choice. An invalid
+ * one is not converted, but its violations are named as in the file it would become (diagram contract, rule 1).
+ */
+function asV4(r: { ok: boolean; errors: string[]; warnings: string[]; file: File3 | null }): Omit<ReadReport, "from"> {
+  const inChoice = (line: string) => (/^(facts|channels)\b/.test(line) ? `choices[0].${line}` : line);
+  if (!r.ok || !r.file) return { ok: false, errors: r.errors.map(inChoice), warnings: [], file: null };
+  const file = convertV3(r.file);
+  const r4 = validateFile4(file);
+  if (!r4.ok) return { ok: false, errors: r4.errors, warnings: [], file: null };
+  return { ok: true, errors: [], warnings: r.warnings.map(inChoice), file };
+}
+
+/**
+ * Read any drawing file as `@4`: an `@4` file is validated; an `@3` file is validated as `@3` and
+ * converted; an `@2` file is validated as `@2`, converted to `@3`, the result validated and converted
+ * again; an `@1` file only when `allowV1` (import, `migrate`). The returned warnings are the file's
+ * own plus the conversion's.
  */
 export function readAnyFile(raw: unknown, check: FileCheck = {}, o: { allowV1?: boolean; now?: string } = {}): ReadReport {
   const schema = raw && typeof raw === "object" ? (raw as { schema?: unknown }).schema : undefined;
@@ -156,11 +172,13 @@ export function readAnyFile(raw: unknown, check: FileCheck = {}, o: { allowV1?: 
     if (!r2.ok || !r2.file) return { ok: false, errors: r2.errors, warnings: [], file: null, from: "@2" };
     const { file, warnings } = convertV2(r2.file);
     const r3 = validateFile3(file, check);
-    if (!r3.ok) return { ok: false, errors: r3.errors, warnings: [], file: null, from: "@2" };
+    if (!r3.ok) return { ...asV4(r3), from: "@2" };
     // The @2 depth warnings are checked again on the @3 channels; notes and missing files keep theirs.
     const own = r2.warnings.filter((w) => !/^views\[/.test(w));
-    return { ok: true, errors: [], warnings: [...own, ...r3.warnings, ...warnings], file, from: "@2" };
+    const r4 = asV4({ ...r3, warnings: [...own, ...r3.warnings, ...warnings] });
+    return { ...r4, from: "@2" };
   }
-  const r = validateFile3(raw, check);
-  return { ...r, from: r.ok ? "@3" : schema === SCHEMA_V3 ? "@3" : null };
+  if (schema === SCHEMA_V3) return { ...asV4(validateFile3(raw, check)), from: "@3" };
+  const r = validateFile4(raw, check);
+  return { ...r, from: schema === SCHEMA_V4 ? "@4" : null };
 }

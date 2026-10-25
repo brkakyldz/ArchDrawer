@@ -26,7 +26,7 @@ test("a second click closes a callout; drilling in puts the view in the URL; the
   await expect(page.getByTestId("callout-db")).toHaveCount(0);
   await page.getByTestId("node-api").getByTestId("node-inside").click();
   await expect(page.getByTestId("editor")).toHaveAttribute("data-view", "api-inside");
-  await expect(page).toHaveURL(new RegExp(`/d/${id}\\?channel=overview&view=api-inside$`));
+  await expect(page).toHaveURL(new RegExp(`/d/${id}\\?choice=system&channel=overview&view=api-inside$`));
   await page.getByTestId("crumb-overview").click();
   await page.getByTestId("node-api").click();
   await page.getByTestId("callout-open-inside").click();

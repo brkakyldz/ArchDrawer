@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { applyChannel, clearOutdated, joinChannel } from "../../core/channels";
 import { prepareLinkedIn } from "../../core/export/feed";
 import { channelOfView, isChannel, validateDocument3, type ChannelId, type Document3, type Step } from "../../core/file3";
+import { choiceDoc, choiceOfView, withChoice, type Document4 } from "../../core/file4";
 import { layoutRects, routeEdges, viewBounds } from "../../core/geometry";
 import { LIMITS, TEXT_SIZE, viewById, type DiagramDocument, type DiagramView, type Form, type Kind } from "../../core/model";
 import { PALETTES } from "../../core/theme";
@@ -100,6 +101,25 @@ function refusedByFile(before: Document3, next: Document3, toast: (m: string) =>
 }
 
 /**
+ * The choice an address opens (ui contract, Routes): the named one, else the one holding the named
+ * view (an older link), else the first; an unknown choice opens the first choice's overview.
+ */
+function choiceOfAddress(whole: Document4, choice: string | null, view: string | null): { choice: string; known: boolean } {
+  if (choice) {
+    const c = whole.choices.find((x) => x.id === choice);
+    return c ? { choice: c.id, known: true } : { choice: whole.choices[0].id, known: false };
+  }
+  return { choice: (view ? choiceOfView(whole, view) : null)?.id ?? whole.choices[0].id, known: true };
+}
+
+/** The editor's address for a choice, a channel and a view (ui contract, Routes); the first choice's overview is `/d/<id>`. */
+export function addressOf(whole: Pick<Document4, "id" | "choices">, choice: string, channel: ChannelId, view: string | null): string {
+  const first = whole.choices[0];
+  if (choice === first.id && channel === "overview" && (view === null || view === first.channels.overview.views[0]?.id)) return `/d/${whole.id}`;
+  return `/d/${whole.id}?choice=${encodeURIComponent(choice)}&channel=${channel}${view ? `&view=${encodeURIComponent(view)}` : ""}`;
+}
+
+/**
  * Where an address opens (ui contract, Routes): a named channel at the named view or its first; an
  * older `?view=` at the channel holding that view; anything unknown at the overview.
  */
@@ -115,11 +135,31 @@ function startOf(stored: Document3, channel: string | null, view: string | null)
 }
 
 /** `/d/<id>`: the editor (ui contract). */
-export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: string; channel: string | null; view: string | null }) {
-  // The history holds the stored @3 document, one history across channels; the editor draws and edits
-  // the current channel (`joinChannel`), and every edit is split back into the facts and that channel.
-  const hist = useDocHistory<Document3>();
-  const stored = hist.doc;
+export function Editor({ id, choice: wantedChoice, channel: wantedChannel, view: wantedView }: { id: string; choice: string | null; channel: string | null; view: string | null }) {
+  // The history holds the stored @4 document, one history across choices and channels (ui contract,
+  // Choices and the views panel); the editor shows one choice as an @3 document (`stored`), draws and
+  // edits its current channel (`joinChannel`), and every edit is split back into that choice's facts
+  // and channel, the other choices untouched.
+  const hist4 = useDocHistory<Document4>();
+  const whole = hist4.doc;
+  /** The current choice: the address's until the user goes elsewhere. */
+  const [cid, setCid] = useState<string | null>(null);
+  const choiceId = whole ? (cid && whole.choices.some((c) => c.id === cid) ? cid : whole.choices[0].id) : null;
+  const choiceRef = useRef(choiceId);
+  choiceRef.current = choiceId;
+  const stored = useMemo(() => (whole ? choiceDoc(whole, choiceId) : null), [whole, choiceId]);
+  const wholeRef = useRef(whole);
+  wholeRef.current = whole;
+  /** An edit of the current choice: made on its @3 document and written back into the whole. */
+  const applyInChoice = useCallback((next: Document3 | ((d: Document3) => Document3), opts?: ApplyOptions) => {
+    hist4.apply((w) => {
+      const c = choiceRef.current ?? w.choices[0].id;
+      const cur = choiceDoc(w, c);
+      const out = typeof next === "function" ? next(cur) : next;
+      return out === cur ? w : withChoice(w, c, out);
+    }, opts);
+  }, [hist4.apply]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hist = { ...hist4, doc: stored, apply: applyInChoice };
   /** The current channel; a channel with no drawing shows its own stage instead of the canvas. */
   const [chan, setChan] = useState<ChannelId>("overview");
   const chanRef = useRef(chan);
@@ -127,7 +167,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const storedRef = useRef(stored);
   storedRef.current = stored;
   const doc = useMemo(() => (stored ? joinChannel(stored, drawnChannel(stored, chan)) : null), [stored, chan]);
-  const save = useAutosave(stored);
+  const save = useAutosave(whole);
   const [missing, setMissing] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadRound, setLoadRound] = useState(0);
@@ -209,13 +249,13 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
    * never writes the editor's older version over the outside change (ui contract, External changes);
    * on `request`, a request the server just saved, which is one undo step.
    */
-  const adopt = useCallback((d: Document3, message: string | null, how: "load" | "outside" | "request") => {
+  const adopt = useCallback((d: Document4, message: string | null, how: "load" | "outside" | "request") => {
     // The file changed outside the editor: the preview ends as accepted (the file holds the result).
     if (how !== "load") endPreview("accepted");
     save.markSaved(d);
-    if (how === "request") hist.apply(d); else hist.reset(d);
+    if (how === "request") hist4.apply(d); else hist4.reset(d);
     if (message) toast(message);
-  }, [hist, save, toast, endPreview]);
+  }, [hist4, save, toast, endPreview]);
 
   /** Resolves true once every edit is in the file (before an instruction runs on it). */
   const settle = useCallback(async () => {
@@ -238,19 +278,22 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     setModels((x) => ({ ...x, [engine.id]: m }));
   };
   const runner = useRunner({
-    doc, channel: stored ? drawnChannel(stored, chan) : "overview", vid: vid ?? doc?.views[0].id ?? null, settle,
+    doc, choice: choiceId, channel: stored ? drawnChannel(stored, chan) : "overview", vid: vid ?? doc?.views[0].id ?? null, settle,
     // Starting another run accepts the preview first; a typed instruction leaves `ai-input` as the run
     // starts, and comes back to it if the run fails.
     // Only while the input still holds that instruction: text corrected after a failure stays.
     onStart: (req: RunRequest) => { endPreview("accepted"); if (req.typed) setAiText((t) => (t.trim() === req.instruction.trim() ? "" : t)); },
     onEnded: (req: RunRequest) => { if (req.typed) setAiText((t) => t || req.instruction); },
-    onUpdated: ({ key, stored: d, changes: c, req, route, view: at }: Done): Outcome => {
+    onUpdated: ({ key, stored: d4, choice: ran, changes: c, req, route, view: at }: Done): Outcome => {
       // One undo step: the stored result and the edit made after it (a re-arrangement) together.
-      save.markSaved(d);
+      save.markSaved(d4);
       // A result that changes nothing shows no preview and leaves no undo step that does nothing
       // (ui contract, Preview, Accept and Undo): it only replaces what the editor holds with the file.
       const unchanged = !c || summarize(c) === "Nothing changed";
-      hist.apply(req.after ? splitEdit(d, channelOfView(d, req.view ?? "") ?? chanRef.current, req.after, toast) : d, unchanged && !req.after ? { record: false } : undefined);
+      const d = choiceDoc(d4, ran);
+      hist4.apply(req.after ? withChoice(d4, ran, splitEdit(d, channelOfView(d, req.view ?? "") ?? chanRef.current, req.after, toast)) : d4, unchanged && !req.after ? { record: false } : undefined);
+      // The result is in the run's choice: the editor shows it there.
+      if (ran !== choiceRef.current) setCid(ran);
       if (req.after && req.view === vid) pendingFit.current = { view: req.view! };
       // A result that changes nothing shows no preview (ui contract, Preview, Accept and Undo).
       if (unchanged) return "unchanged";
@@ -277,7 +320,12 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
       }
       return api.get(id);
     })().then(
-      (d) => { if (!live) return; setLoading(false); setLoadError(null); adopt(d, null, "load"); document.title = `${d.title} · archdrawer`; },
+      (d) => {
+        if (!live) return;
+        setLoading(false); setLoadError(null);
+        setCid(choiceOfAddress(d, wantedChoice, wantedView).choice);
+        adopt(d, null, "load"); document.title = `${d.title} · archdrawer`;
+      },
       (e: unknown) => {
         if (!live) return;
         setLoading(false);
@@ -326,14 +374,16 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   // Fitted before the first paint: the toolbar never shows a provisional 100 % (and `full`) the fit then
   // takes back a frame later.
   useLayoutEffect(() => {
-    if (!doc || !stored || vid) return;
-    const s = startOf(stored, wantedChannel, wantedView);
+    if (!doc || !stored || !whole || vid) return;
+    // An unknown choice opens the first choice's overview (ui contract, Routes).
+    const known = choiceOfAddress(whole, wantedChoice, wantedView).known;
+    const s = known ? startOf(stored, wantedChannel, wantedView) : startOf(stored, null, null);
     const shown = joinChannel(stored, drawnChannel(stored, s.channel));
     const start = s.view && viewById(shown, s.view) ? s.view : shown.views[0].id;
     setChan(s.channel);
     setVid(start);
     fitTo(viewOf(shown, start));
-  }, [doc, stored, vid, wantedChannel, wantedView, fitTo]);
+  }, [doc, stored, whole, vid, wantedChoice, wantedChannel, wantedView, fitTo]);
 
   useEffect(() => {
     const el = stageEl.current;
@@ -358,8 +408,8 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     const c = !d ? null : next?.views.some((x) => x.id === v) ? chanRef.current : channelOfView(d, v);
     if (!d || !c) return;
     setChan(c); setVid(v); setSel(focus ? { ...NOTHING, nodes: [focus] } : NOTHING); setCallout(null); setEditing(null); setPicker(null);
-    const url = c === "overview" && v === d.channels.overview.views[0].id ? `/d/${d.id}` : `/d/${d.id}?channel=${c}&view=${encodeURIComponent(v)}`;
-    history.replaceState({}, "", url);
+    const w = wholeRef.current;
+    if (w) history.replaceState({}, "", addressOf(w, choiceRef.current ?? w.choices[0].id, c, v));
     pendingFit.current = { view: v, focus };
     fitRound((n) => n + 1);
   }, []);
@@ -381,11 +431,11 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     if (!doc || !vid || !stored) return;
     const own = stored.channels[chan].views;
     if (chan !== "overview" && !own.length) {
-      if (!viewById(doc, vid)) { setVid(doc.views[0].id); setSel(NOTHING); setCallout(null); setEditing(null); history.replaceState({}, "", `/d/${doc.id}?channel=${chan}`); }
+      if (!viewById(doc, vid)) { setVid(doc.views[0].id); setSel(NOTHING); setCallout(null); setEditing(null); if (whole && choiceId) history.replaceState({}, "", addressOf(whole, choiceId, chan, null)); }
       return;
     }
     if (!viewById(doc, vid)) goView(doc.views[0].id);
-  }, [doc, stored, vid, chan, goView]);
+  }, [doc, stored, whole, choiceId, vid, chan, goView]);
 
   // When a preview starts, the editor goes once to the run's channel and view (ui contract). A channel
   // with no drawing keeps the overview's first view behind its stage, so the channel is compared too.
@@ -420,7 +470,8 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
     setMenuOpen(false);
     if (target) { goView(target.id); return; }
     setChan(c); setSel(NOTHING); setCallout(null); setEditing(null); setPicker(null); setSearching(false);
-    history.replaceState({}, "", `/d/${d.id}?channel=${c}`);
+    const w = wholeRef.current;
+    if (w) history.replaceState({}, "", addressOf(w, choiceRef.current ?? w.choices[0].id, c, null));
   }, [goView]);
   /** "Keep as it is": the channel's marks go, as one undoable edit (diagram contract, outdated). */
   const keep = () => {
@@ -461,7 +512,12 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const undoRun = () => { if (!previewRef.current) return; hist.undo(); endPreview("undone"); };
 
   const openAi = (scope: ScopeChoice = "view") => setAi({ scope, at: Date.now() });
-  const reserved = useMemo(() => (stored ? reservedIds(stored) : new Set<string>()), [stored]);
+  // A view made here takes no id another choice's view has (diagram contract, rule 2: view ids are unique across the file).
+  const reserved = useMemo(() => {
+    const out = stored ? reservedIds(stored) : new Set<string>();
+    for (const c of whole?.choices ?? []) if (c.id !== choiceId) for (const ch of Object.values(c.channels)) for (const v of ch.views) out.add(v.id);
+    return out;
+  }, [stored, whole, choiceId]);
   // On the overview only, one line when it misses its targets; nothing changes by itself.
   const ctl: Ctl | null = doc && view ? {
     doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: () => { if (!refusal()) hist.checkpoint(); }, refused: refusal, setDragging,
@@ -714,7 +770,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   );
 
   return (
-    <div className={`app${side ? " with-side" : ""}`} data-testid="editor" data-theme={doc.theme} data-channel={chan} data-view={view.id}>
+    <div className={`app${side ? " with-side" : ""}`} data-testid="editor" data-theme={doc.theme} data-choice={choiceId ?? ""} data-channel={chan} data-view={view.id}>
       <header className="bar">
         <div className="where">
           <button className="brand-link" title="All drawings" aria-label="archdrawer: all drawings" onClick={() => navigate("/")}><Logo wordmark={!narrow} /></button>

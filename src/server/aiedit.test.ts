@@ -9,6 +9,7 @@ import { codexModels } from "./engines/codex";
 import { fixtureAnswer, FixtureEngine, fixtureRoute } from "./engines/fixture";
 import type { Engine, EngineInfo, EngineRunRequest } from "./engines/types";
 import { makeApp, shopRepo } from "./testkit";
+import { choiceDoc } from "../core/file4";
 
 /** A stand-in for a real engine (Claude Code or Codex) that answers like the fixture. */
 class FakeReal implements Engine {
@@ -31,8 +32,8 @@ async function setup(engines?: Engine[], engine: { id: string; model: null } | n
     const body = (await r.json()) as { runId?: string; error?: string };
     return { status: r.status, body, done: body.runId ? await t.runs.wait(body.runId) : null };
   };
-  const doc = (): DiagramDocument => joinChannel(JSON.parse(readFileSync(file, "utf8")), "overview");
-  const stored = () => JSON.parse(readFileSync(file, "utf8"));
+  const doc = (): DiagramDocument => joinChannel(choiceDoc(JSON.parse(readFileSync(file, "utf8"))), "overview");
+  const stored = () => choiceDoc(JSON.parse(readFileSync(file, "utf8")));
   return { ...t, file, id, run, doc, stored };
 }
 

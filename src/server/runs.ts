@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import { appearanceOnly } from "../core/appearance";
 import { applyChannel, draftOf, joinChannel } from "../core/channels";
 import { channelOfView, validateDocument3, type ChannelId, type Document3 } from "../core/file3";
+import { choiceOfFocus, withChoice, type Document4 } from "../core/file4";
 import { isPostView, validateDocument, type DiagramDocument } from "../core/model";
 import { startSwitches, type FormatId } from "../core/export/share";
 import { layoutReport, type LayoutReport } from "../core/report";
@@ -27,12 +28,14 @@ export type DrawStage = "read" | "overview" | "channel";
 export type StoryChannel = Exclude<ChannelId, "overview">;
 export type RunEvent =
   | { type: "progress"; message: string; stage: DrawStage | null }
-  | { type: "done"; status: Exclude<RunStatus, "running">; diagramId: string | null; error: string | null; changes: Changes | null; channel: ChannelId; view: string; layoutReport: LayoutReport | null; route: Route | null; path: string | null };
+  | { type: "done"; status: Exclude<RunStatus, "running">; diagramId: string | null; error: string | null; changes: Changes | null; choice: string; channel: ChannelId; view: string; layoutReport: LayoutReport | null; route: Route | null; path: string | null };
 
 export interface RunRecord {
   id: string;
   /** What the run does (api contract, Run kinds). */
   kind: RunKind;
+  /** The choice the run changes (api contract, Run record); a draw's first choice. */
+  choice: string;
   /** The channel and view the run worked on; on success, the resulting ones. */
   channel: ChannelId;
   view: string;
@@ -81,8 +84,11 @@ export interface StartRun {
   base: DiagramDocument;
   /** The channel the run changes; default the overview. */
   channel?: ChannelId;
-  /** The same drawing as stored. */
+  /** The same drawing as stored: the run's choice as an `@3` document. */
   stored: Document3;
+  /** The whole stored document, and the choice the run changes in it. */
+  whole: Document4;
+  choice: string;
   /** The format the result's layout report is measured in; default README (a post: the feed). */
   format?: FormatId;
   /** Default refine: an instruction-box change. A post designs the view's LinkedIn image; simplify makes the overview a map. */
@@ -115,7 +121,7 @@ export class RunManager {
   get(id: string): RunRecord | null {
     const r = this.runs.get(id);
     return r ? {
-      id: r.id, kind: r.kind, channel: r.channel, view: r.view, status: r.status, progress: [...r.progress], diagramId: r.diagramId, error: r.error,
+      id: r.id, kind: r.kind, choice: r.choice, channel: r.channel, view: r.view, status: r.status, progress: [...r.progress], diagramId: r.diagramId, error: r.error,
       engine: r.engine, model: r.model, changes: r.changes, layoutReport: r.layoutReport, route: r.route, path: r.path,
     } : null;
   }
@@ -159,7 +165,7 @@ export class RunManager {
   start(req: StartRun): string {
     const story = storyChannelOf(req);
     return this.launch(
-      { kind: req.kind ?? "refine", channel: story ?? channelOfView(req.stored, req.view) ?? "overview", view: story ? channelViewId(req.stored, story) : req.view, engine: req.engine.id, model: req.model, target: req.base.id },
+      { kind: req.kind ?? "refine", choice: req.choice, channel: story ?? channelOfView(req.stored, req.view) ?? "overview", view: story ? channelViewId(req.stored, story) : req.view, engine: req.engine.id, model: req.model, target: req.base.id },
       // A revise's image goes once the run has ended — succeeded, failed, cancelled or timed out — and,
       // since every engine call settles only after its process tree has exited, after the engine is gone.
       (signal, progress, run) => this.execute(req, signal, (m) => progress(m), (route) => (run.route = route))
@@ -180,7 +186,7 @@ export class RunManager {
     const kept = last && last.key === key ? last.kept : null;
     const done: Partial<KeptDraw> = {};
     return this.launch(
-      { kind: "draw", channel: req.channel, view: req.channel, engine: req.engine.id, model: req.model, target: `folder:${req.folderKey}` },
+      { kind: "draw", choice: choiceOfFocus(req.focus).id, channel: req.channel, view: req.channel, engine: req.engine.id, model: req.model, target: `folder:${req.folderKey}` },
       (signal, progress, run) => runDraw(req, { store: this.store, timeoutMs: this.opts.timeoutMs, signal, progress, wrote: (path) => (run.path = path), kept, done }).then(
         (r) => { this.kept.delete(req.folderKey); return r; },
         (err: unknown) => {
@@ -202,13 +208,13 @@ export class RunManager {
   private readonly kept = new Map<string, { key: string; at: number; kept: KeptDraw }>();
 
   private launch(
-    init: Pick<RunRecord, "kind" | "channel" | "view" | "engine" | "model"> & { target: string },
+    init: Pick<RunRecord, "kind" | "choice" | "channel" | "view" | "engine" | "model"> & { target: string },
     exec: (signal: AbortSignal, progress: (m: string, stage?: DrawStage | null) => void, run: Run) => Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string }>,
   ): string {
     const id = `r_${randomBytes(6).toString("hex")}`;
     let resolveFinished!: () => void;
     const run: Run = {
-      id, kind: init.kind, channel: init.channel, view: init.view,
+      id, kind: init.kind, choice: init.choice, channel: init.channel, view: init.view,
       status: "running", progress: [], diagramId: null, error: null, engine: init.engine, model: init.model,
       changes: null, layoutReport: null, route: null, path: null, target: init.target,
       events: [], listeners: new Set(), abort: new AbortController(),
@@ -235,7 +241,7 @@ export class RunManager {
       run.error = error;
       run.changes = changes;
       run.layoutReport = report;
-      emit({ type: "done", status, diagramId, error, changes, channel: run.channel, view: run.view, layoutReport: report, route: run.route, path: run.path });
+      emit({ type: "done", status, diagramId, error, changes, choice: run.choice, channel: run.channel, view: run.view, layoutReport: report, route: run.route, path: run.path });
       run.listeners.clear();
       resolveFinished();
     };
@@ -337,7 +343,7 @@ export class RunManager {
     const stored = validateDocument3(split.doc);
     if (!stored.ok) throw new EngineError(`The engine's drawing could not be repaired into a valid document: ${stored.error}`);
     // Never overwrite a drawing that changed after the run started (the editor, a session, the CLI).
-    const saved = this.store.put(req.base.id, split.doc, { base: req.base.updatedAt, announce: true });
+    const saved = this.store.put(req.base.id, withChoice(req.whole, req.choice, split.doc), { base: req.base.updatedAt, announce: true });
     if (!saved) throw new EngineError("The drawing was removed while the instruction ran.");
     if (!saved.ok) throw new EngineError(saved.conflict ? "The drawing changed while the instruction ran." : `The drawing could not be saved: ${saved.error}`);
     // Counted from the saved file, so the split's own repairs are counted too.
@@ -390,7 +396,7 @@ export class RunManager {
     const { doc, view, warnings } = intentToChannel(req.stored, intent, { portrait: format === "feed", channel });
     const toSave: Document3 = { ...doc, warnings, engine: { id: req.engine.id, model: req.model }, updatedAt: nowIso() };
     if (signal.aborted) throw new EngineError("Cancelled");
-    const saved = this.store.put(req.base.id, toSave, { base: req.base.updatedAt, announce: true });
+    const saved = this.store.put(req.base.id, withChoice(req.whole, req.choice, toSave), { base: req.base.updatedAt, announce: true });
     if (!saved) throw new EngineError("The drawing was removed while the post was designed.");
     if (!saved.ok) throw new EngineError(saved.conflict ? "The drawing changed while the post was designed." : `The drawing could not be saved: ${saved.error}`);
     progress(warnings.length ? `Saved with ${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : "Saved");

@@ -8,6 +8,7 @@ import { repoRootOf } from "./files";
 import { FixtureEngine } from "./engines/fixture";
 import { EngineError, type Engine } from "./engines/types";
 import { makeApp, makeFolder } from "./testkit";
+import { choiceDoc } from "../core/file4";
 
 // The draw run (api contract, The draw run): what the held-out scenarios H117–H120 do not observe —
 // the write's own failure paths, the temporary file, the root of a folder outside git, the event stages.
@@ -53,7 +54,7 @@ describe("the draw run", () => {
     const run = await draw(t, dir);
     expect([run.status, run.error]).toEqual(["succeeded", null]);
     expect(run.path).toBe(join(dir, "docs", "architecture.archdraw.json"));
-    const doc = t.store.get(run.diagramId!)!;
+    const doc = choiceDoc(t.store.get(run.diagramId!)!);
     expect(validateDocument3(doc).ok).toBe(true);
     expect([doc.source?.path, doc.warnings.slice(0, 4)]).toEqual([dir, FOUR]);
     const drawn = new Set(doc.channels.overview.views[0].nodes.flatMap((p) => [...p.facts, ...(p.held ?? [])]));
@@ -107,7 +108,7 @@ describe("the draw run", () => {
     expect(events[at].stage).toBe("overview");
     expect(events.slice(at + 1, at + 4)).toEqual(["Reading the drawing", "Reading the code", "Updating the drawing"].map((message) => ({ message, stage: "overview" })));
     expect(events.filter((e) => e.message.startsWith("Fixing"))).toHaveLength(1);
-    const doc = t.store.get(run.diagramId!)!;
+    const doc = choiceDoc(t.store.get(run.diagramId!)!);
     expect(doc.channels.overview.views[0].caption.lede).toBe("Drawn by the test engine.");
     expect(doc.warnings.some((w) => w.startsWith("Shortened"))).toBe(false);
   });
@@ -132,7 +133,7 @@ describe("the draw run", () => {
       { message: "Drawing the overview", stage: "overview" }, { message: "Using the overview already drawn", stage: "overview" },
     ]);
     const clean = await draw(t, repo(), { focus: { kind: "typed", text: "The agent" }, channel: "presentation" });
-    const [doc, control] = [t.store.get(again.diagramId!)!, t.store.get(clean.diagramId!)!];
+    const [doc, control] = [choiceDoc(t.store.get(again.diagramId!)!), choiceDoc(t.store.get(clean.diagramId!)!)];
     expect(doc.warnings).toEqual(control.warnings);
     const shape = (d: typeof doc) => ({ nodes: d.channels.overview.views[0].nodes, edges: d.channels.overview.views[0].edges });
     expect(shape(doc)).toEqual(shape(control));
@@ -188,7 +189,7 @@ describe("the draw run", () => {
     const lines = linesOf(t, again.id).map((e) => e.message);
     expect(lines.slice(0, 3)).toEqual(["Using the facts already read", "Checking the facts", "Drawing the overview"]);
     expect(lines).not.toContain("Using the overview already drawn");
-    const doc = t.store.get(again.diagramId!)!;
+    const doc = choiceDoc(t.store.get(again.diagramId!)!);
     expect(JSON.stringify(doc.facts)).not.toContain("src/agent.ts");
     expect(doc.warnings.some((w) => w.includes("src/agent.ts"))).toBe(true);
     // Another focus is another request: it reads again.

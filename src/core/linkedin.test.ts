@@ -5,9 +5,10 @@ import { readAnyFile } from "./convert";
 import { prepareLinkedIn } from "./export/feed";
 import { validateDocument3, validateFile3, type Document3, type File3 } from "./file3";
 import { intentToChannel, type StoryIntent, type StoryPart } from "./intent";
+import { choiceAsFile3 } from "./file4";
 
 const NOW = "2026-10-21T00:00:00.000Z";
-const load = (p: string): Document3 => normalizeFile3(readAnyFile(JSON.parse(readFileSync(p, "utf8"))).file!, { id: "d_linkedin01", now: NOW, source: null });
+const load = (p: string): Document3 => normalizeFile3(choiceAsFile3(readAnyFile(JSON.parse(readFileSync(p, "utf8"))).file!), { id: "d_linkedin01", now: NOW, source: null });
 const prepared = (d: Document3) => { const r = prepareLinkedIn(d); if (!r.ok) throw new Error(r.error); return r.doc; };
 
 describe("the simple LinkedIn version (prepareLinkedIn)", () => {

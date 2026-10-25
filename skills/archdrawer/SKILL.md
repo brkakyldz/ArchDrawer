@@ -62,7 +62,15 @@ allowed (tuning numbers, repeated labels, a second reverse connection).
 
 ## 4. Updating an existing file
 
-Read the file first. Keep the `id` of every fact and part that still exists
+Read the file first. A file whose `schema` is `archdraw/diagram@4` (the editor
+writes every file back in it) holds `choices`: each is `{"id", "title",
+"kind", "about", "facts", "channels"}`, its `facts` and `channels` exactly as
+`rules.md` describes a file's. Keep `@4` and every choice: make the changes
+below inside the choice they belong to (the whole system is the choice of kind
+`system`) and leave the other choices as they are. Never write such a file back
+as `@3`: every other choice would be lost.
+
+Keep the `id` of every fact and part that still exists
 (the user's positions hang on those ids; keep `x`/`y` you find), change the
 facts the code changed, remove what is gone, add what is new as a fact and an
 overview part with a `place` hint. Keep the other channels as they are (the
@@ -72,7 +80,7 @@ file with `"schema": "archdraw/diagram@2"` (one `views` list) is still read;
 run `archdrawer migrate <file>` once to turn it into this format first.
 
 If the file has `requests` (instructions the user typed in the editor while no
-engine could run them), apply each one to the channel and view it names, then set
+engine could run them), apply each one to the choice (in an `@4` file), channel and view it names, then set
 `"requests": []`. Tell the user which requests you applied.
 
 ## 5. Check and fix until valid

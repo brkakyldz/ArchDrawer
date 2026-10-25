@@ -7,6 +7,7 @@ import { validateDocument3, validateFile3, type Document3, type File3 } from "./
 import { layoutRects, routeEdges } from "./geometry";
 import { validateFile, type DiagramDocument, type DiagramFile, type DiagramView } from "./model";
 import { normalizeFile } from "./normalize";
+import { choiceAsFile3 } from "./file4";
 
 const NOW = "2026-10-21T00:00:00.000Z";
 const read = (p: string): DiagramFile => JSON.parse(readFileSync(p, "utf8"));
@@ -17,7 +18,7 @@ function both(f: DiagramFile): { d2: DiagramDocument; d3: Document3 } {
   const d2 = normalizeFile(validateFile(f).file!, { id: "d_roundtrip01", now: NOW, source: null });
   const r = readAnyFile(d2);
   expect(r.errors).toEqual([]);
-  return { d2, d3: normalizeFile3(r.file!, { id: "d_roundtrip01", now: NOW, source: null }) };
+  return { d2, d3: normalizeFile3(choiceAsFile3(r.file!), { id: "d_roundtrip01", now: NOW, source: null }) };
 }
 
 /** Every box and line of a view, as the editor and the export draw them. */
@@ -151,7 +152,7 @@ describe("convertV2", () => {
     expect(post.nodes.length).toBeGreaterThan(3);
     const r = readAnyFile(withPost);
     expect(r.errors).toEqual([]);
-    const d3 = normalizeFile3(r.file!, { id: "d_post000001", now: NOW, source: null });
+    const d3 = normalizeFile3(choiceAsFile3(r.file!), { id: "d_post000001", now: NOW, source: null });
     expect(d3.channels.linkedin.views.map((v) => v.id)).toEqual([view]);
     expect(d3.channels.overview.views.map((v) => v.id)).not.toContain(view);
     const li = d3.channels.linkedin.views[0];
@@ -165,7 +166,7 @@ describe("convertV2", () => {
     expect(drawn(joinChannel(d3, "linkedin").views[0])).toEqual(drawn(post));
     // A request on the post moves with it.
     const withRequest = { ...withPost, requests: [{ id: "q1", text: "Shorter", view, at: NOW }] };
-    expect(readAnyFile(withRequest).file!.requests).toEqual([{ id: "q1", text: "Shorter", channel: "linkedin", view, at: NOW }]);
+    expect(readAnyFile(withRequest).file!.requests).toEqual([{ id: "q1", text: "Shorter", channel: "linkedin", view, at: NOW, choice: "system" }]);
   });
 
   it("turns a merged component into a part that points to the facts it merges, and keeps a second post as an overview view", () => {

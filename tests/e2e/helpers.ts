@@ -7,6 +7,7 @@ import { CONVERTED_V2, readAnyFile } from "../../src/core/convert";
 import { joinChannel } from "../../src/core/channels";
 import type { Document3 } from "../../src/core/file3";
 import type { DiagramDocument } from "../../src/core/model";
+import { choiceDoc } from "../../src/core/file4";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -60,8 +61,8 @@ export async function open(page: Page, file: Record<string, unknown> = shop()): 
   return { id, path };
 }
 
-/** The stored file. */
-export const storedOnDisk = (path: string): Document3 => JSON.parse(readFileSync(path, "utf8"));
+/** The stored file (format 4) as its first choice, the one a drawing opens on. */
+export const storedOnDisk = (path: string): Document3 => choiceDoc(JSON.parse(readFileSync(path, "utf8")));
 /** The drawing in the file, as the editor draws it: the overview's views, then the LinkedIn post. */
 /** The drawing on disk as the overview's views, then the LinkedIn channel's. */
 export const onDisk = (path: string): DiagramDocument => {

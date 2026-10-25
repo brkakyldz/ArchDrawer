@@ -8,6 +8,7 @@ import { renderMermaid } from "../core/export/mermaid";
 import { DEFAULT_SHARE, FORMAT_IDS, renderShare, type FormatId } from "../core/export/share";
 import { draftOf, joinChannel } from "../core/channels";
 import { CHANNELS, channelOfView, isChannel, type ChannelId, type Document3 } from "../core/file3";
+import { choiceDoc, resolveChoice, type Document4 } from "../core/file4";
 import { isRepoRelative, LIMITS, THEMES, type Theme } from "../core/model";
 import type { RunScope } from "../core/repair";
 import { APP_ROOT, shareFonts } from "./config";
@@ -164,8 +165,17 @@ export function createApp(deps: AppDeps): Hono {
     });
   });
 
-  /** The channel and view an export or a request names (api contract): the overview and the channel's first view by default. */
-  const pick = (doc3: Document3, channelQ: string | undefined, viewQ: string | undefined): { channel: ChannelId; view: string } | string => {
+  /**
+   * The choice, channel and view an export or a request names (api contract): the choice holding the view, else the
+   * first; the overview; the channel's first view. A view of another choice is an unknown view.
+   */
+  const pick = (doc4: Document4, choiceQ: string | undefined, channelQ: string | undefined, viewQ: string | undefined): { choice: string; doc3: Document3; channel: ChannelId; view: string } | string => {
+    const choice = resolveChoice(doc4, choiceQ, viewQ);
+    if (typeof choice === "string") return choice;
+    const at = pickIn(choiceDoc(doc4, choice.id), channelQ, viewQ);
+    return typeof at === "string" ? at : { choice: choice.id, doc3: choiceDoc(doc4, choice.id), ...at };
+  };
+  const pickIn = (doc3: Document3, channelQ: string | undefined, viewQ: string | undefined): { channel: ChannelId; view: string } | string => {
     if (channelQ && !isChannel(channelQ)) return `Unknown channel "${channelQ}"; use one of ${CHANNELS.join(", ")}`;
     const channel: ChannelId = (channelQ as ChannelId | undefined) || "overview";
     const views = doc3.channels[channel].views;
@@ -176,11 +186,11 @@ export function createApp(deps: AppDeps): Hono {
   };
 
   app.get("/api/diagrams/:id/export.svg", (c) => {
-    const { doc: doc3, res } = load(c, c.req.param("id"));
-    if (!doc3) return res!;
-    const at = pick(doc3, c.req.query("channel"), c.req.query("view"));
+    const { doc: doc4, res } = load(c, c.req.param("id"));
+    if (!doc4) return res!;
+    const at = pick(doc4, c.req.query("choice"), c.req.query("channel"), c.req.query("view"));
     if (typeof at === "string") return err(c, 400, at);
-    const doc = joinChannel(doc3, at.channel);
+    const doc = joinChannel(at.doc3, at.channel);
     const viewId = at.view;
     const format = (c.req.query("format") || "linkedin") as FormatId;
     if (!FORMAT_IDS.includes(format)) return err(c, 400, `Unknown format "${format}"; use one of ${FORMAT_IDS.join(", ")}`);
@@ -195,11 +205,11 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   app.get("/api/diagrams/:id/export.mmd", (c) => {
-    const { doc: doc3, res } = load(c, c.req.param("id"));
-    if (!doc3) return res!;
-    const at = pick(doc3, c.req.query("channel"), c.req.query("view"));
+    const { doc: doc4, res } = load(c, c.req.param("id"));
+    if (!doc4) return res!;
+    const at = pick(doc4, c.req.query("choice"), c.req.query("channel"), c.req.query("view"));
     if (typeof at === "string") return err(c, 400, at);
-    const view = joinChannel(doc3, at.channel).views.find((v) => v.id === at.view)!;
+    const view = joinChannel(at.doc3, at.channel).views.find((v) => v.id === at.view)!;
     return c.body(renderMermaid(view), 200, { "Content-Type": "text/plain; charset=utf-8" });
   });
 
@@ -207,19 +217,20 @@ export function createApp(deps: AppDeps): Hono {
     const id = c.req.param("id");
     const { doc, res } = load(c, id);
     if (!doc) return res!;
-    const body = (await readJson(c)) as { channel?: unknown; view?: unknown; text?: unknown } | undefined;
+    const body = (await readJson(c)) as { choice?: unknown; channel?: unknown; view?: unknown; text?: unknown } | undefined;
     const text = typeof body?.text === "string" ? body.text.trim() : "";
     const viewQ = typeof body?.view === "string" ? body.view : "";
     if (!text) return err(c, 400, "The instruction is empty");
     if (text.length > LIMITS.request) return err(c, 400, `The instruction is too long (${LIMITS.request} characters at most)`);
+    if (body?.choice !== undefined && typeof body.choice !== "string") return err(c, 400, "choice must be a choice id");
     if (body?.channel !== undefined && typeof body.channel !== "string") return err(c, 400, "channel must be a channel name");
     if (!viewQ) return err(c, 400, 'Unknown view ""');
-    const at = pick(doc, body?.channel as string | undefined, viewQ);
+    const at = pick(doc, body?.choice as string | undefined, body?.channel as string | undefined, viewQ);
     if (typeof at === "string") return err(c, 400, at);
     const used = new Set(doc.requests.map((r) => r.id));
     let n = doc.requests.length + 1;
     while (used.has(`q${n}`)) n++;
-    const request = { id: `q${n}`, text, channel: at.channel, view: at.view, at: nowIso() };
+    const request = { id: `q${n}`, text, choice: at.choice, channel: at.channel, view: at.view, at: nowIso() };
     const saved = store.put(id, { ...doc, requests: [...doc.requests, request] }, { announce: true });
     if (!saved?.ok) return err(c, 409, "The drawing could not be saved");
     return c.json({ id: request.id }, 201);
@@ -370,8 +381,14 @@ export function createApp(deps: AppDeps): Hono {
     const model = typeof b.model === "string" && b.model.trim() ? b.model.trim().slice(0, 100) : null;
     // A leading "-" would reach the engine's command line as an option.
     if (model !== null && (model.startsWith("-") || !/^[A-Za-z0-9._:\/@\[\]-]+$/.test(model))) return err(c, 400, `Invalid model name "${model}"`);
-    const { doc: stored, res } = load(c, typeof b.diagramId === "string" ? b.diagramId : "");
-    if (!stored) return res!;
+    const { doc: whole, res } = load(c, typeof b.diagramId === "string" ? b.diagramId : "");
+    if (!whole) return res!;
+    // The run changes one choice (api contract, Runs): the named one, else the one holding the view, else the first.
+    if (b.choice !== undefined && typeof b.choice !== "string") return err(c, 400, `Unknown choice "${String(b.choice)}"`);
+    const chosen = resolveChoice(whole, b.choice as string | undefined, typeof b.view === "string" ? b.view : undefined);
+    if (typeof chosen === "string") return err(c, 400, chosen);
+    const stored = choiceDoc(whole, chosen.id);
+    if (typeof b.view === "string" && b.view && !channelOfView(stored, b.view)) return err(c, 400, `Unknown view "${b.view}"`);
     if (b.channel !== undefined && !isChannel(b.channel)) return err(c, 400, `Unknown channel "${String(b.channel)}"; use one of ${CHANNELS.join(", ")}`);
     if (kind === "post" && b.channel !== undefined && b.channel !== "linkedin") return err(c, 400, "A post is drawn in the linkedin channel");
     if (kind === "story" && (b.channel === undefined || b.channel === "overview")) return err(c, 400, "A story is drawn in the linkedin, readme or presentation channel");
@@ -403,7 +420,7 @@ export function createApp(deps: AppDeps): Hono {
     let written: ReturnType<typeof writeReviseImage> | undefined;
     try { written = image ? writeReviseImage(config.dataDir, image) : undefined; }
     catch (e) { return err(c, 500, `The drawing's image could not be saved for the engine: ${(e as Error).message}`); }
-    const runId = runs.start({ engine, model, instruction, view, base: doc, stored, channel, scope: kind === "refine" ? scope : { kind: "view" }, format, kind, readCode: b.readCode as boolean | undefined, image: written });
+    const runId = runs.start({ engine, model, instruction, view, base: doc, stored, whole, choice: chosen.id, channel, scope: kind === "refine" ? scope : { kind: "view" }, format, kind, readCode: b.readCode as boolean | undefined, image: written });
     return c.json({ runId }, 202);
   });
 
@@ -430,7 +447,7 @@ export function createApp(deps: AppDeps): Hono {
         let chain = Promise.resolve();
         let unsub: (() => void) | null = null;
         unsub = runs.subscribe(id, (e) => {
-          const data = e.type === "progress" ? { message: e.message, stage: e.stage } : { status: e.status, diagramId: e.diagramId, error: e.error, changes: e.changes, channel: e.channel, view: e.view, layoutReport: e.layoutReport, route: e.route, path: e.path };
+          const data = e.type === "progress" ? { message: e.message, stage: e.stage } : { status: e.status, diagramId: e.diagramId, error: e.error, changes: e.changes, choice: e.choice, channel: e.channel, view: e.view, layoutReport: e.layoutReport, route: e.route, path: e.path };
           chain = chain.then(() => stream.writeSSE({ event: e.type, data: JSON.stringify(data) })).catch(() => {});
           if (e.type === "done") void chain.then(() => { unsub?.(); done(); });
         });

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { FixtureEngine } from "./engines/fixture";
 import type { EngineRunRequest } from "./engines/types";
 import { makeApp, makeFolder, shopFile2 } from "./testkit";
+import { choiceDoc } from "../core/file4";
 
 // Story runs on every channel but the overview (api contract, Run kinds; diagram contract, Story answers).
 
@@ -28,7 +29,8 @@ async function opened(engine?: FixtureEngine) {
     const r = await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, engine: "fixture", model: null, ...body } }));
     return r.status === 202 ? t.runs.wait(r.body.runId) : r;
   };
-  return { t, file, id, run, read: () => JSON.parse(readFileSync(file, "utf8")) };
+  // The file is stored as @4; its one choice is read here as @3.
+  return { t, file, id, run, read: () => choiceDoc(JSON.parse(readFileSync(file, "utf8"))) as any };
 }
 
 describe("story runs", () => {

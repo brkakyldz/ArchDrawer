@@ -78,13 +78,13 @@ describe("archdrawer svg", () => {
     writeFileSync(file, JSON.stringify(f));
     const r = await cli("svg", file, "--out", join(tempDir(), "x.svg"));
     expect(r.code).toBe(0);
-    expect(r.out[0]).toBe('WARN  facts.components[1].files[0]: "src/gone.ts" does not exist in the repository');
+    expect(r.out[0]).toBe('WARN  choices[0].facts.components[1].files[0]: "src/gone.ts" does not exist in the repository');
     expect(await cli("validate", file)).toMatchObject({ code: 1, out: ['ERROR views[0].nodes[1].files[0]: "src/gone.ts" does not exist in the repository', "1 error(s)"] });
   });
 });
 
 describe("archdrawer migrate, usage", () => {
-  it("rewrites a v1 file as v3 through v2 and leaves a v3 file alone", async () => {
+  it("rewrites a v1 file as v4 through v2 and v3 and leaves a v4 file alone", async () => {
     const dir = tempDir();
     const f = join(dir, "old.json");
     writeFileSync(f, JSON.stringify({
@@ -93,8 +93,8 @@ describe("archdrawer migrate, usage", () => {
     }));
     const r = await cli("migrate", f);
     expect(r.out).toEqual(['Component "a": kind ui became client', "Converted from archdraw/diagram@2", "migrated"]);
-    expect(JSON.parse(readFileSync(f, "utf8")).schema).toBe("archdraw/diagram@3");
-    expect((await cli("migrate", f)).out).toEqual(["already archdraw/diagram@3"]);
+    expect(JSON.parse(readFileSync(f, "utf8")).schema).toBe("archdraw/diagram@4");
+    expect((await cli("migrate", f)).out).toEqual(["already archdraw/diagram@4"]);
     expect((await cli("validate", f)).code).toBe(0);
   });
 

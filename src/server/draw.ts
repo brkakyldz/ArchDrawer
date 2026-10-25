@@ -5,6 +5,7 @@ import { joinChannel } from "../core/channels";
 import { diffDocuments, type Changes } from "../core/diff";
 import { checkEvidence } from "../core/evidence";
 import { fillDefaults3, validateDocument3, type ChannelId, type Document3 } from "../core/file3";
+import { choiceDoc, choiceOfFocus, documentOf } from "../core/file4";
 import { intentToChannel, STORY_SCHEMA } from "../core/intent";
 import { LIMITS, newDocumentId, SCHEMA_V3 } from "../core/model";
 import { NO_FACT, READ_SCHEMA, repairRead } from "../core/read";
@@ -153,7 +154,9 @@ export async function runDraw(req: DrawRequest, ctx: {
   cancelled();
 
   // 4. A new file that replaces none, then registered; a file that cannot be registered goes again.
-  const path = writeNewDrawing(f.folder, docText(valid.doc));
+  // The file holds the drawn focus as its one choice (diagram contract, Choice).
+  const choice = choiceOfFocus(req.focus);
+  const path = writeNewDrawing(f.folder, docText(documentOf(valid.doc, choice)));
   let id: string;
   try { id = ctx.store.register(path).id; } catch (e) {
     try { unlinkSync(path); } catch { /* already gone */ }
@@ -163,7 +166,8 @@ export async function runDraw(req: DrawRequest, ctx: {
   const n = valid.doc.warnings.length;
   ctx.progress(n ? `Saved with ${n} warning${n === 1 ? "" : "s"}` : "Saved", "channel");
 
-  const saved = ctx.store.get(id) ?? valid.doc;
+  const stored = ctx.store.get(id);
+  const saved = stored ? choiceDoc(stored, choice.id) : valid.doc;
   const view = drawn.view;
   const joined = joinChannel(saved, channel);
   const format = FORMAT_OF[channel];

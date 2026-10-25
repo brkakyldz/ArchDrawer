@@ -50,6 +50,8 @@ function shifted(r: EdgeRoute, delta: [number, number][], k: number): EdgeRoute 
   return { ...r, p0, c1, c2, p1, d: `M${p0.x},${p0.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${p1.x},${p1.y}` };
 }
 const GLIDE_MS = 120;
+/** A double-click's second click comes within this long of its first. */
+const DOUBLE_MS = 600;
 
 /**
  * The route a connection is drawn on. While `on` (a drag, and once on its release), when its sides or an end's place on
@@ -144,6 +146,13 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   /** The connection under the pointer: its line, its label or its badge. */
   const [hoverEdge, setHoverEdge] = useState<string | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * The last click that went into a part's inside. A double-click on that part goes in on its first click; the
+   * double-click then steps back and edits the part's label, as a double-click on a label does (ui contract).
+   */
+  const lastOpen = useRef<{ from: string; id: string; at: number } | null>(null);
+  const onDoubleRef = useRef(onDouble);
+  onDoubleRef.current = onDouble;
   const ctlRef = useRef(ctl);
   ctlRef.current = ctl;
 
@@ -435,7 +444,10 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
         // A part with an inside (ui contract, Opening a part's inside): a click goes to its view, selecting nothing;
         // Shift+click toggles it in the selection and opens its callout when it is then the only part selected.
         const detail = view.nodes.find((n) => n.id === d.hit.node)!.detail!;
-        if (!d.shift) c.goView(detail);
+        if (!d.shift) {
+          lastOpen.current = { from: c.view.id, id: d.hit.node, at: performance.now() };
+          c.goView(detail);
+        }
         else if (d.ids.length === 1 && d.ids[0] === d.hit.node) c.setCallout(d.hit.node);
       } else if (!d.shift && d.hit.node) {
         // A click: open or close the component's callout.
@@ -535,7 +547,21 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
       onKeyDown={onOpenKey}
       onContextMenu={(e) => e.preventDefault()}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
-      onDoubleClick={onDouble}
+      onDoubleClick={(e) => {
+        const o = lastOpen.current;
+        lastOpen.current = null;
+        if (!o || performance.now() - o.at > DOUBLE_MS) { onDouble(e); return; }
+        // The first click of this double-click went in: back, then the label of the part it started on.
+        ctlRef.current.goView(o.from);
+        const edit = () => {
+          const root = el.current, id = CSS.escape(o.id);
+          const label = root?.querySelector(`[data-testid="node-head-${id}"] [data-testid="node-label"]`) ?? root?.querySelector(`[data-testid="node-${id}"] [data-testid="node-label"]`);
+          if (!label) return;
+          const b = label.getBoundingClientRect();
+          onDoubleRef.current({ clientX: b.left + b.width / 2, clientY: b.top + b.height / 2, target: label } as unknown as React.MouseEvent);
+        };
+        requestAnimationFrame(() => requestAnimationFrame(edit));
+      }}
       // Leaving the canvas (for the zoom controls or a callout) ends any hover focus.
       onPointerLeave={() => { setHoverEdge(null); enterNode(null); }}
       onPointerOver={(e) => {

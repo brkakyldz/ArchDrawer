@@ -103,6 +103,24 @@ describe("a file of choices through the server", () => {
     expect(after.choices[1].facts.components.map((c) => c.id)).toContain("cache");
     expect([after.choices[0], after.choices[2]]).toEqual([before.choices[0], before.choices[2]]);
   });
+
+  // H201: a saved request may name a view of another channel; a run on the overview still checks out.
+  it("a run succeeds while a saved request names a view of the choice's README", async () => {
+    const t = makeApp();
+    const { file } = threeRepo();
+    const f = JSON.parse(readFileSync(file, "utf8")) as Document4;
+    const readme = structuredClone(f.choices[1].channels.overview.views[0]);
+    readme.id = "server-readme";
+    f.choices[1].channels.readme = { showSteps: false, outdated: [], views: [readme] } as never;
+    writeFileSync(file, JSON.stringify(f, null, 2));
+    const id = (await json(await t.req("/api/files", { method: "POST", json: { path: file } }))).body.id as string;
+    expect((await t.req(`/api/diagrams/${id}/requests`, { method: "POST", json: { choice: "server", channel: "readme", view: "server-readme", text: "Shorter" } })).status).toBe(201);
+    const r = await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, engine: "fixture", model: null, choice: "server", view: "server-overview", instruction: "add Cache component" } }));
+    expect(r.status).toBe(202);
+    const done = await t.runs.wait(r.body.runId);
+    expect(done, JSON.stringify(done)).toMatchObject({ status: "succeeded", choice: "server" });
+    expect((JSON.parse(readFileSync(file, "utf8")) as Document4).requests.map((q) => [q.choice, q.channel, q.view])).toEqual([["server", "readme", "server-readme"]]);
+  });
 });
 
 describe("views made in one choice (review 510f7bc-1)", () => {

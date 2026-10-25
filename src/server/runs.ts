@@ -339,7 +339,8 @@ export class RunManager {
     if (appearance) doc = appearanceOnly(req.base, doc).doc;
     // Never replace a readable drawing with one the store would refuse to read back.
     // The view shape is checked on its own: a LinkedIn view's `postOf` (its post style) names no view of its channel.
-    const checked = validateDocument({ ...doc, views: doc.views.map((v) => ({ ...v, postOf: null })) });
+    // Requests may name views of other channels: they are checked with the whole file below.
+    const checked = validateDocument({ ...doc, requests: [], views: doc.views.map((v) => ({ ...v, postOf: null })) });
     if (!checked.ok) throw new EngineError(`The engine's drawing could not be repaired into a valid document: ${checked.error}`);
     if (signal.aborted) throw new EngineError("Cancelled");
     // The answer is a new state of the run's channel: content goes to the facts, appearance stays in the

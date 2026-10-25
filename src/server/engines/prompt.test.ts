@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { APP_ROOT } from "../config";
 import { STORY_HARD_LIMITS } from "../../core/intent";
-import { drawingRules, HARD_LIMIT_WORDS, hardLimitsText, instructionPrompt, postPrompt, readPrompt, repairPrompt, RULES_FILE, storyPrompt } from "./prompt";
+import { drawingRules, HARD_LIMIT_WORDS, hardLimitsText, instructionPrompt, postPrompt, readPrompt, repairPrompt, RULES_FILE, scanPrompt, storyPrompt } from "./prompt";
 
 const skillDir = join(APP_ROOT, "skills", "archdrawer");
 const skill = readFileSync(join(skillDir, "SKILL.md"), "utf8");
@@ -66,9 +66,17 @@ describe("held items only where needed (LOOK-3)", () => {
     expect(story("presentation")).toMatch(/Hold mechanisms as a README does: only on a part whose working the story is about/);
     expect(story("readme")).not.toMatch(/the few parts whose mechanism matters/);
   });
+  it("asks the scan for the project's sections and flows, 3 to 8, and not the whole system (SCAN-2)", () => {
+    const p = scanPrompt({ folderName: "shop", rel: "", material: "" });
+    expect(p).toMatch(/this project's own sections and flows, 3 to 8 in all, both kinds where the project has both/);
+    expect(p).toMatch(/kind "section" for a layer or part of the system/);
+    expect(p).toMatch(/"flow" for a workflow/);
+    expect(p).toMatch(/The whole system is offered anyway: do not list it/);
+    expect(p).not.toMatch(/mechanism|overview/);
+  });
   it("tells the read where mechanisms are drawn and asks for a one-line sub", () => {
     const p = readPrompt({ folderName: "shop", rel: "", card: {}, focus: { kind: "whole" }, agent: false });
-    expect(p).toMatch(/The overview draws every mechanism as a row of its component; the README and the presentation draw one only where their story is about how that component works/);
+    expect(p).toMatch(/The overview holds every mechanism on the part of its component, listed in that part's callout; the README and the presentation draw one only where their story is about how that component works/);
     expect(p).toMatch(/sub one plain line of at most 60 saying what it does/);
   });
   it("the rules ask for a sub-line on every part and hold mechanisms only where the story needs them", () => {

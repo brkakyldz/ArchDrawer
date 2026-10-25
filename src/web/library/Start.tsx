@@ -84,7 +84,8 @@ export function Start({ list, onExample, exampleBusy }: { list: DiagramSummary[]
   // Open streams, closed when the screen goes; a draw that ends after that opens nothing.
   const live = useRef(new Set<() => void>());
   const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; for (const stop of [...live.current]) stop(); }, []);
+  // Set again on mount: StrictMode mounts twice in development, and a ref left false would drop every finished scan.
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; for (const stop of [...live.current]) stop(); }; }, []);
 
   useEffect(() => { api.engines().then(setEngines, (e: Error) => { setEngines([]); setError(e.message || UNREACHABLE); }); }, []);
   const engine = engines ? chooseEngine(engines, { engine: null }, chosen) : null;

@@ -38,14 +38,14 @@ describe("the scan's inputs", () => {
 describe("the scan's answer", () => {
   const exists = (p: string) => ["src/a.ts", "src/b.ts"].includes(p);
 
-  it("keeps options backed by files that exist, at most five, with one warning per change", () => {
+  it("keeps sections and flows backed by files that exist, at most eight, with one warning per change", () => {
     const opt = (title: string, files: string[], kind = "flow") => ({ kind, title, sentence: `${title}.`, files });
     const r = checkScan({
       card: { name: "", sentence: "Sells things.", type: "robot", languages: ["TypeScript"], entryPoints: ["src/a.ts", "gone.ts"] },
-      options: [opt("One", ["src/a.ts"]), opt("Gone", ["src/a.ts", "gone.ts"]), opt("None", []), opt("Two", ["./src/b.ts"], "loop"), opt("3", ["src/a.ts"]), opt("4", ["src/a.ts"]), opt("5", ["src/a.ts"]), opt("6", ["src/a.ts"])],
+      options: [opt("One", ["src/a.ts"]), opt("Gone", ["src/a.ts", "gone.ts"]), opt("None", []), opt("Two", ["./src/b.ts"], "loop"), opt("3", ["src/a.ts"], "section"), opt("4", ["src/a.ts"], "mechanism"), opt("5", ["src/a.ts"], "overview"), opt("6", ["src/a.ts"], "section"), opt("7", ["src/a.ts"]), opt("8", ["src/a.ts"]), opt("9", ["src/a.ts"]), opt("10", ["src/a.ts"], "section")],
     }, { folderName: "shop", exists });
     expect(r.card).toEqual({ name: "shop", sentence: "Sells things.", type: "other", languages: ["TypeScript"], entryPoints: ["src/a.ts"] });
-    expect(r.options.map((o) => [o.id, o.kind, o.title, o.files])).toEqual([["o1", "flow", "One", ["src/a.ts"]], ["o2", "flow", "Two", ["src/b.ts"]], ["o3", "flow", "3", ["src/a.ts"]], ["o4", "flow", "4", ["src/a.ts"]], ["o5", "flow", "5", ["src/a.ts"]]]);
+    expect(r.options.map((o) => [o.id, o.kind, o.title, o.files])).toEqual([["o1", "flow", "One", ["src/a.ts"]], ["o2", "flow", "Two", ["src/b.ts"]], ["o3", "section", "3", ["src/a.ts"]], ["o4", "flow", "4", ["src/a.ts"]], ["o5", "flow", "5", ["src/a.ts"]], ["o6", "section", "6", ["src/a.ts"]], ["o7", "flow", "7", ["src/a.ts"]], ["o8", "flow", "8", ["src/a.ts"]]]);
     expect(r.warnings).toEqual([
       'The card had no name; named it "shop"',
       'Unknown repository type "robot", taken as other',
@@ -53,7 +53,10 @@ describe("the scan's answer", () => {
       'Left out the option "Gone": "gone.ts" does not exist',
       'Left out the option "None": it names no file',
       'Unknown focus kind "loop" for "Two", taken as flow',
-      'Left out the option "6": at most 5 options',
+      'Unknown focus kind "mechanism" for "4", taken as flow',
+      'Unknown focus kind "overview" for "5", taken as flow',
+      'Left out the option "9": at most 8 options',
+      'Left out the option "10": at most 8 options',
     ]);
   });
 

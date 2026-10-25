@@ -7,7 +7,7 @@ export interface EngineInfo { id: string; label: string; available: boolean; ver
 export interface DiagramSummary { id: string; title: string; path: string | null; root: string | null; updatedAt: string }
 export type ScanType = "agent" | "backend" | "fullstack" | "other";
 export interface RepoCard { name: string; sentence: string; type: ScanType; languages: string[]; entryPoints: string[] }
-export interface FocusOption { id: string; kind: "flow" | "mechanism" | "overview"; title: string; sentence: string; files: string[] }
+export interface FocusOption { id: string; kind: "section" | "flow"; title: string; sentence: string; files: string[] }
 export interface FolderCheck { folder: string; root: string; git: boolean; drawing: string | null }
 export interface ScanRecord {
   id: string; status: "running" | "succeeded" | "failed" | "cancelled"; progress: string[]; folder: string; root: string; commit: string | null;

@@ -141,9 +141,11 @@ export function fixtureScan(folderName: string, data: { listing?: string[]; entr
     },
     options: [
       { kind: "flow", title: "How a request moves through the project", sentence: "Follows one request from the entry point to the store.", files: pick(0, 1) },
-      { kind: "mechanism", title: "The agent loop", sentence: "How the agent proposes and runs a tool.", files: files[2] ? pick(2) : pick(0) },
-      { kind: "overview", title: "The whole architecture", sentence: "Every part and how they connect.", files: pick(0) },
+      { kind: "section", title: "The agent loop", sentence: "How the agent proposes and runs a tool.", files: files[2] ? pick(2) : pick(0) },
+      { kind: "section", title: "The server side", sentence: "The code that serves requests and keeps state.", files: pick(0) },
       { kind: "flow", title: "A path that is not there", sentence: "Backed by a file that does not exist.", files: ["fixture/missing-file.ts"] },
+      // `[fixture:many]`: six more, so one unknown kind becomes a flow and one is past the cap of 8.
+      ...(/\[fixture:many\]/.test(folderName) ? [5, 6, 7, 8, 9, 10].map((i) => ({ kind: i === 5 ? "mechanism" : "section", title: `Part ${i}`, sentence: "One more part.", files: pick(0) })) : []),
     ],
   };
 }

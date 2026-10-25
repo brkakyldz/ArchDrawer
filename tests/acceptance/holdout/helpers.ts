@@ -577,12 +577,15 @@ export async function visibleTextSizes(surface: Locator, view: View) {
       const nameMatrix = toRoot.multiply(nameText.getScreenCTM()!);
       for (let i = 0; i < content.length; i++) {
         const y = content[i].trim() ? nameText.getStartPositionOfChar(offset + i).matrixTransform(nameMatrix).y : 0;
-        characters.push({ source: run, text: content[i], nodeId: text.closest('g[data-node-id]')?.getAttribute('data-node-id') ?? null,
+        characters.push({ source: run, text: content[i], nodeId: text.closest('g[data-node-id]')?.getAttribute('data-node-id') ?? text.closest('g[data-group-head]')?.getAttribute('data-group-head') ?? null,
           name: false, font, weight: Number(style.fontWeight), opened, lineYs: content[i].trim() ? [Math.round(y * 1000) / 1000] : [] });
       }
     }
-    for (const group of Array.from(svg.querySelectorAll('g[data-node-id]'))) {
-      const id = group.getAttribute('data-node-id')!, label = labels[id].replace(/\s/g, '');
+    // A part's name is read from its `g[data-node-id]`, a group's from its `g[data-group-head]` (diagram contract, A group's name).
+    const owners = new Set(Array.from(svg.querySelectorAll('g[data-node-id], g[data-group-head]'))
+      .map(g => (g.getAttribute('data-node-id') ?? g.getAttribute('data-group-head'))!));
+    for (const id of owners) {
+      const label = labels[id].replace(/\s/g, '');
       const own = characters.filter(c => c.nodeId === id && c.text.trim()), actual = own.map(c => c.text).join('');
       let start = actual.indexOf(label), length = label.length;
       if (start < 0) {

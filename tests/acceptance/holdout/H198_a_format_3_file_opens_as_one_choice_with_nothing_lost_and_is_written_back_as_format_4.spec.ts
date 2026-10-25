@@ -15,6 +15,14 @@ function oldShop(): Doc3 {
   doc.warnings = ['Kept from an earlier session'];
   return stampPositions(doc);
 }
+// The server normalises every file it reads (diagram contract, *Normalisation*): a missing channel gets its defaults. That is the one
+// thing allowed to differ in its copy; `migrate` is not in that list, so its copy is compared exactly.
+const EMPTY_CHANNEL = { showSteps: false, outdated: [] as string[], steps: [] as unknown[], views: [] as unknown[] };
+function normalised(sig: ReturnType<typeof signature>, doc: Doc3) {
+  const channels: Record<string, unknown> = { ...sig.channels };
+  for (const name of ['overview', 'linkedin', 'readme', 'presentation']) if (!(name in doc.channels)) channels[name] = EMPTY_CHANNEL;
+  return { ...sig, channels };
+}
 const IMAGES: { name: string; args: string[] }[] = [
   { name: 'overview', args: ['--channel', 'overview', '--format', 'readme'] }, { name: 'inside', args: ['--channel', 'overview', '--view', 'inside-api', '--format', 'readme'] },
   { name: 'linkedin', args: ['--channel', 'linkedin', '--format', 'feed'] }, { name: 'readme', args: ['--channel', 'readme', '--format', 'readme'] },
@@ -68,8 +76,8 @@ test('H198 [FILE-2 START-5 NAV-2 #182] a format 3 file opens as one choice with 
   const { id } = await registered.json() as { id: string };
   const stored = await readRaw(second.file) as Doc4;
   expect(stored.schema).toBe(SCHEMA4); expect(stored.choices.map(c => [c.id, c.kind, c.title])).toEqual([['system', 'system', 'The whole system']]);
-  expect(signature(flat3(stored))).toEqual(before);
-  const served = await getRaw(request, id); expect(served.schema).toBe(SCHEMA4); expect(signature(flat3(served))).toEqual(before);
+  expect(signature(flat3(stored)), "only the normalisation the contract names is added").toEqual(normalised(before, old));
+  const served = await getRaw(request, id); expect(served.schema).toBe(SCHEMA4); expect(signature(flat3(served))).toEqual(normalised(before, old));
   expect(served.requests).toEqual([{ ...old.requests![0], choice: 'system' }]); expect(served.warnings).toEqual(['Kept from an earlier session']);
   // The image the server makes of it is the one the command made of the format 3 file.
   const http = await exportOf(request, id, 'svg', 'channel=readme&format=readme');
@@ -86,7 +94,7 @@ test('H198 [FILE-2 START-5 NAV-2 #182] a format 3 file opens as one choice with 
   const imported = await request.post(`${baseURL()}/api/diagrams`, { headers: { 'X-Archdraw-Token': auth }, data: old });
   expect(imported.status(), await imported.text()).toBe(201);
   const importedDoc = await getRaw(request, (await imported.json()).id); expect(importedDoc.schema).toBe(SCHEMA4); expect(importedDoc.choices).toHaveLength(1);
-  expect(signature(flat3(importedDoc))).toEqual(before);
+  expect(signature(flat3(importedDoc))).toEqual(normalised(before, old));
 
   // In the editor: one choice, the first view of its overview, and the views panel because that overview holds two views.
   const inEditor = await workspaceRaw('f3-to-f4-editor', old);

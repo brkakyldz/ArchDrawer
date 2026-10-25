@@ -24,6 +24,16 @@ describe("an outline per kind", () => {
     }
   });
 
+  // H17, H132: a browser bounds a stroke with a miter join by half its width times the miter limit (4), so a stroked
+  // mark that ends on the box's edge must be round-joined to reach no further than the body's half pixel.
+  it("every stroked path in a part is round-joined, so a browser bounds it within half a pixel of its box", () => {
+    const r = { x: 10, y: 20, w: 200, h: 120 };
+    for (const kind of KINDS) for (const form of ["card", "compact", "panel"] as const) {
+      const html = nodeMarkup(part("p", kind, form), r, PALETTES.light, { traces: [{ edge: "e", d: "M10,80 L210,80", stroke: "#000", dash: "" }] });
+      for (const path of html.match(/<path [^>]*stroke-width="[\d.]+"[^>]*>/g) ?? []) expect(path, `${kind} ${form}`).toMatch(/stroke-linejoin="round"/);
+    }
+  });
+
   it("names each kind's data-shape, for a card, a compact part and a panel; a group is a group", () => {
     expect(SHAPE_OF_KIND).toEqual({ actor: "person", client: "window", api: "port", service: "card", worker: "stack", llm: "agent", external: "external", ops: "pulse", gate: "check", data: "store" });
     for (const kind of KINDS) for (const form of ["card", "compact", "panel"] as const) {

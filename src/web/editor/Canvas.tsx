@@ -150,7 +150,9 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
    * The last click that went into a part's inside. A double-click on that part goes in on its first click; the
    * double-click then steps back and edits the part's label, as a double-click on a label does (ui contract).
    */
-  const lastOpen = useRef<{ from: string; id: string; at: number } | null>(null);
+  const lastOpen = useRef<{ from: string; id: string; at: number; sub: boolean } | null>(null);
+  /** A click within a double-click's time of the last way in, in the view it opened: the second click of that double-click. */
+  const secondClick = () => { const o = lastOpen.current; return !!o && performance.now() - o.at <= DOUBLE_MS && ctlRef.current.view.id !== o.from; };
   const onDoubleRef = useRef(onDouble);
   onDoubleRef.current = onDouble;
   const ctlRef = useRef(ctl);
@@ -444,8 +446,11 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
         // A part with an inside (ui contract, Opening a part's inside): a click goes to its view, selecting nothing;
         // Shift+click toggles it in the selection and opens its callout when it is then the only part selected.
         const detail = view.nodes.find((n) => n.id === d.hit.node)!.detail!;
-        if (!d.shift) {
-          lastOpen.current = { from: c.view.id, id: d.hit.node, at: performance.now() };
+        // The second click of a double-click lands in the view the first opened: it goes nowhere (review 85af372-1).
+        if (!d.shift && !secondClick()) {
+          // Whether the press was on the sub-line: a double-click there edits the sub-line (review 85af372-2).
+          const sub = !!document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-testid="node-sub"]');
+          lastOpen.current = { from: c.view.id, id: d.hit.node, at: performance.now(), sub };
           c.goView(detail);
         }
         else if (d.ids.length === 1 && d.ids[0] === d.hit.node) c.setCallout(d.hit.node);
@@ -555,7 +560,8 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
         ctlRef.current.goView(o.from);
         const edit = () => {
           const root = el.current, id = CSS.escape(o.id);
-          const label = root?.querySelector(`[data-testid="node-head-${id}"] [data-testid="node-label"]`) ?? root?.querySelector(`[data-testid="node-${id}"] [data-testid="node-label"]`);
+          const field = o.sub ? "node-sub" : "node-label";
+          const label = root?.querySelector(`[data-testid="node-head-${id}"] [data-testid="${field}"]`) ?? root?.querySelector(`[data-testid="node-${id}"] [data-testid="${field}"]`);
           if (!label) return;
           const b = label.getBoundingClientRect();
           onDoubleRef.current({ clientX: b.left + b.width / 2, clientY: b.top + b.height / 2, target: label } as unknown as React.MouseEvent);

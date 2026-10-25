@@ -122,7 +122,8 @@ function traceMarkup(r: Rect, traces: Trace[] | undefined): string {
   // box its own: a clip-path would leave the whole path in the part's bounding box (editor and export measure it).
   const box = `x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}"`;
   return `<svg class="traces" ${box} viewBox="${n(r.x)} ${n(r.y)} ${n(r.w)} ${n(r.h)}" overflow="hidden" pointer-events="none">` +
-    traces.map((t) => `<path class="trace" data-edge-of="${esc(t.edge)}" d="${t.d}" fill="none" stroke="${t.stroke}" stroke-width="1" opacity="0.25"${t.dash}${t.dash && t.offset ? ` stroke-dashoffset="${n(t.offset)}"` : ""}/>`).join("") + "</svg>";
+    // Round-joined: the editor's pieces end on the box's edges, and a miter-joined stroke is bounded 2 px past them (H17).
+    traces.map((t) => `<path class="trace" data-edge-of="${esc(t.edge)}" d="${t.d}" fill="none" stroke="${t.stroke}" stroke-width="1" stroke-linejoin="round" opacity="0.25"${t.dash}${t.dash && t.offset ? ` stroke-dashoffset="${n(t.offset)}"` : ""}/>`).join("") + "</svg>";
 }
 
 /**
@@ -167,7 +168,7 @@ function shapeMarks(shape: PartShape, compact: boolean, post: boolean, r: Rect, 
     }
     case "agent": {
       const i = compact ? OUTLINE.compactAgentInset : OUTLINE.agentInset;
-      out.push(`<path class="shape-mark" d="${roundedRectPath({ x: r.x + i, y: r.y + i, w: r.w - 2 * i, h: r.h - 2 * i }, Math.max(1, OUTLINE.rad - i))}" fill="none" stroke="${K}" stroke-width="1" opacity="0.35"${pe}/>`);
+      out.push(`<path class="shape-mark" d="${roundedRectPath({ x: r.x + i, y: r.y + i, w: r.w - 2 * i, h: r.h - 2 * i }, Math.max(1, OUTLINE.rad - i))}" fill="none" stroke="${K}" stroke-width="1" stroke-linejoin="round" opacity="0.35"${pe}/>`);
       const sz = compact ? OUTLINE.compactSpark : OUTLINE.spark, at = compact ? OUTLINE.compactSparkIn : OUTLINE.sparkIn;
       // With the open mark there, the spark moves left of it.
       const right = detail ? front.x + front.w - 8 - INSIDE - 6 : r.x + r.w - at;
@@ -192,7 +193,9 @@ function shapeMarks(shape: PartShape, compact: boolean, post: boolean, r: Rect, 
       }
       for (let i = 1; i < slabs; i++) {
         const y = r.y + ry + sh * i;
-        out.push(`<path class="shape-mark" d="M${n(r.x)},${n(y)} A${n(rx)},${ry} 0 0 0 ${n(r.x + r.w)},${n(y)}" fill="none" stroke="url(#${prefix}-rim)" stroke-width="1"${pe}/>`);
+        // Round-joined, as the body is: a browser bounds a miter-joined stroke by half its width times the miter
+        // limit, which would put the rims' ends 2 px past the part's box instead of half a pixel (H17, H132).
+        out.push(`<path class="shape-mark" d="M${n(r.x)},${n(y)} A${n(rx)},${ry} 0 0 0 ${n(r.x + r.w)},${n(y)}" fill="none" stroke="url(#${prefix}-rim)" stroke-width="1" stroke-linejoin="round"${pe}/>`);
       }
       out.push(`<ellipse class="shape-mark" cx="${n(cx)}" cy="${n(r.y + ry)}" rx="${n(rx - 0.5)}" ry="${n(ry - 0.5)}" fill="${K}" fill-opacity="${P.tint * 2}" stroke="${mark}" stroke-width="1"${pe}/>`);
       break;

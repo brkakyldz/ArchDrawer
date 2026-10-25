@@ -23,7 +23,7 @@ describe("traces of a line over the parts it passes behind (#171)", () => {
     for (const theme of ["light", "dark"] as const) {
       const body = drawView(v, PALETTES[theme], { prefix: "ad" }).body;
       const mid = partOf(body, "mid");
-      const trace = /<path class="trace" data-edge-of="ab" d="([^"]+)" fill="none" stroke="([^"]+)" stroke-width="1" opacity="0.25"([^>]*)\/>/.exec(mid)!;
+      const trace = /<path class="trace" data-edge-of="ab" d="([^"]+)" fill="none" stroke="([^"]+)" stroke-width="1" stroke-linejoin="round" opacity="0.25"([^>]*)\/>/.exec(mid)!;
       expect(trace, theme).toBeTruthy();
       expect(trace[1]).toBe(routes.get("ab")!.d);
       expect(trace[2]).toBe(PALETTES[theme].edge);

@@ -2,8 +2,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runCli } from "../cli/main";
-import { convertV3, type ChoiceInput4, type Document4, type File4 } from "../core/file4";
-import type { File3 } from "../core/file3";
+import { convertV3, documentOf, type ChoiceInput4, type Document4, type File4 } from "../core/file4";
+import { fillDefaults3, type File3, type Part } from "../core/file3";
+import { splitMap } from "../core/map";
+import { docText } from "./files";
 import { makeApp, makeFolder, shopFile, tempDir } from "./testkit";
 
 // Format 4 through the server and the command line (FILE-2, api contract: export.svg, export.mmd, requests, runs; cli contract, svg).
@@ -140,5 +142,36 @@ describe("the command line on a file of choices", () => {
     expect(bad.code).toBe(1);
     expect(bad.out[0]).toMatch(/^ERROR choices\[2\]\.facts\.components\[0\]\.kind: /);
     expect((await cli("migrate", file)).out).toEqual(["already archdraw/diagram@4"]);
+  });
+});
+
+describe("a system choice's channels are told from its map and detail views (review c6b6f72-1)", () => {
+  it("a story run and a refine routed to the story see the map's parts and the detail view's, the card with an inside skipped", async () => {
+    const d = fillDefaults3(shopFile() as unknown as File3);
+    const v = d.channels.overview.views[0];
+    v.nodes.push({ id: "zone-back", facts: [], form: "group", icon: null, parent: null, detail: null, place: null, label: "Back end", x: 0, y: 0 } as Part);
+    for (const n of v.nodes) if (n.id === "api" || n.id === "db") n.parent = "zone-back";
+    const split = splitMap(d);
+    expect(split.channels.overview.views.map((x) => x.id)).toEqual(["overview", "zone-back-inside"]);
+    const root = makeFolder({ ".git/HEAD": "ref: refs/heads/main\n" });
+    const file = join(root, "map.archdraw.json");
+    writeFileSync(file, docText(documentOf(split)));
+    const t = makeApp();
+    const id = (await json(await t.req("/api/files", { method: "POST", json: { path: file } }))).body.id as string;
+    const start = async (body: object) => {
+      const r = await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, engine: "fixture", model: null, ...body } }));
+      expect(r.status, JSON.stringify(r.body)).toBe(202);
+      return (await t.runs.wait(r.body.runId))!;
+    };
+    const readmeParts = () => (JSON.parse(readFileSync(file, "utf8")) as Document4).choices[0].channels.readme.views[0].nodes.map((n) => n.id).sort();
+    const story = await start({ kind: "story", channel: "readme", readCode: false });
+    expect([story.status, story.error]).toEqual(["succeeded", null]);
+    expect(readmeParts()).toEqual(["api", "db", "web"]);
+    // The report names the choice it measured (review c6b6f72-5).
+    expect(story.layoutReport?.choice).toBe("system");
+    // A refine routed to the story draws the channel again from the same base.
+    const routed = await start({ kind: "refine", channel: "readme", view: "readme", instruction: "Tell it again [fixture:story]" });
+    expect([routed.status, routed.route]).toEqual(["succeeded", "story"]);
+    expect(readmeParts()).toEqual(["api", "db", "web"]);
   });
 });

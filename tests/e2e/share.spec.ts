@@ -17,8 +17,8 @@ async function download(page: Page, id: string) {
 // are held-out H15, H28, H38, H39, H63, H64, H85 and H86; drawing the LinkedIn channel and packaging
 // it are H99 and H100.
 // What stays here is stricter than those: the browser download byte-equal to the CLI image, a copy
-// that must succeed, a post's zone box clear of outside parts, and the undo keys held back by the
-// dialog.
+// that must succeed, a post's zone box clear of outside parts, the undo keys held back by the
+// dialog, and the map's parts target in the dialog's report.
 
 test("the downloaded SVG is the CLI image plus embedded fonts", async ({ page }) => {
   const { path } = await open(page);
@@ -100,4 +100,14 @@ test("Ctrl+Z and Ctrl+Y do nothing while the share dialog is open", async ({ pag
   // Closed, the keys undo again.
   await page.keyboard.press("Control+z");
   await expect(label).toHaveText("Web app");
+});
+
+// Review c6b6f72-2: the share dialog's report carries the map's parts target on the system choice's first overview view
+// (api contract, Layout report; ADR 0015), as the AI panel's does; held-out H115 matches the count alone.
+test("the share dialog's layout report has the map's parts target on the whole system's overview", async ({ page }) => {
+  await open(page);
+  await expect(page.getByTestId("editor")).toHaveAttribute("data-choice", "system");
+  await page.getByTestId("share-button").click();
+  await page.getByTestId("format-readme").click();
+  await expect(page.getByTestId("layout-report")).toContainText(/ \d+ parts? \/ 9 · /);
 });

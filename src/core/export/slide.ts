@@ -80,6 +80,8 @@ export function renderSlide(doc: SlideDocument, index: number, o: SlideOptions):
     // A group's head (its icon and name) dims with its frame (review 222ed43-1).
     .replace(/<g data-group-head="([^"]*)"/g, (m, id: string) => (lit.has(id) ? m : m + DIM))
     .replace(/<g data-edge-id="([^"]*)"/g, (m, id: string) => (ends.get(id) ? m : m + DIM))
+    // A trunk is lit while any of its members is (diagram contract, Trunks).
+    .replace(/<g data-trunk="[^"]*" data-edges="([^"]*)"/g, (m, ids: string) => (ids.split(" ").some((id) => ends.get(id)) ? m : m + DIM))
     .replace(/<g data-text-id="([^"]*)"/g, (m) => m + DIM);
 
   // The band sits on the bottom margin. The drawing is fitted above the tallest band of any step,

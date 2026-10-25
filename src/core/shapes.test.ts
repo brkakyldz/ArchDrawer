@@ -111,7 +111,8 @@ describe("ends attach to the outline", () => {
     const v = view(api, { x: 0, y: -60 });
     v.nodes.push(part("a2", "service", "card", { x: 0, y: 80 }));
     const rects = layoutRects(v), routes = routeEdges(v, rects), r = rects.get("api")!;
-    for (const id of ["e", "f"]) expect(routes.get(id)!.p1).toEqual({ x: r.x, y: r.y + r.h / 2 });
+    // Their drawn end: the port of the trunk they share (diagram contract, Trunks), else the curve's end.
+    for (const id of ["e", "f"]) { const e = routes.get(id)!; expect(e.trunk?.port ?? e.p1).toEqual({ x: r.x, y: r.y + r.h / 2 }); }
   });
 
   it("ends along a shield's curve move in to meet the outline, so each arrowhead touches the part", () => {

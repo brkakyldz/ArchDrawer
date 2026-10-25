@@ -196,6 +196,32 @@ export interface EdgeRoute {
   badgeAt: Point;
   /** Parts other than its ends the curve passes behind (connections are drawn under parts). */
   blocked?: string[];
+  /** The trunk it shares (diagram contract, Trunks): its own curve then ends at the trunk's split point. */
+  trunk?: Trunk;
+}
+
+/** A trunk (diagram contract, Trunks): one straight stretch from the split point to the port, drawn once for its members. */
+export interface Trunk {
+  /** `<part id>:<side>`. */
+  key: string; part: string; side: Side;
+  /** Its members' ids in view order. */
+  edges: string[];
+  split: Point; port: Point; d: string;
+}
+
+/** The trunks of a view's routes, each once, in the order of their first member. */
+export function trunksOf(routes: Map<string, EdgeRoute>): Trunk[] {
+  const out: Trunk[] = [];
+  for (const r of routes.values()) if (r.trunk && !out.includes(r.trunk)) out.push(r.trunk);
+  return out;
+}
+
+/** The line a connection draws: its own curve, then its trunk's stretch (the layout report measures this). */
+export function drawnLine(r: EdgeRoute): Point[] {
+  const own = routeSamples(r);
+  if (!r.trunk) return own;
+  const { split, port } = r.trunk;
+  return [...own, ...Array.from({ length: 8 }, (_, i) => ({ x: split.x + (port.x - split.x) * (i + 1) / 8, y: split.y + (port.y - split.y) * (i + 1) / 8 }))];
 }
 
 /** The sides two boxes connect on: the facing pair across the larger gap. */
@@ -243,7 +269,7 @@ export function edgesOverParts(view: Pick<DiagramView, "nodes" | "edges">, rects
   for (const e of view.edges) {
     const route = routes.get(e.id);
     if (!route) continue;
-    const pts = routeSamples(route);
+    const pts = drawnLine(route);
     for (const n of view.nodes) {
       if (n.form === "group" || n.id === e.from || n.id === e.to) continue;
       const r = rects.get(n.id);
@@ -556,6 +582,31 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
   }
   const groups = new Map<string, End[]>();
   for (const p of ends) { const k = `${p.id}:${p.side}`; (groups.get(k) ?? groups.set(k, []).get(k)!).push(p); }
+  // Trunks (diagram contract, Trunks): `to` ends on one side of one part, of one style, coming from one direction —
+  // a run of angles at most 30° apart, taken greedily from the smallest — are one end of the side.
+  const order = new Map(view.edges.map((e, i) => [e.id, i]));
+  const trunkEnds = new Map<End, End[]>();
+  for (const [k, list] of groups) {
+    const r = rects.get(list[0].id)!, side = list[0].side, mid = sideMid(r, side), [nx, ny] = NORMAL[side];
+    const angle = (p: End) => { const vx = p.other.x - mid.x, vy = p.other.y - mid.y; return Math.atan2(nx * vy - ny * vx, nx * vx + ny * vy); };
+    const byStyle = new Map<string, End[]>();
+    for (const p of list) if (p.end === 1) (byStyle.get(p.e.style) ?? byStyle.set(p.e.style, []).get(p.e.style)!).push(p);
+    for (const same of byStyle.values()) {
+      const sorted = same.map((p) => ({ p, a: angle(p) })).sort((x, y) => x.a - y.a || x.p.e.id.localeCompare(y.p.e.id));
+      for (let i = 0; i < sorted.length;) {
+        let j = i;
+        while (j + 1 < sorted.length && sorted[j + 1].a - sorted[i].a <= Math.PI / 6 + 1e-9) j++;
+        if (j > i) {
+          const members = sorted.slice(i, j + 1).map((x) => x.p).sort((x, y) => order.get(x.e.id)! - order.get(y.e.id)!);
+          // One end of its side, ordered among the others by the mean position of its members' other ends.
+          const rep: End = { ...members[0], other: { x: members.reduce((s, m) => s + m.other.x, 0) / members.length, y: members.reduce((s, m) => s + m.other.y, 0) / members.length } };
+          trunkEnds.set(rep, members);
+          groups.set(k, [...groups.get(k)!.filter((p) => !members.includes(p)), rep]);
+        }
+        i = j + 1;
+      }
+    }
+  }
   const pts = new Map<string, Point>();
   for (const list of groups.values()) {
     const vert = list[0].side === "l" || list[0].side === "r";
@@ -581,8 +632,24 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
       const at = { x: Math.round(P[p.side].x), y: Math.round(P[p.side].y) };
       // Where the outline lies inside the box, the end moves straight in along its side's normal to meet it.
       const ol = outlines.get(p.id), depth = ol && !atPoint ? outlineDepth(ol.loops, r, p.side, at) : 0;
-      pts.set(`${p.e.id}:${p.end}`, depth > 0.05 ? { x: r1(at.x - NORMAL[p.side][0] * depth), y: r1(at.y - NORMAL[p.side][1] * depth) } : at);
+      const point = depth > 0.05 ? { x: r1(at.x - NORMAL[p.side][0] * depth), y: r1(at.y - NORMAL[p.side][1] * depth) } : at;
+      for (const m of trunkEnds.get(p) ?? [p]) pts.set(`${m.e.id}:${m.end}`, point);
     });
+  }
+  // Each trunk's split point: 32 px (post 24) out from the port along the side's normal, or a third of the shortest
+  // distance from the port to a member's start when that is less. The trunk is one straight cubic from there in.
+  const trunkOf = new Map<string, Trunk>();
+  for (const members of trunkEnds.values()) {
+    const port = pts.get(`${members[0].e.id}:1`)!, side = members[0].side, [nx, ny] = NORMAL[side];
+    const near = Math.min(...members.map((m) => { const a = pts.get(`${m.e.id}:0`)!; return Math.hypot(a.x - port.x, a.y - port.y); }));
+    const out = Math.min(S.post ? 24 : 32, near / 3);
+    const split = { x: r1(port.x + nx * out), y: r1(port.y + ny * out) };
+    const third = (t: number) => `${r1(split.x + (port.x - split.x) * t)},${r1(split.y + (port.y - split.y) * t)}`;
+    const trunk: Trunk = {
+      key: `${members[0].id}:${side}`, part: members[0].id, side, edges: members.map((m) => m.e.id), split, port,
+      d: `M${r1(split.x)},${r1(split.y)} C${third(1 / 3)} ${third(2 / 3)} ${r1(port.x)},${r1(port.y)}`,
+    };
+    for (const m of members) trunkOf.set(m.e.id, trunk);
   }
 
   const boxes: Rect[] = [];
@@ -600,7 +667,9 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
   const routes = new Map<string, EdgeRoute>();
   for (const e of view.edges) {
     const s = sides.get(e.id);
-    const a = pts.get(`${e.id}:0`), b = pts.get(`${e.id}:1`);
+    const trunk = trunkOf.get(e.id);
+    // A member of a trunk runs from its start to the split point, its handle there along the side's normal.
+    const a = pts.get(`${e.id}:0`), b = trunk ? trunk.split : pts.get(`${e.id}:1`);
     if (!s || !a || !b) continue;
     const n0 = NORMAL[s[0]], n1 = NORMAL[s[1]];
     const c = bulge.get(e.id) ?? handle(a, b, s);
@@ -611,7 +680,7 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
     const route: EdgeRoute = {
       id: e.id, p0, p1, c1, c2, side0: s[0], side1: s[1],
       d: `M${r1(p0.x)},${r1(p0.y)} C${r1(c1.x)},${r1(c1.y)} ${r1(c2.x)},${r1(c2.y)} ${r1(p1.x)},${r1(p1.y)}`,
-      labelAt: null, badgeAt: { x: 0, y: 0 },
+      labelAt: null, badgeAt: { x: 0, y: 0 }, ...(trunk ? { trunk } : {}),
     };
     const under = behind(route, parts.filter((r) => r.id !== e.from && r.id !== e.to));
     if (under.length) route.blocked = under;
@@ -682,7 +751,7 @@ const segmentsCross = (a: Point, b: Point, c: Point, d: Point) => {
  */
 export function countCrossings(edges: readonly Pick<DiagramEdge, "id" | "from" | "to">[], routes: Map<string, EdgeRoute>): number {
   const drawn = edges.filter((e) => routes.has(e.id));
-  const lines = new Map(drawn.map((e) => [e.id, routeSamples(routes.get(e.id)!)]));
+  const lines = new Map(drawn.map((e) => [e.id, drawnLine(routes.get(e.id)!)]));
   let crossings = 0;
   for (let i = 0; i < drawn.length; i++) for (const b of drawn.slice(i + 1)) {
     const a = drawn[i];

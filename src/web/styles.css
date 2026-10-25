@@ -100,7 +100,7 @@ svg.i { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin
    advance to a whole pixel and paints wider than the measured width (diagram contract, Geometry). */
 .canvas svg.world, .text-editor, .inline { text-rendering: geometricPrecision; }
 .nd, .gh { cursor: grab; }
-.nd.dim, .ed.dim, .lb.dim { opacity: .16; transition: opacity .18s; }
+.nd.dim, .ed.dim, .lb.dim, .tk.dim { opacity: .16; transition: opacity .18s; }
 .nd.dim, .gh.dim { opacity: .4; }
 .nd:hover .body { stroke: var(--hover-k, var(--line-2)); }
 /* A drag (ui contract, Dragging): the dragged parts lift with a stronger shadow and no size change; the rest dims. */
@@ -111,6 +111,7 @@ svg.i { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin
 .nd[data-drop-target="true"][data-drag-dim="true"] { opacity: 1; }
 .ed .hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; cursor: pointer; }
 .ed .line, .ed .glow { pointer-events: none; }
+.tk .trunk-hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; }
 .ed[data-selected="true"] .line { stroke-width: 2.6; }
 .ed[data-selected="true"] .glow { opacity: .3; }
 .steps-on .flow { opacity: .95; }

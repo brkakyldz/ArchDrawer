@@ -1,6 +1,6 @@
 import {
   COMPACT, contentBox, edgesOverParts, GROUP, INSIDE, LABEL, labelWidth, layoutRects, measureNode, measureText, postOf, styleOf, textStyle,
-  routeEdges, viewBounds, type EdgeRoute, type MeasureOptions, type Rect,
+  routeEdges, trunksOf, viewBounds, type EdgeRoute, type MeasureOptions, type Rect, type Trunk,
 } from "../geometry";
 import { CARD_SHAPE, COMPACT_SHAPE, OUTLINE, shapeGeometry, shapeOf, type PartShape } from "../shapes";
 import { iconOf, KINDS, type DiagramEdge, type DiagramNode, type DiagramText, type DiagramView, type Kind } from "../model";
@@ -331,7 +331,24 @@ export function edgeMarkup(e: DiagramEdge, r: EdgeRoute, P: Palette, o: EdgeMark
   const width = e.style === "dep" ? 1.9 : 1.75;
   const glow = !kind || e.style === "dep" ? "" : `<path class="glow" d="${r.d}" fill="none" stroke="${stroke}" stroke-width="7" opacity="${P.edgeGlow}"/>`;
   const start = e.both ? ` marker-start="url(#${sid})"` : "";
-  return `${defs}${glow}<path class="line" d="${r.d}" fill="none" stroke="${stroke}" stroke-width="${width}"${dash} marker-end="url(#${mid})"${start}/>`;
+  // A member of a trunk ends at the split point: the trunk draws the one arrowhead (diagram contract, Trunks).
+  const end = r.trunk ? "" : ` marker-end="url(#${mid})"`;
+  return `${defs}${glow}<path class="line" d="${r.d}" fill="none" stroke="${stroke}" stroke-width="${width}"${dash}${end}${start}/>`;
+}
+
+/**
+ * A trunk (diagram contract, Trunks): its stretch from the split point to the port, drawn once with one arrowhead,
+ * in its part's kind colour while any member is coloured, else neutral; its members' style.
+ */
+export function trunkMarkup(t: Trunk, style: DiagramEdge["style"], tone: Tone, partKind: Kind, P: Palette, prefix = "ad"): { defs: string; path: string } {
+  const colour = tone === "kind" ? P.kinds[partKind] : P.edge;
+  const mid = `${prefix}-tm-${esc(t.key).replace(/:/g, "-")}-${t.edges.length}-${esc(t.edges[0])}`;
+  const width = style === "dep" ? 1.9 : 1.75;
+  // The arrowhead's marker goes beside the trunk's group, which holds its one path.
+  return {
+    defs: `<defs><marker id="${mid}" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="8.5" markerHeight="8.5" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1.4 8.8 5 1 8.6z" fill="${colour}"/></marker></defs>`,
+    path: `<path class="line" d="${t.d}" fill="none" stroke="${colour}" stroke-width="${width}"${dashOf({ style } as DiagramEdge)} marker-end="url(#${mid})"/>`,
+  };
 }
 
 /** A label's box is edged in the `line` colour, or in its target part's kind colour while its line is coloured. */
@@ -404,6 +421,14 @@ export function drawView(view: DiagramView, P: Palette, o: DrawOptions = {}): Dr
     const badge = o.steps && e.step !== null ? `<g data-step-badge="${id}" data-testid="step-badge-${id}">${badgeMarkup(e.step, r.badgeAt, P, prefix, o.post)}</g>` : "";
     const line = edgeMarkup(e, r, P, { prefix, fromKind: kind.get(e.from)!, toKind: to, tone });
     out.push(`<g data-edge-id="${id}" data-style="${e.style}" data-both="${e.both}" data-tone="${tone}">${line}${label}${badge}</g>`);
+  }
+  // Each trunk once, after the connections' groups (diagram contract, Trunks).
+  const edgeById = new Map(view.edges.map((e) => [e.id, e]));
+  for (const t of trunksOf(routes)) {
+    const members = t.edges.map((id) => edgeById.get(id)!);
+    const tone: Tone = members.some((e) => toneOf(e) === "kind") ? "kind" : "neutral";
+    const m = trunkMarkup(t, members[0].style, tone, kind.get(t.part)!, P, prefix);
+    out.push(`${m.defs}<g data-trunk="${esc(t.key)}" data-edges="${t.edges.map(esc).join(" ")}" data-tone="${tone}">${m.path}</g>`);
   }
   // Each group's head goes over the connections and under the parts (diagram contract, A group's name).
   for (const node of order.filter((x) => x.form === "group")) out.push(`<g data-group-head="${esc(node.id)}">${groupHeadMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);

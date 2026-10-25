@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
-import { curvePieces, edgesOverParts, layoutRects, measureText, routeEdges, textStyle, type EdgeRoute, type Rect } from "../../core/geometry";
-import { badgeMarkup, drawOrder, edgeMarkup, groupHeadMarkup, labelMarkup, nodeMarkup, dashOf, sharedDefs, strokeOf, textMarkup, toneOf, type Trace } from "../../core/export/svg";
+import { curvePieces, edgesOverParts, layoutRects, measureText, routeEdges, textStyle, trunksOf, type EdgeRoute, type Rect } from "../../core/geometry";
+import { badgeMarkup, drawOrder, edgeMarkup, groupHeadMarkup, labelMarkup, nodeMarkup, dashOf, sharedDefs, strokeOf, textMarkup, toneOf, trunkMarkup, type Trace } from "../../core/export/svg";
 import { descendants, isPostView, LIMITS, type DiagramEdge, type DiagramNode, type DiagramText, type Kind } from "../../core/model";
 import type { Palette } from "../../core/theme";
 import { clampTextSize, connect, groupAt, moveNodes, moveTexts, setText, settleNodes, VIEW_FULL, withInside } from "./ops";
@@ -21,10 +21,19 @@ const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, change
   );
 });
 
+/**
+ * The part an element belongs to: its `node-<id>`, or a group's head, which stands for its group. The head carries no
+ * `data-node-id`: in the editor as in the export, that names a part's own box (H87 reads each part's box from it).
+ */
+export const partIdOf = (el: Element | null): string | null => {
+  const hit = el?.closest?.("[data-node-id], [data-group-head]");
+  return hit ? hit.getAttribute("data-node-id") ?? hit.getAttribute("data-group-head") : null;
+};
+
 /** A group's head (ui contract, `node-head-<id>`): over the connections and under the parts, its name on a halo. */
 const GroupHead = memo(function GroupHead({ node, rect, P, dim, open = false, post, drag, subLines = true }: { node: DiagramNode; rect: Rect; P: Palette; dim: boolean; open?: boolean; post: boolean; drag?: DragMark; subLines?: boolean }) {
   return (
-    <g className={`gh${dim ? " dim" : ""}${open ? " open" : ""}`} data-testid={`node-head-${node.id}`} data-group-head={node.id} data-node-id={node.id}
+    <g className={`gh${dim ? " dim" : ""}${open ? " open" : ""}`} data-testid={`node-head-${node.id}`} data-group-head={node.id}
       data-lifted={drag === "lifted" ? "true" : undefined} data-drag-dim={drag === "dim" ? "true" : undefined}
       dangerouslySetInnerHTML={{ __html: groupHeadMarkup(node, rect, P, { testIds: true, post, subLines }) }} />
   );
@@ -166,7 +175,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   const world = (e: { clientX: number; clientY: number }) => toWorld(ctlRef.current.vp, local(e));
   const nodeUnder = (x: number, y: number): string | null => {
     for (const elem of document.elementsFromPoint(x, y)) {
-      const id = (elem as Element).closest?.("[data-node-id]")?.getAttribute("data-node-id");
+      const id = partIdOf(elem as Element);
       if (id) return id;
     }
     return null;
@@ -199,7 +208,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
     if (!t.closest("input, textarea, [contenteditable]")) e.preventDefault();
     el.current!.focus({ preventScroll: true });
     const port = t.closest("[data-port]")?.getAttribute("data-port");
-    const nodeId = t.closest("[data-node-id]")?.getAttribute("data-node-id") ?? null;
+    const nodeId = partIdOf(t);
     const edgeId = t.closest("[data-edge-id]")?.getAttribute("data-edge-id") ?? t.closest("[data-edge-label-of]")?.getAttribute("data-edge-label-of") ?? null;
     const textId = t.closest("[data-text-id]")?.getAttribute("data-text-id") ?? null;
     const p = world(e);
@@ -391,7 +400,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
       onPointerLeave={() => { setHoverEdge(null); enterNode(null); }}
       onPointerOver={(e) => {
         const t = e.target as Element;
-        const id = t.closest("[data-node-id]")?.getAttribute("data-node-id");
+        const id = partIdOf(t);
         setHoverEdge(id ? null : t.closest("[data-edge-id]")?.getAttribute("data-edge-id") ?? t.closest("[data-edge-label-of]")?.getAttribute("data-edge-label-of") ?? null);
         if (id) enterNode(id);
         else if (!t.closest("[data-port]")) enterNode(null);
@@ -405,6 +414,24 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
             const r = routes.get(e.id);
             return r ? <EdgeShape key={e.id} edge={e} route={r} P={P} from={kindOf.get(e.from)!} to={kindOf.get(e.to)!} selected={selEdges.has(e.id)} dim={dimEdge(e)} flow={steps && e.step !== null} open={touchesOpen(e)}
               focus={inFocus(e)} dragDim={!!moving && !touches(e)} /> : null;
+          })}
+          {/* Each trunk once, after the connections (diagram contract, Trunks): coloured while a member is, dim when all are. */}
+          {trunksOf(routes).map((t) => {
+            const members = t.edges.map((id) => view.edges.find((x) => x.id === id)!).filter(Boolean);
+            if (!members.length) return null;
+            const tone = members.some((e) => toneOf(e, inFocus(e)) === "kind") ? "kind" : "neutral";
+            const dim = members.every((e) => dimEdge(e));
+            const m = trunkMarkup(t, members[0].style, tone, kindOf.get(t.part)!, P);
+            return (
+              <g key={`t-${t.key}-${t.edges.join(" ")}`}>
+                <g pointerEvents="none" dangerouslySetInnerHTML={{ __html: m.defs }} />
+                {/* `trunk` (ui contract): its own hit stroke, so hovering it is hovering none of its connections. */}
+                <g className={`tk${dim ? " dim" : ""}`} data-testid="trunk" data-trunk={t.key} data-part={t.part} data-side={t.side} data-edges={t.edges.join(" ")} data-tone={tone}>
+                  <g pointerEvents="none" dangerouslySetInnerHTML={{ __html: m.path }} />
+                  <path className="trunk-hit" d={t.d} />
+                </g>
+              </g>
+            );
           })}
           {groups.map((n) => <GroupHead key={`head-${n.id}`} node={n} rect={rects.get(n.id)!} P={P} dim={dimNode(n.id)} open={ctl.callout === n.id} post={post} drag={dragMark(n.id)} subLines={view.subLines !== false} />)}
           {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} drag={dragMark(n.id)} subLines={view.subLines !== false} traces={tracesFor(n.id)} />)}

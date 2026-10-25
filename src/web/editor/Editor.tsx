@@ -21,7 +21,7 @@ import { drawFromFacts, LinkedInPanel, LinkedInStart, RunLine } from "./LinkedIn
 import { prepareChannel } from "../../core/simple";
 import { LoadError } from "./LoadError";
 import { Callout } from "./Callout";
-import { Canvas } from "./Canvas";
+import { Canvas, partIdOf } from "./Canvas";
 import { addNode, addText, crumbsTo, deleteEdges, deleteNodes, deleteTexts, reservedIds, setNode, setText, VIEW_FULL, viewOf } from "./ops";
 import { EdgeCallout, InlineInput, Picker, TextEditor, TextToolbar, Warnings } from "./Panels";
 import { ShareDialog } from "../share/ShareDialog";
@@ -606,9 +606,9 @@ export function Editor({ id, choice: wantedChoice, channel: wantedChannel, view:
     const textId = t.closest("[data-text-id]")?.getAttribute("data-text-id");
     const tx = textId ? ctl?.view.texts.find((x) => x.id === textId) : null;
     if (tx) { setEditing({ kind: "text", id: tx.id, at: { x: tx.x, y: tx.y }, size: tx.size }); return; }
-    const hit = t.closest("[data-node-id]");
+    const hit = t.closest("[data-node-id], [data-group-head]");
     if (!hit) return;
-    const nid = hit.getAttribute("data-node-id")!;
+    const nid = partIdOf(hit)!;
     const node = ctl.view.nodes.find((n) => n.id === nid)!;
     // A group is drawn as its frame and, over the connections, its head holding its name (ui contract, node-head).
     const nodeEl = stageEl.current!.querySelector(`[data-testid="node-${CSS.escape(nid)}"]`) ?? hit;

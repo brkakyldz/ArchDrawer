@@ -374,6 +374,29 @@ describe("a draw of several choices", () => {
     expect(existsSync(join(dir, "docs"))).toBe(false);
   });
 
+  it("each choice has its own deadline from its first line (review ce82b86-1)", async () => {
+    // Every call of a choice waits; two choices together outlast the deadline, each alone does not.
+    const waits = (byChoice: number[]) => new (class extends FixtureEngine {
+      override async run(req: Parameters<FixtureEngine["run"]>[0]) {
+        const i = req.task?.data?.choiceIndex;
+        if (typeof i === "number") await new Promise((r) => setTimeout(r, byChoice[i]));
+        return super.run(req);
+      }
+    })(1);
+    const draw2 = async (engine: FixtureEngine) => {
+      const t = makeApp({ engines: [engine], timeoutMs: 1500 });
+      const scan = await scanOf(t, real(repo()));
+      return (await t.runs.wait((await start(t, scan, [{ kind: "whole" }, { kind: "typed", text: "Second" }])).body.runId))!;
+    };
+    const both = await draw2(waits([300, 300]));
+    expect([both.status, both.error]).toEqual(["succeeded", null]);
+    // A choice that outlasts its own deadline ends the run as timed out; the first stays done.
+    const late = await draw2(waits([300, 700]));
+    expect(late.status).toBe("failed");
+    expect(late.error).toMatch(/^Timed out after/);
+    expect(late.choices!.map((c) => c.status)).toEqual(["done", "failed"]);
+  });
+
   it("refuses a list of choices in the contracted order", async () => {
     const dir = real(repo());
     const t = makeApp();

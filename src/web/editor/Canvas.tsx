@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import { layoutRects, measureText, routeEdges, textStyle, type EdgeRoute, type Rect } from "../../core/geometry";
-import { badgeMarkup, drawOrder, edgeMarkup, labelMarkup, namesClip, nodeMarkup, sharedDefs, textMarkup } from "../../core/export/svg";
+import { badgeMarkup, drawOrder, edgeMarkup, labelMarkup, namesClip, nodeMarkup, sharedDefs, textMarkup, toneOf } from "../../core/export/svg";
 import { descendants, isPostView, LIMITS, type DiagramEdge, type DiagramNode, type DiagramText, type Kind } from "../../core/model";
 import type { Palette } from "../../core/theme";
 import { clampTextSize, connect, moveNodes, moveTexts, setText, settleNodes, VIEW_FULL, withInside } from "./ops";
@@ -22,11 +22,12 @@ const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, change
 });
 
 const EdgeShape = memo(function EdgeShape({ edge, route, P, from, to, selected, dim, flow, open = false, clip, focus = false, dragDim = false }: { edge: DiagramEdge; route: EdgeRoute; P: Palette; from: Kind; to: Kind; selected: boolean; dim: boolean; flow: boolean; open?: boolean; clip?: string; focus?: boolean; dragDim?: boolean }) {
+  const tone = toneOf(edge, focus);
   return (
     <g className={`ed${dim ? " dim" : ""}${open ? " open" : ""}`} data-dim={dim ? "true" : undefined} data-testid={`edge-${edge.id}`} data-edge-id={edge.id} data-style={edge.style} data-both={String(edge.both)}
-      data-step={edge.step ?? ""} data-selected={String(selected)} data-focus={focus ? "true" : undefined} data-drag-dim={dragDim ? "true" : undefined}>
+      data-step={edge.step ?? ""} data-selected={String(selected)} data-tone={tone} data-focus={focus ? "true" : undefined} data-drag-dim={dragDim ? "true" : undefined}>
       {/* The line is clipped at group names as in the export; the hit path is not, so a line stays selectable there. */}
-      <g clipPath={clip} dangerouslySetInnerHTML={{ __html: edgeMarkup(edge, route, P, { fromKind: from, toKind: to }) }} />
+      <g clipPath={clip} dangerouslySetInnerHTML={{ __html: edgeMarkup(edge, route, P, { fromKind: from, toKind: to, tone }) }} />
       {flow && <path className="flow" d={route.d} clipPath={clip} />}
       <path className="hit" d={route.d} />
       <EdgeBounds route={route} />
@@ -78,6 +79,8 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   const drag = useRef<Drag | null>(null);
   const [live, setLive] = useState<Drag | null>(null);
   const [hover, setHover] = useState<string | null>(null);
+  /** The connection under the pointer: its line, its label or its badge. */
+  const [hoverEdge, setHoverEdge] = useState<string | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ctlRef = useRef(ctl);
   ctlRef.current = ctl;
@@ -88,7 +91,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   // While a drag is on, only the dragged pieces and their own connections move (ui contract, Dragging):
   // every other box, path, label and badge, the frames of the dragged parts' groups too, holds until release.
   const dragOff = live?.kind === "move" && live.moved ? live.off : null;
-  const moving = useMemo(() => (live?.kind === "move" && live.moved ? withInside(view, live.ids) : null), [live, view]);
+  const moving = useMemo(() => (live?.kind === "move" && live.moved && live.ids.length ? withInside(view, live.ids) : null), [live, view]);
   const movingTexts = useMemo(() => new Set(live?.kind === "move" && live.moved ? live.texts : []), [live]);
   const texts = useMemo(() => (dragOff && movingTexts.size ? view.texts.map((t) => (movingTexts.has(t.id) ? { ...t, x: t.x + dragOff.x, y: t.y + dragOff.y } : t)) : view.texts), [view, dragOff, movingTexts]);
   const rects = useMemo(() => {
@@ -253,6 +256,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
         const no = c.refused();
         if (no) { c.toast(no); drag.current = null; setLive(null); return; }
         d.moved = true;
+        if (d.ids.length) c.setDragging(true);
       }
       // Nothing in the document changes until release: one edit, one save, one undo step.
       d.off = { x: p.x - d.start.x, y: p.y - d.start.y };
@@ -279,6 +283,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
     if (!d) return;
     const c = ctlRef.current;
     if (d.kind === "move") {
+      if (d.moved) c.setDragging(false);
       if (d.moved) {
         const { x: dx, y: dy } = d.off;
         c.apply((doc) => moveTexts(settleNodes(moveNodes(doc, c.vid, d.ids, dx, dy), c.vid, d.ids), c.vid, d.texts, dx, dy, true));
@@ -332,6 +337,11 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   // Semantic zoom: the level comes from the zoom only; sizes never change.
   const detail = detailAt(k);
   const touchesOpen = (e: DiagramEdge) => !!ctl.callout && (e.from === ctl.callout || e.to === ctl.callout);
+  // Connections in focus take their kind colours (ui contract, Connections in focus); the rest stay neutral.
+  const ends = (e: DiagramEdge, has: (id: string) => boolean) => has(e.from) || has(e.to);
+  const inFocus = (e: DiagramEdge) => touches(e) || selEdges.has(e.id) || (!live && hoverEdge === e.id)
+    || (!live && !!hover && ends(e, (id) => id === hover)) || ends(e, (id) => selNodes.has(id) || id === ctl.callout)
+    || (!!step && step.has(e.from) && step.has(e.to)) || (!!found && found.ids.has(e.from) && found.ids.has(e.to));
   const dragMark = (id: string): DragMark => (!moving ? undefined : moving.has(id) ? "lifted" : "dim");
 
   const enterNode = (id: string | null) => {
@@ -348,6 +358,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
       onPointerOver={(e) => {
         const t = e.target as Element;
         const id = t.closest("[data-node-id]")?.getAttribute("data-node-id");
+        setHoverEdge(id ? null : t.closest("[data-edge-id]")?.getAttribute("data-edge-id") ?? t.closest("[data-edge-label-of]")?.getAttribute("data-edge-label-of") ?? null);
         if (id) enterNode(id);
         else if (!t.closest("[data-port]")) enterNode(null);
       }}>
@@ -360,7 +371,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
           {[...view.edges.filter((e) => !touches(e)), ...view.edges.filter(touches)].map((e) => {
             const r = routes.get(e.id);
             return r ? <EdgeShape key={e.id} edge={e} route={r} P={P} from={kindOf.get(e.from)!} to={kindOf.get(e.to)!} selected={selEdges.has(e.id)} dim={dimEdge(e)} flow={steps && e.step !== null} open={touchesOpen(e)} clip={clip ? "url(#ad-names)" : undefined}
-              focus={touches(e)} dragDim={!!moving && !touches(e)} /> : null;
+              focus={inFocus(e)} dragDim={!!moving && !touches(e)} /> : null;
           })}
           {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} drag={dragMark(n.id)} />)}
           {view.edges.map((e) => {
@@ -370,7 +381,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
               <g key={`l-${e.id}`}>
                 {r.labelAt && e.label && (
                   <g className={`lb${dimEdge(e) ? " dim" : ""}${touchesOpen(e) ? " open" : ""}`} data-testid={`edge-label-${e.id}`} data-edge-label-of={e.id} style={{ cursor: "pointer" }}
-                    dangerouslySetInnerHTML={{ __html: labelMarkup(e.label, r.labelAt, P, post) }} />
+                    dangerouslySetInnerHTML={{ __html: labelMarkup(e.label, r.labelAt, P, post, toneOf(e, inFocus(e)) === "kind" ? P.kinds[kindOf.get(e.to)!] : P.line) }} />
                 )}
                 {steps && e.step !== null && (
                   <g data-testid={`step-badge-${e.id}`} data-edge-label-of={e.id} dangerouslySetInnerHTML={{ __html: badgeMarkup(e.step, r.badgeAt, P, "ad", post) }} />

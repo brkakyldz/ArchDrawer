@@ -186,7 +186,7 @@ describe("group names are cut out of the lines only", () => {
     }
     const body = drawView(v, PALETTES.light, { prefix: "ad" }).body;
     const edgeG = body.slice(body.indexOf('<g data-edge-id="ab"'));
-    expect(edgeG.startsWith('<g data-edge-id="ab" data-style="call" data-both="false"><g clip-path="url(#ad-names)">')).toBe(true);
+    expect(edgeG.startsWith('<g data-edge-id="ab" data-style="call" data-both="false" data-tone="neutral"><g clip-path="url(#ad-names)">')).toBe(true);
     // The clip group closes before the label's group opens.
     const clipped = edgeG.slice(0, edgeG.indexOf('<g data-edge-label="ab"'));
     expect(clipped.match(/<g/g)!.length - clipped.match(/<\/g>/g)!.length).toBe(1);

@@ -69,7 +69,8 @@ test("a drag moves only the part and its own line, lifts it, dims the rest and s
   await expect(page.getByTestId("save-status")).toHaveText("Saved");
   await page.waitForTimeout(800);
   expect(puts).toHaveLength(1);
-  expect(await marks(page)).toEqual({ lifted: [], dimParts: [], dimEdges: [], focus: [] });
+  // e stays selected, so its own line stays in focus (ui contract, Connections in focus); the drag marks are gone.
+  expect(await marks(page)).toEqual({ lifted: [], dimParts: [], dimEdges: [], focus: ["edge-ed"] });
   const after = await boxOf(page, "node-e");
   expect(Math.abs(after.width - still.size.width) + Math.abs(after.height - still.size.height), "and after release").toBeLessThan(0.1);
   const moved = onDisk(path).views[0].nodes.find((n) => n.id === "e")!;

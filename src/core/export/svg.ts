@@ -233,36 +233,48 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
   return out.join("");
 }
 
+/** `kind`: drawn in its kind colours; `neutral`: in the theme's one connection colour (diagram contract, Colour). */
+export type Tone = "kind" | "neutral";
+/** Exports colour only numbered connections; the editor also colours those in focus (ui contract). */
+export const toneOf = (e: Pick<DiagramEdge, "step">, focus = false): Tone => (e.step !== null || focus ? "kind" : "neutral");
+
 export interface EdgeMarkupOptions extends MarkupOptions {
   prefix?: string;
-  /** Source and target kinds give the gradient and the arrowheads their colours. */
+  /** Source and target kinds give the gradient and the arrowheads their colours when the tone is `kind`. */
   fromKind: Kind; toKind: Kind;
+  /** Default: `kind` for a numbered connection, else `neutral`. */
+  tone?: Tone;
 }
 
-/** One connection: gradient stroke from the source's hue to the target's, a low glow, start ring or two arrowheads. */
+/**
+ * One connection (diagram contract, Colour): in the neutral colour with no glow, or in its kind colours — a
+ * gradient from the source's hue to the target's, each arrowhead in the colour of the part it points at, a low
+ * glow except on `dep`. One arrowhead at the target, one at each end of a two-way connection; nothing at a start.
+ */
 export function edgeMarkup(e: DiagramEdge, r: EdgeRoute, P: Palette, o: EdgeMarkupOptions): string {
   const prefix = o.prefix ?? "ad";
-  const a = P.kinds[o.fromKind], b = P.kinds[o.toKind];
+  const kind = (o.tone ?? toneOf(e)) === "kind";
+  const a = kind ? P.kinds[o.fromKind] : P.edge, b = kind ? P.kinds[o.toKind] : P.edge;
   const gid = `${prefix}-g-${e.id}`, mid = `${prefix}-m-${e.id}`, sid = `${prefix}-s-${e.id}`;
   const x2 = r.p1.x === r.p0.x ? r.p1.x + 0.01 : r.p1.x;
+  const stroke = kind ? `url(#${gid})` : P.edge;
   const defs =
-    `<defs><linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${n(r.p0.x)}" y1="${n(r.p0.y)}" x2="${n(x2)}" y2="${n(r.p1.y)}"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient>` +
+    `<defs>${kind ? `<linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${n(r.p0.x)}" y1="${n(r.p0.y)}" x2="${n(x2)}" y2="${n(r.p1.y)}"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient>` : ""}` +
     `<marker id="${mid}" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="8.5" markerHeight="8.5" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1.4 8.8 5 1 8.6z" fill="${b}"/></marker>` +
     (e.both ? `<marker id="${sid}" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="8.5" markerHeight="8.5" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M1 1.4 8.8 5 1 8.6z" fill="${a}"/></marker>` : "") +
     `</defs>`;
-  const dash = e.style === "async" ? ` stroke-dasharray="6 5"` : e.style === "dep" ? ` stroke-dasharray="1.5 4.5" stroke-linecap="round"` : "";
-  const width = e.style === "dep" ? 1.6 : 1.75;
-  const glow = e.style === "dep" ? "" : `<path class="glow" d="${r.d}" fill="none" stroke="url(#${gid})" stroke-width="7" opacity="${P.edgeGlow}"/>`;
+  const dash = e.style === "async" ? ` stroke-dasharray="6 5"` : e.style === "dep" ? ` stroke-dasharray="2 5" stroke-linecap="round"` : "";
+  const width = e.style === "dep" ? 1.9 : 1.75;
+  const glow = !kind || e.style === "dep" ? "" : `<path class="glow" d="${r.d}" fill="none" stroke="${stroke}" stroke-width="7" opacity="${P.edgeGlow}"/>`;
   const start = e.both ? ` marker-start="url(#${sid})"` : "";
-  const ring = e.both ? "" : `<circle cx="${n(r.p0.x + NORMAL4[r.side0][0] * 4)}" cy="${n(r.p0.y + NORMAL4[r.side0][1] * 4)}" r="3.6" fill="${P.surface}" stroke="${a}" stroke-width="1.6"/>`;
-  return `${defs}${glow}<path class="line" d="${r.d}" fill="none" stroke="url(#${gid})" stroke-width="${width}"${dash} marker-end="url(#${mid})"${start}/>${ring}`;
+  return `${defs}${glow}<path class="line" d="${r.d}" fill="none" stroke="${stroke}" stroke-width="${width}"${dash} marker-end="url(#${mid})"${start}/>`;
 }
-const NORMAL4 = { r: [1, 0], l: [-1, 0], b: [0, 1], t: [0, -1] } as const;
 
-export function labelMarkup(text: string, at: { x: number; y: number }, P: Palette, post = false): string {
+/** A label's box is edged in the `line` colour, or in its target part's kind colour while its line is coloured. */
+export function labelMarkup(text: string, at: { x: number; y: number }, P: Palette, post = false, border = P.line): string {
   const { T } = styleOf(post);
   const w = labelWidth(text, post);
-  return `<rect x="${n(at.x - w / 2)}" y="${n(at.y - LABEL.h / 2)}" width="${w}" height="${LABEL.h}" rx="6" fill="${P.surface}" stroke="${P.line}" stroke-width="1"/>` +
+  return `<rect x="${n(at.x - w / 2)}" y="${n(at.y - LABEL.h / 2)}" width="${w}" height="${LABEL.h}" rx="6" fill="${P.surface}" stroke="${border}" stroke-width="1"/>` +
     `<text x="${n(at.x)}" y="${n(baseline(at.y - LABEL.h / 2, LABEL.h, T.edge.size))}" text-anchor="middle" font-size="${T.edge.size}" font-weight="500" fill="${P.muted}">${esc(text)}</text>`;
 }
 
@@ -340,12 +352,13 @@ export function drawView(view: DiagramView, P: Palette, o: DrawOptions = {}): Dr
     const r = routes.get(e.id);
     if (!r) continue;
     const id = esc(e.id);
-    const label = r.labelAt && e.label && o.labels !== false ? `<g data-edge-label="${id}" data-testid="edge-label-${id}">${labelMarkup(e.label, r.labelAt, P, o.post)}</g>` : "";
+    const tone = toneOf(e), to = kind.get(e.to)!;
+    const label = r.labelAt && e.label && o.labels !== false ? `<g data-edge-label="${id}" data-testid="edge-label-${id}">${labelMarkup(e.label, r.labelAt, P, o.post, tone === "kind" ? P.kinds[to] : P.line)}</g>` : "";
     const badge = o.steps && e.step !== null ? `<g data-step-badge="${id}" data-testid="step-badge-${id}">${badgeMarkup(e.step, r.badgeAt, P, prefix, o.post)}</g>` : "";
     // Only the line is clipped at group names: its label and badge already keep off them.
-    const markup = edgeMarkup(e, r, P, { prefix, fromKind: kind.get(e.from)!, toKind: kind.get(e.to)! });
+    const markup = edgeMarkup(e, r, P, { prefix, fromKind: kind.get(e.from)!, toKind: to, tone });
     const line = clip ? `<g clip-path="url(#${prefix}-names)">${markup}</g>` : markup;
-    out.push(`<g data-edge-id="${id}" data-style="${e.style}" data-both="${e.both}">${line}${label}${badge}</g>`);
+    out.push(`<g data-edge-id="${id}" data-style="${e.style}" data-both="${e.both}" data-tone="${tone}">${line}${label}${badge}</g>`);
   }
   for (const node of order.filter((x) => x.form !== "group")) out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="${node.form}">${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
   for (const t of texts) out.push(`<g data-text-id="${esc(t.id)}" data-size="${t.size}">${textMarkup(t, P)}</g>`);

@@ -34,6 +34,8 @@ export interface Ctl {
   checkpoint: () => void;
   /** Why an edit is refused now (a run is going, or its result is in preview); null when edits are free. */
   refused: () => string | null;
+  /** A drag of parts started (true) or ended (false). */
+  setDragging: (on: boolean) => void;
   sel: Selection;
   setSel: (s: Selection) => void;
   callout: string | null;

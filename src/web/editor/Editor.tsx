@@ -165,6 +165,8 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const [found, setFound] = useState<Found | null>(null);
   /** Opens search, or focuses its input again when it is already open. */
   const openSearch = () => { setSearching(true); setSearchRound((n) => n + 1); };
+  /** A drag of parts is on: the floating callout steps aside until release (it is placed from the stored boxes). */
+  const [dragging, setDragging] = useState(false);
   const [pinned, setPinnedState] = useState(() => { try { return localStorage.getItem(PIN_KEY) === "1"; } catch { return false; } });
   const setPinned = (on: boolean) => { try { if (on) localStorage.setItem(PIN_KEY, "1"); else localStorage.removeItem(PIN_KEY); } catch { /* private mode */ } setPinnedState(on); };
   const narrow = useNarrow();
@@ -462,7 +464,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const reserved = useMemo(() => (stored ? reservedIds(stored) : new Set<string>()), [stored]);
   // On the overview only, one line when it misses its targets; nothing changes by itself.
   const ctl: Ctl | null = doc && view ? {
-    doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: () => { if (!refusal()) hist.checkpoint(); }, refused: refusal,
+    doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: () => { if (!refusal()) hist.checkpoint(); }, refused: refusal, setDragging,
     sel, setSel, callout, setCallout, tool, setTool, editing, setEditing, textSize, picker, setPicker,
     toast, goView, changed, pinned, setPinned, found, channel: stored ? drawnChannel(stored, chan) : "overview",
     // A step that is gone (undone, removed) lights nothing and dims nothing.
@@ -775,7 +777,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
         {story && !blank && <div className="story-run"><RunLine runner={runner} /></div>}
         {HINTS[tool] && <div className="tool-hint" data-testid="tool-hint" role="status">{HINTS[tool]}</div>}
         <div className="overlay">
-          {callout && !editing && !pinned && <Callout key={callout} ctl={ctl} id={callout} />}
+          {callout && !editing && !pinned && !dragging && <Callout key={callout} ctl={ctl} id={callout} />}
           {searching && <Search doc={doc} view={view.id} focusRound={searchRound} onFound={setFound} onStep={step} onOpen={openHit} onClose={() => setSearching(false)} />}
           {sel1 && <EdgeCallout key={sel1} ctl={ctl} id={sel1} />}
           {text1 && <TextToolbar ctl={ctl} id={text1} />}

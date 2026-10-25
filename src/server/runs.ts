@@ -4,7 +4,7 @@ import { appearanceOnly } from "../core/appearance";
 import { applyChannel, joinChannel } from "../core/channels";
 import { storyDraft } from "../core/map";
 import { channelOfView, validateDocument3, type ChannelId, type Document3 } from "../core/file3";
-import { choiceOfFocus, withChoice, type Document4 } from "../core/file4";
+import { withChoice, type Document4 } from "../core/file4";
 import { isPostView, validateDocument, type DiagramDocument } from "../core/model";
 import { startSwitches, type FormatId } from "../core/export/share";
 import { isMapView, layoutReport, type LayoutReport } from "../core/report";
@@ -18,7 +18,7 @@ import { repoFile } from "./folders";
 import { nowIso, type Store } from "./store";
 import { EngineError, type Engine } from "./engines/types";
 import { ReadAnswerError } from "../core/read";
-import { DrawError, keptKey, runDraw, type DrawRequest, type KeptDraw } from "./draw";
+import { DrawError, drawChoices, keptKey, runDraw, type DrawChoice, type DrawRequest, type KeptChoice } from "./draw";
 import { storyAnswer } from "./story-turn";
 
 export type RunStatus = "running" | "succeeded" | "failed" | "cancelled";
@@ -28,8 +28,8 @@ export type DrawStage = "read" | "overview" | "channel";
 /** The channels a story is drawn in (a post is a story on LinkedIn). */
 export type StoryChannel = Exclude<ChannelId, "overview">;
 export type RunEvent =
-  | { type: "progress"; message: string; stage: DrawStage | null }
-  | { type: "done"; status: Exclude<RunStatus, "running">; diagramId: string | null; error: string | null; changes: Changes | null; choice: string; channel: ChannelId; view: string; layoutReport: LayoutReport | null; route: Route | null; path: string | null };
+  | { type: "progress"; message: string; stage: DrawStage | null; choice: string | null }
+  | { type: "done"; status: Exclude<RunStatus, "running">; diagramId: string | null; error: string | null; changes: Changes | null; choice: string; channel: ChannelId; view: string; layoutReport: LayoutReport | null; route: Route | null; path: string | null; choices: DrawChoice[] | null };
 
 export interface RunRecord {
   id: string;
@@ -55,6 +55,8 @@ export interface RunRecord {
   route: Route | null;
   /** The drawing file a `draw` run wrote, once it has succeeded. */
   path: string | null;
+  /** A `draw`'s choices in request order with their state (api contract, Run record); null on other kinds. */
+  choices: DrawChoice[] | null;
 }
 
 interface Run extends RunRecord {
@@ -124,6 +126,7 @@ export class RunManager {
     return r ? {
       id: r.id, kind: r.kind, choice: r.choice, channel: r.channel, view: r.view, status: r.status, progress: [...r.progress], diagramId: r.diagramId, error: r.error,
       engine: r.engine, model: r.model, changes: r.changes, layoutReport: r.layoutReport, route: r.route, path: r.path,
+      choices: r.choices ? r.choices.map((c) => ({ ...c })) : null,
     } : null;
   }
 
@@ -184,19 +187,27 @@ export class RunManager {
     // What the folder's last failed draw kept, if this draw asks the same (api contract, What a failed draw keeps).
     const key = keptKey(req);
     const last = this.kept.get(req.folderKey);
-    const kept = last && last.key === key ? last.kept : null;
-    const done: Partial<KeptDraw> = {};
+    const kept = last && last.key === key ? last.records : null;
+    const done = new Map<string, KeptChoice>();
+    const choices = drawChoices(req.focuses);
     return this.launch(
-      { kind: "draw", choice: choiceOfFocus(req.focus).id, channel: req.channel, view: req.channel, engine: req.engine.id, model: req.model, target: `folder:${req.folderKey}` },
-      (signal, progress, run) => runDraw(req, { store: this.store, timeoutMs: this.opts.timeoutMs, signal, progress, wrote: (path) => (run.path = path), kept, done }).then(
+      { kind: "draw", choice: choices[0].id, channel: req.channel, view: req.channel, engine: req.engine.id, model: req.model, target: `folder:${req.folderKey}`, choices },
+      (signal, progress, run, restartDeadline) => runDraw(req, { store: this.store, timeoutMs: this.opts.timeoutMs, signal, progress, wrote: (path) => (run.path = path), choices, kept, done, restartDeadline }).then(
         (r) => { this.kept.delete(req.folderKey); return r; },
         (err: unknown) => {
-          // Only what was finished is kept, replacing the folder's entry; a draw that failed at the read keeps nothing.
-          if (done.read === undefined) this.kept.delete(req.folderKey);
+          // The choice it ended in: failed (a timeout too), or cancelled; the later ones still wait.
+          const at = choices.find((c) => c.status === "running");
+          if (at) at.status = signal.aborted && !run.timedOut ? "cancelled" : "failed";
+          // What was finished is kept: added to the folder's entry when it is for the same scan, engine and model
+          // (a choice's newer record replaces its older one), else replacing it (api contract, What a failed draw keeps).
+          const same = last && last.key === key && this.kept.get(req.folderKey) === last;
+          const records = new Map(same ? last.records : []);
+          for (const [k, v] of done) if (v.read !== undefined) records.set(k, v);
+          if (!records.size) this.kept.delete(req.folderKey);
           else {
-            const entry = { key, at: Date.now(), kept: { read: done.read, overview: done.overview ?? null } };
+            const entry = { key, at: Date.now(), records };
             this.kept.set(req.folderKey, entry);
-            // It goes an hour later unless a newer draw of the folder replaced it first.
+            // It goes an hour after the last draw that added to it, unless a newer draw of the folder replaced it first.
             setTimeout(() => { if (this.kept.get(req.folderKey) === entry) this.kept.delete(req.folderKey); }, KEPT_MS).unref();
           }
           throw err;
@@ -205,33 +216,36 @@ export class RunManager {
     );
   }
 
-  /** One entry per folder: what its latest draw that ended without a drawing had finished. */
-  private readonly kept = new Map<string, { key: string; at: number; kept: KeptDraw }>();
+  /** One entry per folder: what its draws that ended without a drawing had finished, per choice as requested. */
+  private readonly kept = new Map<string, { key: string; at: number; records: Map<string, KeptChoice> }>();
 
   private launch(
-    init: Pick<RunRecord, "kind" | "choice" | "channel" | "view" | "engine" | "model"> & { target: string },
-    exec: (signal: AbortSignal, progress: (m: string, stage?: DrawStage | null) => void, run: Run) => Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string }>,
+    init: Pick<RunRecord, "kind" | "choice" | "channel" | "view" | "engine" | "model"> & { target: string; choices?: DrawChoice[] },
+    exec: (signal: AbortSignal, progress: (m: string, stage?: DrawStage | null, choice?: string | null) => void, run: Run, restartDeadline: () => void) => Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string }>,
   ): string {
     const id = `r_${randomBytes(6).toString("hex")}`;
     let resolveFinished!: () => void;
     const run: Run = {
       id, kind: init.kind, choice: init.choice, channel: init.channel, view: init.view,
       status: "running", progress: [], diagramId: null, error: null, engine: init.engine, model: init.model,
-      changes: null, layoutReport: null, route: null, path: null, target: init.target,
+      changes: null, layoutReport: null, route: null, path: null, target: init.target, choices: init.choices ?? null,
       events: [], listeners: new Set(), abort: new AbortController(),
       finished: new Promise((r) => (resolveFinished = r)), timedOut: false,
     };
-    const deadline = setTimeout(() => { run.timedOut = true; run.abort.abort(); }, this.opts.timeoutMs);
+    const expire = () => { run.timedOut = true; run.abort.abort(); };
+    let deadline = setTimeout(expire, this.opts.timeoutMs);
     deadline.unref?.();
+    // A draw's choice has its own deadline from its first line (api contract, Deadlines and cancel).
+    const restartDeadline = () => { if (run.status !== "running") return; clearTimeout(deadline); deadline = setTimeout(expire, this.opts.timeoutMs); deadline.unref?.(); };
     this.runs.set(id, run);
     const emit = (e: RunEvent) => {
       run.events.push(e);
       for (const l of run.listeners) l(e);
     };
-    const progress = (message: string, stage: DrawStage | null = null) => {
+    const progress = (message: string, stage: DrawStage | null = null, choice: string | null = null) => {
       if (run.status !== "running") return;
       run.progress.push(message);
-      emit({ type: "progress", message, stage });
+      emit({ type: "progress", message, stage, choice });
     };
     const end = (status: Exclude<RunStatus, "running">, diagramId: string | null, error: string | null, changes: Changes | null = null, report: LayoutReport | null = null) => {
       clearTimeout(deadline);
@@ -242,11 +256,11 @@ export class RunManager {
       run.error = error;
       run.changes = changes;
       run.layoutReport = report;
-      emit({ type: "done", status, diagramId, error, changes, choice: run.choice, channel: run.channel, view: run.view, layoutReport: report, route: run.route, path: run.path });
+      emit({ type: "done", status, diagramId, error, changes, choice: run.choice, channel: run.channel, view: run.view, layoutReport: report, route: run.route, path: run.path, choices: run.choices ? run.choices.map((c) => ({ ...c })) : null });
       run.listeners.clear();
       resolveFinished();
     };
-    void exec(run.abort.signal, progress, run).then(
+    void exec(run.abort.signal, progress, run, restartDeadline).then(
       // The report names the channel it measured (api contract, Layout report).
       (r) => { run.channel = r.channel; run.view = r.view; end("succeeded", r.diagramId, null, r.changes, { ...r.layoutReport, choice: run.choice, channel: r.channel }); },
       (err: unknown) => {

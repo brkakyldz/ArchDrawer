@@ -16,6 +16,8 @@ async function cli(...argv: string[]) {
   return { code, out, err };
 }
 const json = async (r: Response) => ({ status: r.status, body: await r.json() });
+/** A one-pixel PNG: what a second look is given to look at. */
+const TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 /** The shop as one choice of a file: its overview view renamed, and for a smaller one only its first two facts. */
 function shopChoice(id: string, kind: ChoiceInput4["kind"], title: string, small = false): ChoiceInput4 {
@@ -172,6 +174,10 @@ describe("a system choice's channels are told from its map and detail views (rev
     // A refine routed to the story draws the channel again from the same base.
     const routed = await start({ kind: "refine", channel: "readme", view: "readme", instruction: "Tell it again [fixture:story]" });
     expect([routed.status, routed.route]).toEqual(["succeeded", "story"]);
+    expect(readmeParts()).toEqual(["api", "db", "web"]);
+    // A second look on the channel tells its story from the same base (review 84b6d38-1).
+    const looked = await start({ kind: "revise", channel: "readme", view: "readme", image: TINY_PNG });
+    expect([looked.status, looked.error]).toEqual(["succeeded", null]);
     expect(readmeParts()).toEqual(["api", "db", "web"]);
   });
 });

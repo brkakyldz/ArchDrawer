@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { bezierAt, curveInside, edgesOverParts, layoutRects, routeEdges } from "../geometry";
+import { bezierAt, curveInside, curvePieces, edgesOverParts, layoutRects, routeEdges } from "../geometry";
 import { fillDefaults, type DiagramView } from "../model";
 import { edge, node } from "../testkit";
 import { PALETTES } from "../theme";
-import { drawView } from "./svg";
+import { drawView, nodeMarkup } from "./svg";
 
 // LOOK-4 (diagram contract, Traces): a connection that passes behind a part it does not join is drawn again over that part.
 const view = (): DiagramView => fillDefaults({ version: 2, title: "traces", views: [{ id: "v", title: "V", caption: { what: "", how: "", notice: "" }, nodes: [
@@ -69,5 +69,31 @@ describe("the pieces of a line inside a part (the editor's traces)", () => {
     expect(onEdge(p0)).toBeLessThan(0.05); expect(onEdge(p1)).toBeLessThan(0.05);
     // A box the line misses has no piece.
     expect(curveInside(route, { x: r.x, y: r.y + 1000, w: r.w, h: r.h })).toBe("");
+  });
+});
+
+describe("a trace's dashes fall where its line's do (review ab05869-1, -2)", () => {
+  const c = { p0: { x: 0, y: 0 }, c1: { x: 100, y: 0 }, c2: { x: 200, y: 0 }, p1: { x: 300, y: 0 } };
+  it("the offset is the length of the line before the piece; a line starting inside has none", () => {
+    const cut = curvePieces(c, { x: 120, y: -10, w: 60, h: 20 });
+    expect(cut.offset).toBeCloseTo(120, 1);
+    expect(cut.d.startsWith("M120,0 C")).toBe(true);
+    expect(curvePieces(c, { x: -10, y: -10, w: 60, h: 20 }).offset).toBe(0);
+  });
+  it("a line that enters a box twice gives two pieces", () => {
+    const arch = { p0: { x: 0, y: 50 }, c1: { x: 100, y: -60 }, c2: { x: 200, y: -60 }, p1: { x: 300, y: 50 } };
+    const cut = curveInside(arch, { x: -10, y: 20, w: 320, h: 40 });
+    expect(cut.split("M").filter(Boolean)).toHaveLength(2);
+  });
+  it("an editor trace carries the offset only when its line is dashed", () => {
+    const v = view(), rects = layoutRects(v), routes = routeEdges(v, rects);
+    const mid = rects.get("mid")!;
+    const cut = curvePieces(routes.get("ab")!, mid);
+    const at = v.nodes.find((x) => x.id === "mid")!;
+    const dashed = nodeMarkup(at, mid, PALETTES.light, { traces: [{ edge: "ab", d: cut.d, offset: cut.offset, stroke: "#000", dash: ' stroke-dasharray="6 5"' }] });
+    expect(cut.offset).toBeGreaterThan(0);
+    expect(dashed).toContain(`stroke-dashoffset="${cut.offset}"`);
+    const solid = nodeMarkup(at, mid, PALETTES.light, { traces: [{ edge: "ab", d: cut.d, offset: cut.offset, stroke: "#000", dash: "" }] });
+    expect(solid).not.toContain("stroke-dashoffset");
   });
 });

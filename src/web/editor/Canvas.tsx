@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
-import { curveInside, edgesOverParts, layoutRects, measureText, routeEdges, textStyle, type EdgeRoute, type Rect } from "../../core/geometry";
+import { curvePieces, edgesOverParts, layoutRects, measureText, routeEdges, textStyle, type EdgeRoute, type Rect } from "../../core/geometry";
 import { badgeMarkup, drawOrder, edgeMarkup, groupHeadMarkup, labelMarkup, nodeMarkup, dashOf, sharedDefs, strokeOf, textMarkup, toneOf, type Trace } from "../../core/export/svg";
 import { descendants, isPostView, LIMITS, type DiagramEdge, type DiagramNode, type DiagramText, type Kind } from "../../core/model";
 import type { Palette } from "../../core/theme";
@@ -367,8 +367,10 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   const tracesFor = (id: string): string | undefined => {
     const list = over.filter((o) => o.node === id).map((o) => {
       const e = view.edges.find((x) => x.id === o.edge)!;
-      // The pieces of the line inside the part: the part's element keeps the part's own box (node-<id> measures as the part).
-      return { edge: e.id, d: curveInside(routes.get(e.id)!, rects.get(id)!), stroke: strokeOf(e, toneOf(e, inFocus(e)), "ad", P), dash: dashOf(e) };
+      // The pieces of the line inside the part: the part's element keeps the part's own box (node-<id> measures as the
+      // part), its dashes offset to fall where the whole line's do (review ab05869-1).
+      const cut = curvePieces(routes.get(e.id)!, rects.get(id)!);
+      return { edge: e.id, d: cut.d, offset: cut.offset, stroke: strokeOf(e, toneOf(e, inFocus(e)), "ad", P), dash: dashOf(e) };
     });
     // A string, so the memoised part draws again only when its traces change.
     return list.length ? JSON.stringify(list) : undefined;

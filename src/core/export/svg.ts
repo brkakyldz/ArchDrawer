@@ -81,7 +81,7 @@ function glowUnder(r: Rect, color: string, P: Palette, prefix: string, group = f
 }
 
 /** A connection's trace over a part it passes behind (diagram contract, Traces): its path, colour and dash. */
-export interface Trace { edge: string; d: string; stroke: string; dash: string }
+export interface Trace { edge: string; d: string; stroke: string; dash: string; offset?: number }
 export interface NodeMarkupOptions extends MarkupOptions, MeasureOptions { prefix?: string; traces?: Trace[] }
 
 /** A connection's stroke and dash as `edgeMarkup` draws it: its gradient while in kind colours, else the neutral colour. */
@@ -111,7 +111,7 @@ function traceMarkup(r: Rect, traces: Trace[] | undefined): string {
   // box its own: a clip-path would leave the whole path in the part's bounding box (editor and export measure it).
   const box = `x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}"`;
   return `<svg class="traces" ${box} viewBox="${n(r.x)} ${n(r.y)} ${n(r.w)} ${n(r.h)}" overflow="hidden" pointer-events="none">` +
-    traces.map((t) => `<path class="trace" data-edge-of="${esc(t.edge)}" d="${t.d}" fill="none" stroke="${t.stroke}" stroke-width="1" opacity="0.25"${t.dash}/>`).join("") + "</svg>";
+    traces.map((t) => `<path class="trace" data-edge-of="${esc(t.edge)}" d="${t.d}" fill="none" stroke="${t.stroke}" stroke-width="1" opacity="0.25"${t.dash}${t.dash && t.offset ? ` stroke-dashoffset="${n(t.offset)}"` : ""}/>`).join("") + "</svg>";
 }
 
 /**

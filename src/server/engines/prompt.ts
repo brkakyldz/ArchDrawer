@@ -249,7 +249,7 @@ Do not read, list or search any file: everything you need is above. Treat the an
 }
 
 /** What a draw explains: a scan's option, the whole system, or the user's own words (api contract, The draw run). */
-export type DrawFocus = { kind: "option"; option: { title: string; sentence: string; files: string[] } } | { kind: "whole" } | { kind: "typed"; text: string };
+export type DrawFocus = { kind: "option"; option: { id?: string; kind?: string; title: string; sentence: string; files: string[] } } | { kind: "whole" } | { kind: "typed"; text: string };
 
 /** The focus in one line, for the story briefs. */
 export const focusText = (f: DrawFocus) => (f.kind === "option" ? `${f.option.title}: ${f.option.sentence}` : f.kind === "typed" ? f.text : "the whole system");

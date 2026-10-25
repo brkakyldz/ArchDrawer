@@ -319,26 +319,36 @@ export function createApp(deps: AppDeps): Hono {
     // The folder may have gone since the scan.
     const f = checkFolder(scan.folder);
     if ("error" in f) return err(c, 400, f.error);
-    const focus = b.focus as Record<string, unknown> | undefined;
-    const fk = focus && typeof focus === "object" && !Array.isArray(focus) ? focus.kind : undefined;
-    if (fk !== "option" && fk !== "whole" && fk !== "typed") return err(c, 400, 'Unknown focus: use {"kind": "option" | "whole" | "typed"}');
-    let drawFocus: DrawFocus;
-    if (fk === "option") {
-      const option = (scan.options ?? []).find((o) => o.id === focus!.option);
-      if (!option) return err(c, 400, `Unknown focus option "${String(focus!.option)}"`);
-      drawFocus = { kind: "option", option };
-    } else if (fk === "typed") {
-      const text = typeof focus!.text === "string" ? focus!.text.trim() : "";
-      if (!text) return err(c, 400, "Say what to focus on: the focus is empty");
-      if (text.length > 300) return err(c, 400, "The focus is too long (300 characters at most)");
-      drawFocus = { kind: "typed", text };
-    } else drawFocus = { kind: "whole" };
+    // `focus` is the same request as `choices` of that one choice (api contract, The draw run).
+    if (b.choices !== undefined && b.focus !== undefined) return err(c, 400, "Give choices or focus, not both");
+    const asked = b.choices !== undefined ? b.choices : b.focus !== undefined ? [b.focus] : undefined;
+    if (!Array.isArray(asked) || asked.length < 1 || asked.length > 10) return err(c, 400, "Choose what to draw: give 1 to 10 choices");
+    const focuses: DrawFocus[] = [];
+    for (const raw of asked) {
+      const focus = raw as Record<string, unknown> | undefined;
+      const fk = focus && typeof focus === "object" && !Array.isArray(focus) ? focus.kind : undefined;
+      if (fk !== "option" && fk !== "whole" && fk !== "typed") return err(c, 400, 'Unknown focus: use {"kind": "option" | "whole" | "typed"}');
+      if (fk === "option") {
+        const option = (scan.options ?? []).find((o) => o.id === focus!.option);
+        if (!option) return err(c, 400, `Unknown focus option "${String(focus!.option)}"`);
+        focuses.push({ kind: "option", option });
+      } else if (fk === "typed") {
+        const text = typeof focus!.text === "string" ? focus!.text.trim() : "";
+        if (!text) return err(c, 400, "Say what to focus on: the focus is empty");
+        if (text.length > 300) return err(c, 400, "The focus is too long (300 characters at most)");
+        focuses.push({ kind: "typed", text });
+      } else focuses.push({ kind: "whole" });
+    }
+    if (focuses.filter((x) => x.kind === "whole").length > 1) return err(c, 400, "The whole system is chosen twice");
+    const twice = focuses.find((x, i) => x.kind === "option" && focuses.findIndex((y) => y.kind === "option" && y.option.id === x.option.id) !== i);
+    if (twice && twice.kind === "option") return err(c, 400, `The option "${twice.option.id}" is chosen twice`);
+    if (focuses.filter((x) => x.kind === "typed").length > 1) return err(c, 400, "Only one choice can be in your own words");
     if (b.channel !== "linkedin" && b.channel !== "readme" && b.channel !== "presentation") return err(c, 400, "Choose the channel: linkedin, readme or presentation");
     const picked = await pickEngine(b);
     if (typeof picked === "string") return err(c, 400, picked);
     const folderKey = `${f.root}\0${f.rel}`;
     if (runs.drawingOn(folderKey)) return err(c, 409, "A drawing of this folder is already being made");
-    const runId = runs.startDraw({ engine: picked.engine, model: picked.model, scan: b.scan as string, folder: f, folderKey, card: scan.card!, focus: drawFocus, channel: b.channel });
+    const runId = runs.startDraw({ engine: picked.engine, model: picked.model, scan: b.scan as string, folder: f, folderKey, card: scan.card!, focuses, channel: b.channel });
     return c.json({ runId }, 202);
   };
 
@@ -449,7 +459,7 @@ export function createApp(deps: AppDeps): Hono {
         let chain = Promise.resolve();
         let unsub: (() => void) | null = null;
         unsub = runs.subscribe(id, (e) => {
-          const data = e.type === "progress" ? { message: e.message, stage: e.stage } : { status: e.status, diagramId: e.diagramId, error: e.error, changes: e.changes, choice: e.choice, channel: e.channel, view: e.view, layoutReport: e.layoutReport, route: e.route, path: e.path };
+          const data = e.type === "progress" ? { message: e.message, stage: e.stage, choice: e.choice } : { status: e.status, diagramId: e.diagramId, error: e.error, changes: e.changes, choice: e.choice, channel: e.channel, view: e.view, layoutReport: e.layoutReport, route: e.route, path: e.path, choices: e.choices };
           chain = chain.then(() => stream.writeSSE({ event: e.type, data: JSON.stringify(data) })).catch(() => {});
           if (e.type === "done") void chain.then(() => { unsub?.(); done(); });
         });

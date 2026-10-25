@@ -270,6 +270,15 @@ function subCurve(c: Curve, a: number, b: number): Curve {
  * editor draws a part's traces with it, so the part's element measures as the part (a clipped whole path would not).
  */
 export function curveInside(c: Curve, r: Rect, steps = 96): string {
+  return curvePieces(c, r, steps).d;
+}
+
+/**
+ * `curveInside` with the length of the curve before its first piece: as a dash offset, the piece's dashes fall where
+ * the whole line's do (a path's dashes start again at each piece, so only the first is matched; a line rarely
+ * enters a box twice).
+ */
+export function curvePieces(c: Curve, r: Rect, steps = 96): { d: string; offset: number } {
   const inside = (t: number) => { const p = bezierAt(c, t); return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h; };
   // Where the inside changes between two samples, the edge is found by halving the step.
   const edge = (lo: number, hi: number, inAtLo: boolean) => {
@@ -285,10 +294,17 @@ export function curveInside(c: Curve, r: Rect, steps = 96): string {
   }
   if (start >= 0) spans.push([start, 1]);
   const f = (v: number) => String(Math.round(v * 100) / 100);
-  return spans.filter(([a, b]) => b > a).map(([a, b]) => {
+  const kept = spans.filter(([a, b]) => b > a);
+  const d = kept.map(([a, b]) => {
     const k = subCurve(c, a, b);
     return `M${f(k.p0.x)},${f(k.p0.y)} C${f(k.c1.x)},${f(k.c1.y)} ${f(k.c2.x)},${f(k.c2.y)} ${f(k.p1.x)},${f(k.p1.y)}`;
   }).join(" ");
+  // The length up to the first piece, measured along the curve in small steps.
+  const upTo = kept[0]?.[0] ?? 0;
+  let offset = 0, last = bezierAt(c, 0);
+  const n = Math.max(1, Math.ceil(upTo * 512));
+  for (let i = 1; i <= n; i++) { const p = bezierAt(c, (upTo * i) / n); offset += Math.hypot(p.x - last.x, p.y - last.y); last = p; }
+  return { d, offset: Math.round(offset * 100) / 100 };
 }
 
 /**

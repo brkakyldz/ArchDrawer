@@ -15,9 +15,11 @@ export interface ScanRecord {
 }
 export type DrawFocus = { kind: "option"; option: string } | { kind: "whole" } | { kind: "typed"; text: string };
 export type DrawChannel = "linkedin" | "readme" | "presentation";
+/** One choice of a draw run as its record lists it (api contract, Run record). */
+export interface DrawChoiceState { id: string; kind: "system" | "section" | "flow" | "custom"; title: string; status: "waiting" | "running" | "done" | "failed" | "cancelled"; stage: "read" | "overview" | "channel" | null }
 export interface RunRecord {
   id: string; status: "running" | "succeeded" | "failed" | "cancelled"; progress: string[]; diagramId: string | null; error: string | null;
-  engine: string; model: string | null; changes: Changes | null;
+  engine: string; model: string | null; changes: Changes | null; choice?: string; choices?: DrawChoiceState[] | null;
 }
 export interface Health { ok: boolean; app: string; version: string; build: string }
 export interface RunStart { engine: string | null; model: string | null; scope: RunScope; kind?: "refine" | "post" | "simplify" | "story" | "revise"; format?: string; readCode?: boolean; image?: string }
@@ -79,6 +81,6 @@ export const api = {
     call<{ scanId: string }>("POST", "/api/scans", { folder, engine: o.engine, model: o.model, ...(o.refresh ? { refresh: true } : {}) }).then((r) => r.scanId),
   scan: (id: string) => call<ScanRecord>("GET", `/api/scans/${id}`),
   cancelScan: (id: string) => call<{ ok: true }>("POST", `/api/scans/${id}/cancel`),
-  startDraw: (body: { scan: string; focus: DrawFocus; channel: DrawChannel; engine: string | null; model: string | null }) =>
+  startDraw: (body: { scan: string; choices: DrawFocus[]; channel: DrawChannel; engine: string | null; model: string | null }) =>
     call<{ runId: string }>("POST", "/api/runs", { kind: "draw", ...body }).then((r) => r.runId),
 };

@@ -1,4 +1,4 @@
-import { bezierAt, measureNode, postOf, routeSamples, type EdgeRoute, type Point, type Rect } from "./geometry";
+import { bezierAt, countCrossings, measureNode, postOf, routeSamples, type EdgeRoute, type Point, type Rect } from "./geometry";
 import { isPostView, type DiagramDocument } from "./model";
 import { renderShare, type ShareImage, type ShareOptions } from "./export/share";
 
@@ -28,11 +28,6 @@ const POST_TARGETS = { parts: 12, zones: { min: 0, max: 4 }, connections: 14 };
 const DETAIL_TARGETS = { parts: null, zones: null, connections: null };
 
 const inside = (p: Point, r: Rect) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
-/** Proper crossing of two segments: touching, sharing an end or running along each other is not one. */
-const crosses = (a: Point, b: Point, c: Point, d: Point) => {
-  const turn = (p: Point, q: Point, r: Point) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
-  return turn(a, b, c) * turn(a, b, d) < 0 && turn(c, d, a) * turn(c, d, b) < 0;
-};
 const length = (pts: Point[]) => pts.slice(1).reduce((s, p, i) => s + Math.hypot(p.x - pts[i].x, p.y - pts[i].y), 0);
 const words = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
 const finite = (v: number) => (Number.isFinite(v) ? v : 0);
@@ -50,13 +45,7 @@ export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, v
   const edges = view.edges.filter((e) => routes.has(e.id));
   const lines = new Map(edges.map((e) => [e.id, routeSamples(routes.get(e.id)!)]));
 
-  let crossings = 0;
-  for (let i = 0; i < edges.length; i++) for (const b of edges.slice(i + 1)) {
-    const a = edges[i];
-    if ([a.from, a.to].some((id) => id === b.from || id === b.to)) continue;
-    const pa = lines.get(a.id)!, pb = lines.get(b.id)!;
-    if (pa.slice(1).some((p, s) => pb.slice(1).some((q, t) => crosses(pa[s], p, pb[t], q)))) crossings++;
-  }
+  const crossings = countCrossings(edges, routes);
 
   // A group's boundary alone never counts; a route over one of its unrelated members does.
   const edgesOverParts: LayoutReport["edgesOverParts"] = [];

@@ -599,6 +599,29 @@ export function viewBounds(view: Pick<DiagramView, "nodes" | "edges" | "texts"> 
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }
 
+/** Proper crossing of two segments: touching, sharing an end or running along each other is not one. */
+const segmentsCross = (a: Point, b: Point, c: Point, d: Point) => {
+  const turn = (p: Point, q: Point, r: Point) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  return turn(a, b, c) * turn(a, b, d) < 0 && turn(c, d, a) * turn(c, d, b) < 0;
+};
+
+/**
+ * Pairs of drawn connections without a shared end whose curves cross, measured on the same samples
+ * the layout report reads (api contract, Layout report): the report and the layout count alike.
+ */
+export function countCrossings(edges: readonly Pick<DiagramEdge, "id" | "from" | "to">[], routes: Map<string, EdgeRoute>): number {
+  const drawn = edges.filter((e) => routes.has(e.id));
+  const lines = new Map(drawn.map((e) => [e.id, routeSamples(routes.get(e.id)!)]));
+  let crossings = 0;
+  for (let i = 0; i < drawn.length; i++) for (const b of drawn.slice(i + 1)) {
+    const a = drawn[i];
+    if ([a.from, a.to].some((id) => id === b.from || id === b.to)) continue;
+    const pa = lines.get(a.id)!, pb = lines.get(b.id)!;
+    if (pa.slice(1).some((p, s) => pb.slice(1).some((q, t) => segmentsCross(pa[s], p, pb[t], q)))) crossings++;
+  }
+  return crossings;
+}
+
 export const overlaps = (a: Rect, b: Rect, pad = 0) =>
   a.x < b.x + b.w + pad && b.x < a.x + a.w + pad && a.y < b.y + b.h + pad && b.y < a.y + a.h + pad;
 

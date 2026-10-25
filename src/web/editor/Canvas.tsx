@@ -407,8 +407,17 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
     if (i < 0) return;
     const next = i + (e.shiftKey ? -1 : 1);
     if (next >= 0 && next < openable.length) { e.preventDefault(); focusPart(openable[next].id); return; }
-    // Before the first: back to the canvas; after the last, the page's own order goes on past the canvas.
-    if (next < 0) { e.preventDefault(); el.current?.focus({ preventScroll: true }); }
+    e.preventDefault();
+    // Before the first: back to the canvas.
+    if (next < 0) { el.current?.focus({ preventScroll: true }); return; }
+    // After the last: on past the canvas, to the first element the page's order reaches after it; the page's own order
+    // from a part could land on another part and never leave (review 6adef2e-2).
+    const canvas = el.current!;
+    const after = [...document.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, [tabindex]')]
+      .find((x) => x.tabIndex >= 0 && !canvas.contains(x) && !(x as HTMLButtonElement).disabled && x.getClientRects().length > 0
+        && !!(canvas.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING));
+    if (after) after.focus();
+    else (t as HTMLElement).blur?.();
   };
 
   const onPointerUp = (e: RPointerEvent<HTMLDivElement>) => {

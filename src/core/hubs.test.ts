@@ -6,6 +6,7 @@ import { drawView } from "./export/svg";
 import { startSwitches } from "./export/share";
 import { fillDefaults, validateFile, type DiagramView } from "./model";
 import { normalizeFile } from "./normalize";
+import { layoutView } from "./layout";
 import { layoutReport } from "./report";
 import { edge, node } from "./testkit";
 import { PALETTES } from "./theme";
@@ -98,12 +99,24 @@ describe("parts many parts use (#186)", () => {
   });
 
   // The layout report's crossings at bcdbf51, before hubs: 8 and 26 (the run's evidence, 186-before.txt).
-  it("crossings on this repository's and the hotel overview do not go up (8 → 4, 26 → 3)", () => {
-    for (const [name, before, after] of [["archdrawer", 8, 4], ["hotel", 26, 3]] as const) {
+  it("crossings on this repository's and the hotel overview do not go up (8 → 4, 26 → 2)", () => {
+    for (const [name, before, after] of [["archdrawer", 8, 4], ["hotel", 26, 2]] as const) {
       const doc = fixture(name), v = doc.views[0];
       const r = layoutReport(doc, v.id, { ...startSwitches("readme", false), format: "readme", theme: "light" });
       expect(r.crossings, name).toBe(after);
       expect(r.crossings).toBeLessThanOrEqual(before);
     }
+  });
+
+  // Review 6adef2e-1: a hidden connection's label reserves no gap between its parts (diagram contract, Layout).
+  it("a hidden line's label widens no gap", () => {
+    const at = (label: string) => {
+      const v = fillDefaults({ version: 2, title: "gap", views: [{ id: "v", title: "V", caption: { what: "", how: "", notice: "" },
+        nodes: ["a", "hub", "b", "c", "d"].map((id) => node(id)),
+        edges: [{ ...edge("a", "hub", { step: 1 }), id: "ah" }, ...["b", "c", "d"].map((id) => ({ ...edge(id, "hub", { label: id === "d" ? label : "" }), id: `${id}h` }))] }] } as never).views[0] as DiagramView;
+      expect(hiddenEdges(v).has("dh")).toBe(true);
+      return layoutView({ ...v, nodes: v.nodes.map(({ x: _x, y: _y, ...n }) => n) }).nodes.map((n) => [n.id, n.x, n.y]);
+    };
+    expect(at("reads and writes every shared record in the long term store")).toEqual(at(""));
   });
 });

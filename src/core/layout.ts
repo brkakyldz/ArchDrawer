@@ -1,4 +1,4 @@
-import { countCrossings, GROUP, groupHeaderWidth, LABEL, labelWidth, layoutRects, measureNode, overlaps, postOf, routeEdges, styleOf, type Rect } from "./geometry";
+import { countCrossings, GROUP, groupHeaderWidth, hiddenEdges, LABEL, labelWidth, layoutRects, measureNode, overlaps, postOf, routeEdges, styleOf, type Rect } from "./geometry";
 import type { DiagramEdge, DiagramNode, DiagramView, EdgeInput, Kind, Lane, NodeInput } from "./model";
 
 /**
@@ -373,13 +373,25 @@ function gridPositions(view: { nodes: NodeInput[]; edges: EdgeInput[] }, o: Layo
     const lifted: Lifted[] = [];
     const pair = new Set<string>();
     const isMember = new Set(members.map((m) => m.id));
-    for (const e of view.edges) {
+    // A connection a hub hides reserves no gap for its label (diagram contract, Layout; Parts many parts use), yet still
+    // links its parts for the order of the rows and columns: the facts are unchanged.
+    const hidden = hiddenEdges({ nodes: view.nodes, edges: view.edges.map((e, i) => ({ ...e, id: e.id ?? ` ${i}` })) } as Pick<DiagramView, "nodes" | "edges">);
+    const byPair = new Map<string, Lifted>();
+    for (const [i, e] of view.edges.entries()) {
       const a = memberOf(standIn(e.from), container), b = memberOf(standIn(e.to), container);
       if (!a || !b || a === b || !isMember.has(a) || !isMember.has(b)) continue;
       const k = a < b ? `${a}|${b}` : `${b}|${a}`;
-      if (pair.has(k) && e.step === null) continue;
+      const label = hidden.has(e.id ?? ` ${i}`) ? "" : e.label;
+      if (pair.has(k) && e.step === null) {
+        // A drawn label on a later connection of a pair whose first is hidden still needs its gap.
+        const first = byPair.get(k)!;
+        if (!first.label && label) first.label = label;
+        continue;
+      }
       pair.add(k);
-      lifted.push({ a, b, step: e.step, label: e.label });
+      const l = { a, b, step: e.step, label };
+      if (!byPair.has(k)) byPair.set(k, l);
+      lifted.push(l);
     }
     const lanes = new Map<string, Lane>();
     const explicit = new Set(members.filter((n) => n.lane).map((n) => n.id));

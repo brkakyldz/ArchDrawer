@@ -622,11 +622,16 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
     if (hidden.size || marks.length) {
       const shown = routeEdges({ ...view, edges: view.edges.filter((e) => !hidden.has(e.id)) }, rects, { ...o, hubs: false, avoid: [...(o.avoid ?? []), ...marks] });
       if (!hidden.size) return shown;
-      const post = styleOf(postOf(view, o)).post;
-      const labels = view.edges.flatMap((e) => {
+      const style = styleOf(postOf(view, o)), post = style.post, br = style.BADGE.r + 3;
+      const labels: Rect[] = view.edges.flatMap((e) => {
         const at = shown.get(e.id)?.labelAt, w = e.label ? labelWidth(e.label, post) : 0;
         return at && e.label ? [{ x: at.x - w / 2, y: at.y - LABEL.h / 2, w, h: LABEL.h }] : [];
       });
+      // The drawn step badges too, so a hidden line's label, once shown, sits on none (review 6adef2e-4).
+      for (const e of view.edges) {
+        const b = e.step !== null ? shown.get(e.id)?.badgeAt : undefined;
+        if (b) labels.push({ x: b.x - br, y: b.y - br, w: 2 * br, h: 2 * br });
+      }
       const all = routeEdges(view, rects, { ...o, hubs: false, trunks: false, labelsFor: hidden, avoid: [...(o.avoid ?? []), ...marks, ...labels] });
       const out = new Map<string, EdgeRoute>();
       for (const e of view.edges) {

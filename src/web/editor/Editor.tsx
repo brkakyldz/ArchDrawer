@@ -775,7 +775,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
 
       <main className="stage" ref={stageEl}>
         {blank ? <EmptyStage channel={chan}>
-          {chan === "linkedin" && <LinkedInStart {...engineProps} onPrepare={prepare} />}
+          {chan === "linkedin" && <LinkedInStart {...engineProps} onPrepare={prepare} choice={engine && engines ? { engines, engine, model, onEngine: pickEngine, onModel: pickModel } : undefined} />}
           {story && <ChannelStart engine={!!engine} running={runner.state.status === "running"} onDraw={drawStory} onPrepare={prepare} />}
           {story && <RunLine runner={runner} />}
         </EmptyStage> : <>

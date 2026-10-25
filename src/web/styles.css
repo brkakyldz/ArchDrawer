@@ -247,6 +247,11 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .ai-panel input[type="radio"] { accent-color: var(--accent); margin: 0; }
 .ai-panel .pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .ai-panel .pick label { display: grid; min-width: 0; }
+/* The empty LinkedIn stage's engine and model (#44): the AI panel's choice, shown where Draw it is. */
+.stage-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; margin-bottom: 4px; }
+.stage-pick label { display: grid; min-width: 0; gap: 4px; }
+.stage-pick span { font-size: 11.5px; font-weight: 600; color: var(--soft); text-transform: uppercase; letter-spacing: .06em; }
+.stage-pick select { height: 32px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 0 8px; font: inherit; font-size: 13px; min-width: 0; }
 .ai-panel select { width: 100%; height: 32px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--surface); color: var(--ink); padding: 0 6px; font-size: 13px; }
 .ai-panel .engine-note { margin: -4px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
 .ai-panel .engine-note.test { color: var(--k-gate); }

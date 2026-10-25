@@ -18,6 +18,8 @@ const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, change
   return (
     <g className={`nd${dim ? " dim" : ""}${changed ? " changed" : ""}${open ? " open" : ""}`} data-changed={changed ? "true" : undefined} data-dim={dim ? "true" : undefined} data-match={match} data-step={on ? "on" : undefined} data-testid={`node-${node.id}`} data-node-id={node.id} data-kind={node.kind} data-form={node.form}
       data-parent={node.parent ?? ""} data-selected={String(selected)} data-lifted={drag === "lifted" ? "true" : undefined} data-drag-dim={drag === "dim" ? "true" : undefined} data-drop-target={dropTarget ? "true" : undefined} style={{ ["--hover-k" as string]: P.kinds[node.kind] }}
+      // A part with an inside is a button that opens it (ui contract, Opening a part's inside).
+      {...(node.detail ? { "data-open": "true", tabIndex: 0, role: "button", "aria-label": `Open ${node.label}` } : {})}
       dangerouslySetInnerHTML={{ __html: nodeMarkup(node, rect, P, { testIds: true, post, subLines, traces: traces ? (JSON.parse(traces) as Trace[]) : undefined }) }} />
   );
 });
@@ -324,6 +326,32 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
     return snapDrag(box, others, k, alt);
   };
 
+  /**
+   * The keyboard on parts with an inside (ui contract, Opening a part's inside): Enter goes in; Tab and Shift+Tab move
+   * between them in the order of the view's parts, after `canvas` (the drawing order puts groups first).
+   */
+  const onOpenKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const t = e.target as Element;
+    const c = ctlRef.current;
+    const openable = c.view.nodes.filter((n) => n.detail);
+    const focusPart = (id: string) => (el.current?.querySelector(`[data-testid="node-${CSS.escape(id)}"]`) as HTMLElement | SVGElement | null)?.focus();
+    const at = t.getAttribute?.("data-open") === "true" ? t.getAttribute("data-node-id") : null;
+    if (e.key === "Enter" && at) {
+      e.preventDefault();
+      const detail = c.view.nodes.find((n) => n.id === at)?.detail;
+      if (detail) c.goView(detail);
+      return;
+    }
+    if (e.key !== "Tab" || !openable.length || c.editing) return;
+    const i = at ? openable.findIndex((n) => n.id === at) : -1;
+    if (t === el.current && !e.shiftKey) { e.preventDefault(); focusPart(openable[0].id); return; }
+    if (i < 0) return;
+    const next = i + (e.shiftKey ? -1 : 1);
+    if (next >= 0 && next < openable.length) { e.preventDefault(); focusPart(openable[next].id); return; }
+    // Before the first: back to the canvas; after the last, the page's own order goes on past the canvas.
+    if (next < 0) { e.preventDefault(); el.current?.focus({ preventScroll: true }); }
+  };
+
   const onPointerUp = (e: RPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     drag.current = null;
@@ -335,10 +363,12 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
       if (d.moved) {
         const { x: dx, y: dy } = d.off;
         c.apply((doc) => moveTexts(settleNodes(moveNodes(doc, c.vid, d.ids, dx, dy), c.vid, d.ids), c.vid, d.texts, dx, dy, true));
-      } else if (!d.shift && d.hit.node && d.hit.inside) {
-        // The stack mark: go to the component's own view.
-        const detail = view.nodes.find((n) => n.id === d.hit.node)?.detail;
-        if (detail) c.goView(detail);
+      } else if (d.hit.node && view.nodes.find((n) => n.id === d.hit.node)?.detail) {
+        // A part with an inside (ui contract, Opening a part's inside): a click goes to its view, selecting nothing;
+        // Shift+click toggles it in the selection and opens its callout when it is then the only part selected.
+        const detail = view.nodes.find((n) => n.id === d.hit.node)!.detail!;
+        if (!d.shift) c.goView(detail);
+        else if (d.ids.length === 1 && d.ids[0] === d.hit.node) c.setCallout(d.hit.node);
       } else if (!d.shift && d.hit.node) {
         // A click: open or close the component's callout.
         c.setSel({ ...NOTHING, nodes: [d.hit.node] });
@@ -413,6 +443,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
 
   return (
     <div ref={el} className={`canvas${live?.kind === "pan" ? " panning" : ""}${space ? " space-pan" : ""}${steps ? " steps-on" : ""}`} data-testid="canvas" data-tool={ctl.tool} data-detail={detail} tabIndex={0}
+      onKeyDown={onOpenKey}
       onContextMenu={(e) => e.preventDefault()}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
       onDoubleClick={onDouble}

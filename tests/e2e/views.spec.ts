@@ -28,7 +28,8 @@ test("a second click closes a callout; drilling in puts the view in the URL; the
   await expect(page.getByTestId("editor")).toHaveAttribute("data-view", "api-inside");
   await expect(page).toHaveURL(new RegExp(`/d/${id}\\?choice=system&channel=overview&view=api-inside$`));
   await page.getByTestId("crumb-overview").click();
-  await page.getByTestId("node-api").click();
+  // A part with an inside opens its callout on Shift+click (ui contract, Opening a part's inside).
+  await page.getByTestId("node-api").click({ modifiers: ["Shift"], position: { x: 20, y: 20 } });
   await page.getByTestId("callout-open-inside").click();
   await expect(page.getByTestId("node-orders")).toBeVisible();
 });

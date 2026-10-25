@@ -214,7 +214,8 @@ export function groupHeadMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeM
     const sx = lx + widthOf(node.label, T.title) + GROUP.gap;
     out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(sx)}" y="${n(baseline(cy - 9, 18, T.sub.size))}" font-size="${T.sub.size}" fill="${P.muted}"${halo}>${esc(node.sub)}</text>`);
   }
-  if (node.detail) out.push(`<g${tid(o, "node-inside")} class="inside">${iconMarkup("stack", r.x + r.w - GROUP.padHead - INSIDE, cy - INSIDE / 2, INSIDE, P.soft, 1.75)}</g>`);
+  // At the right end of the header, centred on it.
+  if (node.detail) out.push(openMark(r.x + r.w - GROUP.padHead - INSIDE, cy - INSIDE / 2, K, P, o));
   return out.join("");
 }
 
@@ -233,7 +234,7 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
   // The first rect is the component's box (ui contract: editor/export parity check).
   const out: string[] = [`<rect class="box" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" fill="none" pointer-events="none"/>`];
   const box = measureNode(node, o);
-  const inside = (x: number, y: number) => (node.detail ? `<g${tid(o, "node-inside")} class="inside">${iconMarkup("stack", x, y, INSIDE, P.soft, 1.75)}</g>` : "");
+  const inside = (x: number, y: number) => (node.detail ? openMark(x, y, K, P, o) : "");
   const label = (text: string, x: number, y: number, anchor: "start" | "middle", size: number) =>
     `<text${tid(o, "node-label")} class="label" x="${n(x)}" y="${n(y)}" text-anchor="${anchor}" font-size="${size}" font-weight="600"${track(size, -0.012)} fill="${P.ink}">${esc(text)}</text>`;
 
@@ -293,8 +294,18 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
   out.push(label(box.lines[0], lx, baseline(cy - 10, 20, T.compactTitle.size), "start", T.compactTitle.size));
   const insideW = node.detail ? 8 + INSIDE : 0;
   if (box.sub) out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(cb.x + cb.w - insideW)}" y="${n(baseline(cy - 9, 18, T.subMono.size))}" text-anchor="end" font-family="${esc(FONT_MONO)}" font-size="${T.subMono.size}" fill="${P.soft}">${esc(box.sub)}</text>`);
-  out.push(inside(cb.x + cb.w - INSIDE, cy - INSIDE / 2));
+  // 12 px inside the right end of the front body, centred on its height.
+  out.push(inside(g.front.x + g.front.w - 12 - INSIDE, g.front.y + g.front.h / 2 - INSIDE / 2));
   return out.join("");
+}
+
+/**
+ * The open mark of a part with an inside (diagram contract, The open mark): a filled circle 20 px across in the part's
+ * kind colour, holding the `layers` icon, 12 px, in the canvas colour; `x`, `y` its top-left. The editor's `node-inside`.
+ */
+function openMark(x: number, y: number, K: string, P: Palette, o: MarkupOptions): string {
+  const r = INSIDE / 2, icon = 12;
+  return `<g${tid(o, "node-inside")} class="open-mark"><circle cx="${n(x + r)}" cy="${n(y + r)}" r="${n(r)}" fill="${K}"/>${iconMarkup("layers", x + r - icon / 2, y + r - icon / 2, icon, P.canvas, 2)}</g>`;
 }
 
 /** `kind`: drawn in its kind colours; `neutral`: in the theme's one connection colour (diagram contract, Colour). */
@@ -409,7 +420,8 @@ export function drawView(view: DiagramView, P: Palette, o: DrawOptions = {}): Dr
   const kind = new Map(view.nodes.map((x) => [x.id, x.kind]));
   const out: string[] = [];
   const order = drawOrder(view);
-  for (const node of order.filter((x) => x.form === "group")) out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="group">${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
+  const opens = (x: DiagramNode) => (x.detail ? ` data-open="true"` : "");
+  for (const node of order.filter((x) => x.form === "group")) out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="group"${opens(node)}>${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
   // One group per drawn connection holds its line, its label and its badge (ui contract, The share image);
   // labels and badges sit in free spots, so drawing them before the parts covers nothing.
   for (const e of view.edges) {
@@ -433,7 +445,7 @@ export function drawView(view: DiagramView, P: Palette, o: DrawOptions = {}): Dr
   // Each group's head goes over the connections and under the parts (diagram contract, A group's name).
   for (const node of order.filter((x) => x.form === "group")) out.push(`<g data-group-head="${esc(node.id)}">${groupHeadMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
   const traces = tracesOf(view, rects, routes, P, prefix);
-  for (const node of order.filter((x) => x.form !== "group")) out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="${node.form}">${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix, traces: traces.get(node.id) })}</g>`);
+  for (const node of order.filter((x) => x.form !== "group")) out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="${node.form}"${opens(node)}>${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix, traces: traces.get(node.id) })}</g>`);
   for (const t of texts) out.push(`<g data-text-id="${esc(t.id)}" data-size="${t.size}">${textMarkup(t, P)}</g>`);
   return { body: out.join(""), defs: sharedDefs(P, prefix), bounds: viewBounds({ ...view, texts }, rects, routes, true, o.steps), rects, routes };
 }

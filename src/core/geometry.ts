@@ -53,7 +53,7 @@ const POST_STYLE: Style = {
 export const styleOf = (post: boolean | undefined): Style => (post ? POST_STYLE : BASE_STYLE);
 /** Whether a view draws in the post style, unless the caller says. */
 export const postOf = (view: { id?: string; postOf?: string | null }, o: { post?: boolean } = {}) => o.post ?? isPostView(view);
-export const INSIDE = 14; // the "has a view inside" mark
+export const INSIDE = 20; // the open mark of a part with an inside: a circle this wide (diagram contract, The open mark)
 
 export interface NodeBox {
   w: number; h: number;

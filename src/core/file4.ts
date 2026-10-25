@@ -220,8 +220,10 @@ export function resolveChoice(doc: Pick<Document4, "choices">, choice: string | 
  */
 export function choiceDoc(doc: Document4, choiceId?: string | null): Document3 {
   const c = doc.choices.find((x) => x.id === choiceId) ?? doc.choices[0];
+  const taken = doc.choices.filter((x) => x !== c).flatMap((x) => CHANNELS.flatMap((ch) => x.channels[ch].views.map((v) => v.id)));
   return {
-    schema: SCHEMA_V3, id: doc.id, title: doc.title, theme: doc.theme, source: doc.source, engine: doc.engine,
+    schema: SCHEMA_V3, ids: { prefix: c === doc.choices[0] ? null : c.id, taken },
+    id: doc.id, title: doc.title, theme: doc.theme, source: doc.source, engine: doc.engine,
     createdAt: doc.createdAt, updatedAt: doc.updatedAt,
     facts: c.facts, channels: c.channels,
     requests: doc.requests.filter((r) => r.choice === c.id).map(({ choice: _c, ...r }) => r),

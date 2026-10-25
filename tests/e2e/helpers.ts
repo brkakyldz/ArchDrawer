@@ -20,7 +20,7 @@ export async function token(request: APIRequestContext): Promise<string> {
 
 /**
  * The shop drawing in the view shape of an `@2` file (tests/fixtures/shop.archdraw.json), optionally
- * changed. `repoWith` writes it as `@3`.
+ * changed. `repoWith` writes it as `@4`, the format the server stores.
  */
 export function shop(change: (f: Record<string, any>) => void = () => {}): Record<string, any> {
   const f = JSON.parse(readFileSync(join(root, "tests", "fixtures", "shop.archdraw.json"), "utf8"));
@@ -28,7 +28,7 @@ export function shop(change: (f: Record<string, any>) => void = () => {}): Recor
   return f;
 }
 
-/** An `@2` file as the `@3` file it converts to, without the conversion warning; any other file as it is. */
+/** An `@2` file as the `@4` file it converts to (one choice, the whole system), without the conversion warning; any other file as it is. */
 export function asV3(file: Record<string, unknown>): Record<string, unknown> {
   if (file.schema !== "archdraw/diagram@2") return file;
   const r = readAnyFile(file);

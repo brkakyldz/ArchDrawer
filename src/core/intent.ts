@@ -580,7 +580,7 @@ function storyChannel(stored: Document3, intent: StoryIntent, portrait: boolean,
   };
   const base = { ...joinChannel(stored, "overview"), views: [source], warnings: [] };
   const rows = storyRows(stored);
-  const view = channel === "overview" ? stored.channels.overview.views[0]?.id ?? "overview" : channelViewId(stored, channel);
+  const view = channelViewId(stored, channel);
   const groups = stored.channels[channel].views.find((v) => v.id === view)?.nodes.filter((n) => n.form === "group").map((n) => n.id);
   const r = intentToDocument(base, source.id, intent, { portrait, ids: { view, groups }, channel, rows });
   const drawn = r.doc.views.find((v) => v.id === r.view)!;
@@ -610,9 +610,12 @@ export function storyRows(stored: Pick<Document3, "facts">): StoryRows {
 }
 
 /** A channel's view id (diagram contract, Story answers): kept, else the channel's name, or `<name>-2` … when another view has it. */
-export function channelViewId(stored: Document3, channel: Exclude<ChannelId, "overview">): string {
-  const others = new Set(CHANNELS.filter((c) => c !== channel).flatMap((c) => stored.channels[c].views.map((v) => v.id)));
-  return stored.channels[channel].views[0]?.id ?? freeIdAmong(others, channel);
+export function channelViewId(stored: Document3, channel: ChannelId): string {
+  const own = stored.channels[channel].views[0]?.id;
+  if (own) return own;
+  // In the file's first choice the channel's name, else `<choice id>-<channel>` (diagram contract, The view); free across the file.
+  const others = new Set([...CHANNELS.filter((c) => c !== channel).flatMap((c) => stored.channels[c].views.map((v) => v.id)), ...(stored.ids?.taken ?? [])]);
+  return freeIdAmong(others, stored.ids?.prefix ? `${stored.ids.prefix}-${channel}` : channel);
 }
 
 /** The LinkedIn view's id: kept, else `linkedin`, or `linkedin-2` … when another view has it. */

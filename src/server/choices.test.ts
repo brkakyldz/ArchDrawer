@@ -101,6 +101,25 @@ describe("a file of choices through the server", () => {
   });
 });
 
+describe("views made in one choice (review 510f7bc-1)", () => {
+  it("a simplification's new view takes no id another choice's view has", async () => {
+    const t = makeApp();
+    const { file } = threeRepo();
+    const f = JSON.parse(readFileSync(file, "utf8")) as File4;
+    // The first choice already holds a view with the id the fixture's simplification gives its new view.
+    f.choices[0].channels.overview.views.push({ id: "inside-the-system", title: "Taken", caption: { title: "Taken", lede: "" }, nodes: [], edges: [] });
+    writeFileSync(file, JSON.stringify(f, null, 2));
+    const id = (await json(await t.req("/api/files", { method: "POST", json: { path: file } }))).body.id as string;
+    const r = await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, kind: "simplify", choice: "server", view: "server-overview", engine: "fixture", model: null } }));
+    expect(r.status).toBe(202);
+    expect(await t.runs.wait(r.body.runId)).toMatchObject({ status: "succeeded", choice: "server" });
+    const after = JSON.parse(readFileSync(file, "utf8")) as Document4;
+    const made = after.choices[1].channels.overview.views.map((v) => v.id);
+    expect(made).toContain("inside-the-system-2");
+    expect(after.choices[0].channels.overview.views.map((v) => v.id)).toContain("inside-the-system");
+  });
+});
+
 describe("the command line on a file of choices", () => {
   it("validate lists a choice's errors under it; svg takes --choice, else the choice holding --view, else the first", async () => {
     const { root, file } = threeRepo();

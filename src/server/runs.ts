@@ -318,7 +318,7 @@ export class RunManager {
     });
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the drawing");
-    let doc = answerToDocument(answer, { base: req.base, now: nowIso(), engine: { id: req.engine.id, model: req.model }, fileExists: repoFile(root), scope, view: req.view, facts: req.stored.facts.components.map((c) => c.id), rows: storyRows(req.stored) });
+    let doc = answerToDocument(answer, { base: req.base, now: nowIso(), engine: { id: req.engine.id, model: req.model }, fileExists: repoFile(root), scope, view: req.view, facts: req.stored.facts.components.map((c) => c.id), rows: storyRows(req.stored), takenViews: req.stored.ids?.taken });
     if (simplify) doc = keepUnrelatedViews(req.base, doc).doc;
     // The story route on the overview changes how it looks only; each content change is ignored with a warning.
     if (appearance) doc = appearanceOnly(req.base, doc).doc;

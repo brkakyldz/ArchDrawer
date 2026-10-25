@@ -110,3 +110,23 @@ describe("format 4 (FILE-2, diagram contract Choice)", () => {
     expect([typed.id, typed.kind, typed.title.length, typed.title.endsWith("…")]).toEqual(["xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-2", "custom", 80, true]);
   });
 });
+
+describe("views made in a choice (diagram contract, The view; review 510f7bc-1)", () => {
+  it("take the channel's name in the first choice, `<choice id>-<channel>` elsewhere, and never another choice's id", async () => {
+    const { prepareLinkedIn } = await import("./export/feed");
+    const { prepareChannel } = await import("./simple");
+    const d = doc4();
+    // The first choice gets `linkedin`; the next its own name, even though `linkedin` is free in its own channels.
+    const first = prepareLinkedIn(choiceDoc(d, "checkout"));
+    if (!first.ok) throw new Error(first.error);
+    expect(first.doc.channels.linkedin.views[0].id).toBe("linkedin");
+    const d2 = withChoice(d, "checkout", first.doc);
+    const next = prepareLinkedIn(choiceDoc(d2, "server"));
+    if (!next.ok) throw new Error(next.error);
+    expect(next.doc.channels.linkedin.views[0].id).toBe("server-linkedin");
+    const readme = prepareChannel(choiceDoc(d2, "server"), "readme");
+    if (!readme.ok) throw new Error(readme.error);
+    expect(readme.doc.channels.readme.views[0].id).toBe("server-readme");
+    expect(validateFile4(withChoice(d2, "server", next.doc)).ok).toBe(true);
+  });
+});

@@ -58,8 +58,16 @@ export type Step = DiagramStep;
 export interface Channel { views: View3[]; showSteps: boolean; outdated: string[]; steps?: Step[] }
 export interface Request3 { id: string; text: string; channel: ChannelId; view: string; at: string }
 
+/**
+ * Where a choice sits in its file, for the ids of views made in it (diagram contract, The view): no prefix in the
+ * file's first choice, else the choice's id; `taken` holds every other choice's view ids. Never stored.
+ */
+export interface ChoiceIds { prefix: string | null; taken: string[] }
+
 export interface Document3 {
   schema: typeof SCHEMA_V3;
+  /** Set when this document is one choice of an `@4` file (`choiceDoc`). */
+  ids?: ChoiceIds;
   id: string; title: string; theme: Theme; source: DiagramSource | null; engine: EngineRef | null;
   createdAt: string; updatedAt: string;
   facts: Facts;

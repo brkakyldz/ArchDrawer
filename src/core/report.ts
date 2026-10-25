@@ -76,8 +76,8 @@ export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, v
     for (const n of view.nodes) {
       over(n.id, "label", n.label, STORY_LIMITS.label);
       if (n.form === "group") continue;
-      over(n.id, "sub", n.sub, STORY_LIMITS.sub);
-
+      // A sub-line the image does not draw is over no target (review 510f7bc-3).
+      if (subLines) over(n.id, "sub", n.sub, STORY_LIMITS.sub);
     }
     for (const e of edges) {
       if (!e.label) continue;

@@ -54,6 +54,15 @@ describe("sides count their load", () => {
     expect(routes.get("e4")!.side1).toBe("l");
   });
 
+  it("never takes a cheaper side whose curve would go inside one of its own parts", () => {
+    // b sits under a and mostly overlaps it across; a's bottom holds two other lines, so its right side looks cheaper.
+    const v = view([part("a", 0, 0), part("b", 60, 130), part("c1", -60, 500), part("c2", 100, 500)],
+      [["c1e", "a", "c1"], ["c2e", "a", "c2"], ["ab", "a", "b"]]);
+    const { rects, routes } = route(v), r = routes.get("ab")!, a = rects.get("a")!, b = rects.get("b")!;
+    const inside = (p: { x: number; y: number }, q: Rect) => p.x > q.x + 0.5 && p.x < q.x + q.w - 0.5 && p.y > q.y + 0.5 && p.y < q.y + q.h - 0.5;
+    for (let i = 1; i < 64; i++) { const p = bezierAt(r, i / 64); expect(inside(p, a) || inside(p, b)).toBe(false); }
+  });
+
   it("is stateless: the same view always gives the same sides and paths", () => {
     const v = shop(true);
     expect([...route(v).routes.values()].map((r) => r.d)).toEqual([...route(v).routes.values()].map((r) => r.d));
@@ -78,6 +87,21 @@ describe("short gaps get short handles", () => {
       }
       expect(Math.abs(r.c1.x - r.p0.x)).toBeLessThanOrEqual(40);
       expect(Math.abs(r.p1.x - r.c2.x)).toBeLessThanOrEqual(40);
+    }
+  });
+
+  it("across a gap under 24 px the handles shrink to the gap, so the curve stays in it, on both axes", () => {
+    for (const [gap, dy, vertical] of [[12, 0, false], [12, 6, false], [16, 0, true], [16, 6, true]] as const) {
+      const v = view([part("a", 0, 0), vertical ? part("b", dy, 108 + gap) : part("b", 196 + gap, dy)], [["ab", "a", "b"]]);
+      const r = route(v).routes.get("ab")!, axis = vertical ? "y" : "x";
+      expect(r.p1[axis] - r.p0[axis]).toBe(gap);
+      expect(Math.abs(r.c1[axis] - r.p0[axis])).toBeLessThanOrEqual(gap + 1e-6);
+      expect(Math.abs(r.p1[axis] - r.c2[axis])).toBeLessThanOrEqual(gap + 1e-6);
+      for (let i = 0; i <= 64; i++) {
+        const p = bezierAt(r, i / 64);
+        expect(p[axis]).toBeGreaterThanOrEqual(r.p0[axis] - 1e-6);
+        expect(p[axis]).toBeLessThanOrEqual(r.p1[axis] + 1e-6);
+      }
     }
   });
 

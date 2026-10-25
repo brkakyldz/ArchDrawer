@@ -398,6 +398,10 @@ function cheapestSides(list: FreeSides[], rects: Map<string, Rect>, load: Map<st
       let best = cur, bestCost = sideCost(a, b, cur, count(`${me}:${cur}`) - 1);
       for (const s of facingSides(a, b)) {
         if (s === cur) continue;
+        // A side whose curve would go inside one of the connection's own parts is no option.
+        const pair: [Side, Side] = end === 0 ? [s, c.s[1]] : [c.s[0], s];
+        const [from, to] = [rects.get(c.from)!, rects.get(c.to)!];
+        if (intoOwn(plainCurve(from, to, pair), from, to)) continue;
         const cost = sideCost(a, b, s, count(`${me}:${s}`));
         if (cost < bestCost - 0.001) { best = s; bestCost = cost; }
       }
@@ -457,7 +461,7 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
   for (const r of rects.values()) { left = Math.min(left, r.x); right = Math.max(right, r.x + r.w); }
   const curveOf = (e: DiagramEdge, s: [Side, Side], c?: number): Point[] => {
     const a = rects.get(e.from)!, b = rects.get(e.to)!, p0 = sideMid(a, s[0]), p1 = sideMid(b, s[1]);
-    c ??= clamp(Math.hypot(p1.x - p0.x, p1.y - p0.y) * 0.42, MIN_HANDLE, 160);
+    c ??= handle(p0, p1, s);
     const curve = { p0, p1, c1: { x: p0.x + NORMAL[s[0]][0] * c, y: p0.y + NORMAL[s[0]][1] * c }, c2: { x: p1.x + NORMAL[s[1]][0] * c, y: p1.y + NORMAL[s[1]][1] * c } } as EdgeRoute;
     return Array.from({ length: 65 }, (_, i) => bezierAt(curve, i / 64));
   };

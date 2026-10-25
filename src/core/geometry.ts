@@ -360,25 +360,41 @@ function behind(route: Curve, parts: (Rect & { id: string })[]): string[] {
  * the boxes, pushed out by the half-size and the pad, meet — so those are the candidates. A spot whose
  * box is further than `reach` from every point of the curve does not count.
  */
-export function nearestFree(mid: Point, curve: Point[], hw: number, hh: number, obstacles: Rect[], pad: number, reach = Infinity): Point | null {
+export function nearestFree(mid: Point, curve: Point[], hw: number, hh: number, obstacles: Rect[], pad: number, reach = Infinity, prefer?: (p: Point) => boolean): Point | null {
   const near = (p: Point) => reach === Infinity || curve.some((c) => Math.hypot(Math.max(0, Math.abs(c.x - p.x) - hw), Math.max(0, Math.abs(c.y - p.y) - hh)) <= reach);
   const fits = (p: Point) => near(p) && obstacles.every((r) => p.x + hw + pad <= r.x || p.x - hw - pad >= r.x + r.w || p.y + hh + pad <= r.y || p.y - hh - pad >= r.y + r.h);
   let best: Point | null = null, bestD = Infinity;
+  // With `prefer`, the nearest free spot it accepts wins over a nearer one it does not (a label off other lines).
+  let liked: Point | null = null, likedD = Infinity;
   const consider = (p: Point) => {
     const q = { x: Math.round(p.x), y: Math.round(p.y) }, d = Math.hypot(q.x - mid.x, q.y - mid.y);
+    if (prefer && d < likedD - 1e-9 && fits(q) && prefer(q)) { liked = q; likedD = d; }
     if (d < bestD - 1e-9 && fits(q)) { best = q; bestD = d; }
   };
   consider(mid);
   for (const p of curve) consider(p);
+  if (prefer) {
+    // Spots beside the curve, as far as the reach lets a box go, so a label can step off a crossing line.
+    for (const p of curve) for (const [dx, dy] of [[0, hh + 2], [0, -hh - 2], [0, hh + 8], [0, -hh - 8], [hw + 2, 0], [-hw - 2, 0], [hw + 8, 0], [-hw - 8, 0]]) consider({ x: p.x + dx, y: p.y + dy });
+  }
   // Edges near the middle first; all of them only when nothing near is free.
   for (const radius of [480, Infinity]) {
     const near = obstacles.filter((r) => Math.max(r.x - mid.x, mid.x - r.x - r.w, r.y - mid.y, mid.y - r.y - r.h) <= radius);
     const xs = [mid.x, ...near.flatMap((r) => [Math.floor(r.x - pad - hw), Math.ceil(r.x + r.w + pad + hw)])];
     const ys = [mid.y, ...near.flatMap((r) => [Math.floor(r.y - pad - hh), Math.ceil(r.y + r.h + pad + hh)])];
-    for (const x of xs) for (const y of ys) if (Math.hypot(x - mid.x, y - mid.y) < bestD) consider({ x, y });
-    if (best) break;
+    for (const x of xs) for (const y of ys) if (Math.hypot(x - mid.x, y - mid.y) < (prefer ? likedD : bestD)) consider({ x, y });
+    if (prefer ? liked : best) break;
   }
-  return best;
+  return liked ?? best;
+}
+
+/** Whether a polyline touches a box: a point inside it or a segment crossing one of its edges. */
+export function polylineMeetsRect(pts: Point[], r: Rect): boolean {
+  const inside = (p: Point) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+  if (pts.some(inside)) return true;
+  const corners = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }];
+  for (let i = 1; i < pts.length; i++) for (let k = 0; k < 4; k++) if (segmentsCross(pts[i - 1], pts[i], corners[k], corners[(k + 1) % 4])) return true;
+  return false;
 }
 
 export interface RouteOptions {
@@ -684,16 +700,23 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
     };
     const under = behind(route, parts.filter((r) => r.id !== e.from && r.id !== e.to));
     if (under.length) route.blocked = under;
-    const along = alongRoute(route);
-    if (e.label && o.labels !== false) {
-      // The label takes the free spot nearest the middle of the curve, 4 px clear of parts, names,
-      // texts and other labels, its box within 10 px of its curve; with none, it is left out.
-      const half = labelWidth(e.label, S.post) / 2, curve = Array.from({ length: 129 }, (_, i) => along(i / 128));
-      route.labelAt = nearestFree(along(0.5), curve, half, LABEL.h / 2, [...blocked, ...taken], 4, 10);
-      // Its drawn box: later labels keep their 4 px from it, badges only stay off it.
-      if (route.labelAt) taken.push({ x: route.labelAt.x - half, y: route.labelAt.y - LABEL.h / 2, w: half * 2, h: LABEL.h });
-    }
     routes.set(e.id, route);
+  }
+  // Labels once every route is known (diagram contract, Labels): the free spot nearest the middle of the curve,
+  // 4 px clear of parts, names, texts and other labels, its box within 10 px of its curve; among those, the nearest
+  // whose box, grown by 2 px, touches no other drawn connection's line or trunk, when there is one; with none free,
+  // it is left out.
+  const drawn = new Map([...routes].map(([id, r]) => [id, drawnLine(r)]));
+  for (const e of view.edges) {
+    const route = routes.get(e.id);
+    if (!route || !e.label || o.labels === false) continue;
+    const along = alongRoute(route);
+    const half = labelWidth(e.label, S.post) / 2, hh = LABEL.h / 2, curve = Array.from({ length: 129 }, (_, i) => along(i / 128));
+    const others = [...drawn].filter(([id]) => id !== e.id).map(([, pts]) => pts);
+    const clearOfLines = (p: Point) => { const box = { x: p.x - half - 2, y: p.y - hh - 2, w: half * 2 + 4, h: hh * 2 + 4 }; return !others.some((pts) => polylineMeetsRect(pts, box)); };
+    route.labelAt = nearestFree(along(0.5), curve, half, hh, [...blocked, ...taken], 4, 10, clearOfLines);
+    // Its drawn box: later labels keep their 4 px from it, badges only stay off it.
+    if (route.labelAt) taken.push({ x: route.labelAt.x - half, y: route.labelAt.y - hh, w: half * 2, h: LABEL.h });
   }
   // Place badges after all labels, including labels of later connections: nearest the curve's middle.
   for (const route of routes.values()) {

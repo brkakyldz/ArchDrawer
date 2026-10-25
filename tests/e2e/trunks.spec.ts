@@ -37,3 +37,19 @@ test("a trunk fades with its connections at overview zoom", async ({ page }) => 
   await expect.poll(() => opacity('[data-testid="edge-a-hub"]')).toBe("0.3");
   await expect.poll(() => opacity('[data-testid="trunk"]')).toBe("0.3");
 });
+
+// Review 98baaf0-1: while a part it carries none of is dragged, the trunk dims with its connections (ui contract, Dragging).
+test("a trunk dims with its connections while another part is dragged", async ({ page }) => {
+  await open(page, shop((f) => {
+    f.views[0].nodes = [part("a", 0, 0), part("b", 260, 0), part("c", 520, 0), part("hub", 260, 1200), part("x", 900, 600)];
+    f.views[0].edges = ["a", "b", "c"].map((s) => ({ id: `${s}-hub`, from: s, to: "hub", label: "", style: "dep", both: false, step: null }));
+  }));
+  const x = await page.getByTestId("node-x").boundingBox();
+  await page.mouse.move(x!.x + x!.width / 2, x!.y + 12);
+  await page.mouse.down();
+  await page.mouse.move(x!.x + x!.width / 2 + 60, x!.y + 40, { steps: 6 });
+  await expect(page.getByTestId("edge-a-hub")).toHaveAttribute("data-drag-dim", "true");
+  await expect(page.getByTestId("trunk")).toHaveAttribute("data-drag-dim", "true");
+  await page.mouse.up();
+  await expect(page.getByTestId("trunk")).not.toHaveAttribute("data-drag-dim", /.+/);
+});

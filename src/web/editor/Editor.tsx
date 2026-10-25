@@ -462,7 +462,7 @@ export function Editor({ id, channel: wantedChannel, view: wantedView }: { id: s
   const reserved = useMemo(() => (stored ? reservedIds(stored) : new Set<string>()), [stored]);
   // On the overview only, one line when it misses its targets; nothing changes by itself.
   const ctl: Ctl | null = doc && view ? {
-    doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: () => { if (!refusal()) hist.checkpoint(); },
+    doc, vid: view.id, view, P: PALETTES[doc.theme], vp, setVp, stage, apply, checkpoint: () => { if (!refusal()) hist.checkpoint(); }, refused: refusal,
     sel, setSel, callout, setCallout, tool, setTool, editing, setEditing, textSize, picker, setPicker,
     toast, goView, changed, pinned, setPinned, found, channel: stored ? drawnChannel(stored, chan) : "overview",
     // A step that is gone (undone, removed) lights nothing and dims nothing.

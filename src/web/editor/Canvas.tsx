@@ -3,25 +3,28 @@ import { layoutRects, measureText, routeEdges, textStyle, type EdgeRoute, type R
 import { badgeMarkup, drawOrder, edgeMarkup, labelMarkup, namesClip, nodeMarkup, sharedDefs, textMarkup } from "../../core/export/svg";
 import { descendants, isPostView, LIMITS, type DiagramEdge, type DiagramNode, type DiagramText, type Kind } from "../../core/model";
 import type { Palette } from "../../core/theme";
-import { clampTextSize, connect, moveNodes, moveTexts, setText, settleNodes, VIEW_FULL } from "./ops";
+import { clampTextSize, connect, moveNodes, moveTexts, setText, settleNodes, VIEW_FULL, withInside } from "./ops";
 import type { Ctl, Selection } from "./types";
 import { NOTHING } from "./types";
 import { detailAt, toWorld, zoomAt } from "./viewport";
 
 /* ---------- pieces of the drawing: the same markup as every export (invariant 5) ---------- */
 
-const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, changed, open = false, post, match, on = false }: { node: DiagramNode; rect: Rect; P: Palette; selected: boolean; dim: boolean; changed: boolean; open?: boolean; post: boolean; match?: "true" | "current"; on?: boolean }) {
+/** A drag's marks on a part or a connection (ui contract, Dragging): lifted, or dimmed while others move. */
+type DragMark = "lifted" | "dim" | undefined;
+
+const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, changed, open = false, post, match, on = false, drag }: { node: DiagramNode; rect: Rect; P: Palette; selected: boolean; dim: boolean; changed: boolean; open?: boolean; post: boolean; match?: "true" | "current"; on?: boolean; drag?: DragMark }) {
   return (
     <g className={`nd${dim ? " dim" : ""}${changed ? " changed" : ""}${open ? " open" : ""}`} data-changed={changed ? "true" : undefined} data-dim={dim ? "true" : undefined} data-match={match} data-step={on ? "on" : undefined} data-testid={`node-${node.id}`} data-node-id={node.id} data-kind={node.kind} data-form={node.form}
-      data-parent={node.parent ?? ""} data-selected={String(selected)} style={{ ["--hover-k" as string]: P.kinds[node.kind] }}
+      data-parent={node.parent ?? ""} data-selected={String(selected)} data-lifted={drag === "lifted" ? "true" : undefined} data-drag-dim={drag === "dim" ? "true" : undefined} style={{ ["--hover-k" as string]: P.kinds[node.kind] }}
       dangerouslySetInnerHTML={{ __html: nodeMarkup(node, rect, P, { testIds: true, post }) }} />
   );
 });
 
-const EdgeShape = memo(function EdgeShape({ edge, route, P, from, to, selected, dim, flow, open = false, clip }: { edge: DiagramEdge; route: EdgeRoute; P: Palette; from: Kind; to: Kind; selected: boolean; dim: boolean; flow: boolean; open?: boolean; clip?: string }) {
+const EdgeShape = memo(function EdgeShape({ edge, route, P, from, to, selected, dim, flow, open = false, clip, focus = false, dragDim = false }: { edge: DiagramEdge; route: EdgeRoute; P: Palette; from: Kind; to: Kind; selected: boolean; dim: boolean; flow: boolean; open?: boolean; clip?: string; focus?: boolean; dragDim?: boolean }) {
   return (
     <g className={`ed${dim ? " dim" : ""}${open ? " open" : ""}`} data-dim={dim ? "true" : undefined} data-testid={`edge-${edge.id}`} data-edge-id={edge.id} data-style={edge.style} data-both={String(edge.both)}
-      data-step={edge.step ?? ""} data-selected={String(selected)}>
+      data-step={edge.step ?? ""} data-selected={String(selected)} data-focus={focus ? "true" : undefined} data-drag-dim={dragDim ? "true" : undefined}>
       {/* The line is clipped at group names as in the export; the hit path is not, so a line stays selectable there. */}
       <g clipPath={clip} dangerouslySetInnerHTML={{ __html: edgeMarkup(edge, route, P, { fromKind: from, toKind: to }) }} />
       {flow && <path className="flow" d={route.d} clipPath={clip} />}
@@ -55,7 +58,8 @@ const TextShape = memo(function TextShape({ text, P, selected, typing }: { text:
 
 type Drag =
   | { kind: "pan"; sx: number; sy: number; vx: number; vy: number }
-  | { kind: "move"; ids: string[]; texts: string[]; last: { x: number; y: number }; start: { x: number; y: number }; moved: boolean; hit: { node?: string; text?: string; inside?: boolean }; shift: boolean }
+  /** `off`: how far the pieces have moved, in drawing px; the document changes only on release (ui contract, Dragging). */
+  | { kind: "move"; ids: string[]; texts: string[]; start: { x: number; y: number }; off: { x: number; y: number }; moved: boolean; hit: { node?: string; text?: string; inside?: boolean }; shift: boolean }
   | { kind: "marquee"; start: { x: number; y: number }; cur: { x: number; y: number }; shift: boolean }
   | { kind: "connect"; from: string; cur: { x: number; y: number } }
   | { kind: "scale"; id: string; corner: Corner; size0: number; box: Rect; moved: boolean };
@@ -79,8 +83,32 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   ctlRef.current = ctl;
 
   const post = isPostView(view);
-  const rects = useMemo(() => layoutRects(view), [view]);
-  const routes = useMemo(() => routeEdges(view, rects, { avoid: view.texts.map((t) => ({ x: t.x, y: t.y, ...measureText(t) })) }), [view, rects]);
+  const restRects = useMemo(() => layoutRects(view), [view]);
+  const restRoutes = useMemo(() => routeEdges(view, restRects, { avoid: view.texts.map((t) => ({ x: t.x, y: t.y, ...measureText(t) })) }), [view, restRects]);
+  // While a drag is on, only the dragged pieces and their own connections move (ui contract, Dragging):
+  // every other box, path, label and badge, the frames of the dragged parts' groups too, holds until release.
+  const dragOff = live?.kind === "move" && live.moved ? live.off : null;
+  const moving = useMemo(() => (live?.kind === "move" && live.moved ? withInside(view, live.ids) : null), [live, view]);
+  const movingTexts = useMemo(() => new Set(live?.kind === "move" && live.moved ? live.texts : []), [live]);
+  const texts = useMemo(() => (dragOff && movingTexts.size ? view.texts.map((t) => (movingTexts.has(t.id) ? { ...t, x: t.x + dragOff.x, y: t.y + dragOff.y } : t)) : view.texts), [view, dragOff, movingTexts]);
+  const rects = useMemo(() => {
+    if (!dragOff || !moving) return restRects;
+    const out = new Map(restRects);
+    for (const id of moving) { const r = restRects.get(id); if (r) out.set(id, { ...r, x: r.x + dragOff.x, y: r.y + dragOff.y }); }
+    return out;
+  }, [restRects, moving, dragOff]);
+  const touches = (e: DiagramEdge) => !!moving && (moving.has(e.from) || moving.has(e.to));
+  const routes = useMemo(() => {
+    if (!dragOff || !moving) return restRoutes;
+    const again = routeEdges(view, rects, { avoid: texts.map((t) => ({ x: t.x, y: t.y, ...measureText(t) })) });
+    const out = new Map(restRoutes);
+    for (const e of view.edges) {
+      if (!moving.has(e.from) && !moving.has(e.to)) continue;
+      const r = again.get(e.id);
+      if (r) out.set(e.id, r); else out.delete(e.id);
+    }
+    return out;
+  }, [view, rects, texts, restRoutes, moving, dragOff]);
   const order = useMemo(() => drawOrder(view), [view]);
   const clip = useMemo(() => namesClip(view, rects, "ad-names", post), [view, rects, post]);
   const kindOf = useMemo(() => new Map(view.nodes.map((n) => [n.id, n.kind])), [view]);
@@ -199,7 +227,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
         next = nodeId ? { ...NOTHING, nodes: [nodeId] } : { ...NOTHING, texts: [textId!] };
       }
       c.setSel(next);
-      return start({ kind: "move", ids: next.nodes, texts: next.texts, last: p, start: p, moved: false, hit: { node: nodeId ?? undefined, text: textId ?? undefined, inside: !!t.closest("[data-testid=node-inside]") }, shift: e.shiftKey });
+      return start({ kind: "move", ids: next.nodes, texts: next.texts, start: p, off: { x: 0, y: 0 }, moved: false, hit: { node: nodeId ?? undefined, text: textId ?? undefined, inside: !!t.closest("[data-testid=node-inside]") }, shift: e.shiftKey });
     }
     if (edgeId) {
       c.setSel(e.shiftKey ? { ...c.sel, edges: c.sel.edges.includes(edgeId) ? c.sel.edges.filter((x) => x !== edgeId) : [...c.sel.edges, edgeId] } : { ...NOTHING, edges: [edgeId] });
@@ -220,10 +248,14 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
     const p = world(e);
     if (d.kind === "move") {
       if (!d.moved && Math.hypot(p.x - d.start.x, p.y - d.start.y) * c.vp.k < 3) return;
-      if (!d.moved) { d.moved = true; c.checkpoint(); }
-      const dx = p.x - d.last.x, dy = p.y - d.last.y;
-      d.last = p;
-      c.apply((doc) => moveTexts(moveNodes(doc, c.vid, d.ids, dx, dy), c.vid, d.texts, dx, dy), { record: false });
+      if (!d.moved) {
+        // A run pauses edits: the piece does not lift, and the reason shows once.
+        const no = c.refused();
+        if (no) { c.toast(no); drag.current = null; setLive(null); return; }
+        d.moved = true;
+      }
+      // Nothing in the document changes until release: one edit, one save, one undo step.
+      d.off = { x: p.x - d.start.x, y: p.y - d.start.y };
       setLive({ ...d });
     } else if (d.kind === "scale") {
       const b = d.box, west = d.corner.endsWith("w"), north = d.corner.startsWith("n");
@@ -248,7 +280,8 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
     const c = ctlRef.current;
     if (d.kind === "move") {
       if (d.moved) {
-        c.apply((doc) => moveTexts(settleNodes(doc, c.vid, d.ids), c.vid, d.texts, 0, 0, true), { record: false });
+        const { x: dx, y: dy } = d.off;
+        c.apply((doc) => moveTexts(settleNodes(moveNodes(doc, c.vid, d.ids, dx, dy), c.vid, d.ids), c.vid, d.texts, dx, dy, true));
       } else if (!d.shift && d.hit.node && d.hit.inside) {
         // The stack mark: go to the component's own view.
         const detail = view.nodes.find((n) => n.id === d.hit.node)?.detail;
@@ -299,6 +332,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   // Semantic zoom: the level comes from the zoom only; sizes never change.
   const detail = detailAt(k);
   const touchesOpen = (e: DiagramEdge) => !!ctl.callout && (e.from === ctl.callout || e.to === ctl.callout);
+  const dragMark = (id: string): DragMark => (!moving ? undefined : moving.has(id) ? "lifted" : "dim");
 
   const enterNode = (id: string | null) => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
@@ -320,13 +354,15 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
       <svg className="world" aria-label={view.title}>
         <defs dangerouslySetInnerHTML={{ __html: defs }} />
         <g transform={`translate(${vp.x} ${vp.y}) scale(${k})`}>
-          {groups.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} />)}
+          {groups.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} drag={dragMark(n.id)} />)}
           {clip && <defs dangerouslySetInnerHTML={{ __html: clip }} />}
-          {view.edges.map((e) => {
+          {/* A dragged part's own connections are drawn above every other one, still under the parts. */}
+          {[...view.edges.filter((e) => !touches(e)), ...view.edges.filter(touches)].map((e) => {
             const r = routes.get(e.id);
-            return r ? <EdgeShape key={e.id} edge={e} route={r} P={P} from={kindOf.get(e.from)!} to={kindOf.get(e.to)!} selected={selEdges.has(e.id)} dim={dimEdge(e)} flow={steps && e.step !== null} open={touchesOpen(e)} clip={clip ? "url(#ad-names)" : undefined} /> : null;
+            return r ? <EdgeShape key={e.id} edge={e} route={r} P={P} from={kindOf.get(e.from)!} to={kindOf.get(e.to)!} selected={selEdges.has(e.id)} dim={dimEdge(e)} flow={steps && e.step !== null} open={touchesOpen(e)} clip={clip ? "url(#ad-names)" : undefined}
+              focus={touches(e)} dragDim={!!moving && !touches(e)} /> : null;
           })}
-          {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} />)}
+          {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} drag={dragMark(n.id)} />)}
           {view.edges.map((e) => {
             const r = routes.get(e.id);
             if (!r) return null;
@@ -342,7 +378,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
               </g>
             );
           })}
-          {view.texts.map((t) => <TextShape key={t.id} text={t} P={P} selected={selTexts.has(t.id)} typing={ctl.editing?.kind === "text" && ctl.editing.id === t.id} />)}
+          {texts.map((t) => <TextShape key={t.id} text={t} P={P} selected={selTexts.has(t.id)} typing={ctl.editing?.kind === "text" && ctl.editing.id === t.id} />)}
 
           {/* editor-only marks: search matches, selection, ports, drag feedback (never in an export) */}
           {found && [...found.ids].map((id) => {
@@ -364,7 +400,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
             );
           })}
           {sel.texts.map((id) => {
-            const t = view.texts.find((x) => x.id === id);
+            const t = texts.find((x) => x.id === id);
             if (!t) return null;
             const m = measureText(t);
             const pad = 6 / k, box = { x: t.x - pad, y: t.y - pad, w: m.w + pad * 2, h: m.h + pad * 2 };

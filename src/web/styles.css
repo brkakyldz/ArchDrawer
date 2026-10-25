@@ -103,6 +103,9 @@ svg.i { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin
 .nd.dim, .ed.dim, .lb.dim { opacity: .16; transition: opacity .18s; }
 .nd.dim { opacity: .4; }
 .nd:hover .body { stroke: var(--hover-k, var(--line-2)); }
+/* A drag (ui contract, Dragging): the dragged parts lift with a stronger shadow and no size change; the rest dims. */
+.nd[data-lifted="true"] { filter: drop-shadow(0 12px 18px rgba(15, 23, 42, .28)) drop-shadow(0 3px 6px rgba(15, 23, 42, .18)); cursor: grabbing; }
+.nd[data-drag-dim="true"], .ed[data-drag-dim="true"] { opacity: .6; }
 .ed .hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; cursor: pointer; }
 .ed .line, .ed .glow { pointer-events: none; }
 .ed[data-selected="true"] .line { stroke-width: 2.6; }

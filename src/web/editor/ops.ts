@@ -98,7 +98,7 @@ export function freshId(doc: DiagramDocument, base: string, reserved: Iterable<s
 }
 
 /** The selected components plus everything inside the groups among them. */
-function withInside(v: DiagramView, ids: Iterable<string>): Set<string> {
+export function withInside(v: Pick<DiagramView, "nodes">, ids: Iterable<string>): Set<string> {
   const out = new Set<string>();
   for (const id of ids) { out.add(id); for (const d of descendants(v, id)) out.add(d); }
   return out;

@@ -62,7 +62,8 @@ export interface Request3 { id: string; text: string; channel: ChannelId; view: 
  * Where a choice sits in its file, for the ids of views made in it (diagram contract, The view): no prefix in the
  * file's first choice, else the choice's id; `taken` holds every other choice's view ids. Never stored.
  */
-export interface ChoiceIds { prefix: string | null; taken: string[] }
+/** Where a choice's @3 document sits in its file: the view-id prefix, the other choices' view ids, and whether it is the `system` choice (its first overview view is the map). */
+export interface ChoiceIds { prefix: string | null; taken: string[]; system?: boolean }
 
 export interface Document3 {
   schema: typeof SCHEMA_V3;

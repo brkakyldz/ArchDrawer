@@ -17,7 +17,8 @@ export interface LayoutReport {
   smallestText: { inPlace: number; opened: number; level: "good" | "ok" | "warn"; names: { inPlace: number; opened: number } };
   counts: { parts: number; zones: number; connections: number };
   targets: { parts: number | null; zones: { min: number; max: number } | null; connections: number | null };
-  /** The channel the run measured (set by the run). */
+  /** The choice and the channel the run measured (set by the run). */
+  choice?: string;
   channel?: string;
   longestConnection: number;
 }
@@ -26,17 +27,23 @@ export interface LayoutReport {
 export const STORY_LIMITS = { label: 28, sub: 28, chip: 22, lede: 140, titleWords: 9, sideLabelWords: 2 } as const;
 const POST_TARGETS = { parts: 12, zones: { min: 0, max: 4 }, connections: 14 };
 const DETAIL_TARGETS = { parts: null, zones: null, connections: null };
+/** The map, the first overview view of a `system` choice: about 5–9 top-level parts (api contract, Layout report; ADR 0015). */
+const MAP_TARGETS = { parts: 9, zones: null, connections: null };
+
+/** Whether a view of a choice's @3 document is its map: the first overview view of the `system` choice. */
+export const isMapView = (stored: { ids?: { system?: boolean }; channels: { overview: { views: { id: string }[] } } }, viewId: string) =>
+  stored.ids?.system === true && stored.channels.overview.views[0]?.id === viewId;
 
 const length = (pts: Point[]) => pts.slice(1).reduce((s, p, i) => s + Math.hypot(p.x - pts[i].x, p.y - pts[i].y), 0);
 const words = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
 const finite = (v: number) => (Number.isFinite(v) ? v : 0);
 
-export function layoutReport(doc: Pick<DiagramDocument, "views">, viewId: string, o: ShareOptions): LayoutReport {
-  return reportOf(renderShare(doc, viewId, o), doc, viewId, o);
+export function layoutReport(doc: Pick<DiagramDocument, "views">, viewId: string, o: ShareOptions, at: { map?: boolean } = {}): LayoutReport {
+  return reportOf(renderShare(doc, viewId, o), doc, viewId, o, at);
 }
 
 /** The report of an image already rendered with these options (the share dialog has one). */
-export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, viewId: string, o: ShareOptions): LayoutReport {
+export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, viewId: string, o: ShareOptions, at: { map?: boolean } = {}): LayoutReport {
   const { view, rects, routes } = img.drawn;
   const whole = doc.views.find((v) => v.id === viewId) ?? doc.views[0];
   const post = isPostView(whole);
@@ -100,8 +107,8 @@ export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, v
       zones: view.nodes.filter((n) => n.form === "group" && (!n.parent || !byId.has(n.parent))).length,
       connections: edges.length,
     },
-    // Only LinkedIn has count targets (ADR 0007).
-    targets: post ? POST_TARGETS : DETAIL_TARGETS,
+    // Only LinkedIn has count targets (ADR 0007), and the map its parts target (ADR 0015).
+    targets: post ? POST_TARGETS : at.map ? MAP_TARGETS : DETAIL_TARGETS,
     longestConnection: diagonal > 0 && edges.length ? finite(longest / diagonal) : 0,
   };
 }

@@ -7,6 +7,7 @@ import { checkEvidence } from "../core/evidence";
 import { fillDefaults3, validateDocument3, type ChannelId, type Document3 } from "../core/file3";
 import { choiceDoc, choiceOfFocus, documentOf } from "../core/file4";
 import { intentToChannel, STORY_SCHEMA } from "../core/intent";
+import { mapAsOneView, splitMap } from "../core/map";
 import { LIMITS, newDocumentId, SCHEMA_V3 } from "../core/model";
 import { NO_FACT, READ_SCHEMA, repairRead } from "../core/read";
 import { layoutReport, type LayoutReport } from "../core/report";
@@ -109,7 +110,11 @@ export async function runDraw(req: DrawRequest, ctx: {
     facts: checked.facts, channels: { overview: { views: [] } }, warnings: [...repaired.warnings, ...checked.warnings],
   } as Parameters<typeof fillDefaults3>[0], { id: newDocumentId(), now: nowIso(), source: { kind: "local", path: root } });
 
-  // 2. The overview: a story from the facts and the card, every fact then drawn by code.
+  // The file holds the drawn focus as its one choice (diagram contract, Choice); the whole system's overview is the map.
+  const choice = choiceOfFocus(req.focus);
+  const isSystem = choice.kind === "system";
+
+  // 2. The overview: a story from the facts and the card, every fact then drawn by code, then split into the map.
   // A kept overview is used only when the facts came out of the check as they were when it was drawn.
   ctx.progress("Drawing the overview", "overview");
   const facts = JSON.stringify(skeleton.facts);
@@ -121,18 +126,21 @@ export async function runDraw(req: DrawRequest, ctx: {
   } else {
     const task = {
       kind: "story" as const, schema: STORY_SCHEMA, tools: "none" as const, data: { channel: "overview", title: skeleton.title, draw: "overview" as const },
-      prompt: storyPrompt({ channel: "overview", folderName, facts: skeleton.facts, card: req.card, focus: focusText(req.focus) }),
+      prompt: storyPrompt({ channel: isSystem ? "map" : "overview", folderName, facts: skeleton.facts, card: req.card, focus: focusText(req.focus) }),
     };
     const answer = await call("overview", task);
     cancelled();
     const intent = await storyAnswer(answer, { channel: "overview", check: null, signal, progress: (m) => ctx.progress(m, "overview"), repair: repairOf("overview", task) });
-    withOverview = intentToChannel(skeleton, intent, { portrait: false, channel: "overview" }).doc;
+    const drawnOverview = intentToChannel(skeleton, intent, { portrait: false, channel: "overview" }).doc;
+    withOverview = isSystem ? splitMap(drawnOverview) : drawnOverview;
   }
   done.overview = { facts, channel: withOverview.channels.overview, warnings: withOverview.warnings.slice(skeleton.warnings.length) };
 
   // 3. The chosen channel, told from the facts and the overview just drawn.
   ctx.progress(STAGE_LINES[channel], "channel");
-  const overview = joinChannel(withOverview, "overview");
+  // The map and its detail views tell it as one view: every part but those with an inside (diagram contract, The map).
+  const joinedOverview = joinChannel(withOverview, "overview");
+  const overview = isSystem && joinedOverview.views.length > 1 ? { ...joinedOverview, views: [mapAsOneView(joinedOverview.views)] } : joinedOverview;
   const draft = documentToDraft({ ...overview, views: overview.views.map((v) => ({ ...v, nodes: v.nodes.map((n) => ({ ...n, from: [...(n.facts ?? [])] })) })) });
   const source = overview.views[0];
   const channelTask = {
@@ -154,8 +162,6 @@ export async function runDraw(req: DrawRequest, ctx: {
   cancelled();
 
   // 4. A new file that replaces none, then registered; a file that cannot be registered goes again.
-  // The file holds the drawn focus as its one choice (diagram contract, Choice).
-  const choice = choiceOfFocus(req.focus);
   const path = writeNewDrawing(f.folder, docText(documentOf(valid.doc, choice)));
   let id: string;
   try { id = ctx.store.register(path).id; } catch (e) {

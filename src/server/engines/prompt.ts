@@ -157,6 +157,7 @@ Reply with JSON matching the provided schema and nothing else.`;
 
 /** What each channel's story is for (diagram contract, Story answers, Briefs and targets). */
 const BRIEFS = {
+  map: `the map of the whole system: its main groups only, about 5 to 9 top-level parts, zones or holders, every other component inside one of them (in a zone, or "inside" a holder) and never at top level beside them; code then draws each group's inside in a view of its own, one click away. Give every part a one-line sub-line in plain words saying what it does. Show or hold every fact, on the map or inside a group: each component fact in "facts" of exactly one part, and every mechanism in "held" of the part showing the component it is within. Use limits where they explain a part. Stay within ${L.parts} parts in all, each zone counted as one (merge alike facts into one part rather than leave one out).`,
   overview: `the overview: the complete map of the system that every other drawing is told from. Show or hold every fact: each component fact in "facts" of exactly one part, and every mechanism in "held" of the part showing the component it is within. Give every part a one-line sub-line in plain words saying what it does. Merge parts where many facts are alike (a part's "facts" lists them all). Use zones for the system's real boundaries, "inside" for a component that owns parts which talk to each other, and limits where they explain a part. There is no target count: draw what the system is, in at most ${L.parts} parts with each zone counted as one (merge alike facts into one part rather than leave one out).`,
   readme: `a README drawing that renders on GitHub, read at full width by a developer who wants to know how the system works. Draw it in detail: every part a reader needs, each with a one-line sub-line in plain words, the default description of a part. Hold mechanisms only on a part whose working the story is about, and on no other part; show a limit where it explains a guarantee (a deadline, a turn limit). Use zones for the system's real boundaries and "inside" where a component owns parts that talk to each other.`,
   presentation: `a presentation: one drawing told in 3 to 8 ordered steps. Draw the parts the talk needs, each with a one-line sub-line in plain words. Hold mechanisms as a README does: only on a part whose working the story is about, and on no other part. Then give "steps" in the order of the talk: each names the parts it is about ("parts", ids of parts above), says it on screen in one short sentence ("text", at most ${L.stepText} characters) and gives the speaker one to three sentences ("note"). Every part should appear in at least one step.`,
@@ -189,7 +190,7 @@ The story's shape:
 - Connections: between parts, never to a zone or to themselves; number the main path with step 1, 2, 3 …; one connection per pair. style: call, async (events, queues, triggers) or dep (logs, telemetry, read-only).
 - steps: ${p.channel === "presentation" ? "as the brief says." : "[] (only a presentation has steps)."}
 
-${hardLimitsText(p.channel)}
+${hardLimitsText(p.channel === "map" ? "overview" : p.channel)}
 ${p.instruction?.trim() ? `\nThe user adds:\n<task>\n${p.instruction.trim()}\n</task>\n` : ""}
 The rules every drawing follows:
 <rules>

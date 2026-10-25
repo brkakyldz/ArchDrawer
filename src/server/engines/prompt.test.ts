@@ -145,6 +145,7 @@ describe("every story prompt states the hard limits code checks (STORY-7)", () =
   const facts = { components: [{ id: "api", label: "Order API" }], relations: [] };
   const prompts = {
     overview: storyPrompt({ channel: "overview", folderName: "shop", facts }),
+    map: storyPrompt({ channel: "map", folderName: "shop", facts }),
     readme: storyPrompt({ channel: "readme", folderName: "shop", facts }),
     presentation: storyPrompt({ channel: "presentation", folderName: "shop", facts }),
     linkedin: postPrompt({ folderName: "shop", view: "overview", base: {}, facts, format: "feed" }),

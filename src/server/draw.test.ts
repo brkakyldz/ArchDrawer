@@ -47,7 +47,7 @@ function linesOf(t: ReturnType<typeof makeApp>, id: string) {
 const real = (p: string) => realpathSync.native(p);
 
 describe("the draw run", () => {
-  it("writes a new drawing under the folder, registers it, and draws every fact in the overview", async () => {
+  it("writes a new drawing under the folder, registers it, and draws every fact in the overview's map and detail views", async () => {
     const dir = real(repo());
     const t = makeApp();
     const events: { message: string; stage: string | null }[] = [];
@@ -57,7 +57,7 @@ describe("the draw run", () => {
     const doc = choiceDoc(t.store.get(run.diagramId!)!);
     expect(validateDocument3(doc).ok).toBe(true);
     expect([doc.source?.path, doc.warnings.slice(0, 4)]).toEqual([dir, FOUR]);
-    const drawn = new Set(doc.channels.overview.views[0].nodes.flatMap((p) => [...p.facts, ...(p.held ?? [])]));
+    const drawn = new Set(doc.channels.overview.views.flatMap((v) => v.nodes.flatMap((p) => [...p.facts, ...(p.held ?? [])])));
     expect([...drawn].sort()).toEqual(doc.facts.components.map((c) => c.id).sort());
     expect(doc.channels.readme.views).toHaveLength(1);
     expect([run.channel, run.view, run.layoutReport?.channel]).toEqual(["readme", "readme", "readme"]);
@@ -67,6 +67,40 @@ describe("the draw run", () => {
     const stageOf = (m: string) => events.find((e) => e.message === m)?.stage;
     expect([stageOf("Checking the facts"), stageOf("Drawing the overview"), stageOf("Drawing the README drawing"), stageOf("Checking the drawing")]).toEqual(["read", "overview", "channel", "channel"]);
     expect(readdirSync(join(dir, "docs"))).toEqual(["architecture.archdraw.json"]);
+  });
+
+  it("draws the whole system as a map: the zone is a card whose inside is a detail view, and the channel is told from both (#183)", async () => {
+    const t = makeApp();
+    const run = await draw(t, real(repo()), { channel: "presentation" });
+    expect(run.status).toBe("succeeded");
+    const doc = choiceDoc(t.store.get(run.diagramId!)!);
+    const [map, inside, ...more] = doc.channels.overview.views;
+    expect([map.id, inside.id, more.length]).toEqual(["overview", "zone-runtime-inside", 0]);
+    expect(map.nodes.map((n) => n.id).sort()).toEqual(["app", "zone-runtime"]);
+    expect(map.nodes.find((n) => n.id === "zone-runtime")).toMatchObject({ facts: [], form: "card", label: "Agent runtime", kind: "service", description: "A group of components.", detail: "zone-runtime-inside", parent: null, lane: { spine: 1 } });
+    expect(map.edges.map((e) => [e.id, e.from, e.to, e.step, e.relations])).toEqual([["app-zone-runtime", "app", "zone-runtime", 1, []]]);
+    expect(inside).toMatchObject({ title: "Agent runtime", caption: { title: "Agent runtime", lede: "" }, texts: [] });
+    expect(inside.nodes.map((n) => [n.id, n.parent]).sort()).toEqual([["agent", null], ["store", null]]);
+    expect(inside.edges.map((e) => [e.from, e.to])).toEqual([["agent", "store"]]);
+    // The presentation is told from the map's parts and the detail view's, the card with an inside skipped.
+    expect(doc.channels.presentation.views[0].nodes.map((n) => n.id).sort()).toEqual(["agent", "app", "store"]);
+    // The split adds no warning: the four evidence warnings and the fixture's step about nothing are all.
+    expect(doc.warnings).toEqual([...FOUR, "Step 4 names no part and was dropped"]);
+  });
+
+  it("asks the whole system's overview for the map and a typed focus's for the complete overview (#183)", async () => {
+    const asked: string[] = [];
+    const fixture = new FixtureEngine(1);
+    const spy: Engine = Object.assign(Object.create(Object.getPrototypeOf(fixture)), fixture, {
+      run: (a: Parameters<Engine["run"]>[0]) => { if (a.task?.data?.draw === "overview") asked.push(a.task.prompt); return fixture.run(a); },
+    });
+    const t = makeApp({ engines: [spy] });
+    expect((await draw(t, repo())).status).toBe("succeeded");
+    expect((await draw(t, repo(), { focus: { kind: "typed", text: "The agent" } })).status).toBe("succeeded");
+    expect(asked).toHaveLength(2);
+    expect(asked[0]).toMatch(/as the map of the whole system: its main groups only, about 5 to 9 top-level parts/);
+    expect(asked[1]).toMatch(/as the overview: the complete map of the system/);
+    expect(asked[1]).not.toMatch(/about 5 to 9 top-level parts/);
   });
 
   it("roots a drawing of a folder outside git at that folder, also when the file is opened again", async () => {

@@ -45,6 +45,8 @@ interface Props {
   view: DiagramView;
   /** The channel the view belongs to: its own format opens first (README, slide). */
   channel?: string;
+  /** The view is the map, the first overview view of the `system` choice: its report has the parts target. */
+  map?: boolean;
   onClose: () => void;
   toast: (m: string) => void;
 }
@@ -54,7 +56,7 @@ interface Props {
  * line beside the download. It packages the current channel's view as it is; drawing the LinkedIn
  * post happens on its channel. Modal: focus stays inside it.
  */
-export function ShareDialog({ doc, view, channel, onClose, toast }: Props) {
+export function ShareDialog({ doc, view, channel, map = false, onClose, toast }: Props) {
   // A view with a post style is the LinkedIn channel's (`joinDrawing`).
   const stored = doc.views.find((v) => v.id === view.id) ?? view;
   const onVersion = !!stored.postOf;
@@ -81,7 +83,7 @@ export function ShareDialog({ doc, view, channel, onClose, toast }: Props) {
 
   const opts: ShareOptions = { format, theme, ...show };
   const img = useMemo(() => renderShare(shown, pv.id, opts), [shown, pv.id, format, theme, show]); // eslint-disable-line react-hooks/exhaustive-deps
-  const report = useMemo(() => reportOf(img, shown, pv.id, opts), [img]); // eslint-disable-line react-hooks/exhaustive-deps
+  const report = useMemo(() => reportOf(img, shown, pv.id, opts, { map }), [img, map]); // eslint-disable-line react-hooks/exhaustive-deps
   const nameOf = (id: string) => {
     const n = pv.nodes.find((x) => x.id === id), e = pv.edges.find((x) => x.id === id);
     const label = (nid: string) => pv.nodes.find((x) => x.id === nid)?.label ?? nid;

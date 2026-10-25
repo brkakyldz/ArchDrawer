@@ -1,12 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";
 import { appearanceOnly } from "../core/appearance";
-import { applyChannel, draftOf, joinChannel } from "../core/channels";
+import { applyChannel, joinChannel } from "../core/channels";
+import { storyDraft } from "../core/map";
 import { channelOfView, validateDocument3, type ChannelId, type Document3 } from "../core/file3";
 import { choiceOfFocus, withChoice, type Document4 } from "../core/file4";
 import { isPostView, validateDocument, type DiagramDocument } from "../core/model";
 import { startSwitches, type FormatId } from "../core/export/share";
-import { layoutReport, type LayoutReport } from "../core/report";
+import { isMapView, layoutReport, type LayoutReport } from "../core/report";
 import { channelViewId, intentToChannel, STORY_SCHEMA, StoryError, storyRows } from "../core/intent";
 import { postPrompt, ROUTE_SCHEMA, routePrompt, storyPrompt } from "./engines/prompt";
 import { diffDocuments, type Changes } from "../core/diff";
@@ -247,7 +248,7 @@ export class RunManager {
     };
     void exec(run.abort.signal, progress, run).then(
       // The report names the channel it measured (api contract, Layout report).
-      (r) => { run.channel = r.channel; run.view = r.view; end("succeeded", r.diagramId, null, r.changes, { ...r.layoutReport, channel: r.channel }); },
+      (r) => { run.channel = r.channel; run.view = r.view; end("succeeded", r.diagramId, null, r.changes, { ...r.layoutReport, choice: run.choice, channel: r.channel }); },
       (err: unknown) => {
         if (run.timedOut) return end("failed", null, `Timed out after ${Math.round(this.opts.timeoutMs / 60_000) || 1} min — try a narrower instruction`);
         if (run.abort.signal.aborted) return end("cancelled", null, null);
@@ -279,8 +280,8 @@ export class RunManager {
       const format: FormatId = channel === "linkedin" ? "feed" : channel === "presentation" ? "slide" : "readme";
       const shown = joinChannel(req.stored, channel);
       const view = shown.views.find((v) => v.id === req.view) ?? shown.views[0];
-      look = { image: req.image, report: { ...layoutReport(shown, view.id, { ...startSwitches(format, channel === "linkedin"), format, theme: shown.theme }), channel } };
-      if (channel !== "overview") return this.story({ ...req, format, readCode: false, base: draftOf(req.stored, "overview") }, channel, root, signal, progress, look);
+      look = { image: req.image, report: { ...layoutReport(shown, view.id, { ...startSwitches(format, channel === "linkedin"), format, theme: shown.theme }, { map: isMapView(req.stored, view.id) }), channel } };
+      if (channel !== "overview") return this.story({ ...req, format, readCode: false, base: storyDraft(req.stored) }, channel, root, signal, progress, look);
     }
     // A simplification may change the overview and the detail it links to, nothing else (api contract).
     const simplify = req.kind === "simplify";
@@ -298,7 +299,7 @@ export class RunManager {
       const channel = req.channel ?? "overview";
       // Outside the overview the story route is the channel's story run, told from the facts with no code.
       if (route === "story" && channel !== "overview") {
-        return this.story({ ...req, kind: "story", readCode: false, base: draftOf(req.stored, "overview") }, channel, root, signal, progress);
+        return this.story({ ...req, kind: "story", readCode: false, base: storyDraft(req.stored) }, channel, root, signal, progress);
       }
       appearance = route === "story";
     }
@@ -352,7 +353,7 @@ export class RunManager {
     // The report measures the saved result, with the format's default switches (api contract, Layout report).
     const format = req.format ?? "readme";
     const view = doc.views.find((v) => v.id === req.view) ?? doc.views[0];
-    const report = layoutReport(doc, view.id, { ...startSwitches(format, isPostView(view)), format, theme: doc.theme });
+    const report = layoutReport(doc, view.id, { ...startSwitches(format, isPostView(view)), format, theme: doc.theme }, { map: channel === "overview" && isMapView({ ...split.doc, ids: req.stored.ids }, view.id) });
     return { diagramId: req.base.id, changes: diffDocuments(req.base, doc, scope.kind === "all" ? undefined : [req.view]), layoutReport: report, channel, view: req.view };
   }
 

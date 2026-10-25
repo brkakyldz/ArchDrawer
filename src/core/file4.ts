@@ -222,7 +222,7 @@ export function choiceDoc(doc: Document4, choiceId?: string | null): Document3 {
   const c = doc.choices.find((x) => x.id === choiceId) ?? doc.choices[0];
   const taken = doc.choices.filter((x) => x !== c).flatMap((x) => CHANNELS.flatMap((ch) => x.channels[ch].views.map((v) => v.id)));
   return {
-    schema: SCHEMA_V3, ids: { prefix: c === doc.choices[0] ? null : c.id, taken },
+    schema: SCHEMA_V3, ids: { prefix: c === doc.choices[0] ? null : c.id, taken, system: c.kind === "system" },
     id: doc.id, title: doc.title, theme: doc.theme, source: doc.source, engine: doc.engine,
     createdAt: doc.createdAt, updatedAt: doc.updatedAt,
     facts: c.facts, channels: c.channels,

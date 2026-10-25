@@ -3,6 +3,7 @@ import { applyChannel, clearOutdated, joinChannel } from "../../core/channels";
 import { prepareLinkedIn } from "../../core/export/feed";
 import { channelOfView, isChannel, validateDocument3, type ChannelId, type Document3, type Step } from "../../core/file3";
 import { choiceDoc, choiceOfView, withChoice, type Document4 } from "../../core/file4";
+import { isMapView } from "../../core/report";
 import { layoutRects, routeEdges, viewBounds } from "../../core/geometry";
 import { LIMITS, TEXT_SIZE, viewById, type DiagramDocument, type DiagramView, type Form, type Kind } from "../../core/model";
 import { PALETTES } from "../../core/theme";
@@ -885,7 +886,7 @@ export function Editor({ id, choice: wantedChoice, channel: wantedChannel, view:
       )}
       {toastMsg && <div className="toast" data-testid="toast" role="status">{toastMsg}</div>}
       {sharing && (
-        <ShareDialog doc={doc} view={view} channel={chan} onClose={() => setSharing(false)} toast={toast} />
+        <ShareDialog doc={doc} view={view} channel={chan} map={chan === "overview" && isMapView(stored, view.id)} onClose={() => setSharing(false)} toast={toast} />
       )}
       {layer && <Present mode={layer} stored={stored} toast={toast} onLeave={(s) => { setCurStep(s); setLayer(null); }} />}
     </div>

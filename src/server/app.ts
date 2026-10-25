@@ -7,6 +7,7 @@ import { streamSSE } from "hono/streaming";
 import { renderMermaid } from "../core/export/mermaid";
 import { DEFAULT_SHARE, FORMAT_IDS, renderShare, type FormatId } from "../core/export/share";
 import { draftOf, joinChannel } from "../core/channels";
+import { storyDraft } from "../core/map";
 import { CHANNELS, channelOfView, isChannel, type ChannelId, type Document3 } from "../core/file3";
 import { choiceDoc, resolveChoice, type Document4 } from "../core/file4";
 import { isRepoRelative, LIMITS, THEMES, type Theme } from "../core/model";
@@ -400,7 +401,8 @@ export function createApp(deps: AppDeps): Hono {
     // A revise without a view looks at its channel's first one.
     const view = story ? first : typeof b.view === "string" ? b.view : revise && b.view === undefined ? stored.channels[channel].views[0]?.id ?? "" : "";
     if (!story && stored.channels[channel].views.length === 0) return err(c, 400, `The channel "${channel}" has no drawing`);
-    const doc = draftOf(stored, story ? "overview" : channel);
+    // A story is told from the overview: for the `system` choice its map and detail views as one view (diagram contract, The map).
+    const doc = story ? storyDraft(stored) : draftOf(stored, channel);
     if (!doc.views.some((v) => v.id === view) || (!story && channelOfView(stored, view) !== channel)) return err(c, 400, `Unknown view "${view}"`);
     if (kind === "simplify" && view !== first) return err(c, 400, `Only the overview is simplified: give the view "${first}"`);
     const scope = parseScope(b.scope, doc.views.find((v) => v.id === view)!.nodes.map((n) => n.id));

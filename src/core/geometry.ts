@@ -234,11 +234,6 @@ export function alongRoute(r: Curve): (t: number) => Point {
 }
 
 /**
- * Points along a curve that measure what it passes over: both ends, and inner samples shifted off
- * the middle so two mirrored lines never cross exactly on a sample point. The routing's
- * `blocked` and the layout report's `edgesOverParts` both read these, so they always agree.
- */
-/**
  * The parts each drawn connection passes behind (layout report `edgesOverParts`; diagram contract, Traces): a part
  * that is not a group and not one of its ends, holding a point of its curve. Groups' boundaries never count.
  */
@@ -258,6 +253,11 @@ export function edgesOverParts(view: Pick<DiagramView, "nodes" | "edges">, rects
   return out;
 }
 
+/**
+ * Points along a curve that measure what it passes over: both ends, and inner samples shifted off
+ * the middle so two mirrored lines never cross exactly on a sample point. The routing's
+ * `blocked` and the layout report's `edgesOverParts` both read these, so they always agree.
+ */
 export const routeSamples = (r: Curve, steps = 64): Point[] =>
   [bezierAt(r, 0), ...Array.from({ length: steps - 1 }, (_, i) => bezierAt(r, (i + 1.31) / steps)), bezierAt(r, 1)];
 

@@ -105,13 +105,16 @@ svg.i { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin
 .nd:hover .body { stroke: var(--hover-k, var(--line-2)); }
 /* A drag (ui contract, Dragging): the dragged parts lift with a stronger shadow and no size change; the rest dims. */
 .nd[data-lifted="true"] { filter: drop-shadow(0 12px 18px rgba(15, 23, 42, .28)) drop-shadow(0 3px 6px rgba(15, 23, 42, .18)); cursor: grabbing; }
-.nd[data-drag-dim="true"]:not(.dim), .gh[data-drag-dim="true"]:not(.dim), .ed[data-drag-dim="true"]:not(.dim) { opacity: .6; }
+.nd[data-drag-dim="true"]:not(.dim), .gh[data-drag-dim="true"]:not(.dim), .ed[data-drag-dim="true"]:not(.dim), .tk[data-drag-dim="true"]:not(.dim) { opacity: .6; }
 /* The group a dragged piece would join on release (ui contract, Dragging): a box-shaped ring in the accent colour. */
 .drop-ring { fill: none; stroke: var(--accent); }
 .nd[data-drop-target="true"][data-drag-dim="true"] { opacity: 1; }
 .ed .hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; cursor: pointer; }
 .ed .line, .ed .glow { pointer-events: none; }
 .tk .trunk-hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; }
+/* Guides and equal gaps while dragging (ui contract, Dragging): editor-only. */
+.drag-guide, .drag-gap line { stroke: var(--accent); fill: none; }
+.drag-gap line { stroke-dasharray: 3 3; }
 .ed[data-selected="true"] .line { stroke-width: 2.6; }
 .ed[data-selected="true"] .glow { opacity: .3; }
 .steps-on .flow { opacity: .95; }
@@ -454,7 +457,7 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .load-error .row { display: flex; gap: 8px; justify-content: center; }
 
 /* Semantic zoom (ADR 0009): sizes stay, detail fades. */
-.canvas .nd [data-testid="node-item"] text, .canvas .nd [data-testid="node-item"] rect, .canvas .nd [data-testid="node-sub"], .canvas .lb > *, .canvas .ed { transition: opacity .2s; }
+.canvas .nd [data-testid="node-item"] text, .canvas .nd [data-testid="node-item"] rect, .canvas .nd [data-testid="node-sub"], .canvas .lb > *, .canvas .ed, .canvas .tk { transition: opacity .2s; }
 .canvas[data-detail="outline"] .nd:not(.open) [data-testid="node-item"] text,
 .canvas[data-detail="overview"] .nd:not(.open) [data-testid="node-item"] text,
 .canvas[data-detail="outline"] .lb:not(.open) > *,
@@ -462,8 +465,8 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .canvas[data-detail="overview"] .nd:not(.open) [data-testid="node-sub"], .canvas[data-detail="overview"] .gh:not(.open) [data-testid="node-sub"] { opacity: 0; }
 .canvas[data-detail="outline"] .nd:not(.open) [data-testid="node-item"] rect,
 .canvas[data-detail="overview"] .nd:not(.open) [data-testid="node-item"] rect { opacity: .5; }
-.canvas[data-detail="overview"] .ed[data-step=""]:not(.open) { opacity: .3; }
-@media (prefers-reduced-motion: reduce) { .canvas .nd *, .canvas .lb > *, .canvas .ed { transition: none; } }
+.canvas[data-detail="overview"] .ed[data-step=""]:not(.open), .canvas[data-detail="overview"] .tk[data-step=""]:not(.open) { opacity: .3; }
+@media (prefers-reduced-motion: reduce) { .canvas .nd *, .canvas .lb > *, .canvas .ed, .canvas .tk { transition: none; } }
 
 /* Tool hint, form pictures, the callout title. */
 .tool-hint { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 13; padding: 6px 12px; border-radius: 999px; background: var(--ink); color: var(--surface); font-size: 12.5px; pointer-events: none; white-space: nowrap; box-shadow: var(--shadow); }

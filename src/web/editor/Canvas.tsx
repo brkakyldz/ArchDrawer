@@ -4,6 +4,7 @@ import { badgeMarkup, drawOrder, edgeMarkup, groupHeadMarkup, labelMarkup, nodeM
 import { descendants, isPostView, LIMITS, type DiagramEdge, type DiagramNode, type DiagramText, type Kind } from "../../core/model";
 import type { Palette } from "../../core/theme";
 import { clampTextSize, connect, groupAt, moveNodes, moveTexts, setText, settleNodes, VIEW_FULL, withInside } from "./ops";
+import { snapDrag, type Snap } from "./guides";
 import type { Ctl, Selection } from "./types";
 import { NOTHING } from "./types";
 import { detailAt, toWorld, zoomAt } from "./viewport";
@@ -77,7 +78,7 @@ const TextShape = memo(function TextShape({ text, P, selected, typing }: { text:
 type Drag =
   | { kind: "pan"; sx: number; sy: number; vx: number; vy: number }
   /** `off`: how far the pieces have moved, in drawing px; the document changes only on release (ui contract, Dragging). */
-  | { kind: "move"; ids: string[]; texts: string[]; start: { x: number; y: number }; off: { x: number; y: number }; moved: boolean; hit: { node?: string; text?: string; inside?: boolean }; shift: boolean }
+  | { kind: "move"; ids: string[]; texts: string[]; start: { x: number; y: number }; off: { x: number; y: number }; moved: boolean; hit: { node?: string; text?: string; inside?: boolean }; shift: boolean; snap?: Snap }
   | { kind: "marquee"; start: { x: number; y: number }; cur: { x: number; y: number }; shift: boolean }
   | { kind: "connect"; from: string; cur: { x: number; y: number } }
   | { kind: "scale"; id: string; corner: Corner; size0: number; box: Rect; moved: boolean };
@@ -287,7 +288,12 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
         if (d.ids.length) c.setDragging(true);
       }
       // Nothing in the document changes until release: one edit, one save, one undo step.
-      d.off = { x: p.x - d.start.x, y: p.y - d.start.y };
+      const raw = { x: p.x - d.start.x, y: p.y - d.start.y };
+      // Guides, equal gaps or the grid place the dragged components during the drag, so release moves nothing
+      // (ui contract, Dragging: Guides and snapping); Alt turns snapping off.
+      const snap = d.ids.length ? snapOf(d.ids, raw, c.vp.k, e.altKey) : null;
+      d.snap = snap ?? undefined;
+      d.off = snap ? { x: Math.round(raw.x + snap.dx), y: Math.round(raw.y + snap.dy) } : raw;
       setLive({ ...d });
     } else if (d.kind === "scale") {
       const b = d.box, west = d.corner.endsWith("w"), north = d.corner.startsWith("n");
@@ -302,6 +308,20 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
       d.cur = p;
       setLive({ ...d });
     }
+  };
+
+  /** The snap of the dragged components' box at `raw` (ui contract, Dragging): against every other component that holds none of them. */
+  const snapOf = (ids: string[], raw: { x: number; y: number }, k: number, alt: boolean): Snap | null => {
+    const v = ctlRef.current.view;
+    const moved = withInside(v, ids);
+    const holders = new Set<string>();
+    for (const id of moved) for (let p = v.nodes.find((n) => n.id === id)?.parent; p; p = v.nodes.find((n) => n.id === p)?.parent) holders.add(p);
+    const own = [...moved].map((id) => restRects.get(id)).filter((r): r is Rect => !!r);
+    if (!own.length) return null;
+    const x0 = Math.min(...own.map((r) => r.x)), y0 = Math.min(...own.map((r) => r.y));
+    const box = { x: x0 + raw.x, y: y0 + raw.y, w: Math.max(...own.map((r) => r.x + r.w)) - x0, h: Math.max(...own.map((r) => r.y + r.h)) - y0 };
+    const others = v.nodes.filter((n) => !moved.has(n.id) && !holders.has(n.id)).map((n) => restRects.get(n.id)).filter((r): r is Rect => !!r);
+    return snapDrag(box, others, k, alt);
   };
 
   const onPointerUp = (e: RPointerEvent<HTMLDivElement>) => {
@@ -420,13 +440,18 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
             const members = t.edges.map((id) => view.edges.find((x) => x.id === id)!).filter(Boolean);
             if (!members.length) return null;
             const tone = members.some((e) => toneOf(e, inFocus(e)) === "kind") ? "kind" : "neutral";
+            // It fades as its connections do: dimmed, at overview zoom when none has a step or an open end, and
+            // while parts it carries none of are dragged (review bb42c16-1; ui contract, Semantic zoom and Dragging).
             const dim = members.every((e) => dimEdge(e));
+            const open = members.some((e) => touchesOpen(e)), stepped = members.some((e) => e.step !== null);
+            const dragDim = !!moving && members.every((e) => !touches(e));
             const m = trunkMarkup(t, members[0].style, tone, kindOf.get(t.part)!, P);
             return (
               <g key={`t-${t.key}-${t.edges.join(" ")}`}>
                 <g pointerEvents="none" dangerouslySetInnerHTML={{ __html: m.defs }} />
                 {/* `trunk` (ui contract): its own hit stroke, so hovering it is hovering none of its connections. */}
-                <g className={`tk${dim ? " dim" : ""}`} data-testid="trunk" data-trunk={t.key} data-part={t.part} data-side={t.side} data-edges={t.edges.join(" ")} data-tone={tone}>
+                <g className={`tk${dim ? " dim" : ""}${open ? " open" : ""}`} data-testid="trunk" data-trunk={t.key} data-part={t.part} data-side={t.side} data-edges={t.edges.join(" ")} data-tone={tone}
+                  data-step={stepped ? "on" : ""} data-drag-dim={dragDim ? "true" : undefined}>
                   <g pointerEvents="none" dangerouslySetInnerHTML={{ __html: m.path }} />
                   <path className="trunk-hit" d={t.d} />
                 </g>
@@ -453,6 +478,20 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
           {texts.map((t) => <TextShape key={t.id} text={t} P={P} selected={selTexts.has(t.id)} typing={ctl.editing?.kind === "text" && ctl.editing.id === t.id} />)}
 
           {/* editor-only marks: search matches, selection, ports, drag feedback (never in an export) */}
+          {/* Guides and equal gaps while dragging: editor-only marks, never in an export (ui contract, Dragging). */}
+          {live?.kind === "move" && live.moved && live.snap && (
+            <g className="drag-marks" pointerEvents="none">
+              {live.snap.guides.map((g) => (
+                <line key={`g-${g.axis}-${g.at}`} className="drag-guide" data-testid="drag-guide" data-axis={g.axis} data-at={g.at} strokeWidth={1 / k}
+                  x1={g.axis === "x" ? g.at : g.from} x2={g.axis === "x" ? g.at : g.to} y1={g.axis === "x" ? g.from : g.at} y2={g.axis === "x" ? g.to : g.at} />
+              ))}
+              {live.snap.gaps.map((g) => (
+                <g key={`p-${g.axis}-${g.start}`} className="drag-gap" data-testid="drag-gap" data-axis={g.axis} data-size={Math.round(g.size)}>
+                  <line strokeWidth={1 / k} x1={g.axis === "x" ? g.start : g.cross} x2={g.axis === "x" ? g.start + g.size : g.cross} y1={g.axis === "x" ? g.cross : g.start} y2={g.axis === "x" ? g.cross : g.start + g.size} />
+                </g>
+              ))}
+            </g>
+          )}
           {dropTarget && rects.get(dropTarget) && (() => {
             const r = rects.get(dropTarget)!;
             return <rect className="drop-ring" data-testid="drop-target-ring" x={r.x - 4} y={r.y - 4} width={r.w + 8} height={r.h + 8} rx={22} strokeWidth={2 / k} pointerEvents="none" />;

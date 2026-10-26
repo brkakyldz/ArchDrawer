@@ -6,6 +6,7 @@ import { runCli } from "../cli/main";
 import { fixtureAnswer, FixtureEngine } from "./engines/fixture";
 import type { Engine, EngineInfo, EngineRunRequest } from "./engines/types";
 import { makeApp, makeFolder, shopFile, shopFile2, tempDir } from "./testkit";
+import { choiceDoc } from "../core/file4";
 
 async function cli(...argv: string[]) {
   const out: string[] = [], err: string[] = [];
@@ -30,16 +31,17 @@ function v2WithPost() {
   return { root, file };
 }
 
-describe("@3 through the server (FILE-2)", () => {
-  it("opens an @2 file, writes it back as @3 with one warning, and serves both channels", async () => {
+describe("@4 through the server (FILE-2)", () => {
+  it("opens an @2 file, writes it back as @4 of one choice with one warning, and serves both channels", async () => {
     const t = makeApp();
     const { file } = v2WithPost();
     const r = await json(await t.req("/api/files", { method: "POST", json: { path: file } }));
     expect(r.status).toBe(200);
     const onDisk = JSON.parse(readFileSync(file, "utf8"));
-    expect(onDisk.schema).toBe("archdraw/diagram@3");
-    expect(onDisk.facts.components.map((c: { id: string }) => c.id)).toEqual(["web", "api", "db"]);
-    expect(onDisk.channels.linkedin.views[0].nodes.map((n: { facts: string[] }) => n.facts)).toEqual([["web"], ["api"], ["db"]]);
+    expect(onDisk.schema).toBe("archdraw/diagram@4");
+    expect(onDisk.choices.map((c: { id: string; kind: string }) => [c.id, c.kind])).toEqual([["system", "system"]]);
+    expect(onDisk.choices[0].facts.components.map((c: { id: string }) => c.id)).toEqual(["web", "api", "db"]);
+    expect(onDisk.choices[0].channels.linkedin.views[0].nodes.map((n: { facts: string[] }) => n.facts)).toEqual([["web"], ["api"], ["db"]]);
     expect(onDisk.warnings).toEqual(["Converted from archdraw/diagram@2"]);
     const id = r.body.id as string;
     // Exports take the channel (the overview by default); an empty one is refused.
@@ -53,7 +55,7 @@ describe("@3 through the server (FILE-2)", () => {
     // A request names its channel.
     const q = await json(await t.req(`/api/diagrams/${id}/requests`, { method: "POST", json: { channel: "linkedin", view: "overview-linkedin", text: "Shorter" } }));
     expect(q.status).toBe(201);
-    expect(JSON.parse(readFileSync(file, "utf8")).requests).toEqual([expect.objectContaining({ channel: "linkedin", view: "overview-linkedin" })]);
+    expect(JSON.parse(readFileSync(file, "utf8")).requests).toEqual([expect.objectContaining({ choice: "system", channel: "linkedin", view: "overview-linkedin" })]);
   });
 
   it("marks the LinkedIn channel when a session renames a fact that LinkedIn names in its own words", async () => {
@@ -61,41 +63,41 @@ describe("@3 through the server (FILE-2)", () => {
     const { file } = v2WithPost();
     const id = (await json(await t.req("/api/files", { method: "POST", json: { path: file } }))).body.id as string;
     const doc = JSON.parse(readFileSync(file, "utf8"));
-    doc.channels.linkedin.views[0].nodes[0].label = "Shop";
+    doc.choices[0].channels.linkedin.views[0].nodes[0].label = "Shop";
     t.store.put(id, doc);
     const outside = JSON.parse(readFileSync(file, "utf8"));
-    outside.facts.components[0].label = "Storefront";
+    outside.choices[0].facts.components[0].label = "Storefront";
     writeFileSync(file, JSON.stringify(outside, null, 2));
-    const after = t.store.get(id)!;
+    const after = choiceDoc(t.store.get(id)!);
     expect(after.channels.linkedin.outdated).toEqual(["web"]);
     expect(after.channels.overview.outdated).toEqual([]);
     expect(joinChannel(after, "overview").views[0].nodes[0].label).toBe("Storefront");
   });
 
-  it("refuses a PUT that breaks an @3 rule, with its path", async () => {
+  it("refuses a PUT that breaks a rule, with its path from its choice", async () => {
     const t = makeApp();
     const { file } = v2WithPost();
     const id = (await json(await t.req("/api/files", { method: "POST", json: { path: file } }))).body.id as string;
     const doc = JSON.parse(readFileSync(file, "utf8"));
-    doc.channels.overview.views[0].nodes.pop();
+    doc.choices[0].channels.overview.views[0].nodes.pop();
     const r = await json(await t.req(`/api/diagrams/${id}`, { method: "PUT", json: doc }));
     expect(r.status).toBe(400);
     expect(r.body.error).toMatch(/^Invalid diagram — /);
-    expect(r.body.errors).toContain('facts.components[2]: "db" is shown or held by no part of the overview channel; draw it there or remove it');
+    expect(r.body.errors).toContain('choices[0].facts.components[2]: "db" is shown or held by no part of the overview channel; draw it there or remove it');
   });
 
-  it("imports @3, @2 and @1 documents", async () => {
+  it("imports @4, @3, @2 and @1 documents", async () => {
     const t = makeApp();
     for (const body of [shopFile(), shopFile2()]) expect((await t.req("/api/diagrams", { method: "POST", json: body })).status).toBe(201);
   });
 });
 
-describe("the command line on @3 (FILE-2, START-5)", () => {
+describe("the command line on @4 (FILE-2, START-5)", () => {
   it("migrate converts @2, svg takes a channel", async () => {
     const { file, root } = v2WithPost();
     const m = await cli("migrate", file);
     expect(m.out).toEqual(["Converted from archdraw/diagram@2", "migrated"]);
-    expect((await cli("migrate", file)).out).toEqual(["already archdraw/diagram@3"]);
+    expect((await cli("migrate", file)).out).toEqual(["already archdraw/diagram@4"]);
     const out = join(root, "post.svg");
     const svg = await cli("svg", file, "--channel", "linkedin", "--format", "feed", "--out", out);
     expect(svg.code).toBe(0);
@@ -126,12 +128,12 @@ describe("an instruction changes the current channel (AI-1, FILE-3)", () => {
     const { file } = v2WithPost();
     const id = (await json(await t.req("/api/files", { method: "POST", json: { path: file } }))).body.id as string;
     const doc = JSON.parse(readFileSync(file, "utf8"));
-    doc.channels.linkedin.views[0].nodes[0].label = "Shop";
+    doc.choices[0].channels.linkedin.views[0].nodes[0].label = "Shop";
     t.store.put(id, doc);
     const r = await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, channel: "overview", view: "overview", instruction: "rename Web app to Storefront", engine: "claude", model: null } }));
     expect(r.status).toBe(202);
     expect(await t.runs.wait(r.body.runId)).toMatchObject({ status: "succeeded", channel: "overview" });
-    const after = t.store.get(id)!;
+    const after = choiceDoc(t.store.get(id)!);
     expect(after.facts.components[0].label).toBe("Storefront");
     expect(after.channels.linkedin.outdated).toEqual(["web"]);
     expect(after.channels.overview.outdated).toEqual([]);
@@ -147,7 +149,7 @@ describe("an instruction changes the current channel (AI-1, FILE-3)", () => {
     const id = (await json(await t.req("/api/files", { method: "POST", json: { path: file } }))).body.id as string;
     const r = await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, channel: "linkedin", view: "overview-linkedin", instruction: "rename Web app to Shop", engine: "fixture", model: null, scope: { kind: "view" } } }));
     expect(await t.runs.wait(r.body.runId)).toMatchObject({ status: "succeeded", channel: "linkedin", view: "overview-linkedin" });
-    const after = t.store.get(id)!;
+    const after = choiceDoc(t.store.get(id)!);
     expect(after.channels.linkedin.views[0].nodes[0]).toMatchObject({ id: "web-li", label: "Shop", facts: ["web"] });
     expect(after.facts.components[0].label).toBe("Web app");
     expect(after.channels.overview.outdated).toEqual([]);
@@ -171,7 +173,7 @@ describe("the LinkedIn channel drawn from the facts (STORY-1)", () => {
     const path = join(dir, "shop.archdraw.json");
     writeFileSync(path, JSON.stringify(shopFile2()));
     const id = (await json(await t.req("/api/files", { method: "POST", json: { path } }))).body.id as string;
-    const before = t.store.get(id)!;
+    const before = choiceDoc(t.store.get(id)!);
     const r = await json(await t.req("/api/runs", { method: "POST", json: { diagramId: id, kind: "post", instruction: "", engine: "claude", model: null, readCode: false } }));
     expect(r.status).toBe(202);
     expect(await t.runs.wait(r.body.runId)).toMatchObject({ status: "succeeded", kind: "post", channel: "linkedin", view: "linkedin" });
@@ -179,7 +181,7 @@ describe("the LinkedIn channel drawn from the facts (STORY-1)", () => {
     expect(task.tools).toBe("none");
     expect(task.prompt).toContain("<facts>");
     expect(task.prompt).toContain("Do not read, list or search any file");
-    const after = t.store.get(id)!;
+    const after = choiceDoc(t.store.get(id)!);
     expect(after.facts).toEqual(before.facts);
     expect(after.channels.overview).toEqual(before.channels.overview);
     expect(after.channels.linkedin.views.map((v) => v.id)).toEqual(["linkedin"]);

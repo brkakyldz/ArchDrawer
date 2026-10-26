@@ -99,12 +99,25 @@ svg.i { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin
 /* Text at its geometric size, as the export draws it: otherwise Chromium on Linux rounds each glyph's
    advance to a whole pixel and paints wider than the measured width (diagram contract, Geometry). */
 .canvas svg.world, .text-editor, .inline { text-rendering: geometricPrecision; }
-.nd { cursor: grab; }
-.nd.dim, .ed.dim, .lb.dim { opacity: .16; transition: opacity .18s; }
-.nd.dim { opacity: .4; }
+.nd, .gh { cursor: grab; }
+.nd.dim, .ed.dim, .lb.dim, .tk.dim { opacity: .16; transition: opacity .18s; }
+.nd.dim, .gh.dim { opacity: .4; }
 .nd:hover .body { stroke: var(--hover-k, var(--line-2)); }
+/* A drag (ui contract, Dragging): the dragged parts lift with a stronger shadow and no size change; the rest dims. */
+.nd[data-lifted="true"] { filter: drop-shadow(0 12px 18px rgba(15, 23, 42, .28)) drop-shadow(0 3px 6px rgba(15, 23, 42, .18)); cursor: grabbing; }
+.nd[data-drag-dim="true"]:not(.dim), .gh[data-drag-dim="true"]:not(.dim), .ed[data-drag-dim="true"]:not(.dim), .tk[data-drag-dim="true"]:not(.dim) { opacity: .6; }
+/* The group a dragged piece would join on release (ui contract, Dragging): a box-shaped ring in the accent colour. */
+.drop-ring { fill: none; stroke: var(--accent); }
+.nd[data-drop-target="true"][data-drag-dim="true"] { opacity: 1; }
 .ed .hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; cursor: pointer; }
+/* A connection a hub hides: not visible, taking no pointer input (ui contract, Parts many parts use). */
+.ed[data-hidden="true"] { visibility: hidden; }
+.ed[data-hidden="true"] * { pointer-events: none !important; }
 .ed .line, .ed .glow { pointer-events: none; }
+.tk .trunk-hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; }
+/* Guides and equal gaps while dragging (ui contract, Dragging): editor-only. */
+.drag-guide, .drag-gap line { stroke: var(--accent); fill: none; }
+.drag-gap line { stroke-dasharray: 3 3; }
 .ed[data-selected="true"] .line { stroke-width: 2.6; }
 .ed[data-selected="true"] .glow { opacity: .3; }
 .steps-on .flow { opacity: .95; }
@@ -226,6 +239,25 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .app.with-side { grid-template-columns: minmax(0, 1fr) 368px; }
 .app.with-side > .bar { grid-column: 1 / -1; }
 
+/* The views panel (ui contract, Choices and the views panel): left of the stage, 240 px, folding to a 40 px strip. */
+.app.with-views { --views-w: 240px; grid-template-columns: var(--views-w) minmax(0, 1fr); }
+.app.with-views.with-side { grid-template-columns: var(--views-w) minmax(0, 1fr) 368px; }
+.app.with-views.views-folded { --views-w: 40px; }
+.app.with-views > .bar { grid-column: 1 / -1; }
+.views-panel { min-height: 0; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 8px 8px 12px; background: var(--surface); border-right: 1px solid var(--line); }
+.views-panel.folded { padding: 6px 3px; align-items: center; overflow: hidden; }
+.views-panel .views-fold { align-self: flex-end; width: 32px; height: 30px; flex: none; color: var(--muted); }
+.views-panel.folded .views-fold { align-self: center; }
+.views-heading { margin: 12px 4px 4px 10px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); }
+.views-choice { display: flex; flex-direction: column; gap: 1px; margin-top: 4px; }
+.views-entry { display: flex; align-items: center; min-height: 30px; padding: 4px 10px; border: 0; border-radius: 7px; background: none; color: var(--ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.views-entry[data-depth="0"] { font-weight: 600; }
+.views-entry:hover { background: var(--surface-2); }
+.views-entry:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.views-entry[aria-current="true"] { background: var(--accent-soft); color: var(--accent); }
+.views-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.views-panel.in-menu { padding: 4px 0 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; max-height: 50vh; }
+
 /* The AI panel (ui-v2): beside the canvas, not modal. */
 .ai-panel { min-height: 0; z-index: 16; display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--line); }
 .ai-panel header { display: flex; align-items: center; gap: 9px; padding: 12px 12px 10px 14px; border-bottom: 1px solid var(--line); }
@@ -244,6 +276,11 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .ai-panel input[type="radio"] { accent-color: var(--accent); margin: 0; }
 .ai-panel .pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .ai-panel .pick label { display: grid; min-width: 0; }
+/* The empty LinkedIn stage's engine and model (#44): the AI panel's choice, shown where Draw it is. */
+.stage-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; margin-bottom: 4px; }
+.stage-pick label { display: grid; min-width: 0; gap: 4px; }
+.stage-pick span { font-size: 11.5px; font-weight: 600; color: var(--soft); text-transform: uppercase; letter-spacing: .06em; }
+.stage-pick select { height: 32px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 0 8px; font: inherit; font-size: 13px; min-width: 0; }
 .ai-panel select { width: 100%; height: 32px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--surface); color: var(--ink); padding: 0 6px; font-size: 13px; }
 .ai-panel .engine-note { margin: -4px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
 .ai-panel .engine-note.test { color: var(--k-gate); }
@@ -334,7 +371,7 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .meter .disclose { font-size: 12px; }
 .meter .detail { margin: 2px 0 0; font-variant-numeric: tabular-nums; }
 /* The bottom row (ui-v2 share-actions): how readable it is, then the downloads. */
-.share > .actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--surface); }
+.share > .actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--surface); max-height: min(300px, 40vh); overflow: auto; }
 .share > .actions .meter { flex: 1 1 280px; min-width: 0; padding: 7px 12px; }
 .share > .actions .btn { height: 36px; flex: none; }
 .layout-report { font-size: 12px; line-height: 1.45; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -390,6 +427,21 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .start-progress li[data-state="waiting"] { color: var(--soft); }
 .start-progress li[data-state="running"] { color: var(--accent); font-weight: 600; }
 .start-progress li[data-state="done"] { color: var(--ink); }
+/* One row per choice of a draw (ui contract, draw-choice): its title, then its three stages. */
+.draw-choice { display: grid; grid-template-columns: minmax(120px, 220px) 1fr; align-items: baseline; gap: 10px; width: 100%; }
+.draw-choice > b { font-size: 13px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.draw-choice[data-state="waiting"] > b { color: var(--soft); }
+.draw-choice ol { display: flex; gap: 14px; list-style: none; margin: 0; padding: 0; }
+.draw-choice li { font-size: 13px; }
+.draw-choice li[data-state="waiting"] { color: var(--soft); }
+.draw-choice li[data-state="running"] { color: var(--accent); font-weight: 600; }
+.draw-choice li[data-state="done"] { color: var(--ink); }
+.draw-choice li[data-state="failed"] { color: var(--danger, #c0362c); font-weight: 600; }
+.draw-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.focus-group { display: flex; flex-direction: column; gap: 6px; }
+.focus-heading { margin: 6px 0 0; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); }
+.focus-none { margin: 0; font-size: 13px; color: var(--muted); }
+.focus-count { font-size: 12.5px; color: var(--muted); }
 .scan-card { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); }
 .scan-card b { font-size: 14.5px; }
 .scan-card .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
@@ -408,16 +460,16 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .load-error .row { display: flex; gap: 8px; justify-content: center; }
 
 /* Semantic zoom (ADR 0009): sizes stay, detail fades. */
-.canvas .nd [data-testid="node-item"] text, .canvas .nd [data-testid="node-item"] rect, .canvas .nd [data-testid="node-sub"], .canvas .lb > *, .canvas .ed { transition: opacity .2s; }
+.canvas .nd [data-testid="node-item"] text, .canvas .nd [data-testid="node-item"] rect, .canvas .nd [data-testid="node-sub"], .canvas .lb > *, .canvas .ed, .canvas .tk { transition: opacity .2s; }
 .canvas[data-detail="outline"] .nd:not(.open) [data-testid="node-item"] text,
 .canvas[data-detail="overview"] .nd:not(.open) [data-testid="node-item"] text,
 .canvas[data-detail="outline"] .lb:not(.open) > *,
 .canvas[data-detail="overview"] .lb:not(.open) > *,
-.canvas[data-detail="overview"] .nd:not(.open) [data-testid="node-sub"] { opacity: 0; }
+.canvas[data-detail="overview"] .nd:not(.open) [data-testid="node-sub"], .canvas[data-detail="overview"] .gh:not(.open) [data-testid="node-sub"] { opacity: 0; }
 .canvas[data-detail="outline"] .nd:not(.open) [data-testid="node-item"] rect,
 .canvas[data-detail="overview"] .nd:not(.open) [data-testid="node-item"] rect { opacity: .5; }
-.canvas[data-detail="overview"] .ed[data-step=""]:not(.open) { opacity: .3; }
-@media (prefers-reduced-motion: reduce) { .canvas .nd *, .canvas .lb > *, .canvas .ed { transition: none; } }
+.canvas[data-detail="overview"] .ed[data-step=""]:not(.open), .canvas[data-detail="overview"] .tk[data-step=""]:not(.open) { opacity: .3; }
+@media (prefers-reduced-motion: reduce) { .canvas .nd *, .canvas .lb > *, .canvas .ed, .canvas .tk { transition: none; } }
 
 /* Tool hint, form pictures, the callout title. */
 .tool-hint { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 13; padding: 6px 12px; border-radius: 999px; background: var(--ink); color: var(--surface); font-size: 12.5px; pointer-events: none; white-space: nowrap; box-shadow: var(--shadow); }
@@ -428,10 +480,8 @@ textarea.inline { resize: none; padding: 4px 6px; line-height: 1.2; background: 
 .callout .title-input { width: 100%; font-size: 15px; font-weight: 600; padding: 1px 4px; border: 1px solid var(--accent); border-radius: 5px; background: var(--surface); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
 
 /* Search, views, the narrow header menu (ui-v2, VIEW-6..8). */
-.views, .hmenu { position: relative; display: inline-flex; }
-.views-menu, .header-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 45; min-width: 220px; }
-.views-menu button { justify-content: flex-start; }
-.views-menu button[aria-current="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.hmenu { position: relative; display: inline-flex; }
+.header-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 45; min-width: 220px; }
 .header-menu { display: grid; gap: 8px; padding: 10px; min-width: 260px; }
 .header-menu .repo { max-width: none; }
 .header-menu .crumbs { flex-wrap: wrap; white-space: normal; }

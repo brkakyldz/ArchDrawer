@@ -5,8 +5,9 @@ import { DEFAULT_SHARE, FORMAT_IDS, renderShare, type FormatId } from "../core/e
 import { joinChannel } from "../core/channels";
 import { readAnyFile } from "../core/convert";
 import { CHANNELS, isChannel, type ChannelId } from "../core/file3";
+import { choiceDoc, resolveChoice } from "../core/file4";
 import { isV1, migrateV1 } from "../core/migrate";
-import { newDocumentId, SCHEMA_V2, SCHEMA_V3, THEMES, type Theme } from "../core/model";
+import { newDocumentId, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, THEMES, type Theme } from "../core/model";
 import { APP_ROOT, BUILD, loadConfig, VERSION, type Config } from "../server/config";
 import { checkFile, docText, normaliseFile, writeAtomic } from "../server/files";
 import { readServerInfo, type ServerInfo } from "../server/serverfile";
@@ -22,10 +23,10 @@ const HELP = `archdrawer ${VERSION} — draw and edit a repository's architectur
 Usage:
   archdrawer validate <file>                 check a drawing file, list every problem
   archdrawer open <file> [--no-browser]      check, tidy and open the file in the editor
-  archdrawer svg <file> [--channel <c>] [--view <id>] [--format linkedin|readme|slide|square|feed]
+  archdrawer svg <file> [--choice <id>] [--channel <c>] [--view <id>] [--format linkedin|readme|slide|square|feed]
                         [--theme light|dark] [--out <path>]
                                              write the share image as SVG
-  archdrawer migrate <file>                  rewrite an archdraw/diagram@1 or @2 file as @3
+  archdrawer migrate <file>                  rewrite an archdraw/diagram@1, @2 or @3 file as @4
   archdrawer status                          is the editor server running?
   archdrawer stop                            stop the editor server
   archdrawer --version | --help`;
@@ -209,7 +210,7 @@ async function cmdOpen(args: string[], io: CliIo, config: Config): Promise<numbe
 }
 
 function cmdSvg(args: string[], io: CliIo): number {
-  const { pos, opt } = parse(args, ["channel", "view", "format", "theme", "out"]);
+  const { pos, opt } = parse(args, ["choice", "channel", "view", "format", "theme", "out"]);
   if (pos.length !== 1) throw new Usage("svg needs exactly one file");
   if (opt.channel !== undefined && !isChannel(opt.channel)) throw new Usage(`Unknown channel "${opt.channel}"; use one of ${CHANNELS.join(", ")}`);
   const format = (opt.format ?? "linkedin") as FormatId;
@@ -218,7 +219,11 @@ function cmdSvg(args: string[], io: CliIo): number {
   const file = resolve(pos[0]);
   const r = checkFile(file, "warn");
   if (!report(io, r) || !r.file) return 1;
-  const { doc: stored } = normaliseFile(r.file, { path: file, id: r.file.id ?? "d_unsaved", now: new Date().toISOString(), text: r.text });
+  const { doc: whole } = normaliseFile(r.file, { path: file, id: r.file.id ?? "d_unsaved", now: new Date().toISOString(), text: r.text });
+  // The choice named, else the one holding the view, else the first (cli contract, svg).
+  const chosen = resolveChoice(whole, opt.choice, opt.view);
+  if (typeof chosen === "string") { io.err(`No choice "${opt.choice}" in ${file}; choices: ${whole.choices.map((c) => c.id).join(", ")}`); return 1; }
+  const stored = choiceDoc(whole, chosen.id);
   const channel = (opt.channel ?? "overview") as ChannelId;
   const doc = joinChannel(stored, channel);
   if (doc.views.length === 0) { io.err(`The channel "${channel}" has no drawing in ${file}`); return 1; }
@@ -239,8 +244,8 @@ function cmdMigrate(args: string[], io: CliIo): number {
   let raw: unknown;
   try { raw = JSON.parse(readFileSync(file, "utf8").replace(/^﻿/, "")); } catch (e) { io.out(`ERROR json: ${(e as Error).message}`); return 1; }
   const schema = (raw as { schema?: unknown })?.schema;
-  if (schema === SCHEMA_V3) { io.out(`already ${SCHEMA_V3}`); return 0; }
-  if (!isV1(raw) && schema !== SCHEMA_V2) { io.out("ERROR schema: not an archdrawer drawing"); return 1; }
+  if (schema === SCHEMA_V4) { io.out(`already ${SCHEMA_V4}`); return 0; }
+  if (!isV1(raw) && schema !== SCHEMA_V2 && schema !== SCHEMA_V3) { io.out("ERROR schema: not an archdrawer drawing"); return 1; }
   const now = new Date().toISOString();
   // @1 converts through @2 (diagram contract, Reading archdraw/diagram@1).
   const v1 = isV1(raw) ? migrateV1(raw, now) : null;

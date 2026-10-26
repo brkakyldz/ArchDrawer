@@ -7,6 +7,7 @@ import type { DiagramDocument } from "../core/model";
 import { FixtureEngine, OVERLONG_LEDE } from "./engines/fixture";
 import type { EngineRunRequest } from "./engines/types";
 import { makeApp, makeFolder, shopRepo } from "./testkit";
+import { choiceDoc, withChoice } from "../core/file4";
 
 async function setup(stepMs = 1, engines?: FixtureEngine[]) {
   const t = makeApp({ stepMs, engines });
@@ -16,8 +17,9 @@ async function setup(stepMs = 1, engines?: FixtureEngine[]) {
     const r = await t.req("/api/runs", { method: "POST", json: { diagramId: id, view: "overview", instruction, engine: "fixture", model: null, ...extra } });
     return { status: r.status, body: (await r.json()) as { runId?: string; error?: string } };
   };
-  const doc = (): DiagramDocument => bothChannels(JSON.parse(readFileSync(file, "utf8")));
-  const stored = () => JSON.parse(readFileSync(file, "utf8"));
+  // The file is stored as @4; these runs change its one choice, read here as @3.
+  const doc = (): DiagramDocument => bothChannels(choiceDoc(JSON.parse(readFileSync(file, "utf8"))));
+  const stored = () => choiceDoc(JSON.parse(readFileSync(file, "utf8")));
   return { ...t, file, id, run, doc, stored };
 }
 
@@ -95,7 +97,7 @@ describe("instruction-box runs", () => {
     writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), title: "Edited meanwhile" }, null, 2));
     const done = await runs.wait(body.runId!);
     expect(done).toMatchObject({ status: "failed", error: "The drawing changed while the instruction ran." });
-    const after = bothChannels(JSON.parse(readFileSync(file, "utf8")));
+    const after = bothChannels(choiceDoc(JSON.parse(readFileSync(file, "utf8"))));
     expect(after.title).toBe("Edited meanwhile");
     expect(after.views[0].nodes.some((n: { id: string }) => n.id === "cache")).toBe(false);
   });
@@ -150,19 +152,21 @@ describe("instruction-box runs", () => {
     const t = makeApp();
     const { root, file } = shopRepo({ "src/api.ts": "// api\n" });
     const doc = t.store.register(file);
-    const withApi = { ...doc, facts: { ...doc.facts, components: doc.facts.components.map((c) => (c.id === "api" ? { ...c, files: ["src/api.ts"] } : c)) } };
+    const one = choiceDoc(doc);
+    const withApi = withChoice(doc, "system", { ...one, facts: { ...one.facts, components: one.facts.components.map((c) => (c.id === "api" ? { ...c, files: ["src/api.ts"] } : c)) } });
     t.store.put(doc.id, withApi);
     const cwds: string[] = [];
     const engine = new FixtureEngine(1);
     const run = engine.run.bind(engine);
     engine.run = (req) => { cwds.push(req.cwd); return run(req); };
     // A base naming another folder, where src/api.ts does not exist.
-    const stored = { ...t.store.get(doc.id)!, source: { kind: "local" as const, path: makeFolder({}) } };
-    const done = await t.runs.wait(t.runs.start({ engine, model: null, instruction: "add Cache component", view: "overview", base: joinChannel(stored, "overview"), stored }));
+    const whole = t.store.get(doc.id)!;
+    const stored = { ...choiceDoc(whole), source: { kind: "local" as const, path: makeFolder({}) } };
+    const done = await t.runs.wait(t.runs.start({ engine, model: null, instruction: "add Cache component", view: "overview", base: joinChannel(stored, "overview"), stored, whole, choice: "system" }));
     expect(done).toMatchObject({ status: "succeeded" });
     // The routing question and the refine both run in the store's root.
     expect(cwds).toEqual([root, root]);
-    const after = t.store.get(doc.id)!;
+    const after = choiceDoc(t.store.get(doc.id)!);
     expect(after.facts.components.find((c) => c.id === "api")!.files).toEqual(["src/api.ts"]);
     expect(after.warnings).toEqual([]);
   });
@@ -187,7 +191,7 @@ describe("post runs", () => {
     expect(post.edges.filter((e) => e.step !== null).every((e) => e.label === "")).toBe(true);
     expect(after.warnings.slice(before.warnings.length)).toEqual(["Joined result → approval and approval → result into one two-way connection"]);
     // part i shows the fact the overview's part i shows; the facts stay as they were
-    expect(stored().channels.linkedin.views[0].nodes.find((n: { id: string }) => n.id === "request").facts).toEqual([before.views[0].nodes[0].id]);
+    expect(stored().channels.linkedin.views[0].nodes.find((n: { id: string }) => n.id === "request")!.facts).toEqual([before.views[0].nodes[0].id]);
     expect(stored().channels.linkedin.outdated).toEqual([]);
     expect(done.layoutReport).toMatchObject({ view: "linkedin", format: "feed", overLimitText: [], counts: { parts: 6, zones: 1, connections: 5 } });
   });
@@ -236,7 +240,7 @@ describe("post runs", () => {
     expect([revised.status, revised.error]).toEqual(["succeeded", null]);
     expect(revised.progress[0]).toBe("Looking at the drawing");
     expect(revised.progress.filter((l) => l.startsWith("Fixing"))).toEqual(["Fixing 1 problem in the answer"]);
-    expect((JSON.parse(readFileSync(file, "utf8")) as Document3).channels.readme.views[0].caption.lede).toBe("A detailed drawing made by the test engine.");
+    expect(choiceDoc(JSON.parse(readFileSync(file, "utf8"))).channels.readme.views[0].caption.lede).toBe("A detailed drawing made by the test engine.");
   });
 
   it("an over-long text is rewritten by the repair turn, or shortened with one warning after it", async () => {

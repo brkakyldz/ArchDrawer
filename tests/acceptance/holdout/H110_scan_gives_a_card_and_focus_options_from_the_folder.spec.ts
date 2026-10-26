@@ -5,9 +5,10 @@ import { gitRepo, plainFolder, token, checkFolder, startScan, finishScan, scanFo
 const sixLines = (name: string) => Array.from({ length: 6 }, (_, i) => `// ${name} ${i + 1}`).join('\n') + '\n';
 
 // SCAN-1/2/3: a scan reads what code gathers from the folder and answers a card and focus options. With the fixture engine
-// the answer is the one the testing contract spells out: three options backed by files of the folder, the fourth, backed
-// by a file that does not exist, left out with one warning, and "the whole system" and "something else" never among them.
-test('H110 [START-4, SCAN-1, SCAN-2, SCAN-3] a scan of a project folder answers the repository card and the focus options backed by its files, leaves out the option whose file is missing, and writes nothing into the project', async ({ request }) => {
+// the answer is the one the testing contract spells out: three options backed by files of the folder (a flow and two sections),
+// the fourth, backed by a file that does not exist, left out with one warning, and "the whole system" and "something else"
+// never among them. (From ADR 0015 the kinds are `section` and `flow`; H190 holds the limits.)
+test('H110 [START-4, SCAN-1, SCAN-2, SCAN-3, #180] a scan of a project folder answers the repository card and the focus options backed by its files, leaves out the option whose file is missing, and writes nothing into the project', async ({ request }) => {
   const auth = await token(request);
   const project = await gitRepo('scan-card');
   const diagramsBefore = await listedDiagrams(request);
@@ -27,11 +28,11 @@ test('H110 [START-4, SCAN-1, SCAN-2, SCAN-3] a scan of a project folder answers 
   expect(record.card!.entryPoints).toContain('main.ts'); expect(record.card!.entryPoints.length).toBeLessThanOrEqual(2);
   expect(record.options!.map(o => [o.id, o.kind, o.title, o.sentence, o.files])).toEqual([
     ['o1', 'flow', 'How a request moves through the project', 'Follows one request from the entry point to the store.', ['alpha.ts', 'beta.ts']],
-    ['o2', 'mechanism', 'The agent loop', 'How the agent proposes and runs a tool.', ['gamma.ts']],
-    ['o3', 'overview', 'The whole architecture', 'Every part and how they connect.', ['alpha.ts']],
+    ['o2', 'section', 'The agent loop', 'How the agent proposes and runs a tool.', ['gamma.ts']],
+    ['o3', 'section', 'The server side', 'The code that serves requests and keeps state.', ['alpha.ts']],
   ]);
   expect(record.warnings).toHaveLength(1); expect(record.warnings[0]).toMatch(/missing-file|A path that is not there/);
-  expect(record.options!.some(o => /something else|whole system/i.test(o.title))).toBe(false); // the home screen always offers those itself
+  expect(record.options!.some(o => /something else|whole system|whole architecture/i.test(o.title))).toBe(false); // the home screen always offers those itself
 
   // The stream tells the same story: progress in order, then exactly one `done` that carries the answer.
   const events = await scanEvents(scanId);

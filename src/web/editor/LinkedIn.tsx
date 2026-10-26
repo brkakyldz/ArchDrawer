@@ -3,7 +3,8 @@ import { rearrangeForFeed } from "../../core/export/feed";
 import { layoutView } from "../../core/layout";
 import { LIMITS, type DiagramDocument, type DiagramView } from "../../core/model";
 import { Icon } from "../ui/Icon";
-import type { Runner } from "./runner";
+import { engineName, type Runner } from "./runner";
+import type { EngineInfo } from "../api";
 
 const SAVED = "Saved in the file for your next archdrawer session";
 const REWRITE = "Rewrite this post in plain words for someone who has never seen the project";
@@ -61,12 +62,13 @@ export const drawFromFacts = (p: Engine, prepare: () => void, label = "Draw it")
  * On the LinkedIn channel's empty stage (ui contract, The LinkedIn flow): with an engine the post is
  * drawn from the facts, or designed with a look at the code; without one code prepares the simple version.
  */
-export function LinkedInStart(p: Engine & { onPrepare: () => void }) {
+export function LinkedInStart(p: Engine & { onPrepare: () => void; choice?: StageChoice }) {
   const running = p.runner.state.status === "running";
   return (
     <div className="li-flow li-start" data-testid="linkedin-flow">
       {p.engine ? (
         <>
+          {p.choice && <StageEngine {...p.choice} running={running} />}
           <button className="btn primary wide" data-testid="channel-draw" disabled={running} onClick={() => drawFromFacts(p, p.onPrepare)}>
             <Icon name="spark" size={15} /> Draw it
           </button>
@@ -82,6 +84,39 @@ export function LinkedInStart(p: Engine & { onPrepare: () => void }) {
         </>
       )}
       <RunLine runner={p.runner} />
+    </div>
+  );
+}
+
+/** The engines a stage may choose from and the stored choice it changes (ui contract, Choosing the engine). */
+export interface StageChoice {
+  engines: EngineInfo[];
+  engine: EngineInfo;
+  model: string;
+  onEngine: (id: string) => void;
+  onModel: (model: string) => void;
+}
+
+/**
+ * `stage-engine` and `stage-model` on the empty LinkedIn stage (#44): the engine and model `channel-draw` and
+ * `design-post` use, the same choice `ai-engine` and `ai-model` store, so a change in either place shows in the other.
+ */
+function StageEngine({ engines, engine, model, onEngine, onModel, running }: StageChoice & { running: boolean }) {
+  return (
+    <div className="pick stage-pick">
+      <label>
+        <span>Engine</span>
+        <select data-testid="stage-engine" value={engine.id} disabled={running} onChange={(e) => onEngine(e.target.value)}>
+          {engines.filter((e) => e.available).map((e) => <option key={e.id} value={e.id}>{engineName(e)}</option>)}
+        </select>
+      </label>
+      <label>
+        <span>Model</span>
+        <select data-testid="stage-model" value={model} disabled={running} onChange={(e) => onModel(e.target.value)}>
+          <option value="">Default</option>
+          {engine.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+        </select>
+      </label>
     </div>
   );
 }

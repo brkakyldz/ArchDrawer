@@ -1,14 +1,15 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { gitRepo, plainFolder, projectFiles, writeFiles, writeExistingDrawing, token, checkFolder, drawFolder, scanFolder, scanRecord, startDraw, finishRun, register, listedDiagrams, getDocument, cli, errorLines, samePath, exists, sorted } from './helpers';
+import { gitRepo, plainFolder, projectFiles, writeFiles, writeExistingDrawing, token, checkFolder, drawFolder, scanFolder, scanRecord, startDraw, finishRun, register, listedDiagrams, cli, errorLines, samePath, exists, sorted } from './helpers';
+import { getDocument } from './helpers-selections'; // a draw writes format 4: this gives the drawn choice in the shape the scenario was written in
 
 const sixLines = (name: string) => Array.from({ length: 6 }, (_, i) => `// ${name} ${i + 1}`).join('\n') + '\n';
 
 // The new file is `<folder>/docs/architecture.archdraw.json`, or the next free `architecture-<n>.archdraw.json` (n = 2 to 99);
 // the app never overwrites a file, whatever it holds. The folder is the one chosen, so a subfolder of a repository gets its own
 // docs folder while its facts' paths stay relative to the repository root, and a folder outside git is its own root.
-test('H118 [START-4, READ-2, FILE-1] a draw takes the next free file name up to 99 and never replaces a file, a subfolder is drawn under its own docs folder with paths from the repository root, and a folder outside git is its own root', async ({ request }) => {
+test('H118 [START-4, READ-2, FILE-1, #181, #182] a draw takes the next free file name up to 99 and never replaces a file, a subfolder is drawn under its own docs folder with paths from the repository root, and a folder outside git is its own root', async ({ request }) => {
   test.setTimeout(420_000);
   const auth = await token(request);
   const project = await gitRepo('draw-names', { ...projectFiles, 'pkg/alpha.ts': sixLines('pa'), 'pkg/beta.ts': sixLines('pb'), 'pkg/gamma.ts': sixLines('pg') });

@@ -7,6 +7,7 @@ import { CONVERTED_V2, readAnyFile } from "../../src/core/convert";
 import { joinChannel } from "../../src/core/channels";
 import type { Document3 } from "../../src/core/file3";
 import type { DiagramDocument } from "../../src/core/model";
+import { choiceDoc } from "../../src/core/file4";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -19,7 +20,7 @@ export async function token(request: APIRequestContext): Promise<string> {
 
 /**
  * The shop drawing in the view shape of an `@2` file (tests/fixtures/shop.archdraw.json), optionally
- * changed. `repoWith` writes it as `@3`.
+ * changed. `repoWith` writes it as `@4`, the format the server stores.
  */
 export function shop(change: (f: Record<string, any>) => void = () => {}): Record<string, any> {
   const f = JSON.parse(readFileSync(join(root, "tests", "fixtures", "shop.archdraw.json"), "utf8"));
@@ -27,7 +28,7 @@ export function shop(change: (f: Record<string, any>) => void = () => {}): Recor
   return f;
 }
 
-/** An `@2` file as the `@3` file it converts to, without the conversion warning; any other file as it is. */
+/** An `@2` file as the `@4` file it converts to (one choice, the whole system), without the conversion warning; any other file as it is. */
 export function asV3(file: Record<string, unknown>): Record<string, unknown> {
   if (file.schema !== "archdraw/diagram@2") return file;
   const r = readAnyFile(file);
@@ -60,8 +61,8 @@ export async function open(page: Page, file: Record<string, unknown> = shop()): 
   return { id, path };
 }
 
-/** The stored file. */
-export const storedOnDisk = (path: string): Document3 => JSON.parse(readFileSync(path, "utf8"));
+/** The stored file (format 4) as its first choice, the one a drawing opens on. */
+export const storedOnDisk = (path: string): Document3 => choiceDoc(JSON.parse(readFileSync(path, "utf8")));
 /** The drawing in the file, as the editor draws it: the overview's views, then the LinkedIn post. */
 /** The drawing on disk as the overview's views, then the LinkedIn channel's. */
 export const onDisk = (path: string): DiagramDocument => {

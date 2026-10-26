@@ -1,14 +1,13 @@
 import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
-import { markOutside, normalizeFile3 } from "../core/channels";
 import { readAnyFile } from "../core/convert";
-import { validateDocument3, type Document3, type File3 } from "../core/file3";
+import { markOutside4, normalizeFile4, validateDocument4, type Document4, type File4 } from "../core/file4";
 import { DOC_ID_RE, newDocumentId } from "../core/model";
 import { checkFile, docText, hashOf, normaliseFile, repoFileChecker, repoRootOf, writeAtomic } from "./files";
 
 export interface DiagramSummary { id: string; title: string; path: string | null; root: string | null; updatedAt: string }
-export type ReadResult = { ok: true; doc: Document3 } | { ok: false; error: string; errors: string[] };
+export type ReadResult = { ok: true; doc: Document4 } | { ok: false; error: string; errors: string[] };
 export type PutResult = { ok: true; updatedAt: string } | { ok: false; conflict: true; updatedAt: string | null } | { ok: false; conflict: false; error: string; errors: string[] };
 
 export class FileError extends Error {
@@ -44,9 +43,9 @@ export class Store extends EventEmitter {
   /** When each stamp was taken: a same-size write soon after can keep the file's mtime. */
   private readonly stampedAt = new Map<string, number>();
   /** The document as this store last wrote or read it, to mark what an outside write changed. */
-  private readonly last = new Map<string, Document3>();
+  private readonly last = new Map<string, Document4>();
   /** Normalised documents whose file could not be written back yet (locked or read-only), per id. */
-  private readonly unwritten = new Map<string, { doc: Document3; text: string }>();
+  private readonly unwritten = new Map<string, { doc: Document4; text: string }>();
   private timer: NodeJS.Timeout | null = null;
 
   constructor(readonly dataDir: string) {
@@ -97,7 +96,7 @@ export class Store extends EventEmitter {
   }
 
   /** Register a drawing file (POST /api/files, `archdrawer open`): validated, given a unique id, normalised. */
-  register(path: string): Document3 {
+  register(path: string): Document4 {
     if (!isAbsolute(path)) throw new FileError("The path must be absolute");
     const abs = resolve(path);
     if (!existsSync(abs) || !statSync(abs).isFile()) throw new FileError(`Not found: ${abs}`);
@@ -128,13 +127,13 @@ export class Store extends EventEmitter {
     return r.doc;
   }
 
-  /** Import a document (archdraw/diagram@3, @2 or @1; older ones converted) into the data directory under a new id. */
+  /** Import a document (archdraw/diagram@4, @3, @2 or @1; older ones converted) into the data directory under a new id. */
   import(raw: unknown): { ok: true; id: string } | { ok: false; error: string; errors: string[] } {
     const id = newDocumentId();
     const now = nowIso();
     const r = readAnyFile(raw, {}, { allowV1: true, now });
     if (!r.ok || !r.file) return { ok: false, error: "Invalid diagram", errors: r.errors };
-    const doc = normalizeFile3({ ...r.file, id: undefined, createdAt: undefined, updatedAt: undefined }, { id, now, source: r.file.source ?? null });
+    const doc = normalizeFile4({ ...r.file, id: undefined, createdAt: undefined, updatedAt: undefined }, { id, now, source: r.file.source ?? null });
     const text = docText(doc);
     writeAtomic(this.importFile(id)!, text);
     this.known.set(id, hashOf(text));
@@ -156,7 +155,7 @@ export class Store extends EventEmitter {
       return { ok: true, doc: pending.doc };
     }
     if (seen === h) {
-      const v = validateDocument3(JSON.parse(text));
+      const v = validateDocument4(JSON.parse(text));
       if (v.ok) { this.versions.set(id, v.doc.updatedAt); this.last.set(id, v.doc); return { ok: true, doc: v.doc }; }
     }
     const report = this.files.has(id) ? checkFile(path, "warn") : this.checkImport(text);
@@ -167,7 +166,7 @@ export class Store extends EventEmitter {
     const outside = seen !== undefined;
     const prev = this.last.get(id);
     // An outside write marks the channels it did not draw (diagram contract, Edits: facts or channel).
-    if (outside && prev) n = { ...n, doc: markOutside(prev, n.doc) };
+    if (outside && prev) n = { ...n, doc: markOutside4(prev, n.doc) };
     if (outside) {
       // A writer that set its own new `updatedAt` keeps it; one that left the old value gets now.
       const theirs = report.file.updatedAt;
@@ -185,7 +184,7 @@ export class Store extends EventEmitter {
    * open by another process) keeps its text: the document stands in memory, and a later read or
    * poll writes it. A failed write never stops the server.
    */
-  private writeBack(id: string, path: string, doc: Document3, out: string, text: string) {
+  private writeBack(id: string, path: string, doc: Document4, out: string, text: string) {
     if (out !== text) {
       try { writeAtomic(path, out); } catch (e) {
         if (!this.unwritten.has(id)) console.error(`Could not write back ${path}; trying again later:`, (e as Error).message);
@@ -201,11 +200,11 @@ export class Store extends EventEmitter {
   }
 
   /** Imported documents keep their own `source`; their `files` are not checked against a folder. */
-  private checkImport(text: string): { ok: boolean; errors: string[]; file: File3 | null } {
+  private checkImport(text: string): { ok: boolean; errors: string[]; file: File4 | null } {
     try { return readAnyFile(JSON.parse(text)); } catch (e) { return { ok: false, errors: [`json: ${(e as Error).message}`], file: null }; }
   }
 
-  get(id: string): Document3 | null {
+  get(id: string): Document4 | null {
     const r = this.read(id);
     return r?.ok ? r.doc : null;
   }
@@ -226,7 +225,7 @@ export class Store extends EventEmitter {
     // editor marks it (`POST /api/diagrams/:id/check-files`). A registered file's source stays its
     // repository, the one root its files are checked and its runs read against.
     const source = this.files.has(id) ? { source: { kind: "local", path: repoRootOf(path) } } : {};
-    const v = validateDocument3({ ...(body as object), ...source, updatedAt });
+    const v = validateDocument4({ ...(body as object), ...source, updatedAt });
     if (!v.ok) return { ok: false, conflict: false, error: v.error, errors: v.errors };
     const text = docText(v.doc);
     // A short sentence for the editor's save status; the system error stays in the server log.

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bezierAt, groupNameText, layoutRects, routeEdges, routeSamples, type Rect } from "./geometry";
-import { drawView, namesClip } from "./export/svg";
+import { bezierAt, groupNameBox, layoutRects, routeEdges, routeSamples, type Rect } from "./geometry";
+import { drawView, headerColour } from "./export/svg";
 import { PALETTES } from "./theme";
 import { fillDefaults, type DiagramView } from "./model";
 import { edge, node } from "./testkit";
@@ -85,12 +85,17 @@ describe("a connection in the way of a part", () => {
 });
 
 describe("handles", () => {
-  it.each(cases.map((c) => [c.name, c] as const))("every handle is at least 24 px: %s", (_name, { view, post }) => {
+  // At least 24 px, except across a short gap between sides that face each other: never longer than the gap (or 8 px).
+  const shortest = (r: { p0: { x: number; y: number }; p1: { x: number; y: number }; side0: keyof typeof NORMAL; side1: keyof typeof NORMAL }) => {
+    const n0 = NORMAL[r.side0], n1 = NORMAL[r.side1], gap = (r.p1.x - r.p0.x) * n0[0] + (r.p1.y - r.p0.y) * n0[1];
+    return n0[0] === -n1[0] && n0[1] === -n1[1] && gap > 0 ? Math.min(24, Math.max(gap, 8)) : 24;
+  };
+  it.each(cases.map((c) => [c.name, c] as const))("every handle is at least 24 px, or the short gap: %s", (_name, { view, post }) => {
     const rects = layoutRects(view, { post }), routes = routeEdges(view, rects, { post });
     // Edges without an id (the raw example file) are given one when a file is read.
     for (const c of view.edges.filter((e) => e.id).map((e) => routes.get(e.id)!).filter(Boolean)) {
-      expect(Math.hypot(c.c1.x - c.p0.x, c.c1.y - c.p0.y), c.id).toBeGreaterThanOrEqual(24 - 1e-6);
-      expect(Math.hypot(c.p1.x - c.c2.x, c.p1.y - c.c2.y), c.id).toBeGreaterThanOrEqual(24 - 1e-6);
+      expect(Math.hypot(c.c1.x - c.p0.x, c.c1.y - c.p0.y), c.id).toBeGreaterThanOrEqual(shortest(c) - 1e-6);
+      expect(Math.hypot(c.p1.x - c.c2.x, c.p1.y - c.c2.y), c.id).toBeGreaterThanOrEqual(shortest(c) - 1e-6);
     }
     // And as drawn: the path's numbers are rounded to 0.1 px.
     for (const e of view.edges.filter((x) => x.id)) {
@@ -98,8 +103,8 @@ describe("handles", () => {
       if (!r) continue;
       const n = r.d.match(/-?[\d.]+/g)!.map(Number), pts = Array.from({ length: n.length / 2 }, (_, i) => ({ x: n[2 * i], y: n[2 * i + 1] }));
       for (let i = 0; i + 3 < pts.length; i += 3) {
-        expect(Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y), `${e.id} drawn`).toBeGreaterThanOrEqual(24);
-        expect(Math.hypot(pts[i + 3].x - pts[i + 2].x, pts[i + 3].y - pts[i + 2].y), `${e.id} drawn`).toBeGreaterThanOrEqual(24);
+        expect(Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y), `${e.id} drawn`).toBeGreaterThanOrEqual(shortest(r) - 0.1);
+        expect(Math.hypot(pts[i + 3].x - pts[i + 2].x, pts[i + 3].y - pts[i + 2].y), `${e.id} drawn`).toBeGreaterThanOrEqual(shortest(r) - 0.1);
       }
     }
   });
@@ -163,33 +168,54 @@ describe("a post's spine line hidden behind parts turns out on one side", () => 
   });
 });
 
-describe("group names are cut out of the lines only", () => {
+describe("a group's name stands on a halo; nothing is cut out of a line (#176, diagram contract A group's name)", () => {
   const view = (groups: boolean) => fillDefaults({ version: 2, title: "names", views: [{ id: "v", title: "V", caption: { what: "", how: "", notice: "" }, nodes: [
-    ...(groups ? [node("g1", { form: "group", label: "Runtime" }), node("g2", { form: "group", label: "" })] : []),
+    ...(groups ? [node("g1", { form: "group", label: "Runtime", sub: "the local server" }), node("g2", { form: "group", label: "" })] : []),
     node("a", { x: 0, y: 0, parent: groups ? "g1" : null }), node("b", { x: 0, y: 400, parent: groups ? "g2" : null }),
   ], edges: [{ ...edge("a", "b", { label: "calls" }), id: "ab" }] }] } as never).views[0] as DiagramView;
 
-  it("one even-odd hole per group's name text, applied to the line and not to its label", () => {
-    const v = view(true), rects = layoutRects(v);
-    const clip = namesClip(v, rects, "ad-names")!;
-    expect(clip).toContain('<clipPath id="ad-names" clipPathUnits="userSpaceOnUse"><path clip-rule="evenodd"');
-    // The outer square and one hole per group: an unnamed group still draws its icon there.
-    expect(clip.match(/Z/g)!.length).toBe(1 + 2);
+  it("draws each group as its frame under the connections and its head over them, under the parts, with no clip", () => {
+    const body = drawView(view(true), PALETTES.light, { prefix: "ad" }).body;
+    // No line is clipped (a frame's glow keeps its own mask, outside the frame).
+    const edgeG = body.slice(body.indexOf('<g data-edge-id="ab"'), body.indexOf("<g data-group-head"));
+    expect(edgeG).not.toMatch(/clip-path|<mask/);
+    expect(body).not.toContain("-names");
+    const at = (s: string) => body.indexOf(s);
     for (const g of ["g1", "g2"]) {
-      const t = groupNameText(v.nodes.find((n) => n.id === g)!, rects.get(g)!);
-      expect(clip).toContain(`M${t.x},${t.y} `);
+      expect(at(`<g data-node-id="${g}"`)).toBeLessThan(at('<g data-edge-id="ab"'));
+      expect(at(`<g data-group-head="${g}">`)).toBeGreaterThan(at('<g data-edge-id="ab"'));
+      expect(at(`<g data-group-head="${g}">`)).toBeLessThan(at('<g data-node-id="a"'));
     }
-    const body = drawView(v, PALETTES.light, { prefix: "ad" }).body;
-    const edgeG = body.slice(body.indexOf('<g data-edge-id="ab"'));
-    expect(edgeG.startsWith('<g data-edge-id="ab" data-style="call" data-both="false"><g clip-path="url(#ad-names)">')).toBe(true);
-    // The clip group closes before the label's group opens.
-    const clipped = edgeG.slice(0, edgeG.indexOf('<g data-edge-label="ab"'));
-    expect(clipped.match(/<g/g)!.length - clipped.match(/<\/g>/g)!.length).toBe(1);
+    // The frame holds no text; the head holds the name and the sub-line, each on a halo in the header's colour.
+    const frame = body.slice(at('<g data-node-id="g1"'), body.indexOf("</g>", at('<g data-node-id="g1"')));
+    expect(frame).not.toContain("<text");
+    const head = body.slice(at('<g data-group-head="g1">'), at('<g data-group-head="g2">'));
+    const halo = `stroke="${headerColour(PALETTES.light, "service")}" stroke-width="4" stroke-linejoin="round" paint-order="stroke"`;
+    expect(head.match(/<text[^>]*>/g)!.map((t) => t.includes(halo))).toEqual([true, true]);
+    expect(head).toContain(">Runtime</text>");
+    expect(head).toContain(">the local server</text>");
   });
 
-  it("no clip without a group", () => {
-    const v = view(false);
-    expect(namesClip(v, layoutRects(v), "ad-names")).toBeNull();
-    expect(drawView(v, PALETTES.light, { prefix: "ad" }).body).not.toContain('clip-path="url(#ad-names)"');
+  it("a first-row member narrower than its group's name, entered from above, gets its line all the way to its port", () => {
+    const v = fillDefaults({ version: 2, title: "halo", views: [{ id: "v", title: "V", caption: { what: "", how: "", notice: "" }, nodes: [
+      node("top", { x: 40, y: -300 }),
+      node("zone", { form: "group", label: "A group name far wider than its member" }),
+      node("m", { label: "API", form: "compact", parent: "zone", x: 0, y: 0 }),
+    ], edges: [{ ...edge("top", "m"), id: "down" }] }] } as never).views[0] as DiagramView;
+    const rects = layoutRects(v), r = routeEdges(v, rects).get("down")!, m = rects.get("m")!, zone = rects.get("zone")!;
+    // The member is narrower than the name, so its port stays under the name …
+    expect(m.w).toBeLessThan(groupNameBox(v.nodes.find((n) => n.id === "zone")!, zone).w);
+    expect(r.side1).toBe("t");
+    expect(r.p1.y).toBeCloseTo(m.y, 0);
+    // … and the line is drawn whole across the header: one path, from the source to the port, nothing clipped.
+    const body = drawView(v, PALETTES.light, { prefix: "ad" }).body;
+    const line = body.slice(body.indexOf('<g data-edge-id="down"'), body.indexOf('<g data-group-head="zone">'));
+    expect(line).toContain(`d="${r.d}"`);
+    expect(line).not.toMatch(/clip-path|<mask/);
+    expect(body.indexOf('<g data-group-head="zone">')).toBeGreaterThan(body.indexOf('<g data-edge-id="down"'));
+  });
+
+  it("draws no head without a group", () => {
+    expect(drawView(view(false), PALETTES.light, { prefix: "ad" }).body).not.toContain("data-group-head");
   });
 });

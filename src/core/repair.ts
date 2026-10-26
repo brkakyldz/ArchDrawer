@@ -36,6 +36,8 @@ export interface RepairContext {
   facts?: Iterable<string>;
   /** The mechanisms and limits a part may draw as rows (diagram contract, What a channel draws). */
   rows?: { mechanisms: Map<string, { label: string; within: string | null }>; limits: Map<string, { text: string; on: string }> };
+  /** View ids other choices of the file hold: a new view never takes one (diagram contract, rule 2). */
+  takenViews?: Iterable<string>;
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
@@ -146,10 +148,11 @@ export function answerToDocument(raw: unknown, ctx: RepairContext): DiagramDocum
 
   const viewIds = new Map<string, string>();
   const seenViews = new Set<string>();
+  const takenViews = new Set(ctx.takenViews ?? []);
   rawViews.forEach((v, i) => {
     const wanted = str(v.id), clean = toId(wanted);
     let id = clean || `view-${i + 1}`;
-    for (let k = 2; seenViews.has(id); k++) id = `${clean || "view"}-${k}`;
+    for (let k = 2; seenViews.has(id) || takenViews.has(id); k++) id = `${clean || "view"}-${k}`;
     seenViews.add(id);
     if (!viewIds.has(wanted.trim())) viewIds.set(wanted.trim(), id);
     if (!clean) warnings.push(`Gave the view without an id the id "${id}"`);

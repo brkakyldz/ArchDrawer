@@ -2,11 +2,13 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { gitRepo, workspaceRaw, shop3, isolatedDrawing, writeExistingDrawing, samePath, exists } from './helpers';
+import { optionBox, SLUG } from './helpers-selections';
 
-// START-4: the home screen starts a drawing from a local folder through four choices (folder, focus, channel, draw), each
+// START-4: the home screen starts a drawing from a local folder through four steps (folder, what to draw, channel, draw), each
 // kept while the user goes on. The user's own drawing in the folder is offered first and never replaced. Journeys that
 // open the editor after a draw choose LinkedIn: the editor shows README and presentation from steps F and G on.
-test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1] type a folder, see its card and focus options, choose a focus and the LinkedIn post, draw it, and land in the editor on the LinkedIn channel, offered the drawing the folder already holds first', async ({ page, request }) => {
+// From ADR 0015 the choices are checkboxes, sections first and flows after; H191 and H192 hold the list and several choices at once.
+test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1, #180, #181] type a folder, see its card and choices, tick a section and choose the LinkedIn post, draw it, and land in the editor on the LinkedIn channel, offered the drawing the folder already holds first', async ({ page, request }) => {
   test.setTimeout(240_000);
   const project = await gitRepo('start-flow');
   const first = await writeExistingDrawing(project.dir, 'architecture.archdraw.json', 'Earlier drawing');
@@ -45,18 +47,19 @@ test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1] type a folder, see
     await expect(page.getByTestId('scan-card-languages')).toContainText('TypeScript');
     await expect(page.getByTestId('scan-card-entry').first()).toContainText('main.ts');
     await expect(page.getByTestId('scan-cached')).toHaveCount(0); // first look at this commit
-    const options = page.getByTestId('focus-option');
+    const options = page.getByTestId('focus-option'), agentLoop = optionBox(page, 'o2'), flow = optionBox(page, 'o1');
     await expect(options).toHaveCount(3);
-    await expect(options.evaluateAll(els => els.map(el => [el.getAttribute('data-option'), el.getAttribute('data-kind')]))).resolves.toEqual([['o1', 'flow'], ['o2', 'mechanism'], ['o3', 'overview']]);
-    await expect(options.nth(1)).toContainText('The agent loop'); await expect(options.nth(1)).toContainText('How the agent proposes and runs a tool.');
-    await expect(options.nth(1).getByTestId('focus-option-files')).toContainText('gamma.ts');
-    await expect(options.nth(0).getByTestId('focus-option-files')).toContainText('alpha.ts'); await expect(options.nth(0).getByTestId('focus-option-files')).toContainText('beta.ts');
+    // The sections come first (in option order), then the flows: the loop and the server side, then the request.
+    await expect(options.evaluateAll(els => els.map(el => [el.getAttribute('data-option'), el.getAttribute('data-kind')]))).resolves.toEqual([['o2', 'section'], ['o3', 'section'], ['o1', 'flow']]);
+    await expect(agentLoop).toContainText('The agent loop'); await expect(agentLoop).toContainText('How the agent proposes and runs a tool.');
+    await expect(agentLoop.getByTestId('focus-option-files')).toContainText('gamma.ts');
+    await expect(flow.getByTestId('focus-option-files')).toContainText('alpha.ts'); await expect(flow.getByTestId('focus-option-files')).toContainText('beta.ts');
     await expect(page.getByTestId('focus-whole')).toBeVisible(); await expect(page.getByTestId('focus-typed')).toBeVisible();
-    for (const c of ['linkedin', 'readme', 'presentation']) await expect(page.getByTestId(`channel-choice-${c}`)).toHaveCount(0); // after a focus
+    for (const c of ['linkedin', 'readme', 'presentation']) await expect(page.getByTestId(`channel-choice-${c}`)).toHaveCount(0); // after a choice is ticked
     await expect(page.getByTestId('draw-start')).toBeDisabled();
 
-    // Choose the mechanism, then the channel: none is chosen at first.
-    await options.nth(1).click();
+    // Tick the section, then choose the channel: none is chosen at first.
+    await agentLoop.click(); await expect(agentLoop).toBeChecked(); await expect(page.getByTestId('focus-count')).toHaveText('1 chosen'); await expect(page.getByTestId('draw-start')).toContainText('Draw it');
     for (const c of ['linkedin', 'readme', 'presentation']) { await expect(page.getByTestId(`channel-choice-${c}`)).toBeVisible(); await expect(page.getByTestId(`channel-choice-${c}`)).not.toBeChecked(); }
     await expect(page.getByTestId('draw-start')).toBeDisabled();
     await page.getByTestId('channel-choice-linkedin').click(); await expect(page.getByTestId('channel-choice-linkedin')).toBeChecked(); await expect(page.getByTestId('draw-start')).toBeEnabled();
@@ -68,13 +71,16 @@ test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1] type a folder, see
     await expect(page.getByTestId('draw-stage').evaluateAll(els => els.map(el => el.getAttribute('data-stage')))).resolves.toEqual(['read', 'overview', 'channel']);
     await expect(page.getByTestId('draw-stage').nth(0)).toContainText('Reading the code'); await expect(page.getByTestId('draw-stage').nth(1)).toContainText('Drawing the overview');
     await expect(page.getByTestId('draw-stage').nth(2)).toContainText('Drawing the LinkedIn post');
+    await expect(page.getByTestId('draw-choice')).toHaveCount(1); await expect(page.getByTestId('draw-choice')).toHaveAttribute('data-choice', SLUG.o2); await expect(page.getByTestId('draw-choice-title')).toHaveText('The agent loop');
     await expect(page.getByTestId('draw-line')).toBeVisible(); await expect(page.getByTestId('draw-cancel')).toBeVisible();
     await expect(page.getByTestId('start-folder')).toBeDisabled(); await expect(page.getByTestId('channel-choice-readme')).toBeDisabled();
     await expect(page.getByTestId('editor')).toBeVisible({ timeout: 120_000 });
     const run = posts.find(p => p.path === '/api/runs')!;
-    expect(run.body).toMatchObject({ kind: 'draw', focus: { kind: 'option', option: 'o2' }, channel: 'linkedin' });
+    expect(run.body).toMatchObject({ kind: 'draw', choices: [{ kind: 'option', option: 'o2' }], channel: 'linkedin' }); expect(run.body).not.toHaveProperty('focus');
     expect(posts.filter(p => p.path === '/api/runs')).toHaveLength(1);
-    await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin'); await expect(page).toHaveURL(/\/d\/[^/?]+\?channel=linkedin/);
+    await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin'); await expect(page.getByTestId('editor')).toHaveAttribute('data-choice', SLUG.o2);
+    await expect(page).toHaveURL(new RegExp(`/d/[^/?]+\\?choice=${SLUG.o2}&channel=linkedin`));
+    await expect(page.getByTestId('views-panel')).toHaveCount(0); // one choice whose overview holds one view: nothing to choose between
     await expect(page.getByTestId('channel-tab-linkedin')).toHaveAttribute('aria-current', 'true');
     await expect(page.getByTestId('repo-name')).toHaveText(basename(project.dir));
     await expect(page.getByTestId('node-intake')).toBeVisible(); await expect(page.getByTestId('channel-empty')).toHaveCount(0);

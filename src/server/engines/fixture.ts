@@ -141,9 +141,11 @@ export function fixtureScan(folderName: string, data: { listing?: string[]; entr
     },
     options: [
       { kind: "flow", title: "How a request moves through the project", sentence: "Follows one request from the entry point to the store.", files: pick(0, 1) },
-      { kind: "mechanism", title: "The agent loop", sentence: "How the agent proposes and runs a tool.", files: files[2] ? pick(2) : pick(0) },
-      { kind: "overview", title: "The whole architecture", sentence: "Every part and how they connect.", files: pick(0) },
+      { kind: "section", title: "The agent loop", sentence: "How the agent proposes and runs a tool.", files: files[2] ? pick(2) : pick(0) },
+      { kind: "section", title: "The server side", sentence: "The code that serves requests and keeps state.", files: pick(0) },
       { kind: "flow", title: "A path that is not there", sentence: "Backed by a file that does not exist.", files: ["fixture/missing-file.ts"] },
+      // `[fixture:many]`: six more, so one unknown kind becomes a flow and one is past the cap of 8.
+      ...(/\[fixture:many\]/.test(folderName) ? [5, 6, 7, 8, 9, 10].map((i) => ({ kind: i === 5 ? "mechanism" : "section", title: `Part ${i}`, sentence: "One more part.", files: pick(0) })) : []),
     ],
   };
 }
@@ -278,7 +280,9 @@ export class FixtureEngine implements Engine {
 
   /** One of a draw's three calls: the read, the overview or the channel. */
   private async drawCall(req: EngineRunRequest, stage: "read" | "overview" | "channel", marked: (m: string) => boolean): Promise<unknown> {
-    if (stage === "read" && marked("[fixture:slow]")) {
+    // `:second` markers act on the read of the run's second choice alone (testing contract, Draw).
+    const second = stage === "read" && req.task?.data?.choiceIndex === 1;
+    if (stage === "read" && (marked("[fixture:slow]") || (second && marked("[fixture:slow:second]")))) {
       for (let i = 1; i <= 30; i++) {
         await sleep(2000, req.signal);
         req.progress(`Working ${i}/30`);
@@ -291,6 +295,10 @@ export class FixtureEngine implements Engine {
     }
     await sleep(this.stepMs, req.signal);
     if (marked(stage === "read" ? "[fixture:fail]" : `[fixture:fail:${stage}]`)) throw new EngineError("Fixture failure requested");
+    if (second && marked("[fixture:fail:second]")) throw new EngineError("Fixture failure requested");
+    // The first read of a second choice this server process makes for the folder fails; every later one answers.
+    const secondOnce = `${req.cwd}\0second`;
+    if (second && marked("[fixture:flaky:second]") && !FLAKED.has(secondOnce)) { FLAKED.add(secondOnce); throw new EngineError("Fixture failure requested"); }
     // Fails the stage's first call for the folder in this server process, whatever else the draw asks.
     const once = `${req.cwd}\0${stage}`;
     if (stage !== "read" && marked(`[fixture:flaky:${stage}]`) && !FLAKED.has(once)) { FLAKED.add(once); throw new EngineError("Fixture failure requested"); }

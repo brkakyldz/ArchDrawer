@@ -30,7 +30,7 @@ test('H25 [AI-1, AI-2, START-5, SAFE-1, FILE-1] a machine without engines saves 
     expect(Number.isFinite(Date.parse(stored.requests![0].at))).toBe(true);
     expect(await stat(marker).then(() => true, () => false)).toBe(false); // Shell-looking text is data.
     await page.reload(); await expect(page.getByTestId('repo-name')).toHaveText('Offline shop');
-    const fromHTTP = await (await request.get(`${base}/api/diagrams/${opened.id}`)).json(); expect(fromHTTP.requests).toEqual(stored.requests);
+    const fromHTTP = await (await request.get(`${base}/api/diagrams/${opened.id}`)).json(); expect(fromHTTP.requests).toEqual(stored.requests!.map(r => ({ ...r, choice: 'system' }))); // the served @4 request names its choice (api contract)
     // The conversation is the browser's memory: a reload starts it empty, while the request stays in the file.
     await page.getByTestId('ai-button').click(); await expect(page.getByTestId('ai-thread').getByTestId('ai-turn')).toHaveCount(0);
     await page.getByTestId('ai-input').fill('');

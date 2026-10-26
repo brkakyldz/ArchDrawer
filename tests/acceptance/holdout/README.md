@@ -35,9 +35,16 @@ author, from ADR 0011 and the contracts alone (no product code was read); and on
 round — the slide image, presenting (PRES-1), the tour (PRES-2) and the slide exports (PRES-3), H158–H166
 — was written by Claude Sonnet 5.5 (`claude-sonnet-5-5`) as an independent acceptance author, from ADR 0012
 and the contracts alone (no product code was read), in batches `0-helpers`, A–C and Z for the two lanes
-that build 0.5 at the same time.
+that build 0.5 at the same time; and on 2026-10-22 the ADR 0013–0015 round — calm connections and a steady
+drag (LOOK-4, EDIT-5, LAYOUT-5, LAYOUT-6), an outline per kind and no rows on the canvas (LOOK-2, LOOK-3), the
+drawing file of several choices `archdraw/diagram@4` (FILE-2), sections and flows (SCAN-2, SCAN-3), several choices
+drawn in one run (START-7, STORY-1), the whole-system map (STORY-8), a part that opens its inside (NAV-1) and the
+views panel (NAV-2), H167–H184 and H190–H208 — was written by three independent authors, Claude Sonnet 5.5
+(`claude-sonnet-5-5`), 2026-10-22: one for the drawing area, one for the selections area and one for the index pass
+(the readers of `helpers.ts` for `@4`, the files both areas' topics reach, `COVERAGE.md`, `verify.json`, `README.md` and
+`author-check.mjs`), each from the spec, ADRs 0013–0015 and the contracts alone, with no product code read.
 
-The suite holds 112 Playwright acceptance journeys, written from the product
+The suite holds 149 Playwright acceptance journeys, written from the product
 contracts and never from product code. Each title reads
 `H<nn> [REQUIREMENT IDS] journey`; the ids are the requirements of the product
 spec that the journey observes.
@@ -141,11 +148,33 @@ spec that the journey observes.
 - `helpers.ts`, `helpers-svg-parity.ts`: shared, test-owned helpers (files, the
   command line, the editor, the share dialog, image measurement; for 0.3 also
   project folders in real git repositories, the scan and draw requests, event
-  streams and the steps panel). `readDrawing` returns the stored `@3` file joined
+  streams and the steps panel). `readDrawing` returns the stored file joined
   into the drawn shape of an overview view (each part with its facts' text, a panel's
   mechanism rows first); `readDocument` returns the stored shape; `workspace` stores
   a drawing authored in the drawn shape as `@3`, `workspaceRaw` stores any document
-  exactly as given.
+  exactly as given. Since the ADR 0013–0015 round a stored or served file is `archdraw/diagram@4`:
+  `readDocument`, `readDrawing`, `getDocument`, `persisted`, `persistedDoc` and `sessionWrite` return
+  the file's first choice in the `@3` shape (`flattenChoice`), whichever format is on disk;
+  `readStoredRaw` and `getStoredRaw` return it as it is.
+- `helpers-drawing.ts` and `helpers-selections.ts` (the ADR 0013–0015 round, one per area): the
+  drawing area's readers of shapes, sizes, drag marks, guides, line paint and exports, and the
+  selections area's `@4` builders, the choices on the home screen, the draw of several choices and
+  the views panel. Both import `helpers.ts` and change nothing in it.
+- `H167`–`H184` `*.spec.ts` (18 journeys, the drawing area of the ADR 0013–0015 round): a drag that
+  moves only what it moves, the drop rule, guides, held sides, neutral connections and the trace,
+  labels clear of other lines, busy sides and trunks, the hub mark, the group name's halo, the
+  layout's crossing order, an outline per kind at its contracted box, no rows on a part, the sub-line
+  switch, the content box of a post card, the engine chosen on the empty LinkedIn stage and the open
+  mark. Older files rewritten for the same rules: H17–H19, H28, H31, H33, H34, H39, H40, H63, H64,
+  H87, H94, H95, H100, H109, H124, H131–H133, H152.
+- `H190`–`H208` `*.spec.ts` (19 journeys, the selections area): a scan's sections and flows, the
+  home screen's checkboxes, ticking from the keyboard, the refusals of a draw of several choices,
+  one run of three choices, a later failure that keeps the finished ones, the failed choice shown
+  on the home screen, a cancel in the second choice, a `@3` file opened as one choice and written
+  as `@4`, a file of four choices, an edit in one choice, every export naming its choice, the
+  whole-system map, a click that goes into a part, the open mark, and the views panel (list,
+  keyboard, strip, narrow header, addresses). Older files rewritten for the same rules: H15, H16,
+  H27, H35, H88–H90, H96, H106, H107, H110, H117–H123, H148–H151, H156, H157.
 - `verify.json`: the selected ids and the pass thresholds (runs 3, perScenario 2,
   overall 0.9).
 - `playwright.config.ts`: harness configuration. It assumes the suite sits in
@@ -218,3 +247,10 @@ above them. The present lane runs `A-present` (PRES-1, H158–H161) and `B-tour`
 test id. A lane's files use nothing the other lane builds, no file counts the buttons of `share-actions`, and every
 file also passes after the merge. No earlier scenario changed. `Z-index` is this index, with `author-check.mjs`
 checking that no file mixes the two lanes' surfaces.
+
+The ADR 0013–0015 round is three batches that land with the issues of `ISSUES-drawing.md` and
+`ISSUES-selections.md`: `D-drawing` (H167–H184 and the older files it rewrote), `S-selections` (H190–H208
+and its rewrites) and `Z-index`, the index pass (`helpers.ts`, H108, H114, H115, H131, `COVERAGE.md`,
+`verify.json`, `README.md`, `author-check.mjs`). A title of the round reads `H<nn> [IDS #issue …] journey`,
+and every scenario from H167 on names at least one issue so that a build step can run its own subset.
+`COVERAGE.md` lists what the round could not test.

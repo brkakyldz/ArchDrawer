@@ -81,6 +81,7 @@ export function joinView(doc: Document3, channel: ChannelId, view: View3): Diagr
   const { comps, rels, lims } = factMaps(doc);
   return {
     id: view.id, title: view.title, caption: { ...view.caption },
+    ...(view.subLines === false ? { subLines: false } : {}),
     postOf: channel === "linkedin" ? doc.channels.overview.views[0]?.id ?? null : null,
     nodes: view.nodes.map((p) => joinPart(p, comps, lims)),
     edges: view.edges.map((c) => joinConnection(c, rels)),
@@ -184,8 +185,11 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
   };
 
   // Parts.
+  const oldSub = new Map(doc.channels[channel].views.map((v) => [v.id, v.subLines]));
   const views: View3[] = next.views.map((v) => ({
     id: v.id, title: v.title, caption: { ...v.caption },
+    // The editor sets the switch (false, or true to remove it); an engine's answer leaves it out and the view keeps its own.
+    ...((v.subLines ?? oldSub.get(v.id)) === false ? { subLines: false } : {}),
     nodes: v.nodes.map((n): Part => {
       const old = oldParts.get(n.id);
       const drawn = drawnNodes.get(n.id);

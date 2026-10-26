@@ -1,4 +1,4 @@
-import { GROUP, groupHeaderWidth, LABEL, labelWidth, layoutRects, measureNode, overlaps, postOf, routeEdges, styleOf, type Rect } from "./geometry";
+import { countCrossings, GROUP, groupHeaderWidth, hiddenEdges, LABEL, labelWidth, layoutRects, measureNode, overlaps, postOf, routeEdges, styleOf, type Rect } from "./geometry";
 import type { DiagramEdge, DiagramNode, DiagramView, EdgeInput, Kind, Lane, NodeInput } from "./model";
 
 /**
@@ -48,6 +48,8 @@ function assignCells(members: NodeInput[], lifted: Lifted[], top: boolean): Map<
     for (const id of [e.a, e.b]) if (!chain.includes(id)) chain.push(id);
   }
   const hinted = members.length - free.length;
+  // Main-path parts laid in step order that the improvement below must not reorder (LAYOUT-6).
+  const ordered = new Set<string>();
   if (hinted === 0 && chain.length) {
     const cols = top ? Math.max(1, chain.length) : chain.length <= 4 ? 2 : 3;
     chain.forEach((id, i) => {
@@ -55,6 +57,11 @@ function assignCells(members: NodeInput[], lifted: Lifted[], top: boolean): Map<
       const c = r % 2 ? cols - 1 - (i % cols) : i % cols;
       put(id, { r, c });
     });
+  } else if (top && chain.length && chain.every((id) => freeIds.has(id))) {
+    // Beside hinted parts, a main path of parts without hints still reads in step order along one row,
+    // the first row under the hinted ones.
+    const r = Math.max(...[...at.values()].map((p) => p.r)) + 1, c0 = Math.min(...[...at.values()].map((p) => p.c));
+    chain.forEach((id, i) => { put(id, { r, c: c0 + i }); ordered.add(id); });
   }
   const neighbours = (id: string) => lifted.flatMap((e) => (e.a === id ? [e.b] : e.b === id ? [e.a] : [])).filter((o) => at.has(o));
   const onChain = new Set(chain);
@@ -93,7 +100,7 @@ function assignCells(members: NodeInput[], lifted: Lifted[], top: boolean): Map<
 
   // Improve by moves and swaps of the unhinted members: short lines, no line through a part,
   // few crossings, the main path read in order, kinds on their usual side.
-  const ids = [...freeIds];
+  const ids = [...freeIds].filter((id) => !ordered.has(id));
   // Who sits in each cell, kept in step with every move (numeric keys: this loop is the hot path).
   const occ = new Map<number, string>();
   for (const [id, p] of at) occ.set(cellKey(p.r, p.c), id);
@@ -132,7 +139,7 @@ function assignCells(members: NodeInput[], lifted: Lifted[], top: boolean): Map<
       for (let r = r0 - 1; r <= r1 + 1; r++) for (let c = c0 - 1; c <= c1 + 1; c++) {
         if (r === from.r && c === from.c) continue;
         const other = occ.get(cellKey(r, c));
-        if (other && !freeIds.has(other)) continue;
+        if (other && (!freeIds.has(other) || ordered.has(other))) continue;
         // Move (or swap) and score; undo unless it is better.
         const there = cellKey(r, c), here = cellKey(from.r, from.c);
         at.set(id, { r, c }); occ.set(there, id);
@@ -150,11 +157,67 @@ function assignCells(members: NodeInput[], lifted: Lifted[], top: boolean): Map<
   return at;
 }
 
+/** Pairs of connections (no shared end) whose straight segments between cell centres cross. */
+function cellCrossings(cells: Map<string, Cell>, lifted: Lifted[]): number {
+  let n = 0;
+  for (let i = 0; i < lifted.length; i++) for (let j = i + 1; j < lifted.length; j++) {
+    const s = lifted[i], t = lifted[j];
+    if (s.a === t.a || s.a === t.b || s.b === t.a || s.b === t.b) continue;
+    if (cellsCross(cells.get(s.a)!, cells.get(s.b)!, cells.get(t.a)!, cells.get(t.b)!)) n++;
+  }
+  return n;
+}
+
+/**
+ * Fewer crossings (diagram contract, Layout, LAYOUT-6): barycentre sweeps reorder the movable parts
+ * within rows and columns of one grid — rows top to bottom and back, columns left to right and back —
+ * each part towards the mean cell of what it connects to in this grid; a round that does not lower the
+ * crossings of the straight segments between cell centres is undone and ends the sweeps (at most 4).
+ * A part with no connection in the grid keeps its cell; ties keep the current order. Pure, deterministic.
+ */
+export function fewerCrossings(cells: Map<string, Cell>, lifted: Lifted[], movable: Map<string, string>): Map<string, Cell> {
+  if (movable.size < 2 || lifted.length < 2) return cells;
+  const at = new Map(cells);
+  const near = new Map<string, string[]>();
+  for (const e of lifted) {
+    (near.get(e.a) ?? near.set(e.a, []).get(e.a)!).push(e.b);
+    (near.get(e.b) ?? near.set(e.b, []).get(e.b)!).push(e.a);
+  }
+  const sweep = (axis: "r" | "c", lines: number[]) => {
+    const other = axis === "r" ? "c" : "r";
+    for (const line of lines) {
+      // Each class (free parts; side parts of one anchor and side) sorts among the cells it holds.
+      const classes = new Map<string, string[]>();
+      for (const [id, k] of movable) if (at.get(id)![axis] === line && near.has(id)) (classes.get(k) ?? classes.set(k, []).get(k)!).push(id);
+      for (const ids of classes.values()) {
+        if (ids.length < 2) continue;
+        const bary = new Map(ids.map((id) => { const ns = near.get(id)!; return [id, ns.reduce((s, o) => s + at.get(o)![other], 0) / ns.length]; }));
+        const slots = ids.map((id) => at.get(id)![other]).sort((a, b) => a - b);
+        const order = [...ids].sort((p, q) => bary.get(p)! - bary.get(q)! || at.get(p)![other] - at.get(q)![other]);
+        order.forEach((id, i) => at.set(id, { ...at.get(id)!, [other]: slots[i] } as Cell));
+      }
+    }
+  };
+  let best = cellCrossings(at, lifted);
+  for (let round = 0; round < 4 && best > 0; round++) {
+    const saved = new Map(at);
+    const rows = [...new Set([...at.values()].map((p) => p.r))].sort((a, b) => a - b);
+    const cols = [...new Set([...at.values()].map((p) => p.c))].sort((a, b) => a - b);
+    sweep("r", rows); sweep("r", [...rows].reverse()); sweep("c", cols); sweep("c", [...cols].reverse());
+    const now = cellCrossings(at, lifted);
+    if (now >= best) { for (const [id, p] of saved) at.set(id, p); break; }
+    best = now;
+  }
+  return at;
+}
+
 interface Placed { x: number; y: number; w: number; h: number }
 export interface LayoutOptions {
   portrait?: boolean; labels?: boolean;
   /** The dense post style. Default: whether the view is a post view. */
   post?: boolean;
+  /** Fewer crossings (LAYOUT-6). Default true; `layoutView` lays out without it too and keeps the better. */
+  reorder?: boolean;
 }
 
 /** Cell bounds of a zone's members (a zone spans the cells of its members). */
@@ -283,6 +346,9 @@ function gridPositions(view: { nodes: NodeInput[]; edges: EdgeInput[] }, o: Layo
     const inside = view.nodes.filter((m) => zoneOf.get(m.id) === id);
     return [...inside].filter((m) => spineOrder.has(m.id)).sort((a, b) => spineOrder.get(a.id)! - spineOrder.get(b.id)!)[0]?.id ?? inside[0]?.id ?? id;
   };
+  /** A group holding a part with a stored position stays where the layout put it. */
+  const descendantsPlaced = (id: string, seen = new Set<string>()): boolean => !seen.has(id) && (seen.add(id), view.nodes.some((n) => n.parent === id
+    && ((n.form !== "group" && n.x !== undefined && n.y !== undefined) || descendantsPlaced(n.id, seen))));
   const rel = new Map<string, Placed>(); // relative to the container's content origin
   const visiting = new Set<string>();
 
@@ -307,13 +373,25 @@ function gridPositions(view: { nodes: NodeInput[]; edges: EdgeInput[] }, o: Layo
     const lifted: Lifted[] = [];
     const pair = new Set<string>();
     const isMember = new Set(members.map((m) => m.id));
-    for (const e of view.edges) {
+    // A connection a hub hides reserves no gap for its label (diagram contract, Layout; Parts many parts use), yet still
+    // links its parts for the order of the rows and columns: the facts are unchanged.
+    const hidden = hiddenEdges({ nodes: view.nodes, edges: view.edges.map((e, i) => ({ ...e, id: e.id ?? ` ${i}` })) } as Pick<DiagramView, "nodes" | "edges">);
+    const byPair = new Map<string, Lifted>();
+    for (const [i, e] of view.edges.entries()) {
       const a = memberOf(standIn(e.from), container), b = memberOf(standIn(e.to), container);
       if (!a || !b || a === b || !isMember.has(a) || !isMember.has(b)) continue;
       const k = a < b ? `${a}|${b}` : `${b}|${a}`;
-      if (pair.has(k) && e.step === null) continue;
+      const label = hidden.has(e.id ?? ` ${i}`) ? "" : e.label;
+      if (pair.has(k) && e.step === null) {
+        // A drawn label on a later connection of a pair whose first is hidden still needs its gap.
+        const first = byPair.get(k)!;
+        if (!first.label && label) first.label = label;
+        continue;
+      }
       pair.add(k);
-      lifted.push({ a, b, step: e.step, label: e.label });
+      const l = { a, b, step: e.step, label };
+      if (!byPair.has(k)) byPair.set(k, l);
+      lifted.push(l);
     }
     const lanes = new Map<string, Lane>();
     const explicit = new Set(members.filter((n) => n.lane).map((n) => n.id));
@@ -332,7 +410,21 @@ function gridPositions(view: { nodes: NodeInput[]; edges: EdgeInput[] }, o: Layo
       const anchor = memberOf(standIn(n.lane.anchor), container);
       if (anchor && anchor !== unit) lanes.set(unit, { anchor, side: n.lane.side });
     }
-    const cells = memo.get(container) ?? memo.set(container, assignCells(laneHints(members, lanes, top && !!o.portrait, top ? zoneOf : undefined), lifted, top)).get(container)!;
+    const cells = memo.get(container) ?? memo.set(container, (() => {
+      const assigned = assignCells(laneHints(members, lanes, top && !!o.portrait, top ? zoneOf : undefined), lifted, top);
+      if (o.reorder === false) return assigned;
+      // Movable: placed by this layout, no `place`, no end of a numbered connection, no spine part, no
+      // zone member; a side part moves only among the side parts of its anchor and side.
+      const movable = new Map<string, string>();
+      for (const m of members) {
+        const lane = lanes.get(m.id);
+        if (m.x !== undefined && m.y !== undefined || m.place || zoneOf.has(m.id) || (lane && "spine" in lane)) continue;
+        if (lifted.some((e) => e.step !== null && (e.a === m.id || e.b === m.id))) continue;
+        if (m.form === "group" && descendantsPlaced(m.id)) continue;
+        movable.set(m.id, lane && "anchor" in lane ? `${lane.anchor}:${lane.side}` : "");
+      }
+      return fewerCrossings(assigned, lifted, movable);
+    })()).get(container)!;
     const rowsUsed = [...new Set([...cells.values()].map((p) => p.r))].sort((a, b) => a - b);
     const colsUsed = [...new Set([...cells.values()].map((p) => p.c))].sort((a, b) => a - b);
     const ri = new Map(rowsUsed.map((r, i) => [r, i])), ci = new Map(colsUsed.map((c, i) => [c, i]));
@@ -457,6 +549,17 @@ export function placedForSwitches<V extends DiagramView>(view: V, o: { portrait:
 
 export function layoutView<V extends { nodes: NodeInput[]; edges: EdgeInput[]; id?: string; postOf?: string | null }>(view: V, o: LayoutOptions = {}): Omit<V, "nodes"> & { nodes: DiagramNode[] } {
   o = { ...o, post: postOf(view, o) };
+  const sorted = layoutOnce(view, o);
+  if (o.reorder === false || view.edges.length < 2) return sorted;
+  // The reordered layout is kept only when it draws no more crossings than the one without it (LAYOUT-6).
+  const plain = layoutOnce(view, { ...o, reorder: false });
+  if (plain.nodes.every((n, i) => n.x === sorted.nodes[i].x && n.y === sorted.nodes[i].y)) return sorted;
+  const edges = view.edges.map((e, i) => ({ ...e, id: e.id ?? ` ${i}` }) as DiagramEdge);
+  const drawn = (v: { nodes: DiagramNode[] }) => { const placed = { ...view, nodes: v.nodes, edges }; return countCrossings(edges, routeEdges(placed, layoutRects(placed, { post: o.post }), { post: o.post, labels: o.labels })); };
+  return drawn(sorted) <= drawn(plain) ? sorted : plain;
+}
+
+export function layoutOnce<V extends { nodes: NodeInput[]; edges: EdgeInput[]; id?: string; postOf?: string | null }>(view: V, o: LayoutOptions): Omit<V, "nodes"> & { nodes: DiagramNode[] } {
   const memo = new Map<string | null, Map<string, Cell>>();
   const kept = view.nodes.filter((n) => n.x !== undefined && n.y !== undefined && n.form !== "group");
   const fresh = new Set(view.nodes.filter((n) => n.x === undefined || n.y === undefined).map((n) => n.id));
@@ -524,7 +627,8 @@ export function layoutView<V extends { nodes: NodeInput[]; edges: EdgeInput[]; i
       const rects = layoutRects(placed, { post: o.post });
       blocked = new Set();
       for (const [id, r] of routeEdges(placed, rects, { post: o.post, labels: o.labels })) {
-        if (!r.blocked) continue;
+        // A connection a hub hides gets no room of its own (diagram contract, Parts many parts use).
+        if (!r.blocked || r.hidden) continue;
         const e = edges.find((x) => x.id === id), a = e && rects.get(e.from), b = e && rects.get(e.to);
         if (!e || !a || !b) continue;
         const parts = r.blocked.filter((part) => leaves.has(part));

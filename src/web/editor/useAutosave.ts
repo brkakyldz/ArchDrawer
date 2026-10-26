@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { Document3 } from "../../core/file3";
+import type { Document4 } from "../../core/file4";
 import { api, ApiError } from "../api";
 
 export type SaveStatus = "saved" | "saving" | "error" | "conflict";
@@ -11,12 +11,12 @@ const DEBOUNCE_MS = 350;
  * names the version it was based on; a file that moved on (a session, the CLI) answers 409 and
  * the editor says so instead of overwriting it. A failed save never shows as "Saved".
  */
-export function useAutosave(doc: Document3 | null) {
+export function useAutosave(doc: Document4 | null) {
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState<string | null>(null);
-  const saved = useRef<Document3 | null>(null);
+  const saved = useRef<Document4 | null>(null);
   const base = useRef<string | null>(null);
-  const pending = useRef<Document3 | null>(null);
+  const pending = useRef<Document4 | null>(null);
   const inFlight = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blocked = useRef(false);
@@ -51,7 +51,7 @@ export function useAutosave(doc: Document3 | null) {
   }, []);
 
   /** The server has this document (just loaded, or written by the server): nothing to save. */
-  const markSaved = useCallback((d: Document3) => {
+  const markSaved = useCallback((d: Document4) => {
     saved.current = d;
     base.current = d.updatedAt;
     pending.current = null;

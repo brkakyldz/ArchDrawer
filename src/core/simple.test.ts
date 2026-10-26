@@ -4,6 +4,7 @@ import { readAnyFile } from "./convert";
 import { validateDocument3, type Document3 } from "./file3";
 import { prepareChannel } from "./simple";
 import { node } from "./testkit";
+import { choiceAsFile3 } from "./file4";
 
 // The simple README and presentation (ui contract, Simple versions): the overview's first view as it is.
 
@@ -16,7 +17,7 @@ function stored(steps = true): Document3 {
       edges: [{ from: "web", to: "api", label: "", style: "call", both: false, step: steps ? 1 : null }, { from: "api", to: "db", label: "saves", style: "call", both: false, step: steps ? 2 : null }], texts: [] }],
   });
   if (!r.ok) throw new Error(r.errors.join("; "));
-  return normalizeFile3(r.file!, { id: "d_simple0001", now: NOW, source: null });
+  return normalizeFile3(choiceAsFile3(r.file!), { id: "d_simple0001", now: NOW, source: null });
 }
 
 describe("the simple README and presentation", () => {
@@ -43,7 +44,7 @@ describe("the simple README and presentation", () => {
       ],
     });
     if (!r0.ok) throw new Error(r0.errors.join("; "));
-    const d = normalizeFile3(r0.file!, { id: "d_simple0002", now: NOW, source: null });
+    const d = normalizeFile3(choiceAsFile3(r0.file!), { id: "d_simple0002", now: NOW, source: null });
     const db = d.channels.overview.views[0].nodes.find((p) => p.id === "db")!;
     db.label = "DB (short)";
     for (const channel of ["readme", "presentation"] as const) {

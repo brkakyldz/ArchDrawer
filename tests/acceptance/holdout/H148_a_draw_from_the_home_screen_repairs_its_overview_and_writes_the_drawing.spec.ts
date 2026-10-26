@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { join } from 'node:path';
-import { gitRepo, startedRun, runEvents, getDocument, listedDiagrams, exists, samePath, viewOf } from './helpers';
+import { gitRepo, startedRun, runEvents, listedDiagrams, exists, samePath, viewOf } from './helpers';
+import { getDocument } from './helpers-selections'; // a draw writes format 4: this gives the drawn choice in the shape the scenario was written in
 
 const FOUR_WARNINGS = [
   'ghost: dropped the evidence fixture/ghost.ts: not found', 'Dropped "ghost": no evidence left',
@@ -9,7 +10,7 @@ const FOUR_WARNINGS = [
 
 // STORY-7 (ADR 0009) inside START-4: the overview call of a draw has an answer with an over-long description. The repair turn
 // belongs to the overview stage, the draw goes on to the channel and ends in a written drawing, with the engine's own text.
-test('H148 [STORY-7, START-4, STORY-1] a draw from the home screen whose overview answer is over-long gets one repair turn in the overview stage and ends in a written drawing with the engine\'s own description and no Shortened warning', async ({ page, request }) => {
+test('H148 [STORY-7, START-4, STORY-1, #181] a draw from the home screen whose overview answer is over-long gets one repair turn in the overview stage and ends in a written drawing with the engine\'s own description and no Shortened warning', async ({ page, request }) => {
   test.setTimeout(240_000);
   const project = await gitRepo('story-home-repair');
   const listedBefore = (await listedDiagrams(request)).length;
@@ -20,7 +21,7 @@ test('H148 [STORY-7, START-4, STORY-1] a draw from the home screen whose overvie
   await page.getByTestId('focus-typed').click(); await page.getByTestId('focus-text').fill('The tool loop [fixture:overlong]');
   await page.getByTestId('channel-choice-linkedin').click();
   const started = await startedRun(page, () => page.getByTestId('draw-start').click());
-  expect(started.body).toMatchObject({ kind: 'draw', channel: 'linkedin', focus: { kind: 'typed', text: 'The tool loop [fixture:overlong]' } });
+  expect(started.body).toMatchObject({ kind: 'draw', channel: 'linkedin', choices: [{ kind: 'typed', text: 'The tool loop [fixture:overlong]' }] }); expect(started.body).not.toHaveProperty('focus');
 
   await expect(page.getByTestId('editor')).toBeVisible({ timeout: 120_000 });
   await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin');

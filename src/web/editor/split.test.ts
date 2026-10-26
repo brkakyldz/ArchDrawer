@@ -5,6 +5,7 @@ import { validateDocument3, type ChannelId, type Document3 } from "../../core/fi
 import { type DiagramDocument } from "../../core/model";
 import { node } from "../../core/testkit";
 import { addNode, createInside, deleteNodes, reservedIds, setNode } from "./ops";
+import { choiceAsFile3 } from "../../core/file4";
 
 // Editor operations routed through the facts/channel split, as the editor applies them (FILE-3).
 
@@ -25,7 +26,7 @@ function stored(): Document3 {
   };
   const r = readAnyFile(v2);
   if (!r.ok) throw new Error(r.errors.join("; "));
-  return normalizeFile3(r.file!, { id: "d_split00001", now: NOW, source: null });
+  return normalizeFile3(choiceAsFile3(r.file!), { id: "d_split00001", now: NOW, source: null });
 }
 
 /** Apply one editor operation on the channel whose view it changes, and split it back, as the editor does on that tab. */

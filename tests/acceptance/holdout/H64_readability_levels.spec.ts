@@ -1,11 +1,13 @@
 import { test, expect, type Page } from '@playwright/test';
-import { drawing, component, workspace, openDrawing, readDocument, readDrawing, previewSVG, svgInfo, baseURL } from './helpers';
+import { readFile } from 'node:fs/promises';
+import { drawing, component, workspace, openDrawing, previewSVG, svgInfo, baseURL } from './helpers';
 import { previewTextSizes, checkReadability } from './helpers';
+import { choiceDoc, readView } from './helpers-drawing';
 
 // SHARE-3 helpers (kept in this file: helpers.ts is not edited). The `readability` line is the sentence alone: the
 // details toggle and the details are cut out of a copy first, because the contract does not say whether they sit inside it.
 const README_WHERE = 'in a GitHub README';
-const SUGGESTIONS = ['hiding what each part holds would help', 'the LinkedIn version would help', 'a larger format would help'];
+const SUGGESTIONS = ['hiding the sub-lines would help', 'the LinkedIn version would help', 'a larger format would help'];
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 async function readabilitySentence(page: Page) {
   return (await page.getByTestId('share-dialog').getByTestId('readability').evaluate(el => {
@@ -21,7 +23,7 @@ function sentencePattern(level: string, where: string, suggestions: string[]) {
   return new RegExp(`^The text will be too small to read ${escape(where)}, even when the image is opened${tail}$`);
 }
 
-test('H64 [LAYOUT-3, QUAL-2, SHARE-3] distinguish readable names from readable detail and report the level the measured sizes give, in the contracted sentence', async ({ page, request }) => {
+test('H64 [LAYOUT-3 QUAL-2 SHARE-3 LOOK-3 #177] distinguish readable names from readable detail and report the level the measured sizes give, in the contracted sentence', async ({ page, request }) => {
   const doc = drawing('Readability levels');
   doc.views[0].nodes = [component('start', { label: 'Start', x: 0, y: 0 }), component('finish', { label: 'Finish', x: 1400, y: 0 })];
   doc.views[0].edges = [];
@@ -30,7 +32,8 @@ test('H64 [LAYOUT-3, QUAL-2, SHARE-3] distinguish readable names from readable d
   async function share() {
     await page.getByTestId('share-button').click(); await page.getByTestId('format-readme').click();
     if (await page.getByTestId('share-advanced-toggle').getAttribute('aria-expanded') !== 'true') await page.getByTestId('share-advanced-toggle').click();
-    for (const id of ['title', 'lede', 'items', 'steps', 'labels', 'legend']) await page.getByTestId(`show-${id}`).uncheck();
+    // No show-items any more; the sub-lines are switched off too, so only names and the note are measured as before.
+    for (const id of ['title', 'lede', 'sub', 'steps', 'labels', 'legend']) await page.getByTestId(`show-${id}`).uncheck();
     await page.getByTestId('show-texts').check();
   }
   await share();
@@ -59,7 +62,7 @@ test('H64 [LAYOUT-3, QUAL-2, SHARE-3] distinguish readable names from readable d
       expect(measured.runs.length).toBeGreaterThan(0);
       const names = measured.runs.filter(r => r.name); expect(names.length).toBeGreaterThan(0);
       const inPlace = measured.opened * 880 / 1600, namesInPlace = measured.namesOpened * 880 / 1600;
-      const validSize = (await readDrawing(file)).views[0].texts[0].size === target.size;
+      const validSize = (await readView(file)).texts![0].size === target.size;
       const region = target.region === 'good' ? namesInPlace >= 9 && inPlace >= 6.5
         && (goodNames * detailSize / nameFont >= 9 || inPlace < 9)
         : target.region === 'names-low' ? namesInPlace < 9 && inPlace >= 6.5 && measured.opened >= 8
@@ -68,8 +71,9 @@ test('H64 [LAYOUT-3, QUAL-2, SHARE-3] distinguish readable names from readable d
       if (validSize && region) { tuned = true; break; }
       const image = await svgInfo(page, await previewSVG(page)); expect(image.nodes).toHaveLength(2);
       const card = image.nodes.find(n => n.id === 'finish')!;
-      // Move the card and resize the note in the stored document, then save it through the API as a whole.
-      const updated = await readDocument(file), view = updated.channels.overview.views![0];
+      // Move the card and resize the note in the stored document, then save it through the API as a whole. The stored file is
+      // `@4` once opened: the choice's view is edited in place and the whole document is sent back.
+      const updated = JSON.parse(await readFile(file, 'utf8')), view = choiceDoc(updated).channels.overview.views![0];
       const first = view.nodes.find(n => n.id === 'start')!, last = view.nodes.find(n => n.id === 'finish')!;
       const span = last.x! + card.width - first.x!;
       last.x = first.x! + span * namesInPlace / target.names - card.width;

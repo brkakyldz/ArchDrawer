@@ -8,8 +8,12 @@ export interface Palette {
   note: string; noteInk: string; noteLine: string;
   /** Opacity of the kind glow under a component, and on hover/selection. */
   glow: number; glowHover: number;
-  /** Opacity of the soft glow line under every edge. */
+  /** Opacity of the soft glow line under a coloured edge. */
   edgeGlow: number;
+  /** The one neutral colour of a connection out of focus (diagram contract, Colour). */
+  edge: string;
+  /** The end colour of the AI agent's outline gradient (diagram contract, Shapes). */
+  agentEnd: string;
   /** Opacity of the kind tint at the top of a component. */
   tint: number;
   shadow: string;
@@ -22,7 +26,7 @@ export const PALETTES: Record<Theme, Palette> = {
     line: "#e2e5ea", line2: "#cdd2da", ink: "#14161b", muted: "#555c69", soft: "#6b7280",
     accent: "#2563eb", accentInk: "#ffffff", accentSoft: "rgba(37,99,235,0.12)",
     note: "#fff3bf", noteInk: "#4a3b00", noteLine: "#ecd77a",
-    glow: 0.62, glowHover: 0.8, edgeGlow: 0.12, tint: 0.12, shadow: "#101828",
+    glow: 0.62, glowHover: 0.8, edgeGlow: 0.12, edge: "#848b98", agentEnd: "#8b5cf6", tint: 0.12, shadow: "#101828",
     kinds: {
       actor: "#64748b", client: "#0891b2", api: "#7c3aed", service: "#059669", worker: "#ea580c",
       llm: "#e11d48", external: "#78716c", ops: "#c026d3", gate: "#a16207", data: "#4d7c0f",
@@ -33,7 +37,7 @@ export const PALETTES: Record<Theme, Palette> = {
     line: "#262b34", line2: "#343a46", ink: "#eceef2", muted: "#a8afbb", soft: "#9aa1ad",
     accent: "#5b8cff", accentInk: "#0b0f19", accentSoft: "rgba(91,140,255,0.16)",
     note: "#3a3420", noteInk: "#f4e7b0", noteLine: "#5a4f2c",
-    glow: 0.58, glowHover: 0.78, edgeGlow: 0.18, tint: 0.1, shadow: "#000000",
+    glow: 0.58, glowHover: 0.78, edgeGlow: 0.18, edge: "#636a77", agentEnd: "#c4b5fd", tint: 0.1, shadow: "#000000",
     kinds: {
       actor: "#94a3b8", client: "#22d3ee", api: "#a78bfa", service: "#34d399", worker: "#fb923c",
       llm: "#fb7185", external: "#a8a29e", ops: "#e879f9", gate: "#facc15", data: "#a3e635",

@@ -1,5 +1,5 @@
-import { layoutRects, measureNode, postOf, type Rect } from "../../core/geometry";
-import { freeSpot } from "../../core/layout";
+import { layoutRects, measureNode, overlaps, postOf, type Rect } from "../../core/geometry";
+import { freeSpot, groupsClear } from "../../core/layout";
 import {
   allIds, descendants, LIMITS, slugify, TEXT_SIZE,
   type DiagramDocument, type DiagramEdge, type DiagramNode, type DiagramText, type DiagramView, type Form, type Kind,
@@ -98,7 +98,7 @@ export function freshId(doc: DiagramDocument, base: string, reserved: Iterable<s
 }
 
 /** The selected components plus everything inside the groups among them. */
-function withInside(v: DiagramView, ids: Iterable<string>): Set<string> {
+export function withInside(v: Pick<DiagramView, "nodes">, ids: Iterable<string>): Set<string> {
   const out = new Set<string>();
   for (const id of ids) { out.add(id); for (const d of descendants(v, id)) out.add(d); }
   return out;
@@ -118,17 +118,45 @@ export function moveNodes(doc: DiagramDocument, vid: string, ids: Iterable<strin
 }
 
 /**
- * After a drag: snap the moved components to the 8 px grid, then give each moved top-level piece
- * the innermost group under its centre as its parent (or none), as deep as nesting allows.
+ * After a drag: the moved components keep where they were released, in whole pixels (the drag itself snaps
+ * them, ui contract, Dragging), then each moved top-level piece gets
+ * the innermost group under its centre as its parent (or none), as deep as nesting allows. A drop
+ * never covers (ui contract, Dragging): a piece that then overlaps a component that is neither moving
+ * nor one of its new groups moves, with what it holds, to the nearest free spot, as a new part is placed.
  */
 export function settleNodes(doc: DiagramDocument, vid: string, ids: Iterable<string>): DiagramDocument {
   return mapView(doc, vid, (v0) => {
     const moved = withInside(v0, ids);
     const tops = [...moved].filter((id) => { const p = v0.nodes.find((n) => n.id === id)!.parent; return !p || !moved.has(p); });
-    let v: DiagramView = { ...v0, nodes: v0.nodes.map((n) => (moved.has(n.id) ? { ...n, x: snap(n.x), y: snap(n.y) } : n)) };
+    let v: DiagramView = { ...v0, nodes: v0.nodes.map((n) => (moved.has(n.id) ? { ...n, x: Math.round(n.x), y: Math.round(n.y) } : n)) };
     for (const id of tops) v = { ...v, nodes: v.nodes.map((n) => (n.id === id ? { ...n, parent: groupAt(v, centreOf(v, id), id) } : n)) };
+    for (const id of tops) v = clearOf(v, id, moved);
     return v;
   });
+}
+
+/**
+ * A dropped piece `id` that overlaps a component neither moving nor one of its groups, moved with what it
+ * holds to the nearest free spot: on the 8 px grid, ring by ring from where it was dropped, 24 px clear of
+ * every such component, with the frames of its groups, grown round it, clear of the components outside
+ * them; its parent stays. A piece that overlaps nothing stays where it was released.
+ */
+function clearOf(v: DiagramView, id: string, moving: Set<string>): DiagramView {
+  const rects = layoutRects(v);
+  const byId = new Map(v.nodes.map((n) => [n.id, n]));
+  const up = new Set<string>();
+  for (let p = byId.get(id)?.parent ?? null; p && !up.has(p); p = byId.get(p)?.parent ?? null) up.add(p);
+  const others = v.nodes.filter((n) => !moving.has(n.id) && !up.has(n.id)).map((n) => rects.get(n.id)).filter((r): r is Rect => !!r);
+  const me = rects.get(id);
+  if (!me || !others.some((r) => overlaps(me, r))) return v;
+  const clear = groupsClear(v.nodes, rects, id, postOf(v));
+  let p = freeSpot(others, { x: me.x + me.w / 2, y: me.y + me.h / 2 }, me.w, me.h, 24, clear);
+  const home = byId.get(id)?.parent ? rects.get(byId.get(id)!.parent!) : undefined;
+  if (home && !clear({ ...p, w: me.w, h: me.h })) p = freeSpot(others, { x: home.x + home.w / 2, y: home.y + home.h / 2 }, me.w, me.h, 24, clear);
+  const dx = p.x - me.x, dy = p.y - me.y;
+  if (!dx && !dy) return v;
+  const piece = withInside(v, [id]);
+  return { ...v, nodes: v.nodes.map((n) => (piece.has(n.id) ? { ...n, x: Math.round(n.x + dx), y: Math.round(n.y + dy) } : n)) };
 }
 
 const centreOf = (v: DiagramView, id: string) => { const r = layoutRects(v).get(id)!; return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; };

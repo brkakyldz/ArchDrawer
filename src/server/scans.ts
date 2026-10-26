@@ -36,6 +36,8 @@ interface Scan extends ScanRecord {
 }
 
 interface Cached { card: RepoCard; options: FocusOption[]; warnings: string[] }
+/** The cache entry's format: 2 since options are sections and flows (ADR 0015). An entry without it is scanned again. */
+const CACHE_VERSION = 2;
 
 export class ScanManager {
   private readonly scans = new Map<string, Scan>();
@@ -146,9 +148,9 @@ export class ScanManager {
     const cacheFile = commit ? this.entry(f, commit) : null;
     if (cacheFile && !refresh && existsSync(cacheFile)) {
       try {
-        const hit = JSON.parse(readFileSync(cacheFile, "utf8")) as Cached;
+        const hit = JSON.parse(readFileSync(cacheFile, "utf8")) as Cached & { version?: unknown };
         // An entry of another shape (a corrupted file, an older format) is scanned again.
-        if (!hit || typeof hit !== "object" || !hit.card || typeof hit.card.name !== "string" || !Array.isArray(hit.options) || !Array.isArray(hit.warnings)) throw new Error("not a scan");
+        if (!hit || typeof hit !== "object" || hit.version !== CACHE_VERSION || !hit.card || typeof hit.card.name !== "string" || !Array.isArray(hit.options) || !Array.isArray(hit.warnings)) throw new Error("not a scan");
         scan.cached = true;
         progress(`Scanned before at ${commit!.slice(0, 7)}`);
         end("succeeded", null, hit);
@@ -159,7 +161,7 @@ export class ScanManager {
     void this.execute(f, engine, model, scan.abort.signal, progress).then(
       (r) => {
         if (cacheFile) {
-          try { mkdirSync(this.dir, { recursive: true }); writeAtomic(cacheFile, JSON.stringify(r)); } catch (e) { console.error("Could not cache a scan:", e); }
+          try { mkdirSync(this.dir, { recursive: true }); writeAtomic(cacheFile, JSON.stringify({ version: CACHE_VERSION, ...r })); } catch (e) { console.error("Could not cache a scan:", e); }
         }
         end("succeeded", null, r);
       },

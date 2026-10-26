@@ -8,7 +8,10 @@
 export const SKIP_DIRS = new Set([".git", "node_modules", "dist", "build", "out", "target", "vendor", "coverage", ".next", ".venv", "venv", "__pycache__"]);
 export const SCAN_BUDGET = { total: 120_000, listing: 2000, readme: 12_000, dep: 8000, deps: 10, entry: 4000, entries: 12 } as const;
 export const SCAN_TYPES = ["agent", "backend", "fullstack", "other"] as const;
-export const FOCUS_KINDS = ["flow", "mechanism", "overview"] as const;
+/** What a scan option is (ADR 0015): a section of the system (a layer or part) or a flow (a workflow). */
+export const FOCUS_KINDS = ["section", "flow"] as const;
+/** At most this many options pass the checks (api contract, Scans). */
+export const MAX_OPTIONS = 8;
 export type ScanType = (typeof SCAN_TYPES)[number];
 export type FocusKind = (typeof FOCUS_KINDS)[number];
 
@@ -154,7 +157,7 @@ export function checkScan(raw: unknown, o: { folderName: string; exists: (rel: s
       warnings.push(`Left out the option "${title || "untitled"}": ${!files.length ? "it names no file" : missing !== undefined ? `"${missing}" does not exist` : "it names more than 12 files"}`);
       continue;
     }
-    if (options.length >= 5) { warnings.push(`Left out the option "${title}": at most 5 options`); continue; }
+    if (options.length >= MAX_OPTIONS) { warnings.push(`Left out the option "${title}": at most ${MAX_OPTIONS} options`); continue; }
     let kind = text(x.kind) as FocusKind;
     if (!(FOCUS_KINDS as readonly string[]).includes(kind)) { warnings.push(`Unknown focus kind "${text(x.kind)}" for "${title}", taken as flow`); kind = "flow"; }
     const t = title || files[0];

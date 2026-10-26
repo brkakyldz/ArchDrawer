@@ -7,6 +7,7 @@ import { validateDocument3, validateFile3, type Document3, type File3 } from "./
 import { layoutRects, routeEdges } from "./geometry";
 import { validateFile, type DiagramDocument, type DiagramFile, type DiagramView } from "./model";
 import { normalizeFile } from "./normalize";
+import { choiceAsFile3 } from "./file4";
 
 const NOW = "2026-10-21T00:00:00.000Z";
 const read = (p: string): DiagramFile => JSON.parse(readFileSync(p, "utf8"));
@@ -17,7 +18,7 @@ function both(f: DiagramFile): { d2: DiagramDocument; d3: Document3 } {
   const d2 = normalizeFile(validateFile(f).file!, { id: "d_roundtrip01", now: NOW, source: null });
   const r = readAnyFile(d2);
   expect(r.errors).toEqual([]);
-  return { d2, d3: normalizeFile3(r.file!, { id: "d_roundtrip01", now: NOW, source: null }) };
+  return { d2, d3: normalizeFile3(choiceAsFile3(r.file!), { id: "d_roundtrip01", now: NOW, source: null }) };
 }
 
 /** Every box and line of a view, as the editor and the export draw them. */
@@ -103,6 +104,8 @@ describe("validateFile3", () => {
     expect(bad((f) => { const e = f.channels.overview.views[0].edges[0]; [e.from, e.to] = [e.to, e.from]; })).toContain('channels.overview.views[0].edges[0].relations[0]: "r1" runs the other way; swap "from" and "to"');
     expect(bad((f) => { f.channels.overview.views[0].nodes.pop(); f.channels.overview.views[0].edges.pop(); })).toContain('facts.components[2]: "c" is shown or held by no part of the overview channel; draw it there or remove it');
     expect(bad((f) => { f.channels.linkedin!.outdated = ["a", "a"]; })).toContain("channels.linkedin.outdated: must be distinct ids");
+    expect(bad((f) => { (f.channels.linkedin!.views![0] as { subLines?: unknown }).subLines = "no"; })).toContain("channels.linkedin.views[0].subLines: must be true or false when present");
+    expect(bad((f) => { f.channels.linkedin!.views![0].subLines = false; })).toEqual([]);
     expect(bad((f) => { f.requests = [{ id: "q1", text: "x", channel: "linkedin", view: "overview", at: NOW }]; })).toContain('requests[0].view: view "overview" is not in the linkedin channel');
     expect(validateFile3({ schema: "archdraw/diagram@1" }).errors).toEqual(['schema: this is archdraw/diagram@1; run "archdrawer migrate <file>"']);
   });
@@ -149,7 +152,7 @@ describe("convertV2", () => {
     expect(post.nodes.length).toBeGreaterThan(3);
     const r = readAnyFile(withPost);
     expect(r.errors).toEqual([]);
-    const d3 = normalizeFile3(r.file!, { id: "d_post000001", now: NOW, source: null });
+    const d3 = normalizeFile3(choiceAsFile3(r.file!), { id: "d_post000001", now: NOW, source: null });
     expect(d3.channels.linkedin.views.map((v) => v.id)).toEqual([view]);
     expect(d3.channels.overview.views.map((v) => v.id)).not.toContain(view);
     const li = d3.channels.linkedin.views[0];
@@ -163,7 +166,7 @@ describe("convertV2", () => {
     expect(drawn(joinChannel(d3, "linkedin").views[0])).toEqual(drawn(post));
     // A request on the post moves with it.
     const withRequest = { ...withPost, requests: [{ id: "q1", text: "Shorter", view, at: NOW }] };
-    expect(readAnyFile(withRequest).file!.requests).toEqual([{ id: "q1", text: "Shorter", channel: "linkedin", view, at: NOW }]);
+    expect(readAnyFile(withRequest).file!.requests).toEqual([{ id: "q1", text: "Shorter", channel: "linkedin", view, at: NOW, choice: "system" }]);
   });
 
   it("turns a merged component into a part that points to the facts it merges, and keeps a second post as an overview view", () => {
@@ -198,6 +201,17 @@ describe("convertV2", () => {
 });
 
 describe("applyChannel", () => {
+  it("the sub-line switch: joined as false only, set by the editor, kept when an answer leaves it out, cleared by true (review R177-4)", () => {
+    expect(joinChannel(small(), "linkedin").views[0].subLines).toBeUndefined();
+    const off = edit(small(), "linkedin", (d) => { d.views[0].subLines = false; });
+    expect(off.channels.linkedin.views[0].subLines).toBe(false);
+    expect(joinChannel(off, "linkedin").views[0].subLines).toBe(false);
+    expect(off.channels.overview.views[0].subLines).toBeUndefined();
+    // An engine's answer has no switch: the view keeps its own.
+    expect(edit(off, "linkedin", (d) => { delete d.views[0].subLines; }).channels.linkedin.views[0].subLines).toBe(false);
+    expect(edit(off, "linkedin", (d) => { d.views[0].subLines = true; }).channels.linkedin.views[0].subLines).toBeUndefined();
+  });
+
   it("a rename in the overview edits the fact: every channel shows it and nobody is marked", () => {
     const doc = edit(small(), "overview", (d) => { node(d, "a").label = "Alpha 2"; });
     expect(fact(doc, "a")!.label).toBe("Alpha 2");

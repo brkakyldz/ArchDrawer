@@ -7,7 +7,9 @@ import { DrawError, writeNewDrawing } from "./draw";
 import { repoRootOf } from "./files";
 import { FixtureEngine } from "./engines/fixture";
 import { EngineError, type Engine } from "./engines/types";
-import { makeApp, makeFolder } from "./testkit";
+import { makeApp, makeFolder, tempDir } from "./testkit";
+import { choiceDoc, type Document4 } from "../core/file4";
+import { ClaudeEngine } from "./engines/claude";
 
 // The draw run (api contract, The draw run): what the held-out scenarios H117–H120 do not observe —
 // the write's own failure paths, the temporary file, the root of a folder outside git, the event stages.
@@ -46,17 +48,17 @@ function linesOf(t: ReturnType<typeof makeApp>, id: string) {
 const real = (p: string) => realpathSync.native(p);
 
 describe("the draw run", () => {
-  it("writes a new drawing under the folder, registers it, and draws every fact in the overview", async () => {
+  it("writes a new drawing under the folder, registers it, and draws every fact in the overview's map and detail views", async () => {
     const dir = real(repo());
     const t = makeApp();
     const events: { message: string; stage: string | null }[] = [];
     const run = await draw(t, dir);
     expect([run.status, run.error]).toEqual(["succeeded", null]);
     expect(run.path).toBe(join(dir, "docs", "architecture.archdraw.json"));
-    const doc = t.store.get(run.diagramId!)!;
+    const doc = choiceDoc(t.store.get(run.diagramId!)!);
     expect(validateDocument3(doc).ok).toBe(true);
     expect([doc.source?.path, doc.warnings.slice(0, 4)]).toEqual([dir, FOUR]);
-    const drawn = new Set(doc.channels.overview.views[0].nodes.flatMap((p) => [...p.facts, ...(p.held ?? [])]));
+    const drawn = new Set(doc.channels.overview.views.flatMap((v) => v.nodes.flatMap((p) => [...p.facts, ...(p.held ?? [])])));
     expect([...drawn].sort()).toEqual(doc.facts.components.map((c) => c.id).sort());
     expect(doc.channels.readme.views).toHaveLength(1);
     expect([run.channel, run.view, run.layoutReport?.channel]).toEqual(["readme", "readme", "readme"]);
@@ -66,6 +68,40 @@ describe("the draw run", () => {
     const stageOf = (m: string) => events.find((e) => e.message === m)?.stage;
     expect([stageOf("Checking the facts"), stageOf("Drawing the overview"), stageOf("Drawing the README drawing"), stageOf("Checking the drawing")]).toEqual(["read", "overview", "channel", "channel"]);
     expect(readdirSync(join(dir, "docs"))).toEqual(["architecture.archdraw.json"]);
+  });
+
+  it("draws the whole system as a map: the zone is a card whose inside is a detail view, and the channel is told from both (#183)", async () => {
+    const t = makeApp();
+    const run = await draw(t, real(repo()), { channel: "presentation" });
+    expect(run.status).toBe("succeeded");
+    const doc = choiceDoc(t.store.get(run.diagramId!)!);
+    const [map, inside, ...more] = doc.channels.overview.views;
+    expect([map.id, inside.id, more.length]).toEqual(["overview", "zone-runtime-inside", 0]);
+    expect(map.nodes.map((n) => n.id).sort()).toEqual(["app", "zone-runtime"]);
+    expect(map.nodes.find((n) => n.id === "zone-runtime")).toMatchObject({ facts: [], form: "card", label: "Agent runtime", kind: "service", description: "A group of components.", detail: "zone-runtime-inside", parent: null, lane: { spine: 1 } });
+    expect(map.edges.map((e) => [e.id, e.from, e.to, e.step, e.relations])).toEqual([["app-zone-runtime", "app", "zone-runtime", 1, []]]);
+    expect(inside).toMatchObject({ title: "Agent runtime", caption: { title: "Agent runtime", lede: "" }, texts: [] });
+    expect(inside.nodes.map((n) => [n.id, n.parent]).sort()).toEqual([["agent", null], ["store", null]]);
+    expect(inside.edges.map((e) => [e.from, e.to])).toEqual([["agent", "store"]]);
+    // The presentation is told from the map's parts and the detail view's, the card with an inside skipped.
+    expect(doc.channels.presentation.views[0].nodes.map((n) => n.id).sort()).toEqual(["agent", "app", "store"]);
+    // The split adds no warning: the four evidence warnings and the fixture's step about nothing are all.
+    expect(doc.warnings).toEqual([...FOUR, "Step 4 names no part and was dropped"]);
+  });
+
+  it("asks the whole system's overview for the map and a typed focus's for the complete overview (#183)", async () => {
+    const asked: string[] = [];
+    const fixture = new FixtureEngine(1);
+    const spy: Engine = Object.assign(Object.create(Object.getPrototypeOf(fixture)), fixture, {
+      run: (a: Parameters<Engine["run"]>[0]) => { if (a.task?.data?.draw === "overview") asked.push(a.task.prompt); return fixture.run(a); },
+    });
+    const t = makeApp({ engines: [spy] });
+    expect((await draw(t, repo())).status).toBe("succeeded");
+    expect((await draw(t, repo(), { focus: { kind: "typed", text: "The agent" } })).status).toBe("succeeded");
+    expect(asked).toHaveLength(2);
+    expect(asked[0]).toMatch(/as the map of the whole system: its main groups only, about 5 to 9 top-level parts/);
+    expect(asked[1]).toMatch(/as the overview: the complete map of the system/);
+    expect(asked[1]).not.toMatch(/about 5 to 9 top-level parts/);
   });
 
   it("roots a drawing of a folder outside git at that folder, also when the file is opened again", async () => {
@@ -107,7 +143,7 @@ describe("the draw run", () => {
     expect(events[at].stage).toBe("overview");
     expect(events.slice(at + 1, at + 4)).toEqual(["Reading the drawing", "Reading the code", "Updating the drawing"].map((message) => ({ message, stage: "overview" })));
     expect(events.filter((e) => e.message.startsWith("Fixing"))).toHaveLength(1);
-    const doc = t.store.get(run.diagramId!)!;
+    const doc = choiceDoc(t.store.get(run.diagramId!)!);
     expect(doc.channels.overview.views[0].caption.lede).toBe("Drawn by the test engine.");
     expect(doc.warnings.some((w) => w.startsWith("Shortened"))).toBe(false);
   });
@@ -128,17 +164,18 @@ describe("the draw run", () => {
     expect(again.status).toBe("succeeded");
     const lines = linesOf(t, again.id);
     expect(lines.filter((e) => e.stage !== "channel")).toEqual([
+      { message: 'Drawing "The agent [fixture:flaky:channel]" (1 of 1)', stage: "read" },
       { message: "Using the facts already read", stage: "read" }, { message: "Checking the facts", stage: "read" },
       { message: "Drawing the overview", stage: "overview" }, { message: "Using the overview already drawn", stage: "overview" },
     ]);
     const clean = await draw(t, repo(), { focus: { kind: "typed", text: "The agent" }, channel: "presentation" });
-    const [doc, control] = [t.store.get(again.diagramId!)!, t.store.get(clean.diagramId!)!];
+    const [doc, control] = [choiceDoc(t.store.get(again.diagramId!)!), choiceDoc(t.store.get(clean.diagramId!)!)];
     expect(doc.warnings).toEqual(control.warnings);
     const shape = (d: typeof doc) => ({ nodes: d.channels.overview.views[0].nodes, edges: d.channels.overview.views[0].edges });
     expect(shape(doc)).toEqual(shape(control));
     // A success removes what was kept: the next draw reads again.
     const third = await start("The agent [fixture:flaky:channel]");
-    expect(linesOf(t, third.id)[0]).not.toEqual({ message: "Using the facts already read", stage: "read" });
+    expect(linesOf(t, third.id)[1]).not.toEqual({ message: "Using the facts already read", stage: "read" });
   });
 
   it("a cancelled draw keeps only the stages it finished", async () => {
@@ -168,7 +205,7 @@ describe("the draw run", () => {
     const id = await start();
     const done = (await t.runs.wait(id))!;
     expect(done.status).toBe("succeeded");
-    expect(done.progress.slice(0, 4)).toEqual(["Using the facts already read", "Checking the facts", "Drawing the overview", "Using the overview already drawn"]);
+    expect(done.progress.slice(0, 5)).toEqual(['Drawing "The whole system" (1 of 1)', "Using the facts already read", "Checking the facts", "Drawing the overview", "Using the overview already drawn"]);
   });
 
   it("a kept read is checked again: a cited file gone since drops its facts, and the overview is drawn again", async () => {
@@ -186,9 +223,9 @@ describe("the draw run", () => {
     const again = await start("The agent [fixture:flaky:channel]");
     expect(again.status).toBe("succeeded");
     const lines = linesOf(t, again.id).map((e) => e.message);
-    expect(lines.slice(0, 3)).toEqual(["Using the facts already read", "Checking the facts", "Drawing the overview"]);
+    expect(lines.slice(0, 4)).toEqual(['Drawing "The agent [fixture:flaky:channel]" (1 of 1)', "Using the facts already read", "Checking the facts", "Drawing the overview"]);
     expect(lines).not.toContain("Using the overview already drawn");
-    const doc = t.store.get(again.diagramId!)!;
+    const doc = choiceDoc(t.store.get(again.diagramId!)!);
     expect(JSON.stringify(doc.facts)).not.toContain("src/agent.ts");
     expect(doc.warnings.some((w) => w.includes("src/agent.ts"))).toBe(true);
     // Another focus is another request: it reads again.
@@ -245,6 +282,158 @@ describe("the draw run", () => {
     await t.runs.wait(first.body.runId);
   });
 });
+
+// Several choices in one draw (#181; api contract, The draw run, What a failed draw keeps, Run record).
+describe("a draw of several choices", () => {
+  const scanOf = async (t: ReturnType<typeof makeApp>, folder: string) => {
+    const s = await json(await t.req("/api/scans", { method: "POST", json: { folder } }));
+    await t.scans.wait(s.body.scanId);
+    return s.body.scanId as string;
+  };
+  const start = async (t: ReturnType<typeof makeApp>, scan: string, choices: unknown[], channel = "readme", extra: object = {}) =>
+    json(await t.req("/api/runs", { method: "POST", json: { kind: "draw", scan, choices, channel, ...extra } }));
+
+  it("two choices give one run, with lines that name their choice, and one file holding both", async () => {
+    const dir = real(repo());
+    const t = makeApp();
+    const scan = await scanOf(t, dir);
+    const r = await start(t, scan, [{ kind: "whole" }, { kind: "typed", text: "How a tool runs" }]);
+    expect(r.status).toBe(202);
+    expect(t.runs.get(r.body.runId)!.choices!.map((c) => [c.id, c.kind, c.title])).toEqual([["system", "system", "The whole system"], ["how-a-tool-runs", "custom", "How a tool runs"]]);
+    const events: { message: string; stage: string | null; choice: string | null }[] = [];
+    const run = (await t.runs.wait(r.body.runId))!;
+    t.runs.subscribe(run.id, (e) => { if (e.type === "progress") events.push({ message: e.message, stage: e.stage, choice: e.choice }); });
+    expect([run.status, run.error, run.choice, run.view]).toEqual(["succeeded", null, "system", "readme"]);
+    expect(run.choices!.map((c) => [c.id, c.status, c.stage])).toEqual([["system", "done", "channel"], ["how-a-tool-runs", "done", "channel"]]);
+    expect(events.every((e) => e.choice === "system" || e.choice === "how-a-tool-runs")).toBe(true);
+    expect(events.filter((e) => e.message.startsWith("Drawing \"")).map((e) => [e.message, e.choice])).toEqual([
+      ['Drawing "The whole system" (1 of 2)', "system"], ['Drawing "How a tool runs" (2 of 2)', "how-a-tool-runs"],
+    ]);
+    const file = JSON.parse(readFileSync(run.path!, "utf8")) as Document4;
+    expect(file.schema).toBe("archdraw/diagram@4");
+    expect(file.choices.map((c) => c.id)).toEqual(["system", "how-a-tool-runs"]);
+    // View ids are unique across the file: the second choice's take its id.
+    expect(file.choices[1].channels.overview.views.map((v) => v.id)).toEqual(["how-a-tool-runs-overview"]);
+    expect(file.choices[1].channels.readme.views.map((v) => v.id)).toEqual(["how-a-tool-runs-readme"]);
+    expect(file.choices[0].channels.overview.views.map((v) => v.id)).toEqual(["overview", "zone-runtime-inside"]);
+    // Each choice's warnings start with its title.
+    expect(file.warnings.slice(0, 4)).toEqual(FOUR.map((w) => `The whole system: ${w}`));
+    expect(file.warnings.every((w) => w.startsWith("The whole system: ") || w.startsWith("How a tool runs: "))).toBe(true);
+  });
+
+  it("a failure in the second choice writes nothing and keeps the first, which the same draw then goes through without a call", async () => {
+    const dir = real(repo());
+    const t = makeApp();
+    const scan = await scanOf(t, dir);
+    const choices = [{ kind: "whole" }, { kind: "typed", text: "Notes [fixture:flaky:second]" }];
+    const failed = (await t.runs.wait((await start(t, scan, choices, "linkedin")).body.runId))!;
+    expect([failed.status, failed.error, failed.path]).toEqual(["failed", "Fixture failure requested", null]);
+    expect(failed.choices!.map((c) => [c.status, c.stage])).toEqual([["done", "channel"], ["failed", "read"]]);
+    expect(existsSync(join(dir, "docs"))).toBe(false);
+    const again = (await t.runs.wait((await start(t, scan, choices, "linkedin")).body.runId))!;
+    expect(again.status).toBe("succeeded");
+    const lines: { message: string; choice: string | null }[] = [];
+    t.runs.subscribe(again.id, (e) => { if (e.type === "progress") lines.push({ message: e.message, choice: e.choice }); });
+    const first = lines.filter((l) => l.choice === "system").map((l) => l.message);
+    expect(first).toEqual(expect.arrayContaining(["Using the facts already read", "Using the overview already drawn", "Using the LinkedIn post already drawn"]));
+    expect(first).not.toContain("Reading the code");
+    expect(lines.filter((l) => l.choice !== "system").map((l) => l.message)).toContain("Reading the code");
+    // Kept in another place: a draw that puts the kept choice second names its views as the second choice's.
+    const other = real(repo());
+    const scan2 = await scanOf(t, other);
+    const stubborn = (await t.runs.wait((await start(t, scan2, [{ kind: "whole" }, { kind: "typed", text: "Notes [fixture:fail:second]" }], "linkedin")).body.runId))!;
+    expect(stubborn.choices!.map((c) => c.status)).toEqual(["done", "failed"]);
+    const moved = (await t.runs.wait((await start(t, scan2, [{ kind: "typed", text: "Plain" }, { kind: "whole" }], "linkedin")).body.runId))!;
+    expect(moved.status).toBe("succeeded");
+    const file = JSON.parse(readFileSync(moved.path!, "utf8")) as Document4;
+    expect(file.choices[1].channels.overview.views.map((v) => v.id)).toEqual(["system-overview", "zone-runtime-inside"]);
+    expect(file.choices[1].channels.linkedin.views.map((v) => v.id)).toEqual(["system-linkedin"]);
+  });
+
+  it("cancel in the second choice stops its engine's whole process tree, keeps the first done and writes nothing", async () => {
+    const fake = fakeCli("hang");
+    const claude = new ClaudeEngine({ ...process.env, ARCHDRAW_CLAUDE_BIN: fake.bin });
+    const fixture = new FixtureEngine(1);
+    // The first choice through the fixture, the second through a Claude Code that hangs with a child.
+    const mixed: Engine = { id: "claude", label: "Claude Code", detect: () => claude.detect(), run: (req) => (req.task?.data?.choiceIndex === 1 ? claude.run(req) : fixture.run(req)) };
+    const dir = real(repo());
+    const t = makeApp({ engines: [mixed, fixture] });
+    const scan = await scanOf(t, dir);
+    const r = await start(t, scan, [{ kind: "whole" }, { kind: "typed", text: "Second" }], "readme", { engine: "claude" });
+    expect(r.status, JSON.stringify(r.body)).toBe(202);
+    for (let i = 0; i < 200 && !existsSync(fake.log + ".child"); i++) await new Promise((res) => setTimeout(res, 50));
+    const child = Number(readFileSync(fake.log + ".child", "utf8"));
+    expect(t.runs.get(r.body.runId)!.choices!.map((c) => c.status)).toEqual(["done", "running"]);
+    t.runs.cancel(r.body.runId);
+    const run = (await t.runs.wait(r.body.runId))!;
+    expect([run.status, run.path, run.diagramId]).toEqual(["cancelled", null, null]);
+    expect(run.choices!.map((c) => [c.status, c.stage])).toEqual([["done", "channel"], ["cancelled", "read"]]);
+    const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    for (let i = 0; i < 20 && alive(child); i++) await new Promise((res) => setTimeout(res, 50));
+    expect(alive(child)).toBe(false);
+    expect(existsSync(join(dir, "docs"))).toBe(false);
+  });
+
+  it("each choice has its own deadline from its first line (review ce82b86-1)", async () => {
+    // Every call of a choice waits; two choices together outlast the deadline, each alone does not.
+    const waits = (byChoice: number[]) => new (class extends FixtureEngine {
+      override async run(req: Parameters<FixtureEngine["run"]>[0]) {
+        const i = req.task?.data?.choiceIndex;
+        if (typeof i === "number") await new Promise((r) => setTimeout(r, byChoice[i]));
+        return super.run(req);
+      }
+    })(1);
+    const draw2 = async (engine: FixtureEngine) => {
+      const t = makeApp({ engines: [engine], timeoutMs: 1500 });
+      const scan = await scanOf(t, real(repo()));
+      return (await t.runs.wait((await start(t, scan, [{ kind: "whole" }, { kind: "typed", text: "Second" }])).body.runId))!;
+    };
+    const both = await draw2(waits([300, 300]));
+    expect([both.status, both.error]).toEqual(["succeeded", null]);
+    // A choice that outlasts its own deadline ends the run as timed out; the first stays done.
+    const late = await draw2(waits([300, 700]));
+    expect(late.status).toBe("failed");
+    expect(late.error).toMatch(/^Timed out after/);
+    expect(late.choices!.map((c) => c.status)).toEqual(["done", "failed"]);
+  });
+
+  it("refuses a list of choices in the contracted order", async () => {
+    const dir = real(repo());
+    const t = makeApp();
+    const scan = await scanOf(t, dir);
+    const refused = async (body: object) => { const r = await json(await t.req("/api/runs", { method: "POST", json: { kind: "draw", scan, channel: "readme", ...body } })); return [r.status, r.body.error]; };
+    expect(await refused({ choices: [{ kind: "whole" }], focus: { kind: "whole" } })).toEqual([400, "Give choices or focus, not both"]);
+    expect(await refused({})).toEqual([400, "Choose what to draw: give 1 to 10 choices"]);
+    expect(await refused({ choices: [] })).toEqual([400, "Choose what to draw: give 1 to 10 choices"]);
+    expect(await refused({ choices: Array.from({ length: 11 }, (_, i) => ({ kind: "typed", text: `t${i}` })) })).toEqual([400, "Choose what to draw: give 1 to 10 choices"]);
+    expect(await refused({ choices: [{ kind: "whole" }, { kind: "nope" }] })).toEqual([400, 'Unknown focus: use {"kind": "option" | "whole" | "typed"}']);
+    expect(await refused({ choices: [{ kind: "whole" }, { kind: "whole" }] })).toEqual([400, "The whole system is chosen twice"]);
+    expect(await refused({ choices: [{ kind: "option", option: "o2" }, { kind: "option", option: "o2" }] })).toEqual([400, 'The option "o2" is chosen twice']);
+    expect(await refused({ choices: [{ kind: "typed", text: "a" }, { kind: "typed", text: "b" }] })).toEqual([400, "Only one choice can be in your own words"]);
+    expect(await refused({ choices: [{ kind: "whole" }, { kind: "whole" }], channel: "nope" })).toEqual([400, "The whole system is chosen twice"]);
+  });
+});
+
+/** A fake `claude` (a node script) that answers its checks, then hangs with a child that only killing the tree stops. */
+function fakeCli(_: "hang"): { bin: string; log: string } {
+  const dir = tempDir("archdraw-fake-draw-");
+  const log = join(dir, "log.json");
+  const src = `
+const fs = require("fs");
+const args = process.argv.slice(2);
+if (args.includes("--version")) { console.log("2.1.303 (Claude Code)"); process.exit(0); }
+if (args.includes("--help")) { console.log("--json-schema --safe-mode --restricted --strict-mcp-config --no-session-persistence"); process.exit(0); }
+if (args[0] === "debug") { console.log('{"models":[]}'); process.exit(0); }
+process.stdin.on("data", () => {});
+process.stdin.on("end", () => {
+  const child = require("child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", detached: process.platform === "win32" });
+  fs.writeFileSync(${JSON.stringify(log)} + ".child", String(child.pid));
+  setInterval(() => {}, 1000);
+});`;
+  const bin = join(dir, "claude.js");
+  writeFileSync(bin, src);
+  return { bin, log };
+}
 
 describe("writing a new drawing", () => {
   it("takes the next free name and never replaces a file, nor leaves its temporary file", () => {

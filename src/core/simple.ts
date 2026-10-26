@@ -6,6 +6,7 @@ import { applyChannel, clearOutdated, joinChannel, type ApplyResult } from "./ch
 import { freeIdAmong, validateDocument3, type Document3, type Step } from "./file3";
 import { channelViewId } from "./intent";
 import { layoutView } from "./layout";
+import { toldFrom } from "./map";
 import type { DiagramView } from "./model";
 
 const TITLES = { readme: "README", presentation: "Presentation" } as const;
@@ -17,7 +18,8 @@ const TITLES = { readme: "README", presentation: "Presentation" } as const;
  * it replaces what the channel held and empties its `outdated`.
  */
 export function prepareChannel(stored: Document3, channel: "readme" | "presentation"): ApplyResult {
-  const src = joinChannel(stored, "overview").views[0];
+  // For the `system` choice, the map and its detail views in panel order, skipping parts with an inside (ui contract).
+  const src = toldFrom(stored, joinChannel(stored, "overview").views);
   const used = new Set<string>(src.nodes.map((n) => n.id));
   const comps = new Map(stored.facts.components.map((c) => [c.id, c]));
   // No own text: a part showing one fact shows its name and sub-line. No inside view: `detail` is the overview's alone (rule 10).

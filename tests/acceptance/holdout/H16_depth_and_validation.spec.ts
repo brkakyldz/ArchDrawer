@@ -3,9 +3,11 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { component, drawing, fromLegacy, workspace, writeJSON, cli, token, baseURL, type Doc3, type Drawing } from './helpers';
 
-const OVERVIEW = 'channels.overview.views[0]';
+// A violation's or a warning's path starts at its choice (diagram contract, rule 1): the `@3` files of this scenario are one choice, `choices[0]`.
+const CHOICE = 'choices[0]';
+const OVERVIEW = `${CHOICE}.channels.overview.views[0]`;
 
-test('H16 [START-5, FILE-1, FILE-2, STORY-5, LOOK-3] depth warnings permit a drawing but every broken field is reported without repair', async ({ request }) => {
+test('H16 [START-5, FILE-1, FILE-2, STORY-5, LOOK-3, #182] depth warnings permit a drawing but every broken field is reported without repair', async ({ request }) => {
   const doc = drawing('Depth review');
   doc.views[0].nodes = Array.from({ length: 6 }, (_, i) => component(`part-${i}`, { place: { row: 0, col: i }, sub: i === 0 ? '90 s' : '' }));
   doc.views[0].edges = Array.from({ length: 5 }, (_, i) => ({ id: `flow-${i}`, from: `part-${i}`, to: `part-${i + 1}`, label: 'process', style: 'call', both: false, step: null }));
@@ -24,7 +26,7 @@ test('H16 [START-5, FILE-1, FILE-2, STORY-5, LOOK-3] depth warnings permit a dra
   expect(warningLines.some(line => /tuning|90 s/i.test(line)), 'the tuning-number warning is LinkedIn only').toBe(false);
   for (const line of warningLines) expect(line, 'only the depth warnings remain').toMatch(/flat|pipeline|main path|step|repeat/i);
   // Warnings are checked on every channel view and name it.
-  expect(warningLines.every(line => /WARN\s+channels\.overview\.views\[0\]/.test(line))).toBe(true);
+  expect(warningLines.every(line => line.startsWith(`WARN  ${OVERVIEW}`))).toBe(true);
   expect(await readFile(file, 'utf8')).toBe(bytes);
 
   // A drawing authored in the drawn shape, then broken field by field in the stored shape.
@@ -38,9 +40,9 @@ test('H16 [START-5, FILE-1, FILE-2, STORY-5, LOOK-3] depth warnings permit a dra
     const result = await cli([command, invalid, ...(command === 'open' ? ['--no-browser'] : [])]);
     expect(result.code).toBe(1);
     const errors = `${result.stdout}\n${result.stderr}`;
-    for (const path of ['facts.components[0].kind', 'facts.components[0].files', `${OVERVIEW}.nodes[2].parent`, `${OVERVIEW}.edges[0].to`, 'facts.relations[1].style']) expect(errors).toContain(`ERROR ${path}`);
+    for (const path of [`${CHOICE}.facts.components[0].kind`, `${CHOICE}.facts.components[0].files`, `${OVERVIEW}.nodes[2].parent`, `${OVERVIEW}.edges[0].to`, `${CHOICE}.facts.relations[1].style`]) expect(errors).toContain(`ERROR ${path}`);
     // A panel that shows no item is reported at the part or at the fact whose items it shows.
-    expect(errors).toMatch(new RegExp(`ERROR (facts\\.components\\[1\\]\\.items|${OVERVIEW.replace(/[[\].]/g, '\\$&')}\\.nodes\\[1\\]\\.(form|items))`));
+    expect(errors).toMatch(new RegExp(`ERROR (${CHOICE.replace(/[[\].]/g, '\\$&')}\\.facts\\.components\\[1\\]\\.items|${OVERVIEW.replace(/[[\].]/g, '\\$&')}\\.nodes\\[1\\]\\.(form|items))`));
     expect(errors).toMatch(/actor.*client.*api.*service/s); expect(errors).toMatch(/call.*async.*dep/s);
     expect(errors).toMatch(/\d+ error/); expect(await readFile(invalid, 'utf8')).toBe(before);
   }
@@ -99,5 +101,5 @@ test('H16 [START-5, FILE-1, FILE-2, STORY-5, LOOK-3] depth warnings permit a dra
   const missing: Drawing = drawing('Missing code'); missing.views[0].nodes[0].files = ['src/not-present.ts'];
   await writeJSON(join(dir, 'missing.json'), fromLegacy(missing));
   const absent = await cli(['validate', join(dir, 'missing.json')]);
-  expect(absent.code).toBe(1); expect(`${absent.stdout}${absent.stderr}`).toContain('facts.components[0].files');
+  expect(absent.code).toBe(1); expect(`${absent.stdout}${absent.stderr}`).toContain(`${CHOICE}.facts.components[0].files`);
 });

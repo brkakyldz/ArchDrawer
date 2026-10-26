@@ -3,7 +3,7 @@ import { applyChannel, joinChannel, markOutdated, normalizeFile3 } from "./chann
 import { checkEvidence } from "./evidence";
 import { drawView } from "./export/svg";
 import { fillDefaults3, validateDocument3, validateFile3, type Document3, type File3 } from "./file3";
-import { LIMIT_ROW, measureNode } from "./geometry";
+import { measureNode } from "./geometry";
 import { validateDocument, type DiagramDocument } from "./model";
 import { PALETTES } from "./theme";
 
@@ -328,16 +328,14 @@ describe("the evidence check (Read answers)", () => {
   });
 });
 
-describe("limit rows in geometry and the image", () => {
-  it("a limit row keeps room for its timer icon, and the image draws it as a limit", () => {
+describe("rows in geometry and the image (ADR 0014)", () => {
+  it("a panel with held, item and limit rows measures as a card and the image draws no row", () => {
     const base = { label: "Agent", form: "panel" as const, sub: "", detail: null };
     const text = "Stops after twelve turns, always";
-    const plain = measureNode({ ...base, items: [text] }), limited = measureNode({ ...base, items: [text], limitIds: ["turns"] });
-    expect(limited.w).toBeGreaterThanOrEqual(Math.min(plain.w + LIMIT_ROW.icon + LIMIT_ROW.gap, 320));
-    expect(limited.h).toBe(plain.h);
-    expect(limited.limits).toBe(1);
+    const withRows = { ...base, items: [text], limitIds: ["turns"] };
+    expect(measureNode(withRows)).toEqual(measureNode({ ...base, form: "card" }));
     const svg = drawView(joinChannel(doc(), "overview").views[0], PALETTES.light).body;
-    expect(svg).toContain('class="limit"');
-    expect(svg.match(/class="item"/g)).toHaveLength(2);
+    expect(svg).not.toContain('class="limit"');
+    expect(svg).not.toContain('class="item"');
   });
 });

@@ -2,6 +2,7 @@ import { applyChannel, clearOutdated, joinChannel, type ApplyResult } from "../c
 import { freeIdAmong, validateDocument3, type Document3 } from "../file3";
 import { measureNode } from "../geometry";
 import { linkedInViewId } from "../intent";
+import { toldFrom } from "../map";
 import { LIMITS, type DiagramEdge, type DiagramNode, type DiagramView } from "../model";
 
 /**
@@ -263,7 +264,8 @@ export function explainInstruction(viewId: string): string {
  * `outdated` is emptied.
  */
 export function prepareLinkedIn(stored: Document3): ApplyResult {
-  const src = joinChannel(stored, "overview").views[0];
+  // For the `system` choice, the map and its detail views in panel order, skipping parts with an inside (ui contract).
+  const src = toldFrom(stored, joinChannel(stored, "overview").views);
   const laid = arrangeForFeed(src);
   const id = linkedInViewId(stored);
   const inside = (gid: string): string[] => src.nodes.filter((m) => m.parent === gid).flatMap((m) => [...(m.facts ?? []), ...inside(m.id)]);

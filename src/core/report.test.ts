@@ -35,8 +35,11 @@ describe("layout report", () => {
     const long = "a description far too long for one line of a small card in any image";
     const d = doc([node("a", { sub: long, x: 0, y: 0 }), node("p", { form: "panel", items: ["one"], x: 400, y: 0 })]);
     expect(layoutReport(d, "overview", opts()).cutText).toEqual([{ id: "a", field: "sub", text: long }]);
+    // With the sub-lines switched off nothing of them is drawn, so none is cut (review R177-1).
+    const subs = doc([node("a", { sub: long, x: 0, y: 0 }), node("b", { sub: "short", x: 400, y: 0 })]);
+    expect(layoutReport(subs, "overview", opts({ sub: false })).cutText).toEqual([]);
     const hidden = doc([node("p", { form: "panel", items: ["an item far too long to fit into the narrow panel it sits in"] })]);
-    expect(layoutReport(hidden, "overview", opts({ items: false })).cutText).toEqual([]);
+    expect(layoutReport(hidden, "overview", opts()).cutText).toEqual([]);
   });
 
   it("reports a post's text over its story targets, a spine label against a limit of 0, and keeps the text whole", () => {
@@ -51,6 +54,11 @@ describe("layout report", () => {
     ]);
     expect(r.targets).toEqual({ parts: 12, zones: { min: 0, max: 4 }, connections: 14 });
     expect(d.views[0].nodes[0].label).toBe(label);
+    // A sub-line over its target is reported while sub-lines are drawn, and not once they are off (review 510f7bc-3).
+    const sub = "a sub-line longer than its target of 28";
+    const s = doc([node("a", { sub, x: 0, y: 0 }), node("b", { x: 400, y: 0 })], [], "overview-linkedin");
+    expect(layoutReport(s, "overview-linkedin", opts({ format: "feed" })).overLimitText).toEqual([{ id: "a", field: "sub", text: sub, limit: 28 }]);
+    expect(layoutReport(s, "overview-linkedin", opts({ format: "feed", sub: false })).overLimitText).toEqual([]);
   });
 
   it("measures the longest connection against the parts' diagonal, 0 without connections", () => {

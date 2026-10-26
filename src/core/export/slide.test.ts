@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { validateFile, type DiagramDocument, type DiagramStep } from "../model";
+import { hiddenEdges } from "../geometry";
 import { normalizeFile } from "../normalize";
 import { textWidth } from "../text";
 import { renderShare, SWITCH_PRESETS } from "./share";
@@ -74,13 +75,16 @@ describe("the slide image (PRES-1, PRES-3)", () => {
     const d = deck([...STEPS, { id: "s4", parts: ["guest_api", "run_service", "scope"], text: "Three parts", note: "" }]);
     for (let i = 1; i < slideCount(d); i++) {
       const parts = new Set(d.steps![i - 1].parts);
-      const want = d.views[0].edges.filter((e) => parts.has(e.from) && parts.has(e.to)).map((e) => e.id).sort();
+      // A line a hub hides is drawn by no export, a slide included (diagram contract, Parts many parts use).
+      const hidden = hiddenEdges(d.views[0]);
+      const want = d.views[0].edges.filter((e) => parts.has(e.from) && parts.has(e.to) && !hidden.has(e.id)).map((e) => e.id).sort();
       const svg = renderSlide(d, i, OPTS).svg;
       expect(litIds(svg, "edge")).toEqual(want);
-      expect(groups(svg, "edge").size).toBe(d.views[0].edges.length);
+      expect(groups(svg, "edge").size).toBe(d.views[0].edges.length - hidden.size);
     }
-    // guest_api → run_service and guest_api → scope are lit; guest_api → domain_svc has one end out.
-    expect(litIds(renderSlide(d, 4, OPTS).svg, "edge")).toHaveLength(2);
+    // guest_api → run_service is lit; guest_api → scope would be, but scope is a hub that hides it (#186);
+    // guest_api → domain_svc has one end out.
+    expect(litIds(renderSlide(d, 4, OPTS).svg, "edge")).toHaveLength(1);
   });
 
   it("dims a group unless the step names it; a lit group does not light what it holds", () => {
@@ -88,6 +92,9 @@ describe("the slide image (PRES-1, PRES-3)", () => {
     const inside = renderSlide(d, 2, OPTS).svg;
     expect(litIds(inside, "node")).toEqual(["history", "llm"]);
     expect(dimmed(groups(inside, "node").get("runtime")!)).toBe(true);
+    // Its head, drawn over the connections, dims with it (review 222ed43-1).
+    expect(inside).toContain(`<g data-group-head="runtime" data-dim="true" opacity="0.25">`);
+    expect(renderSlide(d, 3, OPTS).svg).toContain(`<g data-group-head="runtime">`);
     const group = renderSlide(d, 3, OPTS).svg;
     expect(litIds(group, "node")).toEqual(["runtime"]);
     expect(dimmed(groups(group, "node").get("llm")!)).toBe(true);
@@ -161,7 +168,7 @@ describe("the slide image (PRES-1, PRES-3)", () => {
     expect(on).toContain("data-text-id");
     expect(on).toContain("data-key=");
     expect(on).toContain("base64,U0FOUw==");
-    const off = renderSlide(d, 1, { ...OPTS, steps: false, labels: false, texts: false, legend: false, items: false }).svg;
+    const off = renderSlide(d, 1, { ...OPTS, steps: false, labels: false, texts: false, legend: false, sub: false }).svg;
     for (const s of ["data-step-badge", "data-edge-label", "data-text-id", "data-key=", "node-item", "@font-face"]) expect(off).not.toContain(s);
     expect(off).toContain("data-slide-band");
   });

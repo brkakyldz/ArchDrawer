@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { basename, join } from 'node:path';
-import { gitRepo, token, scanFolder, startDraw, finishRun, runEvents, listedDiagrams, getDocument, samePath, sorted, exists, viewOf, partOf, factOf, outdatedOf, channelNames, type Doc3 } from './helpers';
+import { gitRepo, token, scanFolder, startDraw, finishRun, runEvents, listedDiagrams, samePath, sorted, exists, viewOf, partOf, factOf, outdatedOf, channelNames, type Doc3 } from './helpers';
+import { getDocument, getRaw, SLUG } from './helpers-selections'; // a draw writes format 4: `getDocument` gives the choice in the shape this scenario was written in, `getRaw` the document
 
 const MECHANISMS = ['model-call', 'tool-proposal', 'tool-check', 'tool-run', 'tool-result'];
 const FOUR_WARNINGS = [
@@ -18,7 +19,7 @@ const CHANNELS = [
 // READ-1/2/3: the fixture's read is always the same facts with evidence; code drops what the repository cannot back, draws
 // the overview from the facts so that every fact is shown or held, and the chosen channel on top. STORY-1: the three
 // channels are drawn from the same facts. The fixture answer (testing contract, Draw) is what each assertion repeats.
-test('H117 [START-4, READ-1, READ-2, READ-3, STORY-1] a draw run reads the agent project into facts with checked evidence, drops what the files do not back, draws every fact in the overview and the chosen channel, and writes one new file', async ({ request }) => {
+test('H117 [START-4, READ-1, READ-2, READ-3, STORY-1, #181, #182] a draw run reads the agent project into facts with checked evidence, drops what the files do not back, draws every fact in the overview and the chosen channel, and writes one new file', async ({ request }) => {
   test.setTimeout(300_000);
   const auth = await token(request);
 
@@ -31,9 +32,10 @@ test('H117 [START-4, READ-1, READ-2, READ-3, STORY-1] a draw run reads the agent
 
     // The run record: where the file went, which channel and view it opened on, the report, everything added.
     const file = join(project.dir, 'docs', 'architecture.archdraw.json');
-    expect(run).toMatchObject({ kind: 'draw', channel: chosen.channel, view: chosen.view, status: 'succeeded', error: null, route: null });
+    expect(run).toMatchObject({ kind: 'draw', choice: SLUG.o1, channel: chosen.channel, view: chosen.view, status: 'succeeded', error: null, route: null });
+    expect(run.choices.map((c: { id: string; kind: string; status: string }) => [c.id, c.kind, c.status])).toEqual([[SLUG.o1, 'flow', 'done']]); // a request with one `focus` is a list of one choice
     expect(samePath(run.path, file), run.path).toBe(true); expect(run.diagramId).toMatch(/^d_[a-z0-9]{6,}$/);
-    expect(run.layoutReport).toMatchObject({ channel: chosen.channel, view: chosen.view, format: chosen.format });
+    expect(run.layoutReport).toMatchObject({ choice: SLUG.o1, channel: chosen.channel, view: chosen.view, format: chosen.format });
     expect(run.changes.added.length).toBeGreaterThan(0);
     for (const key of ['removed', 'changed', 'moved', 'edgesRemoved', 'edgesChanged']) expect(run.changes[key], key).toEqual([]);
     const listed = await listedDiagrams(request);
@@ -53,8 +55,10 @@ test('H117 [START-4, READ-1, READ-2, READ-3, STORY-1] a draw run reads the agent
     expect(events.at(-1)!.data).toMatchObject({ status: 'succeeded', diagramId: run.diagramId, channel: chosen.channel, view: chosen.view, route: null });
     expect(samePath(events.at(-1)!.data.path, file)).toBe(true);
 
+    const stored = await getRaw(request, run.diagramId);
+    expect(stored).toMatchObject({ schema: 'archdraw/diagram@4', title: basename(project.dir) });
+    expect(stored.choices.map(c => [c.id, c.kind, c.title])).toEqual([[SLUG.o1, 'flow', 'How a request moves through the project']]);
     const doc: Doc3 = await getDocument(request, run.diagramId);
-    expect(doc).toMatchObject({ schema: 'archdraw/diagram@3', title: basename(project.dir) });
     expect(samePath(doc.source!.path, project.dir)).toBe(true);
 
     // READ-1/2: components, the mechanisms inside the agent, relations and a limit, each with evidence in the project's files.

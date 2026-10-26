@@ -5,7 +5,7 @@ const FIVE_KINDS = /flat|pipeline|held items|panel|tuning|main path|step|repeat/
 
 // STORY-6: the overview is the complete map, with no zone or connection caps. A big overview is no longer warned about or
 // offered a suggestion to cut; Simplify stays, as the user's own choice, and never loses a fact.
-test('H115 [STORY-6, AI-1, FILE-3, AI-4] a 24-part overview gets no size warning and no overview suggestion, shows no count targets, and Simplify the overview still folds it, from the Simpler suggestion, without losing a fact', async ({ page, request }) => {
+test('H115 [STORY-6, AI-1, FILE-3, AI-4] a 24-part overview gets no size warning and no overview suggestion, shows no zone or connection target, and Simplify the overview still folds it, from the Simpler suggestion, without losing a fact', async ({ page, request }) => {
   const doc = drawing('Large system'), view = doc.views[0];
   view.nodes = Array.from({ length: 24 }, (_, i) => component(`part-${i}`, { label: `Part ${i}`, place: { row: Math.floor(i / 6), col: i % 6 } }));
   view.edges = Array.from({ length: 23 }, (_, i) => ({ id: `flow-${i}`, from: `part-${i}`, to: `part-${i + 1}`, label: `Hop ${i}`, style: 'call', both: false, step: i + 1 }));
@@ -25,13 +25,15 @@ test('H115 [STORY-6, AI-1, FILE-3, AI-4] a 24-part overview gets no size warning
   await expect(page.getByTestId('ai-suggest-simpler')).toHaveText('Simpler'); await expect(page.getByTestId('ai-suggest-simpler')).toBeEnabled();
   await page.getByTestId('ai-close').click();
 
-  // Share reports what is drawn, with no target to miss: no `/ <target>` beside the counts, no line about a missed target.
+  // Share reports what is drawn. The converted file's one choice is `system`, whose first overview view is the map: its one target is
+  // `parts: 9` (api contract, *Layout report*; ADR 0015), so the parts count may read `24 parts / 9` and be warned about, as advice;
+  // there is no target for zones or connections, and nothing is capped.
   await page.getByTestId('share-button').click();
   const report = page.getByTestId('share-actions').getByTestId('layout-report');
   await expect(report).toHaveAttribute('data-parts', '24'); await expect(report).toHaveAttribute('data-connections', '23');
   const text = (await report.textContent()) ?? '';
-  expect(text, text).toMatch(/24 parts/); expect(text).not.toMatch(/parts?\s*\/\s*\d+/); expect(text).not.toMatch(/connections?\s*\/\s*\d+/);
-  for (const line of await page.getByTestId('layout-report-warning').allTextContents()) expect(line).not.toMatch(/target|zones?|connections/i);
+  expect(text, text).toMatch(/24 parts/); expect(text).not.toMatch(/connections?\s*\/\s*\d+/); expect(text).not.toMatch(/zones?\s*\/\s*\d+/);
+  for (const line of await page.getByTestId('layout-report-warning').allTextContents()) expect(line).not.toMatch(/zones?|connections/i);
   await page.keyboard.press('Escape'); await expect(page.getByTestId('share-dialog')).toHaveCount(0);
 
   // Simplify is still there when the user asks: the overview folds into one group, every part in the detail view.
@@ -52,5 +54,5 @@ test('H115 [STORY-6, AI-1, FILE-3, AI-4] a 24-part overview gets no size warning
   expect(after.facts.components).toHaveLength(24);
   // The report of the finished run has the counts and no targets either.
   const finished = (await page.getByTestId('ai-panel').getByTestId('layout-report').textContent()) ?? '';
-  expect(finished).not.toMatch(/parts?\s*\/\s*\d+/);
+  expect(finished).not.toMatch(/connections?\s*\/\s*\d+/); expect(finished).not.toMatch(/zones?\s*\/\s*\d+/);
 });

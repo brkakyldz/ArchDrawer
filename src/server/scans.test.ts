@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { EngineError } from "./engines/types";
 import { FixtureEngine, fixtureScan } from "./engines/fixture";
+import { checkScan } from "../core/scan";
 import { makeApp, makeFolder } from "./testkit";
 
 // The scan resource (api contract, Folders and Scans) through the server, with the fixture engine.
@@ -58,10 +59,44 @@ describe("scans", () => {
     expect(s.cached).toBe(false);
     expect(s.card).toMatchObject({ sentence: "A project scanned by the test engine.", type: "agent", languages: ["TypeScript"] });
     expect(s.card!.entryPoints[0]).toBe("src/server.ts"); // named by package.json's main
-    expect(s.options!.map((o) => [o.id, o.kind, o.title])).toEqual([["o1", "flow", "How a request moves through the project"], ["o2", "mechanism", "The agent loop"], ["o3", "overview", "The whole architecture"]]);
+    expect(s.options!.map((o) => [o.id, o.kind, o.title])).toEqual([["o1", "flow", "How a request moves through the project"], ["o2", "section", "The agent loop"], ["o3", "section", "The server side"]]);
     expect(s.options![0].files).toEqual(["README.md", "package.json"]);
     expect(s.warnings).toEqual(['Left out the option "A path that is not there": "fixture/missing-file.ts" does not exist']);
     expect(s.progress).toEqual(["Gathering the repository", "Reading the inputs", "Writing the card", "Checking the scan", "Done"]);
+  });
+
+  it("keeps at most 8 options: an older kind becomes a flow and the ninth is left out, one warning each", async () => {
+    // A folder name with ":" cannot exist on Windows, so the fixture's answer goes through the scan's check here.
+    const listing = ["README.md", "package.json", "src/agent.ts"];
+    const m = checkScan(fixtureScan("shop [fixture:many]", { listing }), { folderName: "shop [fixture:many]", exists: (f) => listing.includes(f) });
+    expect(m.card!.name).toBe("shop");
+    expect(m.options!.map((o) => [o.id, o.kind, o.title])).toEqual([
+      ["o1", "flow", "How a request moves through the project"], ["o2", "section", "The agent loop"], ["o3", "section", "The server side"],
+      ["o4", "flow", "Part 5"], ["o5", "section", "Part 6"], ["o6", "section", "Part 7"], ["o7", "section", "Part 8"], ["o8", "section", "Part 9"],
+    ]);
+    expect(m.warnings).toEqual([
+      'Left out the option "A path that is not there": "fixture/missing-file.ts" does not exist',
+      'Unknown focus kind "mechanism" for "Part 5", taken as flow',
+      'Left out the option "Part 10": at most 8 options',
+    ]);
+  });
+
+  it("writes cache entries with version 2 and scans again over an entry without it", async () => {
+    const t = makeApp();
+    const dir = gitRepo(FILES);
+    await scanOf(t, dir);
+    const [name] = readdirSync(join(t.dataDir, "scans"));
+    const file = join(t.dataDir, "scans", name);
+    const entry = JSON.parse(readFileSync(file, "utf8"));
+    expect(entry.version).toBe(2);
+    // An entry written before sections and flows: the same shape without the version, an older kind.
+    const { version: _, ...old } = entry;
+    writeFileSync(file, JSON.stringify({ ...old, options: [{ ...old.options[0], kind: "mechanism" }] }));
+    const again = await scanOf(t, dir);
+    expect(again.cached).toBe(false);
+    expect(again.options![0].kind).toBe("flow");
+    expect(JSON.parse(readFileSync(file, "utf8")).version).toBe(2);
+    expect((await scanOf(t, dir)).cached).toBe(true);
   });
 
   it("is cached per commit: a second scan starts no engine, refresh and a new commit scan again", async () => {

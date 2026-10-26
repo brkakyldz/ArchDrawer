@@ -1,9 +1,8 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
-import { channelWarnings, normalizeFile3 } from "../core/channels";
 import { readAnyFile } from "../core/convert";
-import { fillDefaults3, type Document3, type File3 } from "../core/file3";
+import { channelWarnings4, fillDefaults4, normalizeFile4, type Document4, type File4 } from "../core/file4";
 import { isV1 } from "../core/migrate";
 
 /**
@@ -111,13 +110,13 @@ export interface FileReport {
   /** `<json path>: <message>` per violation. */
   errors: string[];
   warnings: string[];
-  /** The file as `@3`: an `@2` file converted (diagram contract, Reading `archdraw/diagram@2`). */
-  file: File3 | null;
+  /** The file as `@4`: an `@3` or `@2` file converted (diagram contract, Reading `archdraw/diagram@3`). */
+  file: File4 | null;
   /** The raw JSON value when it parsed (for migration). */
   raw: unknown;
   v1: boolean;
   /** The format the text was in, when it was a drawing. */
-  from: "@3" | "@2" | "@1" | null;
+  from: "@4" | "@3" | "@2" | "@1" | null;
 }
 
 /**
@@ -139,9 +138,9 @@ export function checkText(text: string, root: string, missingFiles: "error" | "w
 }
 
 /** A read report plus the depth checks on every channel (diagram contract, Warnings). */
-export function withWarnings<R extends { ok: boolean; file: File3 | null; warnings: string[] }>(r: R): R {
+export function withWarnings<R extends { ok: boolean; file: File4 | null; warnings: string[] }>(r: R): R {
   if (!r.ok || !r.file) return r;
-  return { ...r, warnings: [...r.warnings, ...channelWarnings(fillDefaults3(r.file))] };
+  return { ...r, warnings: [...r.warnings, ...channelWarnings4(fillDefaults4(r.file))] };
 }
 
 export function checkFile(path: string, missingFiles: "error" | "warn" = "error"): FileReport & { text: string } {
@@ -160,9 +159,9 @@ export function checkFile(path: string, missingFiles: "error" | "warn" = "error"
  * root, edge ids, positions. `updatedAt` moves to `now` only when the content changed, so
  * opening an untouched file twice writes nothing.
  */
-export function normaliseFile(file: File3, ctx: { path: string; id: string; now: string; text?: string }): { doc: Document3; text: string; changed: boolean } {
+export function normaliseFile(file: File4, ctx: { path: string; id: string; now: string; text?: string }): { doc: Document4; text: string; changed: boolean } {
   const source = { kind: "local" as const, path: repoRootOf(ctx.path) };
-  const doc = normalizeFile3(file, { id: ctx.id, now: ctx.now, source });
+  const doc = normalizeFile4(file, { id: ctx.id, now: ctx.now, source });
   let text = docText(doc);
   const changed = text !== ctx.text;
   if (changed && file.updatedAt) {

@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { basename, join } from 'node:path';
 import { gitRepo, workspaceRaw, shop3, isolatedDrawing, samePath, exists } from './helpers';
+import { choiceSlug } from './helpers-selections';
 
 // START-4 and SCAN-3/4 at the home screen: a wrong folder gets one plain sentence and starts nothing; the same commit shows
 // its card at once as scanned before, with a way to scan again; a focus in the user's own words is typed; and the whole
 // path can be done from the keyboard.
-test('H122 [START-4, SCAN-3, SCAN-4, STORY-1] a wrong folder gets a plain sentence and starts nothing, a scanned commit shows its card at once and can be scanned again, and a typed focus is drawn from the keyboard alone', async ({ page, request }) => {
+test('H122 [START-4, SCAN-3, SCAN-4, STORY-1, #181] a wrong folder gets a plain sentence and starts nothing, a scanned commit shows its card at once and can be scanned again, and a typed focus is drawn from the keyboard alone', async ({ page, request }) => {
   test.setTimeout(240_000);
   const project = await gitRepo('start-keys');
   const home = await workspaceRaw('start-keys-home', shop3('Keyboard shop'));
@@ -83,8 +84,8 @@ test('H122 [START-4, SCAN-3, SCAN-4, STORY-1] a wrong folder gets a plain senten
     await expect(page.getByTestId('draw-progress')).toBeVisible();
     await expect(page.getByTestId('editor')).toBeVisible({ timeout: 120_000 });
     const run = posts.find(p => p.path === '/api/runs')!;
-    expect(run.body).toMatchObject({ kind: 'draw', focus: { kind: 'typed', text }, channel: 'linkedin' });
-    await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin'); await expect(page.getByTestId('node-intake')).toBeVisible();
+    expect(run.body).toMatchObject({ kind: 'draw', choices: [{ kind: 'typed', text }], channel: 'linkedin' }); expect(run.body).not.toHaveProperty('focus');
+    await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin'); await expect(page.getByTestId('editor')).toHaveAttribute('data-choice', choiceSlug(text)); // a slug cut to 40 characters await expect(page.getByTestId('node-intake')).toBeVisible();
     // Must not happen: more than one drawing written, or a draw before the keyboard asked for it.
     expect(posts.filter(p => p.path === '/api/runs')).toHaveLength(1);
     expect(await exists(join(project.dir, 'docs', 'architecture.archdraw.json'))).toBe(true); expect(await exists(join(project.dir, 'docs', 'architecture-2.archdraw.json'))).toBe(false);

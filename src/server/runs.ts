@@ -1,11 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";
 import { appearanceOnly } from "../core/appearance";
-import { applyChannel, draftOf, joinChannel } from "../core/channels";
+import { applyChannel, joinChannel } from "../core/channels";
+import { storyDraft } from "../core/map";
 import { channelOfView, validateDocument3, type ChannelId, type Document3 } from "../core/file3";
+import { withChoice, type Document4 } from "../core/file4";
 import { isPostView, validateDocument, type DiagramDocument } from "../core/model";
 import { startSwitches, type FormatId } from "../core/export/share";
-import { layoutReport, type LayoutReport } from "../core/report";
+import { isMapView, layoutReport, type LayoutReport } from "../core/report";
 import { channelViewId, intentToChannel, STORY_SCHEMA, StoryError, storyRows } from "../core/intent";
 import { postPrompt, ROUTE_SCHEMA, routePrompt, storyPrompt } from "./engines/prompt";
 import { diffDocuments, type Changes } from "../core/diff";
@@ -16,7 +18,7 @@ import { repoFile } from "./folders";
 import { nowIso, type Store } from "./store";
 import { EngineError, type Engine } from "./engines/types";
 import { ReadAnswerError } from "../core/read";
-import { DrawError, keptKey, runDraw, type DrawRequest, type KeptDraw } from "./draw";
+import { DrawError, drawChoices, keptKey, runDraw, type DrawChoice, type DrawRequest, type KeptChoice } from "./draw";
 import { storyAnswer } from "./story-turn";
 
 export type RunStatus = "running" | "succeeded" | "failed" | "cancelled";
@@ -26,13 +28,15 @@ export type DrawStage = "read" | "overview" | "channel";
 /** The channels a story is drawn in (a post is a story on LinkedIn). */
 export type StoryChannel = Exclude<ChannelId, "overview">;
 export type RunEvent =
-  | { type: "progress"; message: string; stage: DrawStage | null }
-  | { type: "done"; status: Exclude<RunStatus, "running">; diagramId: string | null; error: string | null; changes: Changes | null; channel: ChannelId; view: string; layoutReport: LayoutReport | null; route: Route | null; path: string | null };
+  | { type: "progress"; message: string; stage: DrawStage | null; choice: string | null }
+  | { type: "done"; status: Exclude<RunStatus, "running">; diagramId: string | null; error: string | null; changes: Changes | null; choice: string; channel: ChannelId; view: string; layoutReport: LayoutReport | null; route: Route | null; path: string | null; choices: DrawChoice[] | null };
 
 export interface RunRecord {
   id: string;
   /** What the run does (api contract, Run kinds). */
   kind: RunKind;
+  /** The choice the run changes (api contract, Run record); a draw's first choice. */
+  choice: string;
   /** The channel and view the run worked on; on success, the resulting ones. */
   channel: ChannelId;
   view: string;
@@ -51,6 +55,8 @@ export interface RunRecord {
   route: Route | null;
   /** The drawing file a `draw` run wrote, once it has succeeded. */
   path: string | null;
+  /** A `draw`'s choices in request order with their state (api contract, Run record); null on other kinds. */
+  choices: DrawChoice[] | null;
 }
 
 interface Run extends RunRecord {
@@ -81,8 +87,11 @@ export interface StartRun {
   base: DiagramDocument;
   /** The channel the run changes; default the overview. */
   channel?: ChannelId;
-  /** The same drawing as stored. */
+  /** The same drawing as stored: the run's choice as an `@3` document. */
   stored: Document3;
+  /** The whole stored document, and the choice the run changes in it. */
+  whole: Document4;
+  choice: string;
   /** The format the result's layout report is measured in; default README (a post: the feed). */
   format?: FormatId;
   /** Default refine: an instruction-box change. A post designs the view's LinkedIn image; simplify makes the overview a map. */
@@ -115,8 +124,9 @@ export class RunManager {
   get(id: string): RunRecord | null {
     const r = this.runs.get(id);
     return r ? {
-      id: r.id, kind: r.kind, channel: r.channel, view: r.view, status: r.status, progress: [...r.progress], diagramId: r.diagramId, error: r.error,
+      id: r.id, kind: r.kind, choice: r.choice, channel: r.channel, view: r.view, status: r.status, progress: [...r.progress], diagramId: r.diagramId, error: r.error,
       engine: r.engine, model: r.model, changes: r.changes, layoutReport: r.layoutReport, route: r.route, path: r.path,
+      choices: r.choices ? r.choices.map((c) => ({ ...c })) : null,
     } : null;
   }
 
@@ -159,7 +169,7 @@ export class RunManager {
   start(req: StartRun): string {
     const story = storyChannelOf(req);
     return this.launch(
-      { kind: req.kind ?? "refine", channel: story ?? channelOfView(req.stored, req.view) ?? "overview", view: story ? channelViewId(req.stored, story) : req.view, engine: req.engine.id, model: req.model, target: req.base.id },
+      { kind: req.kind ?? "refine", choice: req.choice, channel: story ?? channelOfView(req.stored, req.view) ?? "overview", view: story ? channelViewId(req.stored, story) : req.view, engine: req.engine.id, model: req.model, target: req.base.id },
       // A revise's image goes once the run has ended — succeeded, failed, cancelled or timed out — and,
       // since every engine call settles only after its process tree has exited, after the engine is gone.
       (signal, progress, run) => this.execute(req, signal, (m) => progress(m), (route) => (run.route = route))
@@ -177,19 +187,27 @@ export class RunManager {
     // What the folder's last failed draw kept, if this draw asks the same (api contract, What a failed draw keeps).
     const key = keptKey(req);
     const last = this.kept.get(req.folderKey);
-    const kept = last && last.key === key ? last.kept : null;
-    const done: Partial<KeptDraw> = {};
+    const kept = last && last.key === key ? last.records : null;
+    const done = new Map<string, KeptChoice>();
+    const choices = drawChoices(req.focuses);
     return this.launch(
-      { kind: "draw", channel: req.channel, view: req.channel, engine: req.engine.id, model: req.model, target: `folder:${req.folderKey}` },
-      (signal, progress, run) => runDraw(req, { store: this.store, timeoutMs: this.opts.timeoutMs, signal, progress, wrote: (path) => (run.path = path), kept, done }).then(
+      { kind: "draw", choice: choices[0].id, channel: req.channel, view: req.channel, engine: req.engine.id, model: req.model, target: `folder:${req.folderKey}`, choices },
+      (signal, progress, run, restartDeadline) => runDraw(req, { store: this.store, timeoutMs: this.opts.timeoutMs, signal, progress, wrote: (path) => (run.path = path), choices, kept, done, restartDeadline }).then(
         (r) => { this.kept.delete(req.folderKey); return r; },
         (err: unknown) => {
-          // Only what was finished is kept, replacing the folder's entry; a draw that failed at the read keeps nothing.
-          if (done.read === undefined) this.kept.delete(req.folderKey);
+          // The choice it ended in: failed (a timeout too), or cancelled; the later ones still wait.
+          const at = choices.find((c) => c.status === "running");
+          if (at) at.status = signal.aborted && !run.timedOut ? "cancelled" : "failed";
+          // What was finished is kept: added to the folder's entry when it is for the same scan, engine and model
+          // (a choice's newer record replaces its older one), else replacing it (api contract, What a failed draw keeps).
+          const same = last && last.key === key && this.kept.get(req.folderKey) === last;
+          const records = new Map(same ? last.records : []);
+          for (const [k, v] of done) if (v.read !== undefined) records.set(k, v);
+          if (!records.size) this.kept.delete(req.folderKey);
           else {
-            const entry = { key, at: Date.now(), kept: { read: done.read, overview: done.overview ?? null } };
+            const entry = { key, at: Date.now(), records };
             this.kept.set(req.folderKey, entry);
-            // It goes an hour later unless a newer draw of the folder replaced it first.
+            // It goes an hour after the last draw that added to it, unless a newer draw of the folder replaced it first.
             setTimeout(() => { if (this.kept.get(req.folderKey) === entry) this.kept.delete(req.folderKey); }, KEPT_MS).unref();
           }
           throw err;
@@ -198,33 +216,36 @@ export class RunManager {
     );
   }
 
-  /** One entry per folder: what its latest draw that ended without a drawing had finished. */
-  private readonly kept = new Map<string, { key: string; at: number; kept: KeptDraw }>();
+  /** One entry per folder: what its draws that ended without a drawing had finished, per choice as requested. */
+  private readonly kept = new Map<string, { key: string; at: number; records: Map<string, KeptChoice> }>();
 
   private launch(
-    init: Pick<RunRecord, "kind" | "channel" | "view" | "engine" | "model"> & { target: string },
-    exec: (signal: AbortSignal, progress: (m: string, stage?: DrawStage | null) => void, run: Run) => Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string }>,
+    init: Pick<RunRecord, "kind" | "choice" | "channel" | "view" | "engine" | "model"> & { target: string; choices?: DrawChoice[] },
+    exec: (signal: AbortSignal, progress: (m: string, stage?: DrawStage | null, choice?: string | null) => void, run: Run, restartDeadline: () => void) => Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string }>,
   ): string {
     const id = `r_${randomBytes(6).toString("hex")}`;
     let resolveFinished!: () => void;
     const run: Run = {
-      id, kind: init.kind, channel: init.channel, view: init.view,
+      id, kind: init.kind, choice: init.choice, channel: init.channel, view: init.view,
       status: "running", progress: [], diagramId: null, error: null, engine: init.engine, model: init.model,
-      changes: null, layoutReport: null, route: null, path: null, target: init.target,
+      changes: null, layoutReport: null, route: null, path: null, target: init.target, choices: init.choices ?? null,
       events: [], listeners: new Set(), abort: new AbortController(),
       finished: new Promise((r) => (resolveFinished = r)), timedOut: false,
     };
-    const deadline = setTimeout(() => { run.timedOut = true; run.abort.abort(); }, this.opts.timeoutMs);
+    const expire = () => { run.timedOut = true; run.abort.abort(); };
+    let deadline = setTimeout(expire, this.opts.timeoutMs);
     deadline.unref?.();
+    // A draw's choice has its own deadline from its first line (api contract, Deadlines and cancel).
+    const restartDeadline = () => { if (run.status !== "running") return; clearTimeout(deadline); deadline = setTimeout(expire, this.opts.timeoutMs); deadline.unref?.(); };
     this.runs.set(id, run);
     const emit = (e: RunEvent) => {
       run.events.push(e);
       for (const l of run.listeners) l(e);
     };
-    const progress = (message: string, stage: DrawStage | null = null) => {
+    const progress = (message: string, stage: DrawStage | null = null, choice: string | null = null) => {
       if (run.status !== "running") return;
       run.progress.push(message);
-      emit({ type: "progress", message, stage });
+      emit({ type: "progress", message, stage, choice });
     };
     const end = (status: Exclude<RunStatus, "running">, diagramId: string | null, error: string | null, changes: Changes | null = null, report: LayoutReport | null = null) => {
       clearTimeout(deadline);
@@ -235,13 +256,13 @@ export class RunManager {
       run.error = error;
       run.changes = changes;
       run.layoutReport = report;
-      emit({ type: "done", status, diagramId, error, changes, channel: run.channel, view: run.view, layoutReport: report, route: run.route, path: run.path });
+      emit({ type: "done", status, diagramId, error, changes, choice: run.choice, channel: run.channel, view: run.view, layoutReport: report, route: run.route, path: run.path, choices: run.choices ? run.choices.map((c) => ({ ...c })) : null });
       run.listeners.clear();
       resolveFinished();
     };
-    void exec(run.abort.signal, progress, run).then(
+    void exec(run.abort.signal, progress, run, restartDeadline).then(
       // The report names the channel it measured (api contract, Layout report).
-      (r) => { run.channel = r.channel; run.view = r.view; end("succeeded", r.diagramId, null, r.changes, { ...r.layoutReport, channel: r.channel }); },
+      (r) => { run.channel = r.channel; run.view = r.view; end("succeeded", r.diagramId, null, r.changes, { ...r.layoutReport, choice: run.choice, channel: r.channel }); },
       (err: unknown) => {
         if (run.timedOut) return end("failed", null, `Timed out after ${Math.round(this.opts.timeoutMs / 60_000) || 1} min — try a narrower instruction`);
         if (run.abort.signal.aborted) return end("cancelled", null, null);
@@ -273,8 +294,8 @@ export class RunManager {
       const format: FormatId = channel === "linkedin" ? "feed" : channel === "presentation" ? "slide" : "readme";
       const shown = joinChannel(req.stored, channel);
       const view = shown.views.find((v) => v.id === req.view) ?? shown.views[0];
-      look = { image: req.image, report: { ...layoutReport(shown, view.id, { ...startSwitches(format, channel === "linkedin"), format, theme: shown.theme }), channel } };
-      if (channel !== "overview") return this.story({ ...req, format, readCode: false, base: draftOf(req.stored, "overview") }, channel, root, signal, progress, look);
+      look = { image: req.image, report: { ...layoutReport(shown, view.id, { ...startSwitches(format, channel === "linkedin"), format, theme: shown.theme }, { map: isMapView(req.stored, view.id) }), channel } };
+      if (channel !== "overview") return this.story({ ...req, format, readCode: false, base: storyDraft(req.stored) }, channel, root, signal, progress, look);
     }
     // A simplification may change the overview and the detail it links to, nothing else (api contract).
     const simplify = req.kind === "simplify";
@@ -292,7 +313,7 @@ export class RunManager {
       const channel = req.channel ?? "overview";
       // Outside the overview the story route is the channel's story run, told from the facts with no code.
       if (route === "story" && channel !== "overview") {
-        return this.story({ ...req, kind: "story", readCode: false, base: draftOf(req.stored, "overview") }, channel, root, signal, progress);
+        return this.story({ ...req, kind: "story", readCode: false, base: storyDraft(req.stored) }, channel, root, signal, progress);
       }
       appearance = route === "story";
     }
@@ -312,13 +333,14 @@ export class RunManager {
     });
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the drawing");
-    let doc = answerToDocument(answer, { base: req.base, now: nowIso(), engine: { id: req.engine.id, model: req.model }, fileExists: repoFile(root), scope, view: req.view, facts: req.stored.facts.components.map((c) => c.id), rows: storyRows(req.stored) });
+    let doc = answerToDocument(answer, { base: req.base, now: nowIso(), engine: { id: req.engine.id, model: req.model }, fileExists: repoFile(root), scope, view: req.view, facts: req.stored.facts.components.map((c) => c.id), rows: storyRows(req.stored), takenViews: req.stored.ids?.taken });
     if (simplify) doc = keepUnrelatedViews(req.base, doc).doc;
     // The story route on the overview changes how it looks only; each content change is ignored with a warning.
     if (appearance) doc = appearanceOnly(req.base, doc).doc;
     // Never replace a readable drawing with one the store would refuse to read back.
     // The view shape is checked on its own: a LinkedIn view's `postOf` (its post style) names no view of its channel.
-    const checked = validateDocument({ ...doc, views: doc.views.map((v) => ({ ...v, postOf: null })) });
+    // Requests may name views of other channels: they are checked with the whole file below.
+    const checked = validateDocument({ ...doc, requests: [], views: doc.views.map((v) => ({ ...v, postOf: null })) });
     if (!checked.ok) throw new EngineError(`The engine's drawing could not be repaired into a valid document: ${checked.error}`);
     if (signal.aborted) throw new EngineError("Cancelled");
     // The answer is a new state of the run's channel: content goes to the facts, appearance stays in the
@@ -337,7 +359,7 @@ export class RunManager {
     const stored = validateDocument3(split.doc);
     if (!stored.ok) throw new EngineError(`The engine's drawing could not be repaired into a valid document: ${stored.error}`);
     // Never overwrite a drawing that changed after the run started (the editor, a session, the CLI).
-    const saved = this.store.put(req.base.id, split.doc, { base: req.base.updatedAt, announce: true });
+    const saved = this.store.put(req.base.id, withChoice(req.whole, req.choice, split.doc), { base: req.base.updatedAt, announce: true });
     if (!saved) throw new EngineError("The drawing was removed while the instruction ran.");
     if (!saved.ok) throw new EngineError(saved.conflict ? "The drawing changed while the instruction ran." : `The drawing could not be saved: ${saved.error}`);
     // Counted from the saved file, so the split's own repairs are counted too.
@@ -346,7 +368,7 @@ export class RunManager {
     // The report measures the saved result, with the format's default switches (api contract, Layout report).
     const format = req.format ?? "readme";
     const view = doc.views.find((v) => v.id === req.view) ?? doc.views[0];
-    const report = layoutReport(doc, view.id, { ...startSwitches(format, isPostView(view)), format, theme: doc.theme });
+    const report = layoutReport(doc, view.id, { ...startSwitches(format, isPostView(view)), format, theme: doc.theme }, { map: channel === "overview" && isMapView({ ...split.doc, ids: req.stored.ids }, view.id) });
     return { diagramId: req.base.id, changes: diffDocuments(req.base, doc, scope.kind === "all" ? undefined : [req.view]), layoutReport: report, channel, view: req.view };
   }
 
@@ -390,7 +412,7 @@ export class RunManager {
     const { doc, view, warnings } = intentToChannel(req.stored, intent, { portrait: format === "feed", channel });
     const toSave: Document3 = { ...doc, warnings, engine: { id: req.engine.id, model: req.model }, updatedAt: nowIso() };
     if (signal.aborted) throw new EngineError("Cancelled");
-    const saved = this.store.put(req.base.id, toSave, { base: req.base.updatedAt, announce: true });
+    const saved = this.store.put(req.base.id, withChoice(req.whole, req.choice, toSave), { base: req.base.updatedAt, announce: true });
     if (!saved) throw new EngineError("The drawing was removed while the post was designed.");
     if (!saved.ok) throw new EngineError(saved.conflict ? "The drawing changed while the post was designed." : `The drawing could not be saved: ${saved.error}`);
     progress(warnings.length ? `Saved with ${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : "Saved");

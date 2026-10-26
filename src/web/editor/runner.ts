@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Changes } from "../../core/diff";
 import type { LayoutReport } from "../../core/report";
-import { CHANNEL_LABELS, type ChannelId, type Document3 } from "../../core/file3";
+import { CHANNEL_LABELS, type ChannelId } from "../../core/file3";
+import type { Document4 } from "../../core/file4";
 import type { DiagramDocument } from "../../core/model";
 import type { RunScope } from "../../core/repair";
 import { api, ApiError, type EngineInfo } from "../api";
@@ -33,7 +34,7 @@ export interface RunRequest {
   /** A revise's image: the view's share PNG in base64 (ui contract, ai-look-again). */
   image?: string;
   /** Set at the first start, with `channel` and `view`: Try again sends the same request on the same channel and view. */
-  frozen?: { postView: string | null };
+  frozen?: { postView: string | null; choice?: string | null };
 }
 
 export interface RunState {
@@ -113,7 +114,9 @@ export type Outcome = Extract<TurnState, "preview" | "accepted" | "unchanged">;
 export interface Done {
   /** The run's turn in the conversation. */
   key: number;
-  stored: Document3;
+  /** The whole stored document after the run, and the choice the run changed. */
+  stored: Document4;
+  choice: string;
   changes: Changes | null;
   req: RunRequest;
   route: Route | null;
@@ -125,6 +128,8 @@ export interface Done {
 interface Options {
   /** The drawing of the channel the canvas shows (`joinChannel`), and that channel. */
   doc: DiagramDocument | null;
+  /** The current choice: a run changes it alone. */
+  choice: string | null;
   channel: ChannelId;
   vid: string | null;
   settle: () => Promise<boolean>;
@@ -142,7 +147,7 @@ interface Options {
  * One instruction run at a time, shared by the AI panel, the channel stages and the LinkedIn panel,
  * and the conversation of the open drawing: one turn per run or saved request, in memory only.
  */
-export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSaved, onEnded }: Options) {
+export function useRunner({ doc, choice, channel, vid, settle, onStart, onUpdated, onSaved, onEnded }: Options) {
   const [state, setState] = useState<RunState>(IDLE);
   const [turns, setTurns] = useState<Turn[]>([]);
   const source = useRef<EventSource | null>(null);
@@ -151,8 +156,8 @@ export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSav
   /** Cancel was pressed before the server gave the run an id. */
   const cancelEarly = useRef(false);
   const nextKey = useRef(0);
-  const live = useRef({ doc, channel, vid, onStart, onUpdated, onSaved, onEnded });
-  live.current = { doc, channel, vid, onStart, onUpdated, onSaved, onEnded };
+  const live = useRef({ doc, choice, channel, vid, onStart, onUpdated, onSaved, onEnded });
+  live.current = { doc, choice, channel, vid, onStart, onUpdated, onSaved, onEnded };
   useEffect(() => () => source.current?.close(), []);
   // A drawing's conversation is its own: another drawing starts it empty.
   const docId = doc?.id;
@@ -172,7 +177,9 @@ export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSav
     // whichever channel the editor shows then. The canvas shows the overview behind a LinkedIn channel
     // with no view: then a post names none.
     const req: RunRequest = asked.frozen ? asked
-      : { ...asked, channel, view: v, frozen: { postView: asked.kind === "post" && live.current.channel === "linkedin" ? d.views[0]?.id ?? null : null } };
+      : { ...asked, channel, view: v, frozen: { postView: asked.kind === "post" && live.current.channel === "linkedin" ? d.views[0]?.id ?? null : null, choice: live.current.choice } };
+    const choice = req.frozen!.choice ?? live.current.choice;
+    if (!choice) return;
     busy.current = true;
     cancelEarly.current = false;
     live.current.onStart?.(req);
@@ -194,7 +201,7 @@ export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSav
     if (cancelEarly.current) { end("cancelled", "Cancelled"); return; }
     if (!req.engine) {
       try {
-        await api.request(d.id, channel, v, instruction);
+        await api.request(d.id, choice, channel, v, instruction);
         busy.current = false;
         setState({ ...IDLE, status: "saved", req });
         patch(key, { state: "saved", lines: [] });
@@ -206,7 +213,7 @@ export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSav
     try {
       // A post or a story draws a channel's one view: the server designs it from the overview.
       const sent = req.kind === "post" ? req.frozen!.postView : req.kind === "story" ? null : v;
-      id = await api.startRun(d.id, channel, sent, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format, readCode: req.readCode, image: req.image });
+      id = await api.startRun(d.id, choice, channel, sent, instruction, { engine: req.engine, model: req.model, scope: req.scope, kind: req.kind, format: req.format, readCode: req.readCode, image: req.image });
     } catch (e) {
       fail(e instanceof ApiError ? e.message : "Could not start the instruction");
       return;
@@ -225,7 +232,7 @@ export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSav
     es.addEventListener("done", async (ev) => {
       es.close();
       source.current = null;
-      const r = JSON.parse((ev as MessageEvent).data) as { status: string; error: string | null; changes?: Changes | null; layoutReport?: LayoutReport | null; view?: string; channel?: ChannelId; route?: Route | null };
+      const r = JSON.parse((ev as MessageEvent).data) as { status: string; error: string | null; changes?: Changes | null; layoutReport?: LayoutReport | null; choice?: string; view?: string; channel?: ChannelId; route?: Route | null };
       const route = r.route === "facts" || r.route === "story" ? r.route : null;
       if (r.status === "succeeded") {
         try {
@@ -233,7 +240,7 @@ export function useRunner({ doc, channel, vid, settle, onStart, onUpdated, onSav
           busy.current = false;
           const changes = r.changes ?? null, layoutReport = r.layoutReport ?? null;
           setState({ ...IDLE, status: "succeeded", req, id, changes, layoutReport, view: r.view ?? null, route });
-          const outcome = live.current.onUpdated({ key, stored, changes, req, route, channel: r.channel ?? channel, view: r.view ?? v });
+          const outcome = live.current.onUpdated({ key, stored, choice: r.choice ?? choice, changes, req, route, channel: r.channel ?? channel, view: r.view ?? v });
           patch(key, { state: outcome, lines: [], changes, layoutReport, route });
         } catch (e) { fail((e as Error).message, id); }
       } else if (r.status === "cancelled") end("cancelled", "Cancelled", id);

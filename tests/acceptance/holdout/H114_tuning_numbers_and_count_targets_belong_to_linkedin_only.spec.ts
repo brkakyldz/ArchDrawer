@@ -7,7 +7,7 @@ const allNull = (targets: unknown) => targets === null || targets === undefined 
 // ADR 0007: one brief per channel replaces the shared rulebook. The numbers that tune a post (`90 s`, `3 retries`) are
 // LinkedIn's warning alone, since elsewhere they may explain a guarantee; and only the LinkedIn view has count targets
 // (about 12 parts, 0–4 zones, 14 connections) in its layout report.
-test('H114 [STORY-2, STORY-5, STORY-6, LAYOUT-3] a tuning number is warned about on the LinkedIn view only, and the layout report carries count targets on LinkedIn and none on the other channels', async ({ request }) => {
+test('H114 [STORY-2, STORY-5, STORY-6, LAYOUT-3] a tuning number is warned about on the LinkedIn view only, and the layout report carries count targets on LinkedIn, a parts target on the map and none on the other views', async ({ request }) => {
   const doc = withPresentation(withReadme(withLinkedIn(shop3('Tuning shop'))));
   doc.facts.components[0].sub = '90 s'; // drawn by `web` in the overview, the README and the presentation, and by `visitor` on LinkedIn
   const { file } = await workspaceRaw('tuning', doc);
@@ -17,9 +17,10 @@ test('H114 [STORY-2, STORY-5, STORY-6, LAYOUT-3] a tuning number is warned about
   expect(checked.code, checked.stdout + checked.stderr).toBe(0); expect(errorLines(checked)).toEqual([]);
   const tuning = warnLines(checked).filter(line => /tuning|90 s/i.test(line));
   expect(tuning.length, warnLines(checked).join('\n')).toBeGreaterThanOrEqual(1);
-  for (const line of tuning) expect(line).toMatch(/^WARN\s+channels\.linkedin\.views\[0\]/);
+  // A violation's path starts at its choice (diagram contract, rule 1): the `@3` file is converted first, so it is `choices[0]`.
+  for (const line of tuning) expect(line).toMatch(/^WARN\s+choices\[0\]\.channels\.linkedin\.views\[0\]/);
   // Must not happen: the same number warned about where it may explain a guarantee.
-  for (const line of warnLines(checked)) expect(line, 'no other channel is told about its numbers').not.toMatch(/^WARN\s+channels\.(overview|readme|presentation)\.views\[0\].*(tuning|90 s)/i);
+  for (const line of warnLines(checked)) expect(line, 'no other channel is told about its numbers').not.toMatch(/^WARN\s+choices\[0\]\.channels\.(overview|readme|presentation)\.views\[0\].*(tuning|90 s)/i);
   expect(await readFile(file, 'utf8')).toBe(bytes);
 
   // The layout report of a run: targets only on the LinkedIn view.
@@ -35,7 +36,10 @@ test('H114 [STORY-2, STORY-5, STORY-6, LAYOUT-3] a tuning number is warned about
   for (const [channel, view] of [['overview', 'overview'], ['readme', 'readme'], ['presentation', 'presentation']] as const) {
     const other = await report(channel, view);
     expect(other, channel).toMatchObject({ channel, view, counts: { parts: 3, zones: 0, connections: 2 } }); // the counts are still reported
-    expect(allNull(other.targets), `${channel} has no count targets: ${JSON.stringify(other.targets)}`).toBe(true);
+    // The converted file's one choice is `system`, so its first overview view is the map, which carries the one target `parts: 9`
+    // (api contract, *Layout report*; ADR 0015); the README and the presentation have none.
+    if (channel === 'overview') expect(other.targets, 'the map has a parts target only').toEqual({ parts: 9, zones: null, connections: null });
+    else expect(allNull(other.targets), `${channel} has no count targets: ${JSON.stringify(other.targets)}`).toBe(true);
   }
   // The runs observed and changed nothing.
   const after = await readDocument(file);

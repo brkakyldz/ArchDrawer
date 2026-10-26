@@ -13,18 +13,19 @@ const WHERE: { id: FormatId; label: string }[] = [
   { id: "slide", label: "Slide" },
   { id: "square", label: "Square post" },
 ];
-type Show = ShareSwitches;
+/** The toggles; `sub` is `show-sub`, which starts as the view's own sub-line switch. */
+type Show = ShareSwitches & { sub: boolean };
 const SHOW: { key: keyof Show; label: string }[] = [
   { key: "title", label: "Title" },
   { key: "lede", label: "Description" },
-  { key: "items", label: "What each part holds" },
+  { key: "sub", label: "Sub-lines" },
   { key: "steps", label: "Numbered main path" },
   { key: "labels", label: "Connection labels" },
   { key: "legend", label: "Colour key" },
   { key: "texts", label: "Texts" },
 ];
-/** The toggles a choice starts with: Detailed for README, Slide and the landscape post, Simple for Square. */
-const startFor = startSwitches;
+/** The toggles a choice starts with: Detailed for README, Slide and the landscape post, Simple for Square; sub-lines as the view says. */
+const startFor = (format: FormatId, post: boolean, view: Pick<DiagramView, "subLines">): Show => ({ ...startSwitches(format, post), sub: view.subLines !== false });
 
 function download(blob: Blob, name: string) {
   const a = document.createElement("a");
@@ -44,6 +45,8 @@ interface Props {
   view: DiagramView;
   /** The channel the view belongs to: its own format opens first (README, slide). */
   channel?: string;
+  /** The view is the map, the first overview view of the `system` choice: its report has the parts target. */
+  map?: boolean;
   onClose: () => void;
   toast: (m: string) => void;
 }
@@ -53,7 +56,7 @@ interface Props {
  * line beside the download. It packages the current channel's view as it is; drawing the LinkedIn
  * post happens on its channel. Modal: focus stays inside it.
  */
-export function ShareDialog({ doc, view, channel, onClose, toast }: Props) {
+export function ShareDialog({ doc, view, channel, map = false, onClose, toast }: Props) {
   // A view with a post style is the LinkedIn channel's (`joinDrawing`).
   const stored = doc.views.find((v) => v.id === view.id) ?? view;
   const onVersion = !!stored.postOf;
@@ -63,7 +66,7 @@ export function ShareDialog({ doc, view, channel, onClose, toast }: Props) {
   const pv = useMemo(() => (onVersion && postFormat ? orient(stored, format === "feed") : stored), [stored, onVersion, postFormat, format]);
   const shown = pv === stored ? doc : { ...doc, views: doc.views.map((v) => (v.id === pv.id ? pv : v)) };
   const [theme, setTheme] = useState<Theme>(doc.theme);
-  const [show, setShow] = useState<Show>(() => startFor(format, onVersion));
+  const [show, setShow] = useState<Show>(() => startFor(format, onVersion, stored));
   const [advanced, setAdvanced] = useState(false);
   const [details, setDetails] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -76,11 +79,11 @@ export function ShareDialog({ doc, view, channel, onClose, toast }: Props) {
   // A new choice of place (or the version appearing) starts from that place's toggles.
   const startKey = `${format}:${onVersion}`;
   const lastStart = useRef(startKey);
-  useEffect(() => { if (lastStart.current !== startKey) { lastStart.current = startKey; setShow(startFor(format, onVersion)); } }, [startKey, format, onVersion]);
+  useEffect(() => { if (lastStart.current !== startKey) { lastStart.current = startKey; setShow(startFor(format, onVersion, stored)); } }, [startKey, format, onVersion, stored]);
 
   const opts: ShareOptions = { format, theme, ...show };
   const img = useMemo(() => renderShare(shown, pv.id, opts), [shown, pv.id, format, theme, show]); // eslint-disable-line react-hooks/exhaustive-deps
-  const report = useMemo(() => reportOf(img, shown, pv.id, opts), [img]); // eslint-disable-line react-hooks/exhaustive-deps
+  const report = useMemo(() => reportOf(img, shown, pv.id, opts, { map }), [img, map]); // eslint-disable-line react-hooks/exhaustive-deps
   const nameOf = (id: string) => {
     const n = pv.nodes.find((x) => x.id === id), e = pv.edges.find((x) => x.id === id);
     const label = (nid: string) => pv.nodes.find((x) => x.id === nid)?.label ?? nid;

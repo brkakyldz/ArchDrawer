@@ -1,7 +1,8 @@
 import {
-  COMPACT, GROUP, groupNameText, INSIDE, LABEL, LIMIT_ROW, labelWidth, layoutRects, measureNode, measureText, postOf, styleOf, textStyle,
-  routeEdges, viewBounds, type EdgeRoute, type MeasureOptions, type Rect,
+  COMPACT, contentBox, edgesOverParts, GROUP, INSIDE, LABEL, labelWidth, layoutRects, measureNode, measureText, postOf, styleOf, textStyle,
+  hubsOf, routeEdges, trunksOf, USED_BY, usedByBoxes, viewBounds, type EdgeRoute, type MeasureOptions, type Rect, type Trunk,
 } from "../geometry";
+import { CARD_SHAPE, COMPACT_SHAPE, OUTLINE, shapeGeometry, shapeOf, type PartShape } from "../shapes";
 import { iconOf, KINDS, type DiagramEdge, type DiagramNode, type DiagramText, type DiagramView, type Kind } from "../model";
 import { FONT_MONO, ICON_PATHS, mix, type Palette } from "../theme";
 import { widthOf } from "../text";
@@ -40,6 +41,10 @@ export function sharedDefs(P: Palette, prefix = "ad"): string {
     out.push(`<filter id="${prefix}-ig-${k}" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="3.5" flood-color="${P.kinds[k]}" flood-opacity="0.65"/></filter>`);
     out.push(`<radialGradient id="${prefix}-tint-${k}" cx="0" cy="0" r="1" gradientTransform="translate(0.5 0) scale(1.2 0.7)"><stop offset="0" stop-color="${P.kinds[k]}" stop-opacity="${P.tint}"/><stop offset="0.7" stop-color="${P.kinds[k]}" stop-opacity="0"/></radialGradient>`);
   }
+  // The AI agent's outline runs from its kind colour to the agent end colour; a cylinder's rims fade over the middle third.
+  out.push(`<linearGradient id="${prefix}-agent" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${P.kinds.llm}"/><stop offset="1" stop-color="${P.agentEnd}"/></linearGradient>`);
+  const rim = mix(P.kinds.data, P.line2, 0.55);
+  out.push(`<linearGradient id="${prefix}-rim" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${rim}"/><stop offset="0.33" stop-color="${rim}" stop-opacity="0"/><stop offset="0.67" stop-color="${rim}" stop-opacity="0"/><stop offset="1" stop-color="${rim}"/></linearGradient>`);
   out.push(`<filter id="${prefix}-badge" x="-100%" y="-100%" width="300%" height="300%"><feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="${P.accent}" flood-opacity="0.5"/></filter>`);
   return out.join("");
 }
@@ -56,63 +61,8 @@ function roundedRectPath(r: Rect, rad: number): string {
   return `M${n(x + rad)},${n(y)} H${n(x + w - rad)} A${rad},${rad} 0 0 1 ${n(x + w)},${n(y + rad)} V${n(y + h - rad)} A${rad},${rad} 0 0 1 ${n(x + w - rad)},${n(y + h)} H${n(x + rad)} A${rad},${rad} 0 0 1 ${n(x)},${n(y + h - rad)} V${n(y + rad)} A${rad},${rad} 0 0 1 ${n(x + rad)},${n(y)} Z`;
 }
 
-/** The outline a part draws (diagram contract, Geometry, Shapes): `data-shape` of its `body`. */
-export type Shape = "card" | "agent" | "person" | "store" | "external" | "check" | "group";
-export const SHAPES_BY_KIND: Partial<Record<Kind, Shape>> = { llm: "agent", actor: "person", data: "store", external: "external", gate: "check" };
-/** The kind alone gives a card's or compact part's outline; a panel is a card and a group a group. */
-export function shapeOf(node: Pick<DiagramNode, "kind" | "form">): Shape {
-  if (node.form === "group") return "group";
-  if (node.form === "panel") return "card";
-  return SHAPES_BY_KIND[node.kind] ?? "card";
-}
-
-/** The measures of an outline: corner radius, agent inset, person head radius and x offset, store ellipse height, check corner cut. */
-export interface OutlineSize { rad: number; inset: number; head: number; headX: number; ry: number; cut: number }
-export function outlineSize(form: "card" | "compact", post = false): OutlineSize {
-  return form === "compact"
-    ? { rad: 12, inset: 4, head: 6, headX: COMPACT.padX + COMPACT.icon / 2, ry: 4, cut: 9 }
-    : { rad: 12, inset: 4, head: 6, headX: 22, ry: post ? 5 : 7, cut: 12 };
-}
-
-export interface Outline {
-  /** The silhouette, inside the box `r`. */
-  d: string;
-  /** Strokes drawn over the body in the kind's colour: the agent's inner outline, the store's rim, the lower half of the head. */
-  marks: string[];
-  /** The person's head, filled in the kind's colour. */
-  dot?: { cx: number; cy: number; r: number };
-  dash?: string;
-}
-
-/** The outline of a shape inside the box `r`. Every point lies inside the box, so no size changes with the shape. */
-export function outlineOf(shape: Shape, r: Rect, s: OutlineSize): Outline {
-  const { x, y, w, h } = r;
-  switch (shape) {
-    case "agent":
-      return { d: roundedRectPath(r, s.rad), marks: [roundedRectPath({ x: x + s.inset, y: y + s.inset, w: w - s.inset * 2, h: h - s.inset * 2 }, Math.max(1, s.rad - s.inset))] };
-    case "external":
-      return { d: roundedRectPath(r, s.rad), marks: [], dash: "6 4" };
-    case "person": {
-      // The box's top edge is the top of the head; the rounded rectangle starts at the head's centre.
-      const top = y + s.head, hx = x + s.headX, k = s.head, rad = Math.min(s.rad, (h - s.head) / 2);
-      const d = `M${n(x + rad)},${n(top)} H${n(hx - k)} A${k},${k} 0 0 1 ${n(hx + k)},${n(top)} H${n(x + w - rad)} A${rad},${rad} 0 0 1 ${n(x + w)},${n(top + rad)} V${n(y + h - rad)} A${rad},${rad} 0 0 1 ${n(x + w - rad)},${n(y + h)} H${n(x + rad)} A${rad},${rad} 0 0 1 ${n(x)},${n(y + h - rad)} V${n(top + rad)} A${rad},${rad} 0 0 1 ${n(x + rad)},${n(top)} Z`;
-      return { d, marks: [`M${n(hx - k)},${n(top)} A${k},${k} 0 0 0 ${n(hx + k)},${n(top)}`], dot: { cx: hx, cy: top, r: Math.max(1, k - 2.5) } };
-    }
-    case "store": {
-      const rx = w / 2, ry = s.ry;
-      return {
-        d: `M${n(x)},${n(y + ry)} A${n(rx)},${ry} 0 0 1 ${n(x + w)},${n(y + ry)} V${n(y + h - ry)} A${n(rx)},${ry} 0 0 1 ${n(x)},${n(y + h - ry)} Z`,
-        marks: [`M${n(x)},${n(y + ry)} A${n(rx)},${ry} 0 0 0 ${n(x + w)},${n(y + ry)}`],
-      };
-    }
-    case "check": {
-      const c = s.cut;
-      return { d: `M${n(x + c)},${n(y)} H${n(x + w - c)} L${n(x + w)},${n(y + c)} V${n(y + h - c)} L${n(x + w - c)},${n(y + h)} H${n(x + c)} L${n(x)},${n(y + h - c)} V${n(y + c)} Z`, marks: [] };
-    }
-    default:
-      return { d: roundedRectPath(r, s.rad), marks: [] };
-  }
-}
+export type { Shape } from "../shapes";
+export { shapeOf } from "../shapes";
 
 /** Ambient shadow and kind glow under a box (DESIGN.md, Elevation): depth by light, not by lift. */
 function glowUnder(r: Rect, color: string, P: Palette, prefix: string, group = false): string {
@@ -130,139 +80,310 @@ function glowUnder(r: Rect, color: string, P: Palette, prefix: string, group = f
   );
 }
 
-export interface NodeMarkupOptions extends MarkupOptions, MeasureOptions { prefix?: string }
+/** A connection's trace over a part it passes behind (diagram contract, Traces): its path, colour and dash. */
+export interface Trace { edge: string; d: string; stroke: string; dash: string; offset?: number }
+export interface NodeMarkupOptions extends MarkupOptions, MeasureOptions {
+  prefix?: string; traces?: Trace[];
+  /** A hub's `used by <n>` mark and its box (diagram contract, Parts many parts use). */
+  usedBy?: { n: number; box: Rect };
+}
+
+/** The `used by <n>` pill: `surface2` edged with `line`, its text 11 px, weight 500, muted, centred. */
+function usedByMarkup(u: { n: number; box: Rect }, P: Palette, o: MarkupOptions): string {
+  const b = u.box;
+  return `<g data-used-by="${u.n}"${tid(o, "node-used-by")}${o.testIds ? ` data-count="${u.n}"` : ""}><rect x="${n(b.x + 0.5)}" y="${n(b.y + 0.5)}" width="${n(b.w - 1)}" height="${n(b.h - 1)}" rx="${n((b.h - 1) / 2)}" fill="${P.surface2}" stroke="${P.line}" stroke-width="1"/>` +
+    `<text x="${n(b.x + b.w / 2)}" y="${n(baseline(b.y, USED_BY.h, USED_BY.size))}" text-anchor="middle" font-size="${USED_BY.size}" font-weight="${USED_BY.weight}" fill="${P.muted}">used by ${u.n}</text></g>`;
+}
+
+/** A connection's stroke and dash as `edgeMarkup` draws it: its gradient while in kind colours, else the neutral colour. */
+export const strokeOf = (e: DiagramEdge, tone: Tone, prefix: string, P: Palette) => (tone === "kind" ? `url(#${prefix}-g-${e.id})` : P.edge);
+export const dashOf = (e: DiagramEdge) => (e.style === "async" ? ` stroke-dasharray="6 5"` : e.style === "dep" ? ` stroke-dasharray="2 5" stroke-linecap="round"` : "");
+
+/**
+ * The traces of every part (diagram contract, Traces): each connection the layout report lists over a part is drawn
+ * again over it. `toneOf` gives each connection's tone (the editor's focus colours some).
+ */
+export function tracesOf(view: Pick<DiagramView, "nodes" | "edges">, rects: Map<string, Rect>, routes: Map<string, EdgeRoute>, P: Palette, prefix: string, tone: (e: DiagramEdge) => Tone = (e) => toneOf(e)): Map<string, Trace[]> {
+  const out = new Map<string, Trace[]>();
+  const byId = new Map(view.edges.map((e) => [e.id, e]));
+  for (const { edge, node } of edgesOverParts(view, rects, routes)) {
+    const e = byId.get(edge)!, r = routes.get(edge)!;
+    const list = out.get(node) ?? [];
+    list.push({ edge, d: r.d, stroke: strokeOf(e, tone(e), prefix, P), dash: dashOf(e) });
+    out.set(node, list);
+  }
+  return out;
+}
+
+/** A part's traces, clipped to its box: thin, faint, no glow and no arrowhead. */
+function traceMarkup(r: Rect, traces: Trace[] | undefined): string {
+  if (!traces?.length) return "";
+  // A viewport of the part's box in the drawing's own coordinates clips the whole path to it, and keeps the part's
+  // box its own: a clip-path would leave the whole path in the part's bounding box (editor and export measure it).
+  const box = `x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}"`;
+  return `<svg class="traces" ${box} viewBox="${n(r.x)} ${n(r.y)} ${n(r.w)} ${n(r.h)}" overflow="hidden" pointer-events="none">` +
+    // Round-joined: the editor's pieces end on the box's edges, and a miter-joined stroke is bounded 2 px past them (H17).
+    traces.map((t) => `<path class="trace" data-edge-of="${esc(t.edge)}" d="${t.d}" fill="none" stroke="${t.stroke}" stroke-width="1" stroke-linejoin="round" opacity="0.25"${t.dash}${t.dash && t.offset ? ` stroke-dashoffset="${n(t.offset)}"` : ""}/>`).join("") + "</svg>";
+}
+
+/**
+ * What an outline draws over its body in the kind colour (diagram contract, Shapes): the service's rule, the
+ * avatar, the title bar, the port's dots, the agent's inner outline and spark, the pulse, the cylinder's lid,
+ * deeper slab and rims. Every mark lies inside the part's box but the port's dots, centred on its points.
+ */
+function shapeMarks(shape: PartShape, compact: boolean, post: boolean, r: Rect, front: Rect, P: Palette, K: string, prefix: string, detail: boolean): string {
+  const s = post ? 1 : 0, mark = mix(K, P.line2, 0.55), out: string[] = [];
+  const pe = ` pointer-events="none"`;
+  switch (shape) {
+    case "card":
+      out.push(compact
+        ? `<rect class="shape-mark" x="${n(r.x + 1)}" y="${n(r.y + 10)}" width="3" height="${n(Math.max(0, r.h - 20))}" rx="1.5" fill="${K}"${pe}/>`
+        : `<rect class="shape-mark" x="${n(r.x + 12)}" y="${n(r.y + 1)}" width="${n(Math.max(0, r.w - 24))}" height="3" rx="1.5" fill="${K}"${pe}/>`);
+      break;
+    case "person": {
+      const a = compact ? r.h / 2 : OUTLINE.avatar[s] / 2, cx = compact ? r.x + a : r.x + r.w / 2, cy = r.y + a;
+      out.push(`<circle class="shape-mark" cx="${n(cx)}" cy="${n(cy)}" r="${n(a - 0.5)}" fill="${P.surface}" stroke="${mark}" stroke-width="1" stroke-linejoin="round"${pe}/>`);
+      out.push(`<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(a - 0.5)}" fill="url(#${prefix}-tint-actor)"${pe}/>`);
+      break;
+    }
+    case "window": {
+      const bar = compact ? OUTLINE.compactTitleBar : OUTLINE.titleBar[s], R = OUTLINE.rad;
+      const cut = (h: number) => (h >= R ? 0 : R - Math.sqrt(R * R - (R - h) * (R - h)));
+      const d = bar >= R
+        ? `M${n(r.x)},${n(r.y + bar)} V${n(r.y + R)} A${R},${R} 0 0 1 ${n(r.x + R)},${n(r.y)} H${n(r.x + r.w - R)} A${R},${R} 0 0 1 ${n(r.x + r.w)},${n(r.y + R)} V${n(r.y + bar)} Z`
+        : `M${n(r.x + cut(bar))},${n(r.y + bar)} A${R},${R} 0 0 1 ${n(r.x + R)},${n(r.y)} H${n(r.x + r.w - R)} A${R},${R} 0 0 1 ${n(r.x + r.w - cut(bar))},${n(r.y + bar)} Z`;
+      out.push(`<path class="shape-mark" d="${d}" fill="${K}" fill-opacity="0.16"${pe}/>`);
+      if (!compact) {
+        for (let i = 0; i < 3; i++) out.push(`<circle cx="${n(r.x + OUTLINE.dotLeft + i * OUTLINE.dotGap)}" cy="${n(r.y + bar / 2)}" r="${OUTLINE.dotR}" fill="${K}" opacity="0.75"${pe}/>`);
+        const cw = r.w * OUTLINE.capsuleW, ch = Math.min(OUTLINE.capsuleH, bar - 2);
+        out.push(`<rect x="${n(r.x + (r.w - cw) / 2)}" y="${n(r.y + (bar - ch) / 2)}" width="${n(cw)}" height="${n(ch)}" rx="${n(ch / 2)}" fill="${P.surface}" opacity="0.85"${pe}/>`);
+      }
+      break;
+    }
+    case "port": {
+      const dot = compact ? OUTLINE.compactPortDot : OUTLINE.portDot;
+      // Each dot sits on its point, inside the box, so the part measures as its box.
+      for (const x of [r.x + dot, r.x + r.w - dot]) out.push(`<circle class="shape-mark" cx="${n(x)}" cy="${n(r.y + r.h / 2)}" r="${dot}" fill="${K}"${pe}/>`);
+      break;
+    }
+    case "agent": {
+      const i = compact ? OUTLINE.compactAgentInset : OUTLINE.agentInset;
+      out.push(`<path class="shape-mark" d="${roundedRectPath({ x: r.x + i, y: r.y + i, w: r.w - 2 * i, h: r.h - 2 * i }, Math.max(1, OUTLINE.rad - i))}" fill="none" stroke="${K}" stroke-width="1" stroke-linejoin="round" opacity="0.35"${pe}/>`);
+      const sz = compact ? OUTLINE.compactSpark : OUTLINE.spark, at = compact ? OUTLINE.compactSparkIn : OUTLINE.sparkIn;
+      // With the open mark there, the spark moves left of it.
+      const right = detail ? front.x + front.w - 8 - INSIDE - 6 : r.x + r.w - at;
+      out.push(iconMarkup("spark", right - sz, compact ? r.y + at : r.y + at, sz, K, 1.6));
+      break;
+    }
+    case "pulse": {
+      const b = compact ? COMPACT_SHAPE.pulse.insets[2] : CARD_SHAPE.pulse[post ? "post" : "plain"][2];
+      const yc = r.y + r.h - b, base = r.y + r.h - Math.max(3, b * 0.35), tip = yc + 2, sx = r.x + r.w * 0.6, half = compact ? 4 : 6;
+      const x0 = r.x + OUTLINE.rad, x1 = r.x + r.w - OUTLINE.rad;
+      const line = `M${n(x0)},${n(base)} H${n(sx - half)} L${n(sx)},${n(tip)} L${n(sx + half)},${n(base)} H${n(x1)}`;
+      out.push(`<path d="${line} V${n(r.y + r.h - 1)} H${n(x0)} Z" fill="${K}" opacity="${P.tint}"${pe}/>`);
+      out.push(`<path class="shape-mark" d="${line}" fill="none" stroke="${K}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"${pe}/>`);
+      break;
+    }
+    case "store": {
+      const ry = compact ? OUTLINE.compactLidRy : OUTLINE.lidRy[s], rx = r.w / 2, cx = r.x + rx, slabs = compact ? 2 : 3, sh = (r.h - 2 * ry) / slabs;
+      const rim = (y: number, sweep: 0 | 1) => `A${n(rx)},${ry} 0 0 ${sweep} ${n(sweep ? r.x : r.x + r.w)},${n(y)}`;
+      for (let i = 1; i < slabs; i += 2) {
+        const y0 = r.y + ry + sh * i, y1 = y0 + sh;
+        out.push(`<path d="M${n(r.x)},${n(y0)} A${n(rx)},${ry} 0 0 0 ${n(r.x + r.w)},${n(y0)} V${n(y1)} ${rim(y1, 1)} Z" fill="${K}" opacity="${P.tint}"${pe}/>`);
+      }
+      for (let i = 1; i < slabs; i++) {
+        const y = r.y + ry + sh * i;
+        // Round-joined, as the body is: a browser bounds a miter-joined stroke by half its width times the miter
+        // limit, which would put the rims' ends 2 px past the part's box instead of half a pixel (H17, H132).
+        out.push(`<path class="shape-mark" d="M${n(r.x)},${n(y)} A${n(rx)},${ry} 0 0 0 ${n(r.x + r.w)},${n(y)}" fill="none" stroke="url(#${prefix}-rim)" stroke-width="1" stroke-linejoin="round"${pe}/>`);
+      }
+      out.push(`<ellipse class="shape-mark" cx="${n(cx)}" cy="${n(r.y + ry)}" rx="${n(rx - 0.5)}" ry="${n(ry - 0.5)}" fill="${K}" fill-opacity="${P.tint * 2}" stroke="${mark}" stroke-width="1" stroke-linejoin="round"${pe}/>`);
+      break;
+    }
+    default:
+      break;
+  }
+  return out.join("");
+}
+
+/** The colour of a group's header as painted, made solid: the kind at 5 % over the surface at 60 % over the canvas (diagram contract, A group's name). */
+export const headerColour = (P: Palette, kind: Kind): string => mix(P.kinds[kind], mix(P.surface, P.canvas, 0.6), 0.05);
+
+/**
+ * A group's head (diagram contract, A group's name): its icon, name, sub-line and open mark, drawn over the
+ * connections and under the parts. The name and the sub-line stand on a halo in the header's colour, so a
+ * line crossing the header is hidden only under the letters and 2 px round them; nothing is cut out of it.
+ */
+export function groupHeadMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkupOptions = {}): string {
+  const prefix = o.prefix ?? "ad";
+  const { T } = styleOf(o.post);
+  const K = P.kinds[node.kind];
+  const halo = ` stroke="${headerColour(P, node.kind)}" stroke-width="4" stroke-linejoin="round" paint-order="stroke"`;
+  const out: string[] = [];
+  const cy = r.y + GROUP.head / 2;
+  out.push(iconMarkup(iconOf(node), r.x + GROUP.padHead, cy - GROUP.icon / 2, GROUP.icon, K, 1.75, `${prefix}-ig-${node.kind}`));
+  const lx = r.x + GROUP.padHead + GROUP.icon + GROUP.gap;
+  out.push(`<text${tid(o, "node-label")} class="label" x="${n(lx)}" y="${n(baseline(cy - 11, 22, T.title.size))}" text-anchor="start" font-size="${T.title.size}" font-weight="600"${track(T.title.size, -0.012)} fill="${P.ink}"${halo}>${esc(node.label)}</text>`);
+  if (node.sub && o.subLines !== false) {
+    const sx = lx + widthOf(node.label, T.title) + GROUP.gap;
+    out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(sx)}" y="${n(baseline(cy - 9, 18, T.sub.size))}" font-size="${T.sub.size}" fill="${P.muted}"${halo}>${esc(node.sub)}</text>`);
+  }
+  // At the right end of the header, centred on it.
+  if (node.detail) out.push(openMark(r.x + r.w - GROUP.padHead - INSIDE, cy - INSIDE / 2, K, P, o));
+  return out.join("");
+}
 
 /**
  * One component's shapes and text inside its box `r` (from layoutRects). Groups draw only their
- * frame and header; their children are drawn as components of their own.
+ * frame here (their head is `groupHeadMarkup`); their children are drawn as components of their own. Every other part draws
+ * the outline of its kind and its icon, label and sub-line inside its shape's content box; no part
+ * draws a row (ADR 0014).
  */
 export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkupOptions = {}): string {
   const prefix = o.prefix ?? "ad";
-  const { T, CARD, PANEL } = styleOf(o.post);
+  const post = !!o.post;
+  const { T, CARD } = styleOf(o.post);
   const K = P.kinds[node.kind];
   const icon = iconOf(node);
   // The first rect is the component's box (ui contract: editor/export parity check).
   const out: string[] = [`<rect class="box" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" fill="none" pointer-events="none"/>`];
   const box = measureNode(node, o);
-  const inside = (x: number, y: number) => (node.detail ? `<g${tid(o, "node-inside")} class="inside">${iconMarkup("stack", x, y, INSIDE, P.soft, 1.75)}</g>` : "");
+  const inside = (x: number, y: number) => (node.detail ? openMark(x, y, K, P, o) : "");
   const label = (text: string, x: number, y: number, anchor: "start" | "middle", size: number) =>
     `<text${tid(o, "node-label")} class="label" x="${n(x)}" y="${n(y)}" text-anchor="${anchor}" font-size="${size}" font-weight="600"${track(size, -0.012)} fill="${P.ink}">${esc(text)}</text>`;
 
   if (node.form === "group") {
+    // A group's frame, drawn under the connections; its head is `groupHeadMarkup`, drawn over them (ADR 0013).
     out.push(glowUnder(r, K, P, prefix, true));
     out.push(`<rect class="body" data-shape="group" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="18" fill="${P.surface}" fill-opacity="0.6" stroke="${mix(K, P.line2, 0.38)}" stroke-width="1"/>`);
     out.push(`<rect x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="18" fill="${K}" fill-opacity="0.05" pointer-events="none"/>`);
-    const cy = r.y + GROUP.head / 2;
-    out.push(iconMarkup(icon, r.x + GROUP.padHead, cy - GROUP.icon / 2, GROUP.icon, K, 1.75, `${prefix}-ig-${node.kind}`));
-    const lx = r.x + GROUP.padHead + GROUP.icon + GROUP.gap;
-    out.push(label(node.label, lx, baseline(cy - 11, 22, T.title.size), "start", T.title.size));
-    if (node.sub) {
-      const sx = lx + widthOf(node.label, T.title) + GROUP.gap;
-      out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(sx)}" y="${n(baseline(cy - 9, 18, T.sub.size))}" font-size="${T.sub.size}" fill="${P.muted}">${esc(node.sub)}</text>`);
-    }
-    out.push(inside(r.x + r.w - GROUP.padHead - INSIDE, cy - INSIDE / 2));
     return out.join("");
   }
 
   out.push(glowUnder(r, K, P, prefix));
-  const shape = shapeOf(node);
-  if (shape === "card") {
-    out.push(`<rect class="body" data-shape="card" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="12" fill="${P.surface}" stroke="${P.line2}" stroke-width="1"/>`);
-    out.push(`<rect x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="12" fill="url(#${prefix}-tint-${node.kind})" pointer-events="none"/>`);
-  } else {
-    // The shape lies inside the box; the tint follows it, and its marks are drawn in the kind's colour. Round joins keep
-    // the stroke's box as a rect's (Chromium widens a path's box by the miter limit), so the part measures the same.
-    const ol = outlineOf(shape, r, outlineSize(node.form === "compact" ? "compact" : "card", o.post));
-    const mark = mix(K, P.line2, 0.55);
-    out.push(`<path class="body" data-shape="${shape}" d="${ol.d}" fill="${P.surface}" stroke="${P.line2}" stroke-width="1" stroke-linejoin="round"${ol.dash ? ` stroke-dasharray="${ol.dash}"` : ""}/>`);
-    out.push(`<path d="${ol.d}" fill="url(#${prefix}-tint-${node.kind})" pointer-events="none"/>`);
-    for (const d of ol.marks) out.push(`<path class="shape-mark" d="${d}" fill="none" stroke="${mark}" stroke-width="1" stroke-linejoin="round" pointer-events="none"/>`);
-    if (ol.dot) out.push(`<circle class="shape-mark" cx="${n(ol.dot.cx)}" cy="${n(ol.dot.cy)}" r="${n(ol.dot.r)}" fill="${K}" pointer-events="none"/>`);
-  }
+  const shape = shapeOf(node) as PartShape, compact = node.form === "compact";
+  const g = shapeGeometry(shape, compact, post, r);
+  // The stack's cards behind, then the body: its stroke round-joined, so the stroke's box stays inside the part's.
+  for (const d of g.back) out.push(`<path class="shape-back" d="${d}" fill="${P.surface}" stroke="${P.line2}" stroke-width="1" stroke-linejoin="round" pointer-events="none"/>`);
+  const stroke = shape === "agent" ? `url(#${prefix}-agent)` : P.line2, width = shape === "agent" ? 1.5 : 1;
+  // The agent's wider stroke is drawn a quarter pixel in, so it reaches no further past the box than every other 1 px outline (review R177-3).
+  const d = shape === "agent" ? shapeGeometry(shape, compact, post, { x: r.x + 0.25, y: r.y + 0.25, w: r.w - 0.5, h: r.h - 0.5 }).d : g.d;
+  out.push(`<path class="body" data-shape="${shape}" d="${d}" fill="${P.surface}" stroke="${stroke}" stroke-width="${width}" stroke-linejoin="round"${shape === "external" ? ' stroke-dasharray="6 4"' : ""}/>`);
+  out.push(`<path d="${d}" fill="url(#${prefix}-tint-${node.kind})" pointer-events="none"/>`);
+  out.push(shapeMarks(shape, compact, post, r, g.front, P, K, prefix, !!node.detail));
+  // Connections passing behind the part show as a trace over its outline, under its icon and text.
+  out.push(traceMarkup(r, o.traces));
   const ig = `${prefix}-ig-${node.kind}`;
+  const cb = contentBox(node, r, post);
 
-  if (node.form === "card") {
-    const content = CARD.icon + CARD.iconGap + box.lines.length * CARD.line + (box.sub ? CARD.subLine : 0);
-    let y = r.y + (r.h - content) / 2;
-    out.push(iconMarkup(icon, r.x + r.w / 2 - CARD.icon / 2, y, CARD.icon, K, 1.6, ig));
-    y += CARD.icon + CARD.iconGap;
-    const cx = r.x + r.w / 2;
+  if (!compact) {
+    // Card (and panel): icon, label lines and the sub-line row, top to bottom from the content box's top, centred across it.
+    const cx = cb.x + cb.w / 2;
+    let y = cb.y;
+    if (shape === "person") {
+      const a = OUTLINE.avatar[post ? 1 : 0] / 2, size = OUTLINE.avatarIcon[post ? 1 : 0];
+      out.push(iconMarkup(icon, r.x + r.w / 2 - size / 2, r.y + a - size / 2, size, K, 1.6, ig));
+    } else {
+      out.push(iconMarkup(icon, cx - CARD.icon / 2, y, CARD.icon, K, 1.6, ig));
+      y += CARD.icon + CARD.iconGap;
+    }
     const spans = box.lines.map((l, i) => `<tspan x="${n(cx)}" y="${n(baseline(y + i * CARD.line, CARD.line, T.title.size))}">${esc(l)}${i < box.lines.length - 1 ? " " : ""}</tspan>`).join("");
     out.push(`<text${tid(o, "node-label")} class="label" text-anchor="middle" font-size="${T.title.size}" font-weight="600"${track(T.title.size, -0.012)} fill="${P.ink}">${spans}</text>`);
     y += box.lines.length * CARD.line;
     if (box.sub) out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(cx)}" y="${n(baseline(y, CARD.subLine, T.sub.size))}" text-anchor="middle" font-size="${T.sub.size}" fill="${P.muted}">${esc(box.sub)}</text>`);
-    out.push(inside(r.x + r.w - 8 - INSIDE, r.y + 8));
+    out.push(inside(g.front.x + g.front.w - 8 - INSIDE, g.front.y + 8));
+    if (o.usedBy) out.push(usedByMarkup(o.usedBy, P, o));
     return out.join("");
   }
 
-  if (node.form === "compact") {
-    const cy = r.y + r.h / 2;
-    out.push(iconMarkup(icon, r.x + COMPACT.padX, cy - COMPACT.icon / 2, COMPACT.icon, K, 1.75, ig));
-    const lx = r.x + COMPACT.padX + COMPACT.icon + COMPACT.gap;
-    out.push(label(box.lines[0], lx, baseline(cy - 10, 20, T.compactTitle.size), "start", T.compactTitle.size));
-    const insideW = node.detail ? 8 + INSIDE : 0;
-    if (box.sub) out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(r.x + r.w - COMPACT.padX - insideW)}" y="${n(baseline(cy - 9, 18, T.subMono.size))}" text-anchor="end" font-family="${esc(FONT_MONO)}" font-size="${T.subMono.size}" fill="${P.soft}">${esc(box.sub)}</text>`);
-    out.push(inside(r.x + r.w - COMPACT.padX - INSIDE, cy - INSIDE / 2));
-    return out.join("");
+  // Compact: one row centred in the content box: icon (in the avatar for a person), label, then the sub-line at its right end.
+  const cy = cb.y + cb.h / 2;
+  let lx = cb.x;
+  if (shape === "person") {
+    const size = OUTLINE.compactAvatarIcon;
+    out.push(iconMarkup(icon, r.x + r.h / 2 - size / 2, r.y + r.h / 2 - size / 2, size, K, 1.75, ig));
+  } else {
+    out.push(iconMarkup(icon, cb.x, cy - COMPACT.icon / 2, COMPACT.icon, K, 1.75, ig));
+    lx += COMPACT.icon + COMPACT.gap;
   }
-
-  // panel
-  const top = r.y + PANEL.padTop + 1;
-  out.push(iconMarkup(icon, r.x + PANEL.padX, top + 1, PANEL.icon, K, 1.75, ig));
-  const lx = r.x + PANEL.padX + PANEL.icon + PANEL.gap;
-  out.push(label(box.lines[0], lx, baseline(top, PANEL.titleLine, T.title.size), "start", T.title.size));
-  let y = top + PANEL.titleLine;
-  if (box.sub) {
-    out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(lx)}" y="${n(baseline(y, PANEL.subLine, T.sub.size))}" font-size="${T.sub.size}" fill="${P.muted}">${esc(box.sub)}</text>`);
-    y += PANEL.subLine;
-  }
-  if (box.items.length) {
-    y += PANEL.listGap;
-    const iw = r.w - PANEL.padX * 2;
-    const firstLimit = box.items.length - (box.limits ?? 0);
-    box.items.forEach((t, i) => {
-      const iy = y + i * (PANEL.itemH + PANEL.itemGap);
-      const limit = i >= firstLimit;
-      const tx = r.x + PANEL.padX + PANEL.itemPad + 1 + (limit ? LIMIT_ROW.icon + LIMIT_ROW.gap : 0);
-      out.push(`<g${tid(o, limit ? "node-limit" : "node-item")} class="${limit ? "limit" : "item"}" data-index="${i}"><rect x="${n(r.x + PANEL.padX + 0.5)}" y="${n(iy + 0.5)}" width="${n(iw - 1)}" height="${PANEL.itemH - 1}" rx="7" fill="${limit ? "none" : P.surface2}" stroke="${P.line}" stroke-width="1"${limit ? ' stroke-dasharray="3 3"' : ""}/>` +
-        (limit ? iconMarkup("timer", r.x + PANEL.padX + PANEL.itemPad + 1, iy + (PANEL.itemH - LIMIT_ROW.icon) / 2, LIMIT_ROW.icon, P.soft, 1.75) : "") +
-        `<text x="${n(tx)}" y="${n(baseline(iy, PANEL.itemH, T.item.size))}" font-size="${T.item.size}" fill="${limit ? P.muted : P.ink}">${esc(t)}</text></g>`);
-    });
-  }
-  out.push(inside(r.x + r.w - 8 - INSIDE, r.y + 8));
+  out.push(label(box.lines[0], lx, baseline(cy - 10, 20, T.compactTitle.size), "start", T.compactTitle.size));
+  const insideW = node.detail ? 8 + INSIDE : 0;
+  if (box.sub) out.push(`<text${tid(o, "node-sub")} class="sub" x="${n(cb.x + cb.w - insideW)}" y="${n(baseline(cy - 9, 18, T.subMono.size))}" text-anchor="end" font-family="${esc(FONT_MONO)}" font-size="${T.subMono.size}" fill="${P.soft}">${esc(box.sub)}</text>`);
+  // 12 px inside the right end of the front body, centred on its height.
+  out.push(inside(g.front.x + g.front.w - 12 - INSIDE, g.front.y + g.front.h / 2 - INSIDE / 2));
+  // The `used by` mark, after the text, centred on the box's bottom edge.
+  if (o.usedBy) out.push(usedByMarkup(o.usedBy, P, o));
   return out.join("");
 }
 
-export interface EdgeMarkupOptions extends MarkupOptions {
-  prefix?: string;
-  /** Source and target kinds give the gradient and the arrowheads their colours. */
-  fromKind: Kind; toKind: Kind;
+/**
+ * The open mark of a part with an inside (diagram contract, The open mark): a filled circle 20 px across in the part's
+ * kind colour, holding the `layers` icon, 12 px, in the canvas colour; `x`, `y` its top-left. The editor's `node-inside`.
+ */
+function openMark(x: number, y: number, K: string, P: Palette, o: MarkupOptions): string {
+  const r = INSIDE / 2, icon = 12;
+  return `<g${tid(o, "node-inside")} class="open-mark"><circle cx="${n(x + r)}" cy="${n(y + r)}" r="${n(r)}" fill="${K}"/>${iconMarkup("layers", x + r - icon / 2, y + r - icon / 2, icon, P.canvas, 2)}</g>`;
 }
 
-/** One connection: gradient stroke from the source's hue to the target's, a low glow, start ring or two arrowheads. */
+/** `kind`: drawn in its kind colours; `neutral`: in the theme's one connection colour (diagram contract, Colour). */
+export type Tone = "kind" | "neutral";
+/** Exports colour only numbered connections; the editor also colours those in focus (ui contract). */
+export const toneOf = (e: Pick<DiagramEdge, "step">, focus = false): Tone => (e.step !== null || focus ? "kind" : "neutral");
+
+export interface EdgeMarkupOptions extends MarkupOptions {
+  prefix?: string;
+  /** Source and target kinds give the gradient and the arrowheads their colours when the tone is `kind`. */
+  fromKind: Kind; toKind: Kind;
+  /** Default: `kind` for a numbered connection, else `neutral`. */
+  tone?: Tone;
+}
+
+/**
+ * One connection (diagram contract, Colour): in the neutral colour with no glow, or in its kind colours — a
+ * gradient from the source's hue to the target's, each arrowhead in the colour of the part it points at, a low
+ * glow except on `dep`. One arrowhead at the target, one at each end of a two-way connection; nothing at a start.
+ */
 export function edgeMarkup(e: DiagramEdge, r: EdgeRoute, P: Palette, o: EdgeMarkupOptions): string {
   const prefix = o.prefix ?? "ad";
-  const a = P.kinds[o.fromKind], b = P.kinds[o.toKind];
+  const kind = (o.tone ?? toneOf(e)) === "kind";
+  const a = kind ? P.kinds[o.fromKind] : P.edge, b = kind ? P.kinds[o.toKind] : P.edge;
   const gid = `${prefix}-g-${e.id}`, mid = `${prefix}-m-${e.id}`, sid = `${prefix}-s-${e.id}`;
   const x2 = r.p1.x === r.p0.x ? r.p1.x + 0.01 : r.p1.x;
+  const stroke = kind ? `url(#${gid})` : P.edge;
   const defs =
-    `<defs><linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${n(r.p0.x)}" y1="${n(r.p0.y)}" x2="${n(x2)}" y2="${n(r.p1.y)}"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient>` +
+    `<defs>${kind ? `<linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${n(r.p0.x)}" y1="${n(r.p0.y)}" x2="${n(x2)}" y2="${n(r.p1.y)}"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient>` : ""}` +
     `<marker id="${mid}" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="8.5" markerHeight="8.5" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1.4 8.8 5 1 8.6z" fill="${b}"/></marker>` +
     (e.both ? `<marker id="${sid}" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="8.5" markerHeight="8.5" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M1 1.4 8.8 5 1 8.6z" fill="${a}"/></marker>` : "") +
     `</defs>`;
-  const dash = e.style === "async" ? ` stroke-dasharray="6 5"` : e.style === "dep" ? ` stroke-dasharray="1.5 4.5" stroke-linecap="round"` : "";
-  const width = e.style === "dep" ? 1.6 : 1.75;
-  const glow = e.style === "dep" ? "" : `<path class="glow" d="${r.d}" fill="none" stroke="url(#${gid})" stroke-width="7" opacity="${P.edgeGlow}"/>`;
+  const dash = dashOf(e);
+  const width = e.style === "dep" ? 1.9 : 1.75;
+  const glow = !kind || e.style === "dep" ? "" : `<path class="glow" d="${r.d}" fill="none" stroke="${stroke}" stroke-width="7" opacity="${P.edgeGlow}"/>`;
   const start = e.both ? ` marker-start="url(#${sid})"` : "";
-  const ring = e.both ? "" : `<circle cx="${n(r.p0.x + NORMAL4[r.side0][0] * 4)}" cy="${n(r.p0.y + NORMAL4[r.side0][1] * 4)}" r="3.6" fill="${P.surface}" stroke="${a}" stroke-width="1.6"/>`;
-  return `${defs}${glow}<path class="line" d="${r.d}" fill="none" stroke="url(#${gid})" stroke-width="${width}"${dash} marker-end="url(#${mid})"${start}/>${ring}`;
+  // A member of a trunk ends at the split point: the trunk draws the one arrowhead (diagram contract, Trunks).
+  const end = r.trunk ? "" : ` marker-end="url(#${mid})"`;
+  return `${defs}${glow}<path class="line" d="${r.d}" fill="none" stroke="${stroke}" stroke-width="${width}"${dash}${end}${start}/>`;
 }
-const NORMAL4 = { r: [1, 0], l: [-1, 0], b: [0, 1], t: [0, -1] } as const;
 
-export function labelMarkup(text: string, at: { x: number; y: number }, P: Palette, post = false): string {
+/**
+ * A trunk (diagram contract, Trunks): its stretch from the split point to the port, drawn once with one arrowhead,
+ * in its part's kind colour while any member is coloured, else neutral; its members' style.
+ */
+export function trunkMarkup(t: Trunk, style: DiagramEdge["style"], tone: Tone, partKind: Kind, P: Palette, prefix = "ad"): { defs: string; path: string } {
+  const colour = tone === "kind" ? P.kinds[partKind] : P.edge;
+  const mid = `${prefix}-tm-${esc(t.key).replace(/:/g, "-")}-${t.edges.length}-${esc(t.edges[0])}`;
+  const width = style === "dep" ? 1.9 : 1.75;
+  // The arrowhead's marker goes beside the trunk's group, which holds its one path.
+  return {
+    defs: `<defs><marker id="${mid}" viewBox="0 0 10 10" refX="8.6" refY="5" markerWidth="8.5" markerHeight="8.5" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1.4 8.8 5 1 8.6z" fill="${colour}"/></marker></defs>`,
+    path: `<path class="line" d="${t.d}" fill="none" stroke="${colour}" stroke-width="${width}"${dashOf({ style } as DiagramEdge)} marker-end="url(#${mid})"/>`,
+  };
+}
+
+/** A label's box is edged in the `line` colour, or in its target part's kind colour while its line is coloured. */
+export function labelMarkup(text: string, at: { x: number; y: number }, P: Palette, post = false, border = P.line): string {
   const { T } = styleOf(post);
   const w = labelWidth(text, post);
-  return `<rect x="${n(at.x - w / 2)}" y="${n(at.y - LABEL.h / 2)}" width="${w}" height="${LABEL.h}" rx="6" fill="${P.surface}" stroke="${P.line}" stroke-width="1"/>` +
+  return `<rect x="${n(at.x - w / 2)}" y="${n(at.y - LABEL.h / 2)}" width="${w}" height="${LABEL.h}" rx="6" fill="${P.surface}" stroke="${border}" stroke-width="1"/>` +
     `<text x="${n(at.x)}" y="${n(baseline(at.y - LABEL.h / 2, LABEL.h, T.edge.size))}" text-anchor="middle" font-size="${T.edge.size}" font-weight="500" fill="${P.muted}">${esc(text)}</text>`;
 }
 
@@ -298,21 +419,6 @@ export interface Drawing {
   routes: Map<string, EdgeRoute>;
 }
 
-/**
- * Connections pass behind group names as they pass behind parts: a clip with a hole where each
- * group's name text lies. Null when the view has no group.
- */
-export function namesClip(view: Pick<DiagramView, "nodes">, rects: Map<string, Rect>, id: string, post = false): string | null {
-  const holes = view.nodes.flatMap((x) => {
-    const r = rects.get(x.id);
-    if (x.form !== "group" || !r) return [];
-    const b = groupNameText(x, r, post);
-    return b.w > 0 ? [`M${n(b.x)},${n(b.y)} L${n(b.x)},${n(b.y + b.h)} L${n(b.x + b.w)},${n(b.y + b.h)} L${n(b.x + b.w)},${n(b.y)} Z`] : [];
-  });
-  if (!holes.length) return null;
-  return `<clipPath id="${id}" clipPathUnits="userSpaceOnUse"><path clip-rule="evenodd" d="M-1e6,-1e6 L1e6,-1e6 L1e6,1e6 L-1e6,1e6 Z ${holes.join(" ")}"/></clipPath>`;
-}
-
 /** Groups outermost first, so children draw on top of their frames. */
 export function drawOrder(view: Pick<DiagramView, "nodes">): DiagramNode[] {
   const byId = new Map(view.nodes.map((x) => [x.id, x]));
@@ -323,7 +429,7 @@ export function drawOrder(view: Pick<DiagramView, "nodes">): DiagramNode[] {
 /** The whole drawing of a view: frames, connections, components, labels, badges, texts. */
 export function drawView(view: DiagramView, P: Palette, o: DrawOptions = {}): Drawing {
   const prefix = o.prefix ?? "ad";
-  o = { ...o, post: postOf(view, o) };
+  o = { ...o, post: postOf(view, o), subLines: o.subLines ?? view.subLines !== false };
   const rects = layoutRects(view, o);
   const texts = o.texts === false ? [] : view.texts;
   const avoid = texts.map((t) => ({ x: t.x, y: t.y, ...measureText(t) }));
@@ -331,23 +437,37 @@ export function drawView(view: DiagramView, P: Palette, o: DrawOptions = {}): Dr
   const kind = new Map(view.nodes.map((x) => [x.id, x.kind]));
   const out: string[] = [];
   const order = drawOrder(view);
-  for (const node of order.filter((x) => x.form === "group")) out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="group">${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
+  const opens = (x: DiagramNode) => (x.detail ? ` data-open="true"` : "");
+  for (const node of order.filter((x) => x.form === "group")) out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="group"${opens(node)}>${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
   // One group per drawn connection holds its line, its label and its badge (ui contract, The share image);
   // labels and badges sit in free spots, so drawing them before the parts covers nothing.
-  const clip = namesClip(view, rects, `${prefix}-names`, o.post);
-  if (clip) out.push(`<defs>${clip}</defs>`);
   for (const e of view.edges) {
     const r = routes.get(e.id);
-    if (!r) continue;
+    // A connection a hub hides is never drawn by an export (diagram contract, Parts many parts use).
+    if (!r || r.hidden) continue;
     const id = esc(e.id);
-    const label = r.labelAt && e.label && o.labels !== false ? `<g data-edge-label="${id}" data-testid="edge-label-${id}">${labelMarkup(e.label, r.labelAt, P, o.post)}</g>` : "";
+    const tone = toneOf(e), to = kind.get(e.to)!;
+    const label = r.labelAt && e.label && o.labels !== false ? `<g data-edge-label="${id}" data-testid="edge-label-${id}">${labelMarkup(e.label, r.labelAt, P, o.post, tone === "kind" ? P.kinds[to] : P.line)}</g>` : "";
     const badge = o.steps && e.step !== null ? `<g data-step-badge="${id}" data-testid="step-badge-${id}">${badgeMarkup(e.step, r.badgeAt, P, prefix, o.post)}</g>` : "";
-    // Only the line is clipped at group names: its label and badge already keep off them.
-    const markup = edgeMarkup(e, r, P, { prefix, fromKind: kind.get(e.from)!, toKind: kind.get(e.to)! });
-    const line = clip ? `<g clip-path="url(#${prefix}-names)">${markup}</g>` : markup;
-    out.push(`<g data-edge-id="${id}" data-style="${e.style}" data-both="${e.both}">${line}${label}${badge}</g>`);
+    const line = edgeMarkup(e, r, P, { prefix, fromKind: kind.get(e.from)!, toKind: to, tone });
+    out.push(`<g data-edge-id="${id}" data-style="${e.style}" data-both="${e.both}" data-tone="${tone}">${line}${label}${badge}</g>`);
   }
-  for (const node of order.filter((x) => x.form !== "group")) out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="${node.form}">${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
+  // Each trunk once, after the connections' groups (diagram contract, Trunks).
+  const edgeById = new Map(view.edges.map((e) => [e.id, e]));
+  for (const t of trunksOf(routes)) {
+    const members = t.edges.map((id) => edgeById.get(id)!);
+    const tone: Tone = members.some((e) => toneOf(e) === "kind") ? "kind" : "neutral";
+    const m = trunkMarkup(t, members[0].style, tone, kind.get(t.part)!, P, prefix);
+    out.push(`${m.defs}<g data-trunk="${esc(t.key)}" data-edges="${t.edges.map(esc).join(" ")}" data-tone="${tone}">${m.path}</g>`);
+  }
+  // Each group's head goes over the connections and under the parts (diagram contract, A group's name).
+  for (const node of order.filter((x) => x.form === "group")) out.push(`<g data-group-head="${esc(node.id)}">${groupHeadMarkup(node, rects.get(node.id)!, P, { ...o, prefix })}</g>`);
+  const traces = tracesOf(view, rects, routes, P, prefix);
+  const used = hubsOf(view), marks = usedByBoxes(view, rects);
+  for (const node of order.filter((x) => x.form !== "group")) {
+    const usedBy = marks.has(node.id) ? { n: used.get(node.id)!, box: marks.get(node.id)! } : undefined;
+    out.push(`<g data-node-id="${esc(node.id)}" data-kind="${node.kind}" data-form="${node.form}"${opens(node)}>${nodeMarkup(node, rects.get(node.id)!, P, { ...o, prefix, traces: traces.get(node.id), usedBy })}</g>`);
+  }
   for (const t of texts) out.push(`<g data-text-id="${esc(t.id)}" data-size="${t.size}">${textMarkup(t, P)}</g>`);
   return { body: out.join(""), defs: sharedDefs(P, prefix), bounds: viewBounds({ ...view, texts }, rects, routes, true, o.steps), rects, routes };
 }

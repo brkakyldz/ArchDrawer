@@ -30,5 +30,5 @@ export function App() {
   const m = /^\/d\/([^/]+)\/?$/.exec(path);
   if (!m) return <Library />;
   const q = new URLSearchParams(search);
-  return <EditorBoundary key={m[1]}><Editor id={decodeId(m[1])} channel={q.get("channel")} view={q.get("view")} /></EditorBoundary>;
+  return <EditorBoundary key={m[1]}><Editor id={decodeId(m[1])} choice={q.get("choice")} channel={q.get("channel")} view={q.get("view")} /></EditorBoundary>;
 }

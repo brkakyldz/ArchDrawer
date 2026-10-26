@@ -6,8 +6,10 @@
 export const SCHEMA_ID = "archdraw/diagram@2";
 export const SCHEMA_V1 = "archdraw/diagram@1";
 export const SCHEMA_V2 = SCHEMA_ID;
-/** The stored file format (ADR 0006): facts and four channels. Shape and rules in `./file3`. */
+/** One set of facts and four channels (ADR 0006): a choice's shape, and a file format read and converted. Shape and rules in `./file3`. */
 export const SCHEMA_V3 = "archdraw/diagram@3";
+/** The stored file format (ADR 0015): a list of choices, each an `@3` body. Shape and rules in `./file4`. */
+export const SCHEMA_V4 = "archdraw/diagram@4";
 
 export const KINDS = ["actor", "client", "api", "service", "worker", "llm", "external", "ops", "gate", "data"] as const;
 export type Kind = (typeof KINDS)[number];
@@ -87,6 +89,8 @@ export interface DiagramText { id: string; text: string; x: number; y: number; s
 export interface Caption { title: string; lede: string }
 export interface DiagramView {
   id: string; title: string; caption: Caption;
+  /** The view's sub-line switch (diagram contract, View): absent or true draws sub-lines; false draws none. */
+  subLines?: boolean;
   /** The source view of a generated post (diagram contract, Post-view identity); null otherwise. */
   postOf: string | null;
   nodes: DiagramNode[]; edges: DiagramEdge[]; texts: DiagramText[];

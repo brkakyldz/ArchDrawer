@@ -265,7 +265,22 @@ export async function workspaceRaw(id: string, doc: unknown) {
   const made = await repo(id); await writeJSON(made.file, doc); return made;
 }
 export async function writeJSON(file: string, value: unknown) { await writeFile(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
-export async function readDocument(file: string): Promise<Doc3> { return JSON.parse(await readFile(file, 'utf8')); }
+// A stored or served document is `archdraw/diagram@4` once the product has opened it (diagram contract, *Reading `archdraw/diagram@3`*):
+// `facts` and `channels` live in each of its `choices`. These readers keep the `@3` shape every older scenario reads: for a `@4` document
+// they return the document's first choice (the one a drawing opens on) with its own `facts` and `channels` at the top, the document's other
+// keys as they are, the requests of that choice (without their `choice` key), and `schema` `archdraw/diagram@3` — a document of that shape
+// is also what a session that knows only `@3` writes, so it can be written back by `outsideWrite`. A `@3` document is returned as it is.
+// Use `readStoredRaw` / `getStoredRaw` to see the format the file really has, and `flattenChoice(doc, id)` for another choice.
+export function flattenChoice(raw: any, choiceId?: string): Doc3 {
+  if (!raw || !Array.isArray(raw.choices)) return raw as Doc3;
+  const { choices, requests, schema: _schema, ...rest } = raw;
+  const chosen = choiceId ? choices.find((c: any) => c.id === choiceId) : choices[0];
+  if (!chosen) throw new Error(`No choice ${choiceId} in the document: ${choices.map((c: any) => c.id).join(', ')}`);
+  const mine = (requests as any[] | undefined)?.filter(r => (r.choice ?? chosen.id) === chosen.id).map(({ choice: _choice, ...r }) => r);
+  return { ...rest, schema: 'archdraw/diagram@3', facts: chosen.facts, channels: chosen.channels, ...(requests ? { requests: mine } : {}) } as Doc3;
+}
+export async function readStoredRaw(file: string): Promise<any> { return JSON.parse(await readFile(file, 'utf8')); }
+export async function readDocument(file: string): Promise<Doc3> { return flattenChoice(await readStoredRaw(file)); }
 export async function readDrawing(file: string): Promise<Drawing> { return project(await readDocument(file)); }
 // Replaces the drawing file with a drawing authored in the drawn shape (stored as `@3`).
 export async function writeDrawing(file: string, doc: Drawing) { await writeJSON(file, fromLegacy(doc)); }
@@ -295,9 +310,13 @@ export async function openDrawing(page: Page, request: APIRequestContext, file: 
   await expect(page.getByTestId('save-status')).toHaveText('Saved'); return result;
 }
 // The stored document as the server returns it (re-read from disk; an `@2` file is converted first).
+// A `@4` document comes back as its first choice in the `@3` shape (see `readDocument`); `getStoredRaw` returns it as served.
 export async function getDocument(request: APIRequestContext, id: string, base = baseURL()): Promise<Doc3> {
+  return flattenChoice(await getStoredRaw(request, id, base));
+}
+export async function getStoredRaw(request: APIRequestContext, id: string, base = baseURL()): Promise<any> {
   const response = await request.get(`${base}/api/diagrams/${id}`); expect(response.status(), await response.text()).toBe(200);
-  return await response.json() as Doc3;
+  return await response.json();
 }
 // GET export.svg / export.mmd with a query string such as `channel=linkedin&format=feed`.
 export async function exportOf(request: APIRequestContext, id: string, kind: 'svg' | 'mmd', query = '', base = baseURL()) {
@@ -306,7 +325,11 @@ export async function exportOf(request: APIRequestContext, id: string, kind: 'sv
 export async function saved(page: Page) { await expect(page.getByTestId('save-status')).toHaveText('Saved'); }
 export async function callout(page: Page, id: string) {
   const result = page.getByTestId(`callout-${id}`);
-  if (!await result.isVisible()) await page.getByTestId(`node-${id}`).getByTestId('node-label').click();
+  // A group's `node-label` sits in its `node-head-<id>` row, not inside `node-<id>` (ui contract); any other part holds it itself.
+  if (!await result.isVisible()) {
+    const head = page.getByTestId(`node-head-${id}`);
+    await ((await head.count()) > 0 ? head : page.getByTestId(`node-${id}`)).getByTestId('node-label').click();
+  }
   await expect(result).toBeVisible(); return result;
 }
 export async function persisted(file: string, predicate: (doc: Drawing) => boolean, timeout = 10_000) {
@@ -515,9 +538,11 @@ export async function previewTextSizes(page: Page) {
   const url = new URL(page.url()), id = url.pathname.split('/').at(-1)!;
   const response = await page.request.get(`${url.origin}/api/diagrams/${id}`);
   expect(response.status()).toBe(200);
-  const doc = await response.json() as Doc3;
+  const raw = await response.json();
   const preview = page.getByTestId('share-preview'), viewId = await preview.getAttribute('data-view');
-  const shown = allViews(doc).find(v => v.id === viewId); expect(shown).toBeTruthy();
+  // The served document is `@4` (api contract): look for the shown view in every choice (a view id belongs to one choice).
+  const choiceIds: (string | undefined)[] = Array.isArray(raw.choices) ? raw.choices.map((c: { id: string }) => c.id) : [undefined];
+  const shown = choiceIds.flatMap(c => allViews(flattenChoice(raw, c))).find(v => v.id === viewId); expect(shown).toBeTruthy();
   return await visibleTextSizes(preview, shown!);
 }
 
@@ -552,12 +577,15 @@ export async function visibleTextSizes(surface: Locator, view: View) {
       const nameMatrix = toRoot.multiply(nameText.getScreenCTM()!);
       for (let i = 0; i < content.length; i++) {
         const y = content[i].trim() ? nameText.getStartPositionOfChar(offset + i).matrixTransform(nameMatrix).y : 0;
-        characters.push({ source: run, text: content[i], nodeId: text.closest('g[data-node-id]')?.getAttribute('data-node-id') ?? null,
+        characters.push({ source: run, text: content[i], nodeId: text.closest('g[data-node-id]')?.getAttribute('data-node-id') ?? text.closest('g[data-group-head]')?.getAttribute('data-group-head') ?? null,
           name: false, font, weight: Number(style.fontWeight), opened, lineYs: content[i].trim() ? [Math.round(y * 1000) / 1000] : [] });
       }
     }
-    for (const group of Array.from(svg.querySelectorAll('g[data-node-id]'))) {
-      const id = group.getAttribute('data-node-id')!, label = labels[id].replace(/\s/g, '');
+    // A part's name is read from its `g[data-node-id]`, a group's from its `g[data-group-head]` (diagram contract, A group's name).
+    const owners = new Set(Array.from(svg.querySelectorAll('g[data-node-id], g[data-group-head]'))
+      .map(g => (g.getAttribute('data-node-id') ?? g.getAttribute('data-group-head'))!));
+    for (const id of owners) {
+      const label = labels[id].replace(/\s/g, '');
       const own = characters.filter(c => c.nodeId === id && c.text.trim()), actual = own.map(c => c.text).join('');
       let start = actual.indexOf(label), length = label.length;
       if (start < 0) {
@@ -651,7 +679,9 @@ export function agent3(title: string): Doc3 {
       texts: [] }] } } };
 }
 function overviewCopy(doc: Doc3, id: string, title: string): View3 {
-  return { ...structuredClone(doc.channels.overview.views![0]), id, title, texts: [] };
+  // `detail` is null outside the overview channel (diagram contract, validation rule 10), so the copy keeps no inside.
+  const copy = structuredClone(doc.channels.overview.views![0]);
+  return { ...copy, id, title, texts: [], nodes: copy.nodes.map(n => ({ ...n, detail: null })) };
 }
 // A README channel drawn over the same facts: the overview's first view under the id `readme`.
 export function withReadme(doc: Doc3, opts: { outdated?: string[]; id?: string } = {}): Doc3 {
@@ -1170,9 +1200,16 @@ export async function watchToasts(page: Page) {
 export async function toastsSeen(page: Page): Promise<string[]> { return await page.evaluate(() => [...(((window as any).__toasts as string[]) ?? [])]); }
 // A session's write to the stored document (atomic, with a later version each time, as an agent session's is).
 export async function sessionWrite(file: string, change: (doc: Doc3) => void): Promise<Doc3> {
-  const doc = await readDocument(file); change(doc);
+  // `change` edits the first choice in the `@3` shape; on a `@4` file the result is merged back into that choice and the other choices stay.
+  const raw = await readStoredRaw(file), doc = flattenChoice(raw); change(doc);
   doc.updatedAt = new Date(Math.max((Date.parse(doc.updatedAt ?? '') || 0) + 60_000, Date.UTC(2098, 0, 1))).toISOString();
-  await outsideWrite(file, doc); return doc;
+  if (!Array.isArray(raw.choices)) { await outsideWrite(file, doc); return doc; }
+  const { facts, channels, requests, schema: _schema, ...rest } = doc as any;
+  const first = raw.choices[0];
+  const written = { ...raw, ...rest, schema: raw.schema, choices: [{ ...first, facts, channels }, ...raw.choices.slice(1)],
+    ...(requests || raw.requests ? { requests: [...(raw.requests ?? []).filter((r: any) => (r.choice ?? first.id) !== first.id),
+      ...(requests ?? []).map((r: any) => ({ ...r, choice: first.id }))] } : {}) };
+  await outsideWrite(file, written); return doc;
 }
 
 // ui contract, Share: `<slug>`, the title lower-cased, accents removed, non-alphanumerics → `-`, trimmed (`diagram` when empty).

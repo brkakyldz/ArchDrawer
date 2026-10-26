@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readAnyFile } from "./convert";
 import { migrateV1 } from "./migrate";
 import { validateDocument } from "./model";
+import { choiceAsFile3 } from "./file4";
 
 const v1 = {
   schema: "archdraw/diagram@1", id: "d_v1abcdef", title: "Shop", subtitle: "How an order flows", theme: "dark", showSteps: true,
@@ -76,8 +77,8 @@ describe("v1 → v3", () => {
     const r = readAnyFile(v1, {}, { allowV1: true, now: "2026-10-21T00:00:00.000Z" });
     expect(r.errors).toEqual([]);
     expect(r.from).toBe("@1");
-    expect(r.file!.facts.components.map((c) => c.id).sort()).toEqual(["api", "backend", "db", "web"]);
-    expect(r.file!.channels.overview.views[0].nodes.find((n) => n.id === "api")!.parent).toBe("backend");
+    expect(choiceAsFile3(r.file!).facts.components.map((c) => c.id).sort()).toEqual(["api", "backend", "db", "web"]);
+    expect(choiceAsFile3(r.file!).channels.overview.views[0].nodes.find((n) => n.id === "api")!.parent).toBe("backend");
     expect(r.warnings).toContain("Converted from archdraw/diagram@2");
   });
 });

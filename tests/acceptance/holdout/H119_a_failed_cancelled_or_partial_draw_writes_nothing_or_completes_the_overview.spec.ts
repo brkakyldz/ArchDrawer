@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { gitRepo, projectFiles, writeFiles, token, scanFolder, startDraw, finishRun, runEvents, postJSON, listedDiagrams, getDocument, cli, errorLines, samePath, exists, viewOf, partOf, factOf, sorted, baseURL } from './helpers';
+import { gitRepo, projectFiles, writeFiles, token, scanFolder, startDraw, finishRun, runEvents, postJSON, listedDiagrams, cli, errorLines, samePath, exists, viewOf, partOf, factOf, sorted, baseURL } from './helpers';
+import { getDocument } from './helpers-selections'; // a draw writes format 4: this gives the drawn choice in the shape the scenario was written in
 
 const FOUR_WARNINGS = [
   'ghost: dropped the evidence fixture/ghost.ts: not found', 'Dropped "ghost": no evidence left',
@@ -11,7 +12,7 @@ const FOUR_WARNINGS = [
 // Any failure, cancel or timeout at any stage writes and registers nothing; a draw succeeds only once the file is written
 // and registered. Markers in the typed focus reach the fixture's three calls (the folder name does too, but a Windows
 // folder cannot carry ":").
-test('H119 [START-4, READ-1, STORY-1, STORY-6] a draw that fails at the read, the overview or the channel, or is cancelled, or cannot write its file, writes and registers nothing, and a draw whose overview leaves a fact out is completed by code with one warning', async ({ request }) => {
+test('H119 [START-4, READ-1, STORY-1, STORY-6, #181] a draw that fails at the read, the overview or the channel, or is cancelled, or cannot write its file, writes and registers nothing, and a draw whose overview leaves a fact out is completed by code with one warning', async ({ request }) => {
   test.setTimeout(300_000);
   const auth = await token(request);
   const project = await gitRepo('draw-failures');

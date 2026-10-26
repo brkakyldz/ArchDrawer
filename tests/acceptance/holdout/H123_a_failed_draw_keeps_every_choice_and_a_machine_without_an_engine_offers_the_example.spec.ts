@@ -4,7 +4,7 @@ import { gitRepo, workspaceRaw, shop3, isolatedDrawing, exists, listedDiagrams }
 
 // START-4: when a draw fails, nothing was written and every choice stays, so the user can retry or change one thing. With no
 // engine the folder start cannot work: the screen says what to install, disables Scan, and the example drawing is still there.
-test('H123 [START-4, READ-1, START-3, START-5] a failed draw writes nothing, keeps the folder, card, focus and channel, and Try again repeats the same request; with no engine the screen says what to install and offers the example', async ({ page, request }) => {
+test('H123 [START-4, READ-1, START-3, START-5, START-7, #181] a failed draw writes nothing, keeps the folder, card, focus and channel, and Try again repeats the same request; with no engine the screen says what to install and offers the example', async ({ page, request }) => {
   test.setTimeout(240_000);
   const project = await gitRepo('start-fail');
   const listedBefore = (await listedDiagrams(request)).length;
@@ -26,6 +26,9 @@ test('H123 [START-4, READ-1, START-3, START-5] a failed draw writes nothing, kee
   await expect(page.getByTestId('draw-error')).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId('draw-error')).toContainText('Fixture failure requested');
   await expect(page.getByTestId('draw-retry')).toHaveText('Try again');
+  // The one choice's row shows where it ended: failed at its read, the other stages waiting.
+  await expect(page.getByTestId('draw-choice')).toHaveCount(1); await expect(page.getByTestId('draw-choice')).toHaveAttribute('data-state', 'failed');
+  await expect(page.getByTestId('draw-stage').evaluateAll(els => els.map(el => el.getAttribute('data-state')))).resolves.toEqual(['failed', 'waiting', 'waiting']);
   await expect(page.getByTestId('start-folder')).toHaveValue(project.dir); await expect(page.getByTestId('scan-card')).toBeVisible();
   await expect(page.getByTestId('focus-typed')).toBeChecked(); await expect(page.getByTestId('focus-text')).toHaveValue('The tool loop [fixture:fail]');
   await expect(page.getByTestId('channel-choice-linkedin')).toBeChecked();
@@ -47,7 +50,7 @@ test('H123 [START-4, READ-1, START-3, START-5] a failed draw writes nothing, kee
   await page.getByTestId('draw-start').click();
   await expect(page.getByTestId('editor')).toBeVisible({ timeout: 120_000 });
   await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin');
-  expect(runs()).toHaveLength(3); expect(runs()[2].body).toMatchObject({ kind: 'draw', focus: { kind: 'typed', text: 'The tool loop' }, channel: 'linkedin' });
+  expect(runs()).toHaveLength(3); expect(runs()[2].body).toMatchObject({ kind: 'draw', choices: [{ kind: 'typed', text: 'The tool loop' }], channel: 'linkedin' }); expect(runs()[2].body).not.toHaveProperty('focus');
   expect(await exists(join(project.dir, 'docs', 'architecture.archdraw.json'))).toBe(true); expect(await exists(join(project.dir, 'docs', 'architecture-2.archdraw.json'))).toBe(false);
   expect((await listedDiagrams(request)).length).toBe(listedBefore + 1);
 

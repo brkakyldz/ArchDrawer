@@ -1,5 +1,6 @@
-import { isPostView, type DiagramEdge, type DiagramNode, type DiagramText, type DiagramView } from "./model";
+import { isPostView, type DiagramEdge, type DiagramNode, type DiagramText, type DiagramView, type Kind } from "./model";
 import { fitLine, textWidth, wrapText, widthOf, type TextStyle } from "./text";
+import { CARD_SHAPE, COMPACT_SHAPE, outlineDepth, shapeGeometry, shapeOf, type PartShape, type Pt } from "./shapes";
 
 /**
  * One geometry for the editor and every export (invariant 5): every size here is a
@@ -52,24 +53,20 @@ const POST_STYLE: Style = {
 export const styleOf = (post: boolean | undefined): Style => (post ? POST_STYLE : BASE_STYLE);
 /** Whether a view draws in the post style, unless the caller says. */
 export const postOf = (view: { id?: string; postOf?: string | null }, o: { post?: boolean } = {}) => o.post ?? isPostView(view);
-export const INSIDE = 14; // the "has a view inside" mark
+export const INSIDE = 20; // the open mark of a part with an inside: a circle this wide (diagram contract, The open mark)
 
 export interface NodeBox {
   w: number; h: number;
   /** Label lines (a card wraps; other forms use one line). */
   lines: string[];
   sub: string;
+  /** Always empty: no part draws a row (ADR 0014); the rows are listed in the part's callout. */
   items: string[];
-  /** How many of the last rows are limits (drawn muted after a timer icon). */
-  limits?: number;
 }
 
-/** A limit row's timer icon and the gap after it (diagram contract, What a channel draws). */
-export const LIMIT_ROW = { icon: 11, gap: 4 } as const;
-
 export interface MeasureOptions {
-  /** false: panels drawn without their items (share toggle). Default true. */
-  items?: boolean;
+  /** The view's sub-line switch (diagram contract, View, Sub-lines). Default true. */
+  subLines?: boolean;
   /** The dense post style. Default: whether the view is a post view. */
   post?: boolean;
 }
@@ -77,57 +74,57 @@ export interface MeasureOptions {
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const ceil = (v: number) => Math.ceil(v);
 
-/** Size and text of a card, compact or panel (a group's size comes from its children: `layoutRects`). */
-export function measureNode(n: Pick<DiagramNode, "label" | "form" | "sub" | "items" | "detail" | "limitIds">, o: MeasureOptions = {}): NodeBox {
-  const { T, CARD, PANEL } = styleOf(o.post);
+/** A part's content box: its box less its shape's insets (diagram contract, Content box). */
+export function contentBox(n: Pick<DiagramNode, "form"> & { kind?: Kind }, r: Rect, post = false): Rect {
+  const shape = shapeOf({ kind: n.kind ?? "service", form: n.form });
+  if (shape === "group") return r;
+  const [t, rt, b, l] = n.form === "compact" ? COMPACT_SHAPE[shape].insets : CARD_SHAPE[shape][post ? "post" : "plain"];
+  return { x: r.x + l, y: r.y + t, w: r.w - l - rt, h: r.h - t - b };
+}
+
+/**
+ * Size and text of a card, compact or panel (a group's size comes from its children: `layoutRects`).
+ * The shape of its kind gives the insets round its content box and any extra width (Content box); a
+ * panel measures and draws as a card of its kind, its rows never drawn.
+ */
+export function measureNode(n: Pick<DiagramNode, "label" | "form" | "sub" | "detail"> & { kind?: Kind }, o: MeasureOptions = {}): NodeBox {
+  const { T, CARD } = styleOf(o.post);
   const inside = n.detail ? 8 + INSIDE : 0;
-  if (n.form === "card") {
-    const w = n.sub ? clamp(ceil(CARD.padX * 2 + widthOf(n.sub, T.sub) + 2), CARD.w, CARD.maxW) : CARD.w;
-    const width = w - CARD.padX * 2;
+  const subOn = o.subLines !== false;
+  const shape = shapeOf({ kind: n.kind ?? "service", form: n.form });
+  if (shape !== "group" && n.form !== "compact") {
+    const S = CARD_SHAPE[shape], [t, r, b, l] = o.post ? S.post : S.plain;
+    // The plain card's width (196; a post card widens up to 204 for its sub-line, inside its shape's insets) plus the shape's extra width.
+    const extra = S.extra[o.post ? 1 : 0];
+    const base = subOn && n.sub ? clamp(ceil(l + r - extra + widthOf(n.sub, T.sub) + 2), CARD.w, CARD.maxW) : CARD.w;
+    const w = base + extra, width = w - l - r;
     const lines = wrapText(n.label, T.title.size, width, 600, CARD.maxLines, T.title.tracking);
-    return { w, h: CARD.h + CARD.line * (lines.length - 1), lines, sub: n.sub ? fitLine(n.sub, width, T.sub) : "", items: [] };
+    const h = t + (shape === "person" ? 0 : CARD.icon + CARD.iconGap) + CARD.line * lines.length + (subOn ? CARD.subLine : 0) + b;
+    return { w, h, lines, sub: subOn && n.sub ? fitLine(n.sub, width, T.sub) : "", items: [] };
   }
-  if (n.form === "compact") {
-    const fixed = COMPACT.padX * 2 + COMPACT.icon + COMPACT.gap + inside;
+  if (shape !== "group") {
+    const S = COMPACT_SHAPE[shape], [, r, , l] = S.insets;
+    const icon = shape === "person" ? 0 : COMPACT.icon + COMPACT.gap;
+    const fixed = l + r + icon + inside;
     const titleW = widthOf(n.label, T.compactTitle);
-    const subW = n.sub ? COMPACT.gap + widthOf(n.sub, T.subMono) : 0;
-    const w = clamp(ceil(fixed + titleW + subW + 2), COMPACT.minW, COMPACT.maxW);
+    const subW = subOn && n.sub ? COMPACT.gap + widthOf(n.sub, T.subMono) : 0;
+    const w = clamp(ceil(fixed + titleW + subW + 2), COMPACT.minW, COMPACT.maxW) + S.extra;
     const label = fitLine(n.label, w - fixed, T.compactTitle);
     const room = w - fixed - widthOf(label, T.compactTitle) - COMPACT.gap;
-    const sub = n.sub && room > 24 ? fitLine(n.sub, room, T.subMono) : "";
-    return { w, h: COMPACT.h, lines: [label], sub, items: [] };
-  }
-  if (n.form === "panel") {
-    const items = o.items === false ? [] : n.items;
-    // The last rows that are limits keep room for their timer icon.
-    const lim = Math.min(n.limitIds?.length ?? 0, items.length);
-    const mark = (i: number) => (i >= items.length - lim ? LIMIT_ROW.icon + LIMIT_ROW.gap : 0);
-    const head = PANEL.padX * 2 + PANEL.icon + PANEL.gap + inside;
-    const need = Math.max(
-      head + widthOf(n.label, T.title),
-      n.sub ? PANEL.padX * 2 + PANEL.icon + PANEL.gap + widthOf(n.sub, T.sub) : 0,
-      ...items.map((t, i) => PANEL.padX * 2 + PANEL.itemPad * 2 + 2 + mark(i) + widthOf(t, T.item)),
-    );
-    const w = clamp(ceil(need + 2), PANEL.minW, PANEL.maxW);
-    const k = items.length;
-    const h = PANEL.base + PANEL.titleLine + (n.sub ? PANEL.subLine : 0) + (k ? PANEL.listGap + k * PANEL.itemH + (k - 1) * PANEL.itemGap : 0);
-    return {
-      w, h,
-      lines: [fitLine(n.label, w - head, T.title)],
-      sub: n.sub ? fitLine(n.sub, w - PANEL.padX * 2 - PANEL.icon - PANEL.gap, T.sub) : "",
-      items: items.map((t, i) => fitLine(t, w - PANEL.padX * 2 - PANEL.itemPad * 2 - 2 - mark(i), T.item)),
-      ...(lim ? { limits: lim } : {}),
-    };
+    const sub = subOn && n.sub && room > 24 ? fitLine(n.sub, room, T.subMono) : "";
+    return { w, h: S.h, lines: [label], sub, items: [] };
   }
   // group: the header only; layoutRects adds the children.
-  const head = GROUP.padHead * 2 + GROUP.icon + GROUP.gap + widthOf(n.label, T.title) + (n.sub ? GROUP.gap + widthOf(n.sub, T.sub) : 0) + inside;
-  return { w: Math.max(GROUP.emptyW, ceil(head + 2)), h: GROUP.emptyH, lines: [n.label], sub: n.sub, items: [] };
+  const sub = subOn ? n.sub : "";
+  const head = GROUP.padHead * 2 + GROUP.icon + GROUP.gap + widthOf(n.label, T.title) + (sub ? GROUP.gap + widthOf(sub, T.sub) : 0) + inside;
+  return { w: Math.max(GROUP.emptyW, ceil(head + 2)), h: GROUP.emptyH, lines: [n.label], sub, items: [] };
 }
 
 /** Header width a group needs for its own text. */
-export function groupHeaderWidth(n: Pick<DiagramNode, "label" | "sub" | "detail">, post = false): number {
+export function groupHeaderWidth(n: Pick<DiagramNode, "label" | "sub" | "detail">, post = false, subLines = true): number {
   const { T } = styleOf(post);
-  return ceil(GROUP.padHead * 2 + GROUP.icon + GROUP.gap + widthOf(n.label, T.title) + (n.sub ? GROUP.gap + widthOf(n.sub, T.sub) : 0) + (n.detail ? 8 + INSIDE : 0) + 2);
+  const sub = subLines ? n.sub : "";
+  return ceil(GROUP.padHead * 2 + GROUP.icon + GROUP.gap + widthOf(n.label, T.title) + (sub ? GROUP.gap + widthOf(sub, T.sub) : 0) + (n.detail ? 8 + INSIDE : 0) + 2);
 }
 
 /** The box a group's name is drawn in, at the left of its header: labels and badges keep off it. */
@@ -135,22 +132,11 @@ export const groupNameBox = (n: Pick<DiagramNode, "label" | "sub" | "detail">, r
   ({ x: r.x, y: r.y, w: Math.min(r.w, groupHeaderWidth(n, post) - GROUP.padHead), h: GROUP.head });
 
 /**
- * Where a group's name text lies, 3 px round: connections pass behind it (they are not drawn there).
- * It runs 5 % past the name box, since a platform may paint the text a few percent wider than its
- * metrics (Linux paints Geist about 3 % wider), and stays within the group.
- */
-export const groupNameText = (n: Pick<DiagramNode, "label" | "sub" | "detail">, r: Rect, post = false): Rect => {
-  const b = groupNameBox(n, r, post), x = r.x + GROUP.padHead - 3;
-  const w = Math.max(0, b.x + b.w - x);
-  return { x, y: r.y + GROUP.head / 2 - 14, w: Math.min(Math.ceil(w * 1.05), r.x + r.w - x), h: 28 };
-};
-
-/**
  * Every component's box in a view: cards, compacts and panels from their content at their
  * position; groups from their children's boxes plus padding (bottom-up), or 260×140 when empty.
  */
-export function layoutRects(view: Pick<DiagramView, "nodes"> & { id?: string; postOf?: string | null }, o: MeasureOptions = {}): Map<string, Rect> {
-  o = { ...o, post: postOf(view, o) };
+export function layoutRects(view: Pick<DiagramView, "nodes"> & { id?: string; postOf?: string | null; subLines?: boolean }, o: MeasureOptions = {}): Map<string, Rect> {
+  o = { ...o, post: postOf(view, o), subLines: o.subLines ?? view.subLines !== false };
   const rects = new Map<string, Rect>();
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
   const kids = new Map<string, DiagramNode[]>();
@@ -166,12 +152,12 @@ export function layoutRects(view: Pick<DiagramView, "nodes"> & { id?: string; po
     } else {
       const children = visiting.has(n.id) ? [] : kids.get(n.id) ?? [];
       visiting.add(n.id);
-      if (!children.length) r = { x: n.x, y: n.y, w: Math.max(GROUP.emptyW, groupHeaderWidth(n, o.post)), h: GROUP.emptyH };
+      if (!children.length) r = { x: n.x, y: n.y, w: Math.max(GROUP.emptyW, groupHeaderWidth(n, o.post, o.subLines)), h: GROUP.emptyH };
       else {
         const cs = children.map(rectOf);
         const minX = Math.min(...cs.map((c) => c.x)), minY = Math.min(...cs.map((c) => c.y));
         const maxX = Math.max(...cs.map((c) => c.x + c.w)), maxY = Math.max(...cs.map((c) => c.y + c.h));
-        const w = Math.max(maxX - minX + GROUP.padX * 2, groupHeaderWidth(n, o.post));
+        const w = Math.max(maxX - minX + GROUP.padX * 2, groupHeaderWidth(n, o.post, o.subLines));
         r = { x: minX - GROUP.padX, y: minY - GROUP.head, w, h: maxY - minY + GROUP.head + GROUP.padBottom };
       }
       visiting.delete(n.id);
@@ -210,6 +196,34 @@ export interface EdgeRoute {
   badgeAt: Point;
   /** Parts other than its ends the curve passes behind (connections are drawn under parts). */
   blocked?: string[];
+  /** The trunk it shares (diagram contract, Trunks): its own curve then ends at the trunk's split point. */
+  trunk?: Trunk;
+  /** A hub hides it (diagram contract, Parts many parts use): no export draws it and the layout report never counts it. */
+  hidden?: boolean;
+}
+
+/** A trunk (diagram contract, Trunks): one straight stretch from the split point to the port, drawn once for its members. */
+export interface Trunk {
+  /** `<part id>:<side>`. */
+  key: string; part: string; side: Side;
+  /** Its members' ids in view order. */
+  edges: string[];
+  split: Point; port: Point; d: string;
+}
+
+/** The trunks of a view's routes, each once, in the order of their first member. */
+export function trunksOf(routes: Map<string, EdgeRoute>): Trunk[] {
+  const out: Trunk[] = [];
+  for (const r of routes.values()) if (r.trunk && !out.includes(r.trunk)) out.push(r.trunk);
+  return out;
+}
+
+/** The line a connection draws: its own curve, then its trunk's stretch (the layout report measures this). */
+export function drawnLine(r: EdgeRoute): Point[] {
+  const own = routeSamples(r);
+  if (!r.trunk) return own;
+  const { split, port } = r.trunk;
+  return [...own, ...Array.from({ length: 8 }, (_, i) => ({ x: split.x + (port.x - split.x) * (i + 1) / 8, y: split.y + (port.y - split.y) * (i + 1) / 8 }))];
 }
 
 /** The sides two boxes connect on: the facing pair across the larger gap. */
@@ -248,6 +262,81 @@ export function alongRoute(r: Curve): (t: number) => Point {
 }
 
 /**
+ * The parts each drawn connection passes behind (layout report `edgesOverParts`; diagram contract, Traces): a part
+ * that is not a group and not one of its ends, holding a point of its curve. Groups' boundaries never count.
+ */
+export function edgesOverParts(view: Pick<DiagramView, "nodes" | "edges">, rects: Map<string, Rect>, routes: Map<string, EdgeRoute>): { edge: string; node: string }[] {
+  const out: { edge: string; node: string }[] = [];
+  const within = (p: Point, r: Rect) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
+  for (const e of view.edges) {
+    const route = routes.get(e.id);
+    if (!route) continue;
+    if (route.hidden) continue;
+    const pts = drawnLine(route);
+    for (const n of view.nodes) {
+      if (n.form === "group" || n.id === e.from || n.id === e.to) continue;
+      const r = rects.get(n.id);
+      if (r && pts.some((p) => within(p, r))) out.push({ edge: e.id, node: n.id });
+    }
+  }
+  return out;
+}
+
+/** The part of a cubic curve between `a` and `b` (0 ≤ a < b ≤ 1), as a cubic of its own (de Casteljau). */
+function subCurve(c: Curve, a: number, b: number): Curve {
+  const lerp = (p: Point, q: Point, t: number): Point => ({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t });
+  const split = (k: Curve, t: number): [Curve, Curve] => {
+    const ab = lerp(k.p0, k.c1, t), bc = lerp(k.c1, k.c2, t), cd = lerp(k.c2, k.p1, t);
+    const abc = lerp(ab, bc, t), bcd = lerp(bc, cd, t), mid = lerp(abc, bcd, t);
+    return [{ p0: k.p0, c1: ab, c2: abc, p1: mid }, { p0: mid, c1: bcd, c2: cd, p1: k.p1 }];
+  };
+  const left = split(c, b)[0];
+  return b > 0 && a > 0 ? split(left, a / b)[1] : left;
+}
+
+/**
+ * The pieces of a curve inside a box, as path data: the same curve, cut where it crosses the box's edges. The
+ * editor draws a part's traces with it, so the part's element measures as the part (a clipped whole path would not).
+ */
+export function curveInside(c: Curve, r: Rect, steps = 96): string {
+  return curvePieces(c, r, steps).d;
+}
+
+/**
+ * `curveInside` with the length of the curve before its first piece: as a dash offset, the piece's dashes fall where
+ * the whole line's do (a path's dashes start again at each piece, so only the first is matched; a line rarely
+ * enters a box twice).
+ */
+export function curvePieces(c: Curve, r: Rect, steps = 96): { d: string; offset: number } {
+  const inside = (t: number) => { const p = bezierAt(c, t); return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h; };
+  // Where the inside changes between two samples, the edge is found by halving the step.
+  const edge = (lo: number, hi: number, inAtLo: boolean) => {
+    for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (inside(mid) === inAtLo) lo = mid; else hi = mid; }
+    return inAtLo ? lo : hi;
+  };
+  const spans: [number, number][] = [];
+  let start = inside(0) ? 0 : -1;
+  for (let i = 1; i <= steps; i++) {
+    const t0 = (i - 1) / steps, t1 = i / steps, now = inside(t1);
+    if (start < 0 && now) start = edge(t0, t1, false);
+    else if (start >= 0 && !now) { spans.push([start, edge(t0, t1, true)]); start = -1; }
+  }
+  if (start >= 0) spans.push([start, 1]);
+  const f = (v: number) => String(Math.round(v * 100) / 100);
+  const kept = spans.filter(([a, b]) => b > a);
+  const d = kept.map(([a, b]) => {
+    const k = subCurve(c, a, b);
+    return `M${f(k.p0.x)},${f(k.p0.y)} C${f(k.c1.x)},${f(k.c1.y)} ${f(k.c2.x)},${f(k.c2.y)} ${f(k.p1.x)},${f(k.p1.y)}`;
+  }).join(" ");
+  // The length up to the first piece, measured along the curve in small steps.
+  const upTo = kept[0]?.[0] ?? 0;
+  let offset = 0, last = bezierAt(c, 0);
+  const n = Math.max(1, Math.ceil(upTo * 512));
+  for (let i = 1; i <= n; i++) { const p = bezierAt(c, (upTo * i) / n); offset += Math.hypot(p.x - last.x, p.y - last.y); last = p; }
+  return { d, offset: Math.round(offset * 100) / 100 };
+}
+
+/**
  * Points along a curve that measure what it passes over: both ends, and inner samples shifted off
  * the middle so two mirrored lines never cross exactly on a sample point. The routing's
  * `blocked` and the layout report's `edgesOverParts` both read these, so they always agree.
@@ -274,25 +363,58 @@ function behind(route: Curve, parts: (Rect & { id: string })[]): string[] {
  * the boxes, pushed out by the half-size and the pad, meet — so those are the candidates. A spot whose
  * box is further than `reach` from every point of the curve does not count.
  */
-export function nearestFree(mid: Point, curve: Point[], hw: number, hh: number, obstacles: Rect[], pad: number, reach = Infinity): Point | null {
+export function nearestFree(mid: Point, curve: Point[], hw: number, hh: number, obstacles: Rect[], pad: number, reach = Infinity, prefer?: (p: Point) => boolean): Point | null {
   const near = (p: Point) => reach === Infinity || curve.some((c) => Math.hypot(Math.max(0, Math.abs(c.x - p.x) - hw), Math.max(0, Math.abs(c.y - p.y) - hh)) <= reach);
   const fits = (p: Point) => near(p) && obstacles.every((r) => p.x + hw + pad <= r.x || p.x - hw - pad >= r.x + r.w || p.y + hh + pad <= r.y || p.y - hh - pad >= r.y + r.h);
   let best: Point | null = null, bestD = Infinity;
-  const consider = (p: Point) => {
-    const q = { x: Math.round(p.x), y: Math.round(p.y) }, d = Math.hypot(q.x - mid.x, q.y - mid.y);
-    if (d < bestD - 1e-9 && fits(q)) { best = q; bestD = d; }
+  // With `prefer`, the nearest free spot it accepts wins over a nearer one it does not (a label off other lines).
+  let liked: Point | null = null, likedD = Infinity;
+  // Candidates are tried nearest first (ties in the order given), so the scan ends at the first spot that settles the
+  // answer: the first free one without `prefer`, the first liked one with it (review bcdbf51-1).
+  const scan = (ps: Point[]) => {
+    const cands = ps.map((p) => { const q = { x: Math.round(p.x), y: Math.round(p.y) }; return { q, d: Math.hypot(q.x - mid.x, q.y - mid.y) }; });
+    // Distances within a millionth of a pixel tie, as the old 1e-9 test let the earlier one stand.
+    cands.sort((a, b) => Math.round(a.d * 1e6) - Math.round(b.d * 1e6));
+    for (const { q, d } of cands) {
+      // Sorted: nothing after this one can win.
+      if (d >= (prefer ? likedD : bestD) - 1e-9) return;
+      if (!fits(q)) continue;
+      if (d < bestD - 1e-9) { best = q; bestD = d; }
+      if (!prefer) return;
+      if (prefer(q)) { liked = q; likedD = d; return; }
+    }
   };
-  consider(mid);
-  for (const p of curve) consider(p);
+  const first = [mid, ...curve];
+  // Spots beside the curve, as far as the reach lets a box go, so a label can step off a crossing line.
+  if (prefer) for (const p of curve) for (const [dx, dy] of [[0, hh + 2], [0, -hh - 2], [0, hh + 8], [0, -hh - 8], [hw + 2, 0], [-hw - 2, 0], [hw + 8, 0], [-hw - 8, 0]]) first.push({ x: p.x + dx, y: p.y + dy });
+  scan(first);
   // Edges near the middle first; all of them only when nothing near is free.
   for (const radius of [480, Infinity]) {
     const near = obstacles.filter((r) => Math.max(r.x - mid.x, mid.x - r.x - r.w, r.y - mid.y, mid.y - r.y - r.h) <= radius);
     const xs = [mid.x, ...near.flatMap((r) => [Math.floor(r.x - pad - hw), Math.ceil(r.x + r.w + pad + hw)])];
     const ys = [mid.y, ...near.flatMap((r) => [Math.floor(r.y - pad - hh), Math.ceil(r.y + r.h + pad + hh)])];
-    for (const x of xs) for (const y of ys) if (Math.hypot(x - mid.x, y - mid.y) < bestD) consider({ x, y });
-    if (best) break;
+    scan(xs.flatMap((x) => ys.map((y) => ({ x, y }))));
+    if (prefer ? liked : best) break;
   }
-  return best;
+  return liked ?? best;
+}
+
+/** The box of some points. */
+function pointsBox(pts: Point[]): Rect {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** Whether a polyline touches a box: a point inside it or a segment crossing one of its edges; `bounds`, the polyline's box, if known. */
+export function polylineMeetsRect(pts: Point[], r: Rect, bounds?: Rect): boolean {
+  // A polyline whose box misses the box meets nothing in it (review bcdbf51-1).
+  if (bounds && (bounds.x > r.x + r.w || bounds.x + bounds.w < r.x || bounds.y > r.y + r.h || bounds.y + bounds.h < r.y)) return false;
+  const inside = (p: Point) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+  if (pts.some(inside)) return true;
+  const corners = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }];
+  for (let i = 1; i < pts.length; i++) for (let k = 0; k < 4; k++) if (segmentsCross(pts[i - 1], pts[i], corners[k], corners[(k + 1) % 4])) return true;
+  return false;
 }
 
 export interface RouteOptions {
@@ -302,15 +424,70 @@ export interface RouteOptions {
   post?: boolean;
   /** Extra boxes labels must not cover (texts). */
   avoid?: Rect[];
+  /** Hide a hub's connections from its users (diagram contract, Parts many parts use). Default true. */
+  hubs?: boolean;
+  /** Share trunks (diagram contract, Trunks). Default true. */
+  trunks?: boolean;
+  /** Place labels only for these connections (the hidden ones, after the rest of the view). */
+  labelsFor?: Set<string>;
+  /**
+   * The editor only, while a drag is on (diagram contract, While dragging): each connection's sides at the previous
+   * move, `[from side, to side]`, kept until the cheapest pair costs less than `HOLD` × theirs or one no longer faces.
+   * Exports, the layout report and stored state never pass it.
+   */
+  held?: Map<string, [Side, Side]>;
+}
+
+/** A held pair gives way only to a pair cheaper than this share of its cost (diagram contract, While dragging). */
+export const HOLD = 0.8;
+
+/** A part other than a group that four or more other parts use, with how many (diagram contract, Parts many parts use). */
+export function hubsOf(view: Pick<DiagramView, "nodes" | "edges">): Map<string, number> {
+  const users = new Map<string, Set<string>>();
+  const use = (part: string, by: string) => { if (part !== by) (users.get(part) ?? users.set(part, new Set()).get(part)!).add(by); };
+  // A user has a connection into the part, or a two-way connection with it.
+  for (const e of view.edges) { use(e.to, e.from); if (e.both) use(e.from, e.to); }
+  const out = new Map<string, number>();
+  for (const n of view.nodes) { const u = users.get(n.id); if (n.form !== "group" && u && u.size >= 4) out.set(n.id, u.size); }
+  return out;
+}
+
+/** The connections a hub hides: those from its users that have no step. */
+export function hiddenEdges(view: Pick<DiagramView, "nodes" | "edges">): Set<string> {
+  const hubs = hubsOf(view);
+  return new Set(view.edges.filter((e) => e.step === null && e.from !== e.to && (hubs.has(e.to) || (e.both && hubs.has(e.from)))).map((e) => e.id));
+}
+
+/** The `used by <n>` pill of each hub: 18 px tall, centred on its box's bottom edge (diagram contract, Parts many parts use). */
+export const USED_BY = { h: 18, pad: 7, size: 11, weight: 500 as const };
+export function usedByBoxes(view: Pick<DiagramView, "nodes" | "edges">, rects: Map<string, Rect>): Map<string, Rect> {
+  const out = new Map<string, Rect>();
+  for (const [id, n] of hubsOf(view)) {
+    const r = rects.get(id);
+    if (!r) continue;
+    const w = Math.ceil(widthOf(`used by ${n}`, { size: USED_BY.size, weight: USED_BY.weight })) + USED_BY.pad * 2;
+    out.set(id, { x: r.x + r.w / 2 - w / 2, y: r.y + r.h - USED_BY.h / 2, w, h: USED_BY.h });
+  }
+  return out;
 }
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
+
+/**
+ * A handle's length: 0.42 × the distance between the ends, 24–160 px, and between sides that face
+ * each other across a gap never longer than that gap or 8 px (diagram contract, Short gaps).
+ */
+function handle(p0: Point, p1: Point, s: [Side, Side]): number {
+  const c = clamp(Math.hypot(p1.x - p0.x, p1.y - p0.y) * 0.42, MIN_HANDLE, 160);
+  const gap = (p1.x - p0.x) * NORMAL[s[0]][0] + (p1.y - p0.y) * NORMAL[s[0]][1];
+  return opposite(s) && gap > 0 ? Math.min(c, Math.max(gap, 8)) : c;
+}
 
 /** The middle of a side of a box. */
 const sideMid = (r: Rect, s: Side): Point => ({ x: r.x + r.w * (s === "l" ? 0 : s === "r" ? 1 : 0.5), y: r.y + r.h * (s === "t" ? 0 : s === "b" ? 1 : 0.5) });
 /** The plain cubic between the middles of two sides, with the usual handles. */
 function plainCurve(a: Rect, b: Rect, s: [Side, Side]): Curve {
-  const p0 = sideMid(a, s[0]), p1 = sideMid(b, s[1]), c = clamp(Math.hypot(p1.x - p0.x, p1.y - p0.y) * 0.42, MIN_HANDLE, 160);
+  const p0 = sideMid(a, s[0]), p1 = sideMid(b, s[1]), c = handle(p0, p1, s);
   return { p0, p1, c1: { x: p0.x + NORMAL[s[0]][0] * c, y: p0.y + NORMAL[s[0]][1] * c }, c2: { x: p1.x + NORMAL[s[1]][0] * c, y: p1.y + NORMAL[s[1]][1] * c } };
 }
 /** A curve with no length, or one that goes inside either of its own two parts (it may start on their borders). */
@@ -328,14 +505,19 @@ const holds = (outer: Rect, inner: Rect) => inner.x >= outer.x && inner.y >= out
  * overlap), the shortest pair of like sides whose curve stays out of both, right first on a tie.
  */
 export function sidesFor(a: Rect, b: Rect): [Side, Side] {
+  return sidesOf(a, b).s;
+}
+
+/** `sidesFor`, and whether the sides are the facing pair, free to move to a cheaper facing side. */
+function sidesOf(a: Rect, b: Rect): { s: [Side, Side]; free: boolean } {
   if (holds(a, b) || holds(b, a)) {
     const [inner, outer] = holds(b, a) ? [a, b] : [b, a];
     const gaps: [Side, number][] = [["b", outer.y + outer.h - inner.y - inner.h], ["r", outer.x + outer.w - inner.x - inner.w], ["t", inner.y - outer.y], ["l", inner.x - outer.x]];
     const s = gaps.reduce((p, q) => (q[1] < p[1] ? q : p))[0];
-    return [s, s];
+    return { s: [s, s], free: false };
   }
   const facing = chooseSides(a, b);
-  if (!intoOwn(plainCurve(a, b, facing), a, b)) return facing;
+  if (!intoOwn(plainCurve(a, b, facing), a, b)) return { s: facing, free: true };
   let best: { s: [Side, Side]; length: number } | null = null;
   for (const x of ["r", "l", "b", "t"] as const) {
     const c = plainCurve(a, b, [x, x]);
@@ -345,24 +527,139 @@ export function sidesFor(a: Rect, b: Rect): [Side, Side] {
     for (let i = 1; i < pts.length; i++) length += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
     if (!best || length < best.length - 1e-9) best = { s: [x, x], length };
   }
-  return best?.s ?? facing;
+  return { s: best?.s ?? facing, free: false };
 }
+
+/** The extra cost of a side for each end of another connection it holds (diagram contract, Sides). */
+export const SIDE_LOAD = 0.25;
+const SIDES: Side[] = ["r", "b", "l", "t"];
+
+/** The sides of `a` whose outward normal points towards the centre of `b` (a positive dot product). */
+export function facingSides(a: Rect, b: Rect): Side[] {
+  const ca = centre(a), cb = centre(b), v = { x: cb.x - ca.x, y: cb.y - ca.y };
+  return SIDES.filter((s) => NORMAL[s][0] * v.x + NORMAL[s][1] * v.y > 1e-9);
+}
+
+/** A side's cost towards `b`: `1 − cos θ` of its normal against the centres' vector, plus `SIDE_LOAD` per end it holds. */
+export function sideCost(a: Rect, b: Rect, s: Side, load = 0): number {
+  const ca = centre(a), cb = centre(b), v = { x: cb.x - ca.x, y: cb.y - ca.y }, len = Math.hypot(v.x, v.y);
+  const cos = len ? (NORMAL[s][0] * v.x + NORMAL[s][1] * v.y) / len : 0;
+  return 1 - cos + SIDE_LOAD * load;
+}
+
+/** A connection whose sides are the facing pair, free to move each end to a cheaper facing side. */
+interface FreeSides { id: string; from: string; to: string; s: [Side, Side] }
+
+/**
+ * Each end of each free connection takes its part's cheapest facing side, in view order, counting the
+ * ends the other connections hold at that moment; one pass; a tie (within 0.001) keeps the facing
+ * pair's side (diagram contract, Sides). Stateless: one view, one answer. `load` holds every end's
+ * side (`<part id>:<side>` → count) and is kept up to date.
+ */
+function cheapestSides(list: FreeSides[], rects: Map<string, Rect>, load: Map<string, number>): void {
+  const count = (k: string) => load.get(k) ?? 0;
+  for (const c of list) {
+    for (const end of [0, 1] as const) {
+      const me = end === 0 ? c.from : c.to, other = end === 0 ? c.to : c.from;
+      const a = rects.get(me)!, b = rects.get(other)!, cur = c.s[end];
+      let best = cur, bestCost = sideCost(a, b, cur, count(`${me}:${cur}`) - 1);
+      for (const s of facingSides(a, b)) {
+        if (s === cur) continue;
+        // A side whose curve would go inside one of the connection's own parts is no option.
+        const pair: [Side, Side] = end === 0 ? [s, c.s[1]] : [c.s[0], s];
+        const [from, to] = [rects.get(c.from)!, rects.get(c.to)!];
+        if (intoOwn(plainCurve(from, to, pair), from, to)) continue;
+        const cost = sideCost(a, b, s, count(`${me}:${s}`));
+        if (cost < bestCost - 0.001) { best = s; bestCost = cost; }
+      }
+      if (best === cur) continue;
+      load.set(`${me}:${cur}`, count(`${me}:${cur}`) - 1);
+      load.set(`${me}:${best}`, count(`${me}:${best}`) + 1);
+      c.s[end] = best;
+    }
+  }
+}
+
+/**
+ * While dragging (diagram contract): a free connection keeps the sides it had at the previous move unless its cheapest
+ * pair costs less than `HOLD` × the kept pair, both counted at this move with the ends the other connections hold, or a
+ * kept side no longer faces the other end (or its curve would go inside one of its own parts). In view order; `load`
+ * is kept up to date.
+ */
+function holdSides(list: FreeSides[], rects: Map<string, Rect>, load: Map<string, number>, held: Map<string, [Side, Side]>): void {
+  for (const c of list) {
+    const h = held.get(c.id);
+    if (!h || (h[0] === c.s[0] && h[1] === c.s[1])) continue;
+    const a = rects.get(c.from)!, b = rects.get(c.to)!;
+    if (!facingSides(a, b).includes(h[0]) || !facingSides(b, a).includes(h[1]) || intoOwn(plainCurve(a, b, h), a, b)) continue;
+    // Its own ends are on its current sides: they do not count against those.
+    const others = (part: string, s: Side, end: 0 | 1) => (load.get(`${part}:${s}`) ?? 0) - (s === c.s[end] ? 1 : 0);
+    const cost = (p: [Side, Side]) => sideCost(a, b, p[0], others(c.from, p[0], 0)) + sideCost(b, a, p[1], others(c.to, p[1], 1));
+    if (cost(c.s) < HOLD * cost(h)) continue;
+    for (const end of [0, 1] as const) {
+      const me = end === 0 ? c.from : c.to;
+      load.set(`${me}:${c.s[end]}`, (load.get(`${me}:${c.s[end]}`) ?? 0) - 1);
+      load.set(`${me}:${h[end]}`, (load.get(`${me}:${h[end]}`) ?? 0) + 1);
+      c.s[end] = h[end];
+    }
+  }
+}
+
+/** Two sides that face each other: a right and a left, or a bottom and a top. */
+const opposite = (s: [Side, Side]) => NORMAL[s[0]][0] === -NORMAL[s[1]][0] && NORMAL[s[0]][1] === -NORMAL[s[1]][1];
 
 /**
  * Curves for every connection whose ends are drawn. Connections on one side of a component are
  * spread up to 16 px apart, ordered by where the other end is, so lines never stack.
  */
 export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: string; postOf?: string | null }, rects: Map<string, Rect>, o: RouteOptions = {}): Map<string, EdgeRoute> {
+  // A hub's connections from its users are hidden: the view is routed as if they were not there, labels kept 4 px off
+  // the hubs' marks; they are then routed after it by the same rules, their labels clear of the view's, so showing
+  // one moves nothing. A hidden connection shares no trunk.
+  if (o.hubs !== false) {
+    const hidden = hiddenEdges(view);
+    const marks = [...usedByBoxes(view, rects).values()];
+    if (hidden.size || marks.length) {
+      const shown = routeEdges({ ...view, edges: view.edges.filter((e) => !hidden.has(e.id)) }, rects, { ...o, hubs: false, avoid: [...(o.avoid ?? []), ...marks] });
+      if (!hidden.size) return shown;
+      const style = styleOf(postOf(view, o)), post = style.post, br = style.BADGE.r + 3;
+      const labels: Rect[] = view.edges.flatMap((e) => {
+        const at = shown.get(e.id)?.labelAt, w = e.label ? labelWidth(e.label, post) : 0;
+        return at && e.label ? [{ x: at.x - w / 2, y: at.y - LABEL.h / 2, w, h: LABEL.h }] : [];
+      });
+      // The drawn step badges too, so a hidden line's label, once shown, sits on none (review 6adef2e-4).
+      for (const e of view.edges) {
+        const b = e.step !== null ? shown.get(e.id)?.badgeAt : undefined;
+        if (b) labels.push({ x: b.x - br, y: b.y - br, w: 2 * br, h: 2 * br });
+      }
+      const all = routeEdges(view, rects, { ...o, hubs: false, trunks: false, labelsFor: hidden, avoid: [...(o.avoid ?? []), ...marks, ...labels] });
+      const out = new Map<string, EdgeRoute>();
+      for (const e of view.edges) {
+        const r = hidden.has(e.id) ? all.get(e.id) : shown.get(e.id);
+        if (r) out.set(e.id, hidden.has(e.id) ? { ...r, hidden: true } : r);
+      }
+      return out;
+    }
+  }
   const S = styleOf(postOf(view, o));
   type End = { e: DiagramEdge; end: 0 | 1; id: string; side: Side; other: Point };
   const ends: End[] = [];
   const sides = new Map<string, [Side, Side]>();
+  // Every connection first takes its facing pair; then each free one moves an end to a cheaper facing side.
+  const load = new Map<string, number>(), free: FreeSides[] = [];
   for (const e of view.edges) {
     const a = rects.get(e.from), b = rects.get(e.to);
     if (!a || !b || e.from === e.to) continue;
-    const s = sidesFor(a, b);
+    const { s, free: movable } = sidesOf(a, b);
     sides.set(e.id, s);
-    ends.push({ e, end: 0, id: e.from, side: s[0], other: centre(b) }, { e, end: 1, id: e.to, side: s[1], other: centre(a) });
+    for (const k of [`${e.from}:${s[0]}`, `${e.to}:${s[1]}`]) load.set(k, (load.get(k) ?? 0) + 1);
+    if (movable) free.push({ id: e.id, from: e.from, to: e.to, s });
+  }
+  cheapestSides(free, rects, load);
+  if (o.held) holdSides(free, rects, load, o.held);
+  for (const e of view.edges) {
+    const s = sides.get(e.id);
+    if (s) ends.push({ e, end: 0, id: e.from, side: s[0], other: centre(rects.get(e.to)!) }, { e, end: 1, id: e.to, side: s[1], other: centre(rects.get(e.from)!) });
   }
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
   // The x a top port must keep right of: a group's name sits just above its first row.
@@ -385,7 +682,7 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
   for (const r of rects.values()) { left = Math.min(left, r.x); right = Math.max(right, r.x + r.w); }
   const curveOf = (e: DiagramEdge, s: [Side, Side], c?: number): Point[] => {
     const a = rects.get(e.from)!, b = rects.get(e.to)!, p0 = sideMid(a, s[0]), p1 = sideMid(b, s[1]);
-    c ??= clamp(Math.hypot(p1.x - p0.x, p1.y - p0.y) * 0.42, MIN_HANDLE, 160);
+    c ??= handle(p0, p1, s);
     const curve = { p0, p1, c1: { x: p0.x + NORMAL[s[0]][0] * c, y: p0.y + NORMAL[s[0]][1] * c }, c2: { x: p1.x + NORMAL[s[1]][0] * c, y: p1.y + NORMAL[s[1]][1] * c } } as EdgeRoute;
     return Array.from({ length: 65 }, (_, i) => bezierAt(curve, i / 64));
   };
@@ -412,15 +709,48 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
     bulge.set(e.id, best.c);
     for (const p of ends) if (p.e === e) p.side = best.side;
   }
+  // Each part's outline (diagram contract, Shapes): ends attach to it, not to the box.
+  const outlines = new Map<string, { shape: PartShape; loops: Pt[][] }>();
+  for (const n of view.nodes) {
+    const r = rects.get(n.id), shape = shapeOf(n);
+    if (r && shape !== "group") outlines.set(n.id, { shape, loops: shapeGeometry(shape, n.form === "compact", S.post, r).loops });
+  }
   const groups = new Map<string, End[]>();
   for (const p of ends) { const k = `${p.id}:${p.side}`; (groups.get(k) ?? groups.set(k, []).get(k)!).push(p); }
+  // Trunks (diagram contract, Trunks): `to` ends on one side of one part, of one style, coming from one direction —
+  // a run of angles at most 30° apart, taken greedily from the smallest — are one end of the side.
+  const order = new Map(view.edges.map((e, i) => [e.id, i]));
+  const trunkEnds = new Map<End, End[]>();
+  for (const [k, list] of o.trunks === false ? [] : groups) {
+    const r = rects.get(list[0].id)!, side = list[0].side, mid = sideMid(r, side), [nx, ny] = NORMAL[side];
+    const angle = (p: End) => { const vx = p.other.x - mid.x, vy = p.other.y - mid.y; return Math.atan2(nx * vy - ny * vx, nx * vx + ny * vy); };
+    const byStyle = new Map<string, End[]>();
+    for (const p of list) if (p.end === 1) (byStyle.get(p.e.style) ?? byStyle.set(p.e.style, []).get(p.e.style)!).push(p);
+    for (const same of byStyle.values()) {
+      const sorted = same.map((p) => ({ p, a: angle(p) })).sort((x, y) => x.a - y.a || x.p.e.id.localeCompare(y.p.e.id));
+      for (let i = 0; i < sorted.length;) {
+        let j = i;
+        while (j + 1 < sorted.length && sorted[j + 1].a - sorted[i].a <= Math.PI / 6 + 1e-9) j++;
+        if (j > i) {
+          const members = sorted.slice(i, j + 1).map((x) => x.p).sort((x, y) => order.get(x.e.id)! - order.get(y.e.id)!);
+          // One end of its side, ordered among the others by the mean position of its members' other ends.
+          const rep: End = { ...members[0], other: { x: members.reduce((s, m) => s + m.other.x, 0) / members.length, y: members.reduce((s, m) => s + m.other.y, 0) / members.length } };
+          trunkEnds.set(rep, members);
+          groups.set(k, [...groups.get(k)!.filter((p) => !members.includes(p)), rep]);
+        }
+        i = j + 1;
+      }
+    }
+  }
   const pts = new Map<string, Point>();
   for (const list of groups.values()) {
     const vert = list[0].side === "l" || list[0].side === "r";
     list.sort((p, q) => (vert ? p.other.y - q.other.y : p.other.x - q.other.x) || p.e.id.localeCompare(q.e.id) || p.end - q.end);
     const r = rects.get(list[0].id)!;
     const span = (vert ? r.h : r.w) * 0.6;
-    let step = list.length > 1 ? Math.min(16, span / (list.length - 1)) : 0;
+    // On the left and right sides of an API's port every end attaches at the point: those ends are not spread.
+    const atPoint = vert && outlines.get(list[0].id)?.shape === "port";
+    let step = list.length > 1 && !atPoint ? Math.min(16, span / (list.length - 1)) : 0;
     let first = (vert ? r.h : r.w) / 2 - (list.length - 1) / 2 * step;
     // Ends entering from above come in right of the group's name, closer together if the part leaves room.
     const clear = list[0].side === "t" ? clearOfName(list[0].id) - r.x : -Infinity;
@@ -434,8 +764,27 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
         r: { x: r.x + r.w, y: r.y + r.h / 2 + off }, l: { x: r.x, y: r.y + r.h / 2 + off },
         b: { x: r.x + r.w / 2 + off, y: r.y + r.h }, t: { x: r.x + r.w / 2 + off, y: r.y },
       };
-      pts.set(`${p.e.id}:${p.end}`, { x: Math.round(P[p.side].x), y: Math.round(P[p.side].y) });
+      const at = { x: Math.round(P[p.side].x), y: Math.round(P[p.side].y) };
+      // Where the outline lies inside the box, the end moves straight in along its side's normal to meet it.
+      const ol = outlines.get(p.id), depth = ol && !atPoint ? outlineDepth(ol.loops, r, p.side, at) : 0;
+      const point = depth > 0.05 ? { x: r1(at.x - NORMAL[p.side][0] * depth), y: r1(at.y - NORMAL[p.side][1] * depth) } : at;
+      for (const m of trunkEnds.get(p) ?? [p]) pts.set(`${m.e.id}:${m.end}`, point);
     });
+  }
+  // Each trunk's split point: 32 px (post 24) out from the port along the side's normal, or a third of the shortest
+  // distance from the port to a member's start when that is less. The trunk is one straight cubic from there in.
+  const trunkOf = new Map<string, Trunk>();
+  for (const members of trunkEnds.values()) {
+    const port = pts.get(`${members[0].e.id}:1`)!, side = members[0].side, [nx, ny] = NORMAL[side];
+    const near = Math.min(...members.map((m) => { const a = pts.get(`${m.e.id}:0`)!; return Math.hypot(a.x - port.x, a.y - port.y); }));
+    const out = Math.min(S.post ? 24 : 32, near / 3);
+    const split = { x: r1(port.x + nx * out), y: r1(port.y + ny * out) };
+    const third = (t: number) => `${r1(split.x + (port.x - split.x) * t)},${r1(split.y + (port.y - split.y) * t)}`;
+    const trunk: Trunk = {
+      key: `${members[0].id}:${side}`, part: members[0].id, side, edges: members.map((m) => m.e.id), split, port,
+      d: `M${r1(split.x)},${r1(split.y)} C${third(1 / 3)} ${third(2 / 3)} ${r1(port.x)},${r1(port.y)}`,
+    };
+    for (const m of members) trunkOf.set(m.e.id, trunk);
   }
 
   const boxes: Rect[] = [];
@@ -453,11 +802,12 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
   const routes = new Map<string, EdgeRoute>();
   for (const e of view.edges) {
     const s = sides.get(e.id);
-    const a = pts.get(`${e.id}:0`), b = pts.get(`${e.id}:1`);
+    const trunk = trunkOf.get(e.id);
+    // A member of a trunk runs from its start to the split point, its handle there along the side's normal.
+    const a = pts.get(`${e.id}:0`), b = trunk ? trunk.split : pts.get(`${e.id}:1`);
     if (!s || !a || !b) continue;
     const n0 = NORMAL[s[0]], n1 = NORMAL[s[1]];
-    const dist = Math.hypot(b.x - a.x, b.y - a.y);
-    const c = bulge.get(e.id) ?? clamp(dist * 0.42, MIN_HANDLE, 160);
+    const c = bulge.get(e.id) ?? handle(a, b, s);
     // Both ends sit on the borders: the arrowhead's tip touches the part it points at.
     const p1 = { ...b }, p0 = { ...a };
     const c1 = { x: a.x + n0[0] * c, y: a.y + n0[1] * c };
@@ -465,20 +815,27 @@ export function routeEdges(view: Pick<DiagramView, "nodes" | "edges"> & { id?: s
     const route: EdgeRoute = {
       id: e.id, p0, p1, c1, c2, side0: s[0], side1: s[1],
       d: `M${r1(p0.x)},${r1(p0.y)} C${r1(c1.x)},${r1(c1.y)} ${r1(c2.x)},${r1(c2.y)} ${r1(p1.x)},${r1(p1.y)}`,
-      labelAt: null, badgeAt: { x: 0, y: 0 },
+      labelAt: null, badgeAt: { x: 0, y: 0 }, ...(trunk ? { trunk } : {}),
     };
     const under = behind(route, parts.filter((r) => r.id !== e.from && r.id !== e.to));
     if (under.length) route.blocked = under;
-    const along = alongRoute(route);
-    if (e.label && o.labels !== false) {
-      // The label takes the free spot nearest the middle of the curve, 4 px clear of parts, names,
-      // texts and other labels, its box within 10 px of its curve; with none, it is left out.
-      const half = labelWidth(e.label, S.post) / 2, curve = Array.from({ length: 129 }, (_, i) => along(i / 128));
-      route.labelAt = nearestFree(along(0.5), curve, half, LABEL.h / 2, [...blocked, ...taken], 4, 10);
-      // Its drawn box: later labels keep their 4 px from it, badges only stay off it.
-      if (route.labelAt) taken.push({ x: route.labelAt.x - half, y: route.labelAt.y - LABEL.h / 2, w: half * 2, h: LABEL.h });
-    }
     routes.set(e.id, route);
+  }
+  // Labels once every route is known (diagram contract, Labels): the free spot nearest the middle of the curve,
+  // 4 px clear of parts, names, texts and other labels, its box within 10 px of its curve; among those, the nearest
+  // whose box, grown by 2 px, touches no other drawn connection's line or trunk, when there is one; with none free,
+  // it is left out.
+  const drawn = new Map([...routes].map(([id, r]) => { const pts = drawnLine(r); return [id, { pts, box: pointsBox(pts) }] as const; }));
+  for (const e of view.edges) {
+    const route = routes.get(e.id);
+    if (!route || !e.label || o.labels === false || (o.labelsFor && !o.labelsFor.has(e.id))) continue;
+    const along = alongRoute(route);
+    const half = labelWidth(e.label, S.post) / 2, hh = LABEL.h / 2, curve = Array.from({ length: 129 }, (_, i) => along(i / 128));
+    const others = [...drawn].filter(([id]) => id !== e.id).map(([, line]) => line);
+    const clearOfLines = (p: Point) => { const box = { x: p.x - half - 2, y: p.y - hh - 2, w: half * 2 + 4, h: hh * 2 + 4 }; return !others.some((l) => polylineMeetsRect(l.pts, box, l.box)); };
+    route.labelAt = nearestFree(along(0.5), curve, half, hh, [...blocked, ...taken], 4, 10, clearOfLines);
+    // Its drawn box: later labels keep their 4 px from it, badges only stay off it.
+    if (route.labelAt) taken.push({ x: route.labelAt.x - half, y: route.labelAt.y - hh, w: half * 2, h: LABEL.h });
   }
   // Place badges after all labels, including labels of later connections: nearest the curve's middle.
   for (const route of routes.values()) {
@@ -512,16 +869,42 @@ export function viewBounds(view: Pick<DiagramView, "nodes" | "edges" | "texts"> 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   const add = (r: Rect) => { minX = Math.min(minX, r.x); minY = Math.min(minY, r.y); maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h); };
   for (const r of rects.values()) add(r);
+  // The hubs' `used by` marks are in the drawing's bounds.
+  for (const r of usedByBoxes(view, rects).values()) add(r);
   if (texts) for (const t of view.texts) add({ x: t.x, y: t.y, ...measureText(t) });
   for (const e of view.edges) {
     const r = routes.get(e.id);
-    if (!r) continue;
+    if (!r || r.hidden) continue;
     add(curveBounds(r));
     if (r.labelAt && e.label) { const w = labelWidth(e.label, S.post); add({ x: r.labelAt.x - w / 2, y: r.labelAt.y - LABEL.h / 2, w, h: LABEL.h }); }
     if (steps && e.step !== null) { const radius = S.BADGE.r + 3; add({ x: r.badgeAt.x - radius, y: r.badgeAt.y - radius, w: 2 * radius, h: 2 * radius }); }
   }
   if (minX === Infinity) return { x: 0, y: 0, w: 0, h: 0 };
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+/** Proper crossing of two segments: touching, sharing an end or running along each other is not one. */
+const segmentsCross = (a: Point, b: Point, c: Point, d: Point) => {
+  const turn = (p: Point, q: Point, r: Point) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  return turn(a, b, c) * turn(a, b, d) < 0 && turn(c, d, a) * turn(c, d, b) < 0;
+};
+
+/**
+ * Pairs of drawn connections without a shared end whose curves cross, measured on the same samples
+ * the layout report reads (api contract, Layout report): the report and the layout count alike.
+ */
+export function countCrossings(edges: readonly Pick<DiagramEdge, "id" | "from" | "to">[], routes: Map<string, EdgeRoute>): number {
+  // Only what is drawn counts: never a connection a hub hides.
+  const drawn = edges.filter((e) => routes.has(e.id) && !routes.get(e.id)!.hidden);
+  const lines = new Map(drawn.map((e) => [e.id, drawnLine(routes.get(e.id)!)]));
+  let crossings = 0;
+  for (let i = 0; i < drawn.length; i++) for (const b of drawn.slice(i + 1)) {
+    const a = drawn[i];
+    if ([a.from, a.to].some((id) => id === b.from || id === b.to)) continue;
+    const pa = lines.get(a.id)!, pb = lines.get(b.id)!;
+    if (pa.slice(1).some((p, s) => pb.slice(1).some((q, t) => segmentsCross(pa[s], p, pb[t], q)))) crossings++;
+  }
+  return crossings;
 }
 
 export const overlaps = (a: Rect, b: Rect, pad = 0) =>

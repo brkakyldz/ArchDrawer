@@ -1,4 +1,4 @@
-import { bezierAt, measureNode, postOf, routeSamples, type EdgeRoute, type Point, type Rect } from "./geometry";
+import { bezierAt, countCrossings, edgesOverParts as overParts, measureNode, postOf, type EdgeRoute, type Point, type Rect } from "./geometry";
 import { isPostView, type DiagramDocument } from "./model";
 import { renderShare, type ShareImage, type ShareOptions } from "./export/share";
 
@@ -17,7 +17,8 @@ export interface LayoutReport {
   smallestText: { inPlace: number; opened: number; level: "good" | "ok" | "warn"; names: { inPlace: number; opened: number } };
   counts: { parts: number; zones: number; connections: number };
   targets: { parts: number | null; zones: { min: number; max: number } | null; connections: number | null };
-  /** The channel the run measured (set by the run). */
+  /** The choice and the channel the run measured (set by the run). */
+  choice?: string;
   channel?: string;
   longestConnection: number;
 }
@@ -26,55 +27,44 @@ export interface LayoutReport {
 export const STORY_LIMITS = { label: 28, sub: 28, chip: 22, lede: 140, titleWords: 9, sideLabelWords: 2 } as const;
 const POST_TARGETS = { parts: 12, zones: { min: 0, max: 4 }, connections: 14 };
 const DETAIL_TARGETS = { parts: null, zones: null, connections: null };
+/** The map, the first overview view of a `system` choice: about 5–9 top-level parts (api contract, Layout report; ADR 0015). */
+const MAP_TARGETS = { parts: 9, zones: null, connections: null };
 
-const inside = (p: Point, r: Rect) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
-/** Proper crossing of two segments: touching, sharing an end or running along each other is not one. */
-const crosses = (a: Point, b: Point, c: Point, d: Point) => {
-  const turn = (p: Point, q: Point, r: Point) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
-  return turn(a, b, c) * turn(a, b, d) < 0 && turn(c, d, a) * turn(c, d, b) < 0;
-};
+/** Whether a view of a choice's @3 document is its map: the first overview view of the `system` choice. */
+export const isMapView = (stored: { ids?: { system?: boolean }; channels: { overview: { views: { id: string }[] } } }, viewId: string) =>
+  stored.ids?.system === true && stored.channels.overview.views[0]?.id === viewId;
+
 const length = (pts: Point[]) => pts.slice(1).reduce((s, p, i) => s + Math.hypot(p.x - pts[i].x, p.y - pts[i].y), 0);
 const words = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
 const finite = (v: number) => (Number.isFinite(v) ? v : 0);
 
-export function layoutReport(doc: Pick<DiagramDocument, "views">, viewId: string, o: ShareOptions): LayoutReport {
-  return reportOf(renderShare(doc, viewId, o), doc, viewId, o);
+export function layoutReport(doc: Pick<DiagramDocument, "views">, viewId: string, o: ShareOptions, at: { map?: boolean } = {}): LayoutReport {
+  return reportOf(renderShare(doc, viewId, o), doc, viewId, o, at);
 }
 
 /** The report of an image already rendered with these options (the share dialog has one). */
-export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, viewId: string, o: ShareOptions): LayoutReport {
+export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, viewId: string, o: ShareOptions, at: { map?: boolean } = {}): LayoutReport {
   const { view, rects, routes } = img.drawn;
   const whole = doc.views.find((v) => v.id === viewId) ?? doc.views[0];
   const post = isPostView(whole);
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
-  const edges = view.edges.filter((e) => routes.has(e.id));
-  const lines = new Map(edges.map((e) => [e.id, routeSamples(routes.get(e.id)!)]));
+  // What is drawn: never a connection a hub hides (diagram contract, Parts many parts use).
+  const edges = view.edges.filter((e) => routes.has(e.id) && !routes.get(e.id)!.hidden);
 
-  let crossings = 0;
-  for (let i = 0; i < edges.length; i++) for (const b of edges.slice(i + 1)) {
-    const a = edges[i];
-    if ([a.from, a.to].some((id) => id === b.from || id === b.to)) continue;
-    const pa = lines.get(a.id)!, pb = lines.get(b.id)!;
-    if (pa.slice(1).some((p, s) => pb.slice(1).some((q, t) => crosses(pa[s], p, pb[t], q)))) crossings++;
-  }
+  const crossings = countCrossings(edges, routes);
 
-  // A group's boundary alone never counts; a route over one of its unrelated members does.
-  const edgesOverParts: LayoutReport["edgesOverParts"] = [];
-  for (const e of edges) for (const n of view.nodes) {
-    if (n.form === "group" || n.id === e.from || n.id === e.to) continue;
-    const r = rects.get(n.id);
-    if (r && lines.get(e.id)!.some((p) => inside(p, r))) edgesOverParts.push({ edge: e.id, node: n.id });
-  }
+  // A group's boundary alone never counts; a route over one of its unrelated members does. The traces draw the same list.
+  const edgesOverParts: LayoutReport["edgesOverParts"] = overParts({ nodes: view.nodes, edges }, rects, routes);
 
   const cutText: LayoutReport["cutText"] = [];
-  const style = postOf(view);
+  const style = postOf(view), subLines = view.subLines !== false;
   for (const n of view.nodes) {
     if (n.form === "group") continue;
-    const m = measureNode(n, { items: o.items, post: style });
+    const m = measureNode(n, { subLines, post: style });
     const last = m.lines[m.lines.length - 1] ?? "";
     if (last.endsWith("…") && !n.label.trimEnd().endsWith("…")) cutText.push({ id: n.id, field: "label", text: n.label });
-    if (n.sub && m.sub !== n.sub) cutText.push({ id: n.id, field: "sub", text: n.sub });
-    m.items.forEach((t, i) => { if (t !== n.items[i]) cutText.push({ id: n.id, field: "items", text: n.items[i] }); });
+    // A sub-line the image does not draw is not cut text (review R177-1).
+    if (subLines && n.sub && m.sub !== n.sub) cutText.push({ id: n.id, field: "sub", text: n.sub });
   }
   if (o.labels) for (const e of edges) if (e.label && !routes.get(e.id)!.labelAt) cutText.push({ id: e.id, field: "label", text: e.label });
 
@@ -87,8 +77,8 @@ export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, v
     for (const n of view.nodes) {
       over(n.id, "label", n.label, STORY_LIMITS.label);
       if (n.form === "group") continue;
-      over(n.id, "sub", n.sub, STORY_LIMITS.sub);
-      if (o.items) for (const t of n.items) over(n.id, "items", t, STORY_LIMITS.chip);
+      // A sub-line the image does not draw is over no target (review 510f7bc-3).
+      if (subLines) over(n.id, "sub", n.sub, STORY_LIMITS.sub);
     }
     for (const e of edges) {
       if (!e.label) continue;
@@ -118,8 +108,8 @@ export function reportOf(img: ShareImage, doc: Pick<DiagramDocument, "views">, v
       zones: view.nodes.filter((n) => n.form === "group" && (!n.parent || !byId.has(n.parent))).length,
       connections: edges.length,
     },
-    // Only LinkedIn has count targets (ADR 0007).
-    targets: post ? POST_TARGETS : DETAIL_TARGETS,
+    // Only LinkedIn has count targets (ADR 0007), and the map its parts target (ADR 0015).
+    targets: post ? POST_TARGETS : at.map ? MAP_TARGETS : DETAIL_TARGETS,
     longestConnection: diagonal > 0 && edges.length ? finite(longest / diagonal) : 0,
   };
 }

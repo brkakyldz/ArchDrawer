@@ -42,24 +42,33 @@ export interface OwnTexts { label?: string | null; kind?: Kind | null; sub?: str
 export interface Part extends OwnTexts {
   id: string; facts: string[]; form: Form; icon: IconName | null; parent: string | null; detail: string | null;
   place: Place | null; lane?: Lane | null; x: number; y: number;
-  /** Mechanisms within its facts, drawn as rows (rule 22); absent = none. */
+  /** Mechanisms within its facts, listed in its callout and never drawn (rule 22); absent = none. */
   held?: string[];
-  /** Limit facts on its facts or held mechanisms, drawn as rows; absent = none. */
+  /** Limit facts on its facts or held mechanisms, listed in its callout and never drawn; absent = none. */
   limits?: string[];
 }
 export interface Connection {
   id: string; from: string; to: string; relations: string[]; step: number | null;
   label?: string | null; style?: EdgeStyle | null; both?: boolean | null;
 }
-export interface View3 { id: string; title: string; caption: Caption; nodes: Part[]; edges: Connection[]; texts: DiagramText[] }
+export interface View3 { id: string; title: string; caption: Caption; subLines?: boolean; nodes: Part[]; edges: Connection[]; texts: DiagramText[] }
 /** A presentation step: the parts it highlights, its on-screen text and the speaker's note. */
 export type Step = DiagramStep;
 /** `steps` only on the presentation channel; absent = none. */
 export interface Channel { views: View3[]; showSteps: boolean; outdated: string[]; steps?: Step[] }
 export interface Request3 { id: string; text: string; channel: ChannelId; view: string; at: string }
 
+/**
+ * Where a choice sits in its file, for the ids of views made in it (diagram contract, The view): no prefix in the
+ * file's first choice, else the choice's id; `taken` holds every other choice's view ids; `system` when it is the
+ * `system` choice, whose first overview view is the map. Never stored.
+ */
+export interface ChoiceIds { prefix: string | null; taken: string[]; system?: boolean }
+
 export interface Document3 {
   schema: typeof SCHEMA_V3;
+  /** Set when this document is one choice of an `@4` file (`choiceDoc`). */
+  ids?: ChoiceIds;
   id: string; title: string; theme: Theme; source: DiagramSource | null; engine: EngineRef | null;
   createdAt: string; updatedAt: string;
   facts: Facts;
@@ -70,7 +79,7 @@ export interface Document3 {
 /** A file as a session writes it: positions, connection ids, defaults may be missing. */
 export type PartInput = Omit<Part, "x" | "y"> & { x?: number; y?: number };
 export type ConnectionInput = Omit<Connection, "id" | "relations"> & { id?: string; relations?: string[] };
-export interface ViewInput3 { id: string; title: string; caption: Caption; nodes: PartInput[]; edges: ConnectionInput[]; texts?: TextInput[] }
+export interface ViewInput3 { id: string; title: string; caption: Caption; subLines?: boolean; nodes: PartInput[]; edges: ConnectionInput[]; texts?: TextInput[] }
 export interface ChannelInput { views?: ViewInput3[]; showSteps?: boolean; outdated?: string[]; steps?: Step[] }
 export interface File3 {
   schema: typeof SCHEMA_V3; id?: string; title: string; theme?: Theme;
@@ -280,6 +289,7 @@ export function validateFile3(raw: unknown, check: FileCheck = {}): ValidationRe
       str(v.title, `${P}.title`, 1, LIMITS.viewTitle);
       if (!isObj(v.caption)) err(`${P}.caption`, 'must be {"title": string, "lede": string}');
       else { str(v.caption.title, `${P}.caption.title`, 1, LIMITS.captionTitle); str(v.caption.lede, `${P}.caption.lede`, 0, LIMITS.lede); }
+      if (v.subLines !== undefined && typeof v.subLines !== "boolean") err(`${P}.subLines`, "must be true or false when present");
 
       const nodes = Array.isArray(v.nodes) ? v.nodes : (err(`${P}.nodes`, "must be an array"), []);
       if (nodes.length > LIMITS.nodesPerView) err(`${P}.nodes`, `has ${nodes.length} parts; at most ${LIMITS.nodesPerView}`);

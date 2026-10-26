@@ -1,27 +1,29 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { drawing, component, workspace, openDrawing, readDrawing, previewSVG, svgInfo, svgBoxes, overlaps, download, settledReport } from './helpers';
+import { drawing, component, workspace, openDrawing, previewSVG, svgInfo, svgBoxes, overlaps, download, settledReport } from './helpers';
 import { checkReadability } from './helpers';
-import { routeGeometry, compareRoutes, visibleTextContent } from './helpers-svg-parity';
+import { visibleTextContent } from './helpers-svg-parity';
+import { readDrawn, drawnRoutes, expectSameRoutes, expectSameBoxes, inspectImage, SHARE_TOGGLES } from './helpers-drawing';
 
-// Reach a toggle state with the show-* checkboxes under "Advanced options" (the presets are gone).
-const ALL_TOGGLES = ['title', 'lede', 'items', 'steps', 'labels', 'legend', 'texts'];
-const SIMPLE_TOGGLES = ['title', 'lede', 'steps', 'texts'], DETAILED_TOGGLES = ['title', 'items', 'steps', 'labels', 'legend', 'texts'];
+// Reach a toggle state with the show-* checkboxes under "Advanced options" (the presets are gone). There is no show-items;
+// show-sub (Sub-lines) starts as the view's switch, which is on in this drawing.
+const ALL_TOGGLES = SHARE_TOGGLES;
+const SIMPLE_TOGGLES = ['title', 'lede', 'sub', 'steps', 'texts'], DETAILED_TOGGLES = ['title', 'sub', 'steps', 'labels', 'legend', 'texts'];
 async function openAdvanced(page: Page) {
   if (await page.getByTestId('share-advanced-toggle').getAttribute('aria-expanded') !== 'true') await page.getByTestId('share-advanced-toggle').click();
   await expect(page.getByTestId('share-advanced')).toBeVisible();
 }
 async function setToggles(page: Page, on: string[]) {
   await openAdvanced(page);
-  for (const id of ALL_TOGGLES) { const box = page.getByTestId(`show-${id}`); if (on.includes(id)) await box.check(); else await box.uncheck(); }
+  for (const id of ALL_TOGGLES) { const toggle = page.getByTestId(`show-${id}`); if (on.includes(id)) await toggle.check(); else await toggle.uncheck(); }
 }
 async function expectToggles(page: Page, on: string[]) {
   await openAdvanced(page);
   for (const id of ALL_TOGGLES) { if (on.includes(id)) await expect(page.getByTestId(`show-${id}`)).toBeChecked(); else await expect(page.getByTestId(`show-${id}`)).not.toBeChecked(); }
 }
 
-test('H63 [SHARE-1, LAYOUT-1, LAYOUT-3] share a full ordinary view for three destinations with a wrapped caption and explicit clipping warning', async ({ page, request }) => {
+test('H63 [SHARE-1 LAYOUT-1 LAYOUT-3 LOOK-3 LOOK-4 #177 #170] share a full ordinary view for three destinations with a wrapped caption, sub-lines as the dialog says and explicit clipping warning', async ({ page, request }) => {
   const doc = drawing('Partner handoff'), source = doc.views[0];
   source.caption.title = 'How the request reaches the partner team through the intake, the stored record and the final delivery service';
   source.caption.lede = 'Each request is checked before it is stored, then the partner receives the result with enough context to continue the work.';
@@ -29,21 +31,25 @@ test('H63 [SHARE-1, LAYOUT-1, LAYOUT-3] share a full ordinary view for three des
   source.nodes.push(component('crowded', { label: longLabel, sub: longSub, form: 'compact', place: { row: -1, col: 1 } }));
   source.edges.push({ id: 'handoff', from: 'api', to: 'crowded', label: 'Send context', style: 'async', both: false, step: null });
   const { dir, file } = await workspace('h63', doc); await openDrawing(page, request, file);
-  const baseline = await readDrawing(file), bytes = await readFile(file, 'utf8');
+  const baseline = await readDrawn(file), bytes = await readFile(file, 'utf8');
   await page.getByTestId('share-button').click(); await expect(page.getByTestId('share-dialog')).toHaveAttribute('role', 'dialog');
   const choices = [['readme', 1600, 900, 880], ['slide', 1920, 1080, 1280], ['square', 1080, 1080, 552]] as const;
   for (const [format, width, height, seen] of choices) {
     await page.getByTestId(`format-${format}`).click();
     await expectToggles(page, format === 'square' ? SIMPLE_TOGGLES : DETAILED_TOGGLES); // the starting toggles of this format
+    await expect(page.getByTestId('show-items')).toHaveCount(0);
     await setToggles(page, SIMPLE_TOGGLES);
     await expect(page.getByTestId('share-preview')).toHaveAttribute('data-view', 'overview');
     await expect(page.getByTestId('share-size')).toHaveText(`${width} × ${height}`);
     const preview = await previewSVG(page), info = await svgInfo(page, preview);
     expect(info).toMatchObject({ width, height, format, forbidden: false, error: false });
-    expect(info.nodes.map(n => n.id).sort()).toEqual(baseline.views[0].nodes.map(n => n.id).sort());
-    expect(info.edges.map(e => e.id).sort()).toEqual(baseline.views[0].edges.map(e => e.id).sort());
+    expect(info.nodes.map(n => n.id).sort()).toEqual(baseline.nodes.map(n => n.id).sort());
+    expect(info.edges.map(e => e.id).sort()).toEqual(baseline.edges.map(e => e.id).sort());
+    // Neutral lines, except the numbered connections (diagram contract, Colour).
+    const tones = new Map((await inspectImage(page, preview)).edges.map(e => [e.id, e.tone] as const));
+    for (const edge of baseline.edges) expect(tones.get(edge.id!), `${format}: ${edge.id}`).toBe(edge.step === null ? 'neutral' : 'kind');
     const compact = (text: string) => text.replace(/\s/g, '');
-    const captions = await svgBoxes(page, preview, 'text:not(g[data-node-id] text):not(g[data-edge-id] text)');
+    const captions = await svgBoxes(page, preview, 'text:not(g[data-node-id] text):not(g[data-edge-id] text):not(g[data-group-head] text)');
     expect(captions.length).toBeGreaterThan(0);
     const prose = compact(captions.sort((a, b) => a.y - b.y || a.x - b.x).map(t => t.text).join(''));
     expect(prose).toContain(compact(source.caption.title)); expect(prose).toContain(compact(source.caption.lede));
@@ -82,14 +88,14 @@ test('H63 [SHARE-1, LAYOUT-1, LAYOUT-3] share a full ordinary view for three des
       expect(exportText.length).toBeGreaterThan(0);
       // Compare complete per-component/caption content at each font, independent of text/tspan partition and child order.
       expect(exportText).toEqual(previewText);
-      const exportedCaptions = await svgBoxes(page, downloaded, 'text:not(g[data-node-id] text):not(g[data-edge-id] text)');
+      const exportedCaptions = await svgBoxes(page, downloaded, 'text:not(g[data-node-id] text):not(g[data-edge-id] text):not(g[data-group-head] text)');
       expect(exportedCaptions.length).toBeGreaterThan(0);
-      const prose = compact(exportedCaptions.sort((a, b) => a.y - b.y || a.x - b.x).map(t => t.text).join(''));
-      expect(prose).toContain(compact(source.caption.title)); expect(prose).toContain(compact(source.caption.lede));
-      expect(baseline.views[0].edges.length).toBeGreaterThan(0);
-      for (const edge of baseline.views[0].edges) compareRoutes(
-        await routeGeometry(page.getByTestId('share-preview'), edge.id, edge.from, edge.to),
-        await routeGeometry(holder.locator('svg'), edge.id, edge.from, edge.to), false, 0.3);
+      const exportedProse = compact(exportedCaptions.sort((a, b) => a.y - b.y || a.x - b.x).map(t => t.text).join(''));
+      expect(exportedProse).toContain(compact(source.caption.title)); expect(exportedProse).toContain(compact(source.caption.lede));
+      expect(baseline.edges.length).toBeGreaterThan(0);
+      // The same cubics in the preview and the download (read as cubics: a shaped part may end a line on its outline).
+      const shown = await drawnRoutes(page.getByTestId('share-preview'), 'web'), saved = await drawnRoutes(holder.locator('svg'), 'web');
+      expectSameBoxes(shown, saved, format); expectSameRoutes(shown, saved, format);
     } finally { await holder.close(); }
   }
   await expectToggles(page, SIMPLE_TOGGLES);
@@ -103,7 +109,8 @@ test('H63 [SHARE-1, LAYOUT-1, LAYOUT-3] share a full ordinary view for three des
     expect(await page.getByTestId('share-dialog').evaluate(el => el.contains(document.activeElement))).toBe(true);
   }
   await page.getByTestId('share-close').click(); await expect(page.getByTestId('share-button')).toBeFocused();
-  expect(await readFile(file, 'utf8')).toBe(bytes); expect((await readDrawing(file)).views).toEqual(baseline.views);
+  // Must not happen: the dialog's toggles (sub-lines included) writing the drawing.
+  expect(await readFile(file, 'utf8')).toBe(bytes); expect(await readDrawn(file)).toEqual(baseline);
   // A cleared drawing with its caption hidden has no visible text; the meter must never call it good.
   const empty = drawing('Cleared draft'); empty.views[0].nodes = []; empty.views[0].edges = [];
   const blank = await workspace('h63-empty-image', empty); await openDrawing(page, request, blank.file);

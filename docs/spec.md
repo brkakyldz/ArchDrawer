@@ -300,6 +300,66 @@ api contract, *Engine slots*, *The draw run*, *Activity*).
   with Enter; the view moves only when a match is off screen.
 - **NAV-4** (To build) A cleaner header with the new Archdrawer logo.
 
+### Home screen (HOME)
+
+The screen at `/` (ui contract, *Home*; DESIGN.md, *Home screen*). It uses
+the sources of SRC and the jobs of JOB.
+
+- **HOME-1** (To build) Three columns: a navigation column (the drawings,
+  `New drawing`, *Recent* and *Found on this computer*), a work column (the
+  `Draw a project` panel, then the drawings) and a side column (Activity,
+  then the newest drawing or the scanned repository's card, then the engine
+  and model). Narrower windows move the side column under the work column,
+  then put the navigation in one row, then show one column.
+- **HOME-2** (To build) The `Draw a project` panel goes through four steps
+  shown as a stepper, Folder, Focus, Destination and Draw. The repository is
+  chosen on *This computer* by searching the recent and found repositories,
+  pasting a path or `Choose folder…`, or on *Link* by pasting a link, which
+  is checked as it is typed. Choosing one never scans by itself; `Scan`
+  does.
+- **HOME-3** (To build) After a scan the choices are cards in two columns,
+  the whole system first and widest, then the sections, the flows and
+  *Something else*; each shows its title, sentence and first files, the rest
+  on demand. Three destination cards show the shape of each channel. A bar
+  says how many drawings for what, and holds `Change folder` and the draw
+  button.
+- **HOME-4** (To build) While a scan or a draw of the folder chosen runs,
+  the panel follows it. Each choice of a draw shows its three stages, the
+  time since it started, ticking every second, the engine's latest line with
+  a pulse on each new one, the files read so far and, once its read is
+  checked, the parts found. A choice waiting for a slot says `Waiting for a
+  free engine`.
+- **HOME-5** (To build) A running choice with no engine line for 30 s says
+  `Quiet for <s> s — still running (limit <m> min)` until the next one, so
+  working and frozen are told apart.
+- **HOME-6** (To build) A finished draw shows `Ready` with `Open` in the
+  panel and in Activity, and a notice `<name> is ready`; nothing opens the
+  editor by itself. A failed or cancelled draw, or one with a failed choice,
+  offers `Try again`.
+- **HOME-7** (To build) Activity, in every state, lists every scan and draw
+  running or ended within the hour, with a one-line status each and `Open`
+  or `Choose` on finished ones; pressing a job makes the panel follow it.
+  `Draw another project` frees the panel while the job goes on. A reload
+  shows the same.
+- **HOME-8** (To build) Choosing what to draw for a folder whose draw is
+  running adds the new choices to that draw: the choices it holds show as
+  in it, and the destination is its channel, locked, with one line saying
+  why.
+- **HOME-9** (To build) The drawings are cards with a preview of the
+  drawing's first view, a `<n> views` mark that steps through the views on
+  hover, the title, the file path (the link for a copied repository), the
+  kinds of its parts and when it changed. A search narrows them; a grid or
+  list layout is kept in the browser. The newest drawing waits in a
+  `Continue` panel.
+- **HOME-10** (To build) The keyboard reaches every control in order;
+  `Ctrl K` (`⌘ K`) goes to the folder search, Enter scans or draws, Space
+  ticks.
+- **HOME-11** (To build) The home screen keeps the app's light and dark
+  themes, Geist and Geist Mono, and the one blue for state and the primary
+  action.
+- **HOME-12** (To build) No hero, slogan, process guide or footer line: every
+  text names a thing or a state.
+
 ### Presentation and tour (PRES)
 
 - **PRES-1** (Today) A full-screen presentation mode steps through the

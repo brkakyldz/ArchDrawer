@@ -28,7 +28,10 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **START-3** (Today) Before a run, the app tells whether `claude` and/or
   `codex` is installed, signed in and recent enough, and says what to do when
   it is not.
-- **START-4** (Today) The home screen starts a drawing from a local folder.
+- **START-4** (To change) The home screen starts a drawing from a repository
+  chosen by a click: an entry of *Recent* or *Found on this computer*, a
+  folder picked in the operating system's own folder dialog (`Choose
+  folder…`), a pasted path, or a pasted link (SRC-1 … SRC-6, ADR 0017).
 - **START-5** (Today) The `archdrawer` command opens, validates and exports
   drawing files.
 - **START-6** (Today) A draw that fails after its read keeps what it read,
@@ -38,6 +41,47 @@ and its files, and a guided tour for learning a repository (ADR 0001).
   another, one read each. A choice that fails or is cancelled keeps the
   choices that finished; `Try again` starts from the first choice that did
   not finish. Nothing is written until every choice is drawn (ADR 0015).
+
+### Sources (SRC)
+
+A repository comes from one of two sources: *This computer* (a local folder)
+or *Link* (a repository copied from a link). Exact shapes and texts are in
+the api contract, *Sources* (ADR 0017).
+
+- **SRC-1** (To build) *Recent* lists the folders scanned or drawn before,
+  most recently used first, at most 20; a folder that no longer exists is
+  left out. Each entry has its name, its path, its branch, the time of its
+  last commit and, for a copy, its link (`github.com/owner/repo`). An entry
+  without a drawing in the library can be removed from the list.
+- **SRC-2** (To build) *Found on this computer* lists the git repositories
+  found below the home folder, below `code`, `src`, `projects`, `repos`,
+  `dev` and `Documents/GitHub` under it, and below the parent folder of each
+  drawing's repository in the library: at most two levels deep, at most 50,
+  newest last commit first, none already in *Recent*, with the same fields as
+  SRC-1. The list is made again at most every five minutes, or at once on
+  request.
+- **SRC-3** (To build) `Choose folder…` opens the operating system's own
+  folder dialog in front of the browser: the modern Explorer folder picker on
+  Windows, Finder's `choose folder` on macOS, `zenity` or `kdialog` on Linux.
+  The folder picked is checked as a pasted one; closing the dialog changes
+  nothing. Where no dialog is available, `Choose folder…` is not shown and
+  pasting a path stays.
+- **SRC-4** (To build) A pasted `https` link of a repository on github.com,
+  gitlab.com or bitbucket.org, optionally naming a branch, is copied (its
+  newest commit only) into archdrawer's own data folder and scanned and drawn
+  like a folder; its drawing file is written into the copy. A private
+  repository works when the user's own git already holds a sign-in for it;
+  archdrawer never asks for or keeps a password. A link it cannot take, a
+  host it cannot reach and a repository it cannot see each fail with one
+  plain sentence.
+- **SRC-5** (To build) A later scan of a copy fetches the newest commit of
+  its branch first. When the fetch fails, the scan goes on with the copy it
+  has and says so. The drawing files in the copy are never removed or
+  overwritten by an update.
+- **SRC-6** (To build) The library names a copy's drawing by its link instead
+  of its path. `Remove from list` on that drawing, or on a copy's entry in
+  *Recent*, offers to delete the copy too; the copy is deleted only when no
+  other drawing in the library is in it and nothing runs on it.
 
 ### Scan and choices (SCAN)
 
@@ -247,8 +291,9 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 
 Drawing answers to free questions; risk audits; keeping a drawing current on
 every pull request; designing changes on the drawing; blog layouts; LinkedIn
-carousels; CLI/library and monorepo layouts; GitHub URLs as a source (clone
-first); hosted mode, accounts, API-key engines.
+carousels; CLI/library and monorepo layouts; links other than `https` links
+of github.com, gitlab.com and bitbucket.org; hosted mode, accounts, API-key
+engines.
 
 ## 4. Contracts
 

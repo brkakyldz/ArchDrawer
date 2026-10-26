@@ -271,7 +271,7 @@ server process (with `ARCHDRAW_TEST_PICKER` set, at every request); `picker` in 
 screen shows `Choose folder…` only when it is `true` (ADR 0017). The helper's
 answer is trimmed of its line end; an empty answer is `cancelled`. Every
 helper's output is read as UTF-8, so a path with letters outside ASCII
-(`C:\Users\Berke\Masaüstü\shop`) arrives unchanged. With
+(`C:\Users\me\Masaüstü\shop`) arrives unchanged. With
 `ARCHDRAW_TEST_PICKER` set, no helper runs (testing contract, *The test
 folder dialog*).
 

@@ -111,7 +111,7 @@ A **job** is a scan or a draw. A **slot** is one engine process (ADR 0016;
 api contract, *Engine slots*, *The draw run*, *Activity*).
 
 - **JOB-1** (To build) At most 3 engine processes run at a time for the
-  whole server. A scan that starts an engine, each choice of a draw and each
+  whole server by default (`ARCHDRAW_ENGINE_SLOTS`). A scan that starts an engine, each choice of a draw and each
   instruction run of the editor holds one slot until its engine has exited;
   what finds none free waits, first come first served, and says
   `Waiting for a free engine`. Waiting counts toward no time limit.
@@ -128,7 +128,9 @@ api contract, *Engine slots*, *The draw run*, *Activity*).
 - **JOB-4** (To build) Choices started for a folder whose draw is running
   join that draw: they take its channel, engine and model, wait for slots
   like its own choices, and go into its file. A choice the draw already
-  holds is refused, and so is a second choice in the user's own words. Once
+  holds is refused, and so is a second choice in the user's own words, and
+  so is a choice from a scan of the folder at another commit or with other
+  options than the draw's. Once
   the draw has started writing its file, a join is refused with
   `The draw is writing its file: start a new one once it has finished`.
 - **JOB-5** (To build) Scans and draws of different folders run at the same
@@ -148,8 +150,8 @@ api contract, *Engine slots*, *The draw run*, *Activity*).
 - **JOB-8** (To build) When a draw finishes, the screen stays where it is:
   the Activity rail shows the job as `Ready` with `Open`, and a notice
   appears. Nothing opens the editor but the user.
-- **JOB-9** (To build) Jobs live in the server's memory only. A page that was
-  following running or waiting jobs when the server restarted says once
+- **JOB-9** (To build) Jobs live in the server's memory only. A page that
+  listed running or waiting jobs when the server restarted says once
   `The server restarted; <n> jobs stopped` (`1 job stopped` for one), and
   lists them no more.
 - **JOB-10** (To build) Cancelling a job stops every engine it started,
@@ -416,5 +418,5 @@ engines.
 ## 4. Contracts
 
 `docs/contracts/diagram.md` (the drawing file), `api.md` (the local server),
-`ui.md` (the editor's test ids and behaviour), `cli.md` (the command),
+`ui.md` (the home screen's and the editor's test ids and behaviour), `cli.md` (the command),
 `testing.md` (environment, fixture engine, suites).

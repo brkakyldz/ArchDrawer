@@ -504,6 +504,8 @@ Windows a file still busy is retried for up to 5 s. Its entry leaves
 *Recent*. When the folder cannot be removed whole, the answer is 500 `Could
 not delete the copy at <path>: <reason>`; the drawing stays forgotten.
 `deleteCopy` with any value other than `true` is ignored.
+A copy whose folder is no longer on disk counts as deleted: the answer is
+the same as when it was removed (`deleted: true` for `POST /api/sources/forget`).
 
 ## Engine slots
 
@@ -588,7 +590,9 @@ The checks run in this order, each a 400:
 A second scan of a folder while one is running gets 409
 `A scan of this folder is already running`; a second scan of any folder in
 a copy while a scan of a folder in the same copy is running gets 409 `A scan
-of this repository is already running` (*A repository from a link*).
+of this repository is already running` (*A repository from a link*). Both
+answers are `{"error", "scanId"}`, `scanId` the running scan's id, so a page
+can follow it as a draw's 409 lets it follow the draw.
 
 **Inputs.** Code gathers them from the folder, never the engine. Choosing
 files from the listing is pure (`src/core/scan.ts`); reading them is the
@@ -1397,7 +1401,7 @@ contract), so a test can shorten it.
 server restarts, the list is empty, `instance` differs, and the old ids
 answer 404 on `GET /api/runs/:runId`, `GET /api/scans/:scanId` and their
 `events`. What a failed draw kept goes with the old process too. A page
-that was following jobs `running` (waiting ones included) when it last heard
+whose `activity` listed jobs `running` (waiting ones included) when it last heard
 from the old server says once `The server restarted; <n> jobs stopped`
 (`The server restarted; 1 job stopped` for one), `<n>` the number of those
 jobs, and lists them no more.

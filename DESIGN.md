@@ -288,7 +288,7 @@ components:
   caption:
     textColor: "{colors.ink}"
     typography: "{typography.caption-title}"
-  home-start:
+  start-panel:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
     typography: "{typography.home-title}"
@@ -520,7 +520,7 @@ A 16px-rounded modal (up to 1180 by 720) split into a preview well (surface-2) a
 ### Home screen
 The home screen (ui contract, *Home*) is the same system as the editor: the same tokens by role in both themes, Geist and Geist Mono only, one blue. It adds no colour. Its light is a little bolder: the start panel's head carries the dot grid and a low accent light, and cards lift under the pointer.
 
-- **Columns.** A 236px navigation column on surface white with a hairline right border: Drawings with its count in mono, New drawing, then *Recent* and *Found on this computer* under group labels, each entry a 34px row with an 8px kind-hue swatch (chosen by position) and the name in 12.5px mono, and the server's address in soft mono at the foot above a hairline. The work column, padded 28 / 32px, holds a centred 940px stack, 36px apart: the start panel, then the drawings. A 312px side column on a 55% mix of surface into canvas, hairline left border, stacks side panels 14px apart. Below 1240px the side column moves under the work column as a grid of panels; below 860px the navigation becomes one row; below 640px everything is one column.
+- **Columns.** A 236px navigation column on surface white with a hairline right border: Drawings with its count in mono, New drawing, then *Recent* and *Found on this computer* under group labels, each entry a 34px row with an 8px kind-hue swatch (chosen by position) and the name in 12.5px mono, and the server's address in soft mono at the foot above a hairline. The work column, padded 28 / 32px, holds a centred 940px stack, 36px apart: the start panel, then the drawings. A 312px side column on a 55% mix of surface into canvas, hairline left border, stacks side panels 14px apart. At 1240px wide or less the side column moves under the work column as a grid of panels; at 860px or less the navigation becomes one row; at 640px or less everything is one column.
 - **Start panel.** Surface white, firm hairline, 16px corners, ambient shadow. Behind its head, a dot grid (the dot token, 18px spacing) masked from full to nothing over 220px, and a 520 by 260px radial accent light at the top right (18% of the accent, scaled by the halo: 0.55 light, 1 dark). Head: the home title left, the stepper right.
 - **Stepper.** Four 22px numbered discs joined by 18px hairlines. Now: accent fill, accent-ink number, a 4px accent-soft ring, the name in ink. Done: well-grey disc, ink number, muted name, and the hairline after it turns accent. Later: surface disc, soft number and name.
 - **Source tabs.** A segmented control: a well-grey track with a hairline border, 9px corners and 2px padding; 28px tabs with a 15px icon and 12.5px 500 text; the selected tab on surface white with a firm-hairline ring.

@@ -89,6 +89,14 @@ test('H202 [STORY-8 FILE-2 NAV-1 STORY-1 #183] the whole system of a draw is a m
     expect(sorted(view(stored, 'overview').nodes.map(n => n.id))).toEqual(['app', 'zone-runtime']);
     expect(sorted(view(stored, 'zone-runtime-inside').nodes.map(n => n.id))).toEqual(['agent', 'store']);
     expect(missingFacts(stored)).toEqual([]);
-    expect((await getRaw(request, done.run.diagramId)).warnings, 'the four evidence warnings and the one for the part it added').toHaveLength(5);
+    // diagram contract *Every fact drawn*: one warning for the left-out part and one for the relation it left out (added as a connection);
+    // testing contract, the fixture's post answer: its last two connections join into one two-way connection with exactly one warning.
+    const warnings = (await getRaw(request, done.run.diagramId)).warnings ?? [];
+    expect(warnings.slice(0, 4), 'the four evidence warnings come first').toEqual(FOUR_WARNINGS);
+    const rest = warnings.slice(4);
+    expect(rest.filter(w => w === 'Added "store", which the overview left out'), 'one warning for the part it added').toHaveLength(1);
+    expect(rest.filter(w => !w.startsWith('Added "store"') && /agent/.test(w) && /store/.test(w)), 'one warning for the relation agent-store added as a connection').toHaveLength(1);
+    expect(rest.filter(w => /result/.test(w) && /approval/.test(w)), 'one warning for the post joining result and approval into one two-way connection').toHaveLength(1);
+    expect(rest, 'the part, its connection and the post join, and nothing else').toHaveLength(3);
   }
 });

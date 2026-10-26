@@ -137,6 +137,15 @@ copy a user's CLI credentials.
 - **A test switch left on** — the test dialog or test links answering while
   their variable is unset, so a real user's link is never really copied.
   The start-up line names every test switch that is on.
+- **A slot never freed** — a cancelled, failed or timed-out job keeps its
+  engine slot, and every later job waits for ever. The slot tests end a job
+  each way and check the next waiting job starts.
+- **Ids that depend on finish order** — choices drawn side by side take their
+  view ids from whichever finishes first, so one request makes different
+  files. A test finishes the choices in reverse order and compares the ids.
+- **A joined choice lost at the write** — a choice accepted into a running
+  draw misses the file because the write had begun. A join is either
+  refused as the contract says, or its choice is in the file.
 - **Orphaned engine processes** — cancel marks the run cancelled but the CLI
   keeps running (on Windows a `.cmd` shim kill stops only the shell). The
   cancel test checks the child exits.

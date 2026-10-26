@@ -2,7 +2,7 @@
 id: 0007
 title: "The staged pipeline's interfaces: a scan resource, one draw run, facts with evidence, one story shape"
 date: 2026-10-21
-status: accepted (superseded in part by 0015: one focus per draw, the scan's option kinds and count, format 3, the overview brief of the whole system; by 0016: a failed choice no longer stops a draw's file)
+status: accepted (superseded in part by 0015: one focus per draw, the scan's option kinds and count, format 3, the overview brief of the whole system; by 0016: a failed choice no longer stops a draw's file; extended by 0017: recent and found repositories, the system's folder dialog, links)
 deciders: [brkakyldz]
 supersedes: []
 ---

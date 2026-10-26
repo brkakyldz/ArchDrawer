@@ -966,6 +966,7 @@ needs no token.
 ```jsonc
 { "instance": "9f2c4e1a7b3d5c80",          // this server process
   "now": "2026-10-26T09:14:03.120Z",        // the server's clock
+  "timeoutMs": 1200000,                     // ARCHDRAW_RUN_TIMEOUT_MS
   "slots": { "total": 3, "busy": 3, "waiting": 1 },
   "jobs": [
     { "type": "draw", "events": "/api/runs/r_…/events", "id": "r_…", "status": "running", "choices": [ … ], … },
@@ -978,6 +979,10 @@ needs no token.
 - `now`: the server's time, ISO 8601 in UTC with milliseconds, so the time
   since a choice started or since its last engine line can be counted on the
   server's clock.
+- `timeoutMs`: `ARCHDRAW_RUN_TIMEOUT_MS` in milliseconds, the deadline of
+  each scan, run and draw choice from the moment it takes its slot
+  (*Engine slots*), so a page can say how long a running choice may still
+  take.
 - `slots`: `total`, the number of slots (*Engine slots*); `busy`, the slots
   held now by any scan, choice or run, instruction runs included; `waiting`,
   the requests in the queue.

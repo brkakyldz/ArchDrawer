@@ -53,70 +53,73 @@ seconds. Times since an event are counted on the server's clock: the page
 adds to its own clock the difference between `now` of its latest
 `GET /api/activity` and the moment that answer arrived. A **relative time**
 reads the first of these that fits: `just now` under a minute, `<n> min ago` under an hour, `<n> h ago`
-under a day, `Yesterday` on the calendar day before, `<n> days ago` up to
+under a day, `Yesterday` on the day before in the browser's local calendar, `<n> days ago` up to
 six days, then `<d> <Mon>` (`26 Oct`) within the year and `<d> <Mon> <yyyy>`
 before.
 
 **Columns.** Three columns: `home-nav` (236 px), the work column
-(`home-start`, then the drawings) and the side column (312 px:
+(`start`, then the drawings) and the side column (312 px:
 `activity`, then `home-continue` or `scan-card`, then `start-engine`).
 
-- Below 1241 px the side column moves under the work column, and
+- At 1240 px wide or less the side column moves under the work column, and
   `activity-toggle` appears in the top bar.
-- Below 861 px `home-nav` becomes one row at the top holding only
+- At 860 px or less `home-nav` becomes one row at the top holding only
   `home-nav-drawings` and `home-nav-new`, and `home-continue` is hidden.
-- Below 641 px every column is full width, and `start-steps` writes only
-  the name of its current step.
+- At 640 px or less every column is full width, and `start-steps` writes
+  only the name of its current step.
 
 ### Frame
 
 | Test id | Element and behaviour |
 |---|---|
-| `home` | root; `data-theme` `light`/`dark`: the theme `tool-theme` saved, else the system's |
-| `home-theme` | icon button, accessible name `Switch theme`: toggles the theme and saves it as `tool-theme` does |
+| `home` | root; `data-theme` `light`/`dark`: the theme kept in this browser (as `library-layout` is), else the system's. It is the same stored choice `tool-theme` writes when it switches a drawing's theme; the editor shows each drawing in its own `theme` and does not read it |
+| `home-theme` | icon button, accessible name `Switch theme`: toggles the home screen's theme and keeps it in this browser |
 | `home-engine-chip` | a dot and `Engine <label>`, the engine `ai-engine` holds; pressing it scrolls `start-engine` into view and focuses `ai-engine`. Absent without an engine |
 | `home-import` | `Import`: opens `import-input` |
-| `activity-toggle` | only below 1241 px: `<n> running`, `<n>` as in `activity-count`, hidden when it is 0; pressing it scrolls `activity` into view |
+| `activity-toggle` | only at 1240 px wide or less: `<n> running`, `<n>` as in `activity-count`, hidden when it is 0; pressing it scrolls `activity` into view |
 | `home-nav` | the left column: `home-nav-drawings`, `home-nav-new`, then *Recent* and *Found on this computer* (*Choosing a repository*), then `home-server` |
 | `home-nav-drawings` | `Drawings` and the number of drawings in the library; scrolls `library` into view |
 | `home-nav-new` | `New drawing`: as `draw-another`, then focuses `start-folder` |
 | `home-server` | the page's own host and port (`127.0.0.1:4317`) |
-| `home-start` | the panel `Draw a project`: `start-steps`, then the step it is on |
-| `start-steps` | four steps, `Folder`, `Focus`, `Destination` and `Draw`, each with `data-state` `now`, `done` or empty. `Folder` is `now` until a scan succeeds; then `Focus` while no choice is ticked; `Destination` once a choice is ticked; `Draw` while the panel follows a draw (*Following a job*). The steps before `now` are `done` |
+| `start` | the panel `Draw a project`: `start-steps`, then the step it is on |
+| `start-steps` | four steps, `Folder`, `Focus`, `Destination` and `Draw`, each with `data-state` `now`, `done` or empty. `Folder` is `now` while the panel follows nothing or a scan that has not succeeded; `Focus` while it follows a succeeded scan and no choice is ticked; `Destination` once a choice is ticked; `Draw` while it follows a draw, whatever the draw's state (*Following a job*). The steps before `now` are `done` |
 
 ### Choosing a repository
 
 `start-source` holds two tabs: `start-source-local` (`This computer`,
 selected at first) and `start-source-link` (`Link`). The lists come from
-`GET /api/sources`, asked when the page loads, after a scan succeeds and
-after `source-forget` or `source-found-refresh`.
+`GET /api/sources`, asked when the page loads, after a scan succeeds, after
+a draw the page sees succeed (it registered its file), and after
+`source-forget`, `source-found-refresh`, `library-forget` and
+`start-open-existing`.
 
 | Test id | Element and behaviour |
 |---|---|
 | `start-folder` | This computer: a combobox, accessible name `Folder of the project`, placeholder `Search your repositories, or paste a path`. Focusing it or typing opens `start-folder-list`, unless its text starts like a path: a drive letter then `:\` or `:/`, or `\\`, `/`, `~/` or `~\`. Then it is a pasted path and the list stays closed. ArrowDown and ArrowUp move a highlight through the list; Enter takes the highlighted entry, or presses `start-scan` when none is highlighted; Escape closes the list |
 | `start-folder-list` | a listbox: the heading `Recent` over the entries of `recent`, then `Found on this computer` over those of `found`, each entry a `start-folder-option`. Only entries whose name or path holds the text (case-insensitive) are listed; all of them when the text is empty. A heading with no entry under it is left out; when none is left, `start-folder-none`: `No repository here matches "<text>". Paste the whole path, or choose the folder.` |
-| `start-folder-option` | `data-path` the entry's `path`; it shows the entry's name, its path (its `link` for a copy) and the relative time of `lastCommitAt` (nothing when null). Taking one puts its path in `start-folder`, closes the list and focuses `start-scan`; it does not scan |
-| `start-pick` | `Choose folder…`, beside `start-folder`, shown only when `picker` is `true` and while the panel is on the `Folder` step of This computer. It calls `POST /api/folders/pick`; while that waits it is disabled and reads `Dialog open…`. `picked`: the folder goes into `start-folder`, `start-scan` takes focus, and when the answer's `drawing` is not null `start-existing` shows. `cancelled`: nothing changes. `unavailable`: `start-pick` is hidden. A 400, 409 or 500 shows its message in `start-error` |
+| `start-folder-option` | `data-path` the entry's `path`; it shows the entry's name, its path (its `link` for a copy) and `<branch> · <relative time of lastCommitAt>`, the branch left out when `branch` is null and the time when `lastCommitAt` is null (nothing when both are). Taking one puts its path in `start-folder`, closes the list and focuses `start-scan`; it does not scan |
+| `start-pick` | `Choose folder…`, beside `start-folder`, shown only when `picker` is `true` and while the panel is on the `Folder` step of This computer. It calls `POST /api/folders/pick`; while that waits it is disabled and reads `Dialog open…`. `picked`: the answer's `folder` goes into `start-folder`, `start-scan` takes focus, and when the answer's `drawing` is not null `start-existing` shows. `cancelled`: nothing changes. `unavailable`: `start-pick` is hidden. A 400, 409 or 500 shows its message in `start-error` |
 | `start-link` | Link: a text field, accessible name `Repository link`, placeholder `https://github.com/owner/repo`. 300 ms after its last change, a text that is not empty is checked with `POST /api/folders/check` `{"link"}`, and `start-link-hint` shows the answer of the latest check. Enter presses `start-scan` |
 | `start-link-hint` | under `start-link`. Empty field: `A github.com, gitlab.com or bitbucket.org link, public or reachable with your own git sign-in.` Accepted: the answer's `link`, then `, branch <branch>` when `branch` is not null, then ` · copied into archdrawer's own folder, read-only` when `copied` is false, or ` · already on this computer` when it is true. Refused: the 400's message, `role="alert"` |
-| `start-scan` | `Scan`. This computer: an empty `start-folder` shows `start-error` `Give the whole path, starting from the drive or from /.`; otherwise `POST /api/folders/check` `{"folder"}`, then, unless refused or `start-existing` shows, `POST /api/scans` `{"folder", "engine", "model"}`. Link: disabled until the latest check of the text accepted it; then `POST /api/scans` `{"link", "engine", "model"}`, unless the check's `drawing` is not null (`start-existing`). The engine and model are those of `start-engine`. On 202 the panel follows the scan (*Following a job*). A 409 for a scan already running follows that scan when `activity` lists it |
+| `start-scan` | `Scan`. This computer: an empty `start-folder` shows `start-error` `Give the whole path, starting from the drive or from /.`; otherwise `POST /api/folders/check` `{"folder"}`, then, unless refused or `start-existing` shows, `POST /api/scans` `{"folder", "engine", "model"}`. Link: disabled until the latest check of the text accepted it; then `POST /api/scans` `{"link", "engine", "model"}`, unless the check's `drawing` is not null (`start-existing`). The engine and model are those of `start-engine`. On 202 the panel follows the scan (*Following a job*). A 409 for a scan already running makes the panel follow the scan its `scanId` names |
 | `start-error` | one plain sentence, `role="alert"`, under the field: for the folder check, `This folder does not exist.` (`Not found`), `This is a file, not a folder.` (`Not a folder`), `Give the whole path, starting from the drive or from /.` (`The path must be absolute`); any other refusal of the check, the dialog, a scan, a join or a forget shows the server's message; for a failed scan, its `error` (`Could not reach the archdrawer server` when the server went away). A failed draw shows in `draw-error`. It is cleared by the next `start-scan` |
 | `start-existing` | when the check's `drawing` is not null: `This folder already has a drawing.` with `start-open-existing` (`Open it`: `POST /api/files` with that path, then the editor) and `start-again` (`Start again`: goes on to the scan; the new drawing gets the next free name). Neither scans by itself |
 | `source-recent` | in `home-nav`, under `Recent`: one `source-item` per entry of `recent` |
 | `source-found` | in `home-nav`, under `Found on this computer` and beside `source-found-refresh`: one `source-item` per entry of `found` |
-| `source-item` | `data-path` the entry's `path`; its name, the path (or link) as its tooltip. Pressing it selects This computer, puts the path in `start-folder`, scrolls `home-start` into view and focuses `start-scan`; it does not scan |
+| `source-item` | `data-path` the entry's `path`; its name and, under it, `<branch> · <relative time of lastCommitAt>` as in `start-folder-option`; the path (or link) as its tooltip. Pressing it selects This computer, puts the path in `start-folder`, scrolls `start` into view and focuses `start-scan`; it does not scan |
 | `source-forget` | in a `source-item` of *Recent* whose `diagrams` is empty, shown on hover and focus: icon button, accessible name `Remove <name> from Recent`. It asks `confirm("Remove \"<name>\" from Recent?")`, then, for an entry with a `link`, `confirm("Also delete the copy of <link> from this computer?")`, and calls `POST /api/sources/forget` `{"path", "deleteCopy"}` with the second answer |
 | `source-found-refresh` | icon button, accessible name `Look again`: `POST /api/sources/refresh`; disabled until it answers |
 
 While the panel follows a job, `start-source`, `start-folder`, `start-link`,
 `start-pick` and `start-scan` are disabled, and the field shows the job's
-folder (its `link` for a copy).
+folder (its `link` for a copy). When the following ends (*Following a job*)
+they are enabled again.
 
 ### The scan and the repository card
 
 | Test id | Element and behaviour |
 |---|---|
-| `scan-progress` | in the panel while the followed scan runs: a turning mark, `Scanning`, the scan's `message` (its latest progress line), a bar sliding without end, and `scan-cancel` (`Cancel`: `POST /api/scans/:scanId/cancel`). A cancelled scan shows `start-error` `Cancelled`, a failed one its error; either goes back to the `Folder` step with the folder kept |
+| `scan-progress` | in the panel while the followed scan runs: a turning mark, `Scanning` (`Waiting for a free engine` while its `waiting` is true), the scan's `message` (its latest progress line), a bar sliding without end, and `scan-cancel` (`Cancel`: `POST /api/scans/:scanId/cancel`). A cancelled scan shows `start-error` `Cancelled`, a failed one its error; either ends the following, and the panel is on the `Folder` step with the folder kept |
 | `scan-card` | in the side column in place of `home-continue`, once the followed scan has succeeded: the header `Project` with `scan-again` (`Scan again`: the same scan with `refresh: true`), `scan-card-name`, `scan-card-sentence`, `scan-card-type` (`AI agent project`, `Backend service`, `Full-stack app`, `Other project`, with `data-type`) and `scan-card-languages` (one tag per language), then the rows `Entry` (one `scan-card-entry` per entry point) and `Commit` (`scan-card-commit`, the short commit; absent outside git). A copy's scan adds `scan-card-link`, its link. A cached scan adds `scan-cached` (`Scanned before at <short commit>`) |
 
 ### Choosing what to draw
@@ -140,8 +143,10 @@ destinations, and the bar.
 | `draw-start` | in the bar: `Draw it` with one choice ticked, `Draw all <n>` with several; enabled once a choice is ticked and a channel chosen, and `focus-text` is not empty when `focus-typed` is ticked. It starts a `draw` run (`POST /api/runs`, *The draw run*) with the followed scan, `choices` in the order of `focus-list` (the whole system, the sections, the flows, then the typed text), the channel, and the engine and model of `start-engine`; on 202 the panel follows the run. A 409 whose `runId` names a running draw turns the step into a join (below), the ticks kept |
 
 **Joining a running draw** (JOB-4). While `activity` lists a `draw` that
-is `running`, not `writing`, and has the scan's `folder` and `root`, the
-choosing step joins it:
+is `running`, not `writing`, has the followed scan's `folder` and `root`,
+and whose `scan` is the followed scan, or a scan listed in `activity` with
+the same `commit` (not null) and the same `options` as the followed scan,
+the choosing step joins it:
 
 - a choice the draw already holds is ticked, disabled and marked
   `focus-in-draw` (`In this draw`): the whole system by its `kind`
@@ -153,8 +158,10 @@ choosing step joins it:
 - `draw-start` reads `Add it to the draw` or `Add all <n> to the draw`, `<n>`
   the new choices, and sends only those with
   `POST /api/runs/:runId/choices` `{"scan", "choices"}`; on 200 the panel
-  follows that draw. A refusal shows in `start-error`; a draw that has
-  ended or is writing ends the join, and the step is a new draw again.
+  follows that draw. A refusal (a 409 or a 400) shows its message in
+  `start-error`, and `draw-start` stays disabled until the ticks change; a
+  draw that `activity` no longer lists as `running` and not `writing` ends
+  the join, and the step is a new draw again.
 
 ### Following a job
 
@@ -164,29 +171,37 @@ started or joined, or the job last pressed in `activity`. Following:
 - a running scan shows `scan-progress`;
 - a succeeded scan shows its choosing step, with its card and options as
   `activity` keeps them (JOB-7);
-- a draw shows `draw-progress`, then `draw-ready` or `draw-error` once it
-  ended.
+- a draw shows `draw-progress`, whatever its state: running, then
+  `draw-ready` or `draw-error` once it ended. A draw that failed or was
+  cancelled does not show its choosing step again: its choices and channel
+  are not edited there. `draw-retry` tries it again; `draw-another` leaves
+  it.
 
-`draw-another` (`Draw another project`), beside `draw-cancel`, and
-`home-nav-new` leave the job and bring the panel back to the `Folder` step
-with empty fields; the job goes on in `activity`.
+The following ends, and the panel then follows nothing, with its fields
+enabled and on the `Folder` step, when: the followed scan failed or was
+cancelled (the folder kept); `start-change-folder` is pressed (the folder
+kept); `draw-another` (`Draw another project`) or `home-nav-new` is pressed
+(the fields emptied); or the followed job answers 404 or `activity` no
+longer lists it. A job left this way goes on in `activity`.
 
 | Test id | Element and behaviour |
 |---|---|
-| `draw-progress` | one `draw-choice` per choice of the draw, in the draw's order, a joined choice added when its first `choice` event arrives; then `draw-line` (a turning mark and the draw's latest progress line, of any choice), `draw-another` and `draw-cancel` (`Cancel`: `POST /api/runs/:runId/cancel`; hidden while `writing`) |
+| `draw-progress` | one `draw-choice` per choice of the draw, in the draw's order, a joined choice added when its first `choice` event arrives; then one of three, under the rows: while the draw runs, `draw-line` (a turning mark and the draw's latest progress line, of any choice) with `draw-another` and `draw-cancel` (`Cancel`: `POST /api/runs/:runId/cancel`; hidden while `writing`); once it succeeded, `draw-ready`; once it failed or was cancelled, `draw-error`. The rows are shown once, as the draw ended |
 | `draw-choice` | `data-choice` (its id in the run record), `data-kind` and `data-state` (its record's `status`: `waiting`, `running`, `done`, `failed`, `cancelled`). It shows `draw-choice-title` (its `title`), three `draw-stage`, `draw-choice-time` and `draw-choice-line` |
 | `draw-stage` | one per stage, in order, with `data-stage` (`read`, `overview`, `channel`) and `data-state`: every stage `waiting` while the choice waits and `done` once it is done; else the stages before its `stage` `done`, its `stage` `running` (`failed` for a failed or cancelled choice), the later ones `waiting`. The texts are `Reading the code`, `Drawing the overview` (for the whole system `Drawing the map`) and `Drawing the <LinkedIn post / README drawing / presentation>` |
 | `draw-choice-time` | `mm:ss` from its `startedAt`, every second, while it runs; from `startedAt` to `endedAt` once it ended; empty while it waits |
-| `draw-choice-line` | waiting: `Waiting for a free engine`. Running: `draw-choice-pulse`, then the `message` of the latest progress event whose `choice` is this choice, then `draw-choice-files` (`<n> files read`, `1 file read`; shown once `filesRead` is above 0), then `draw-choice-parts` (`<n> parts found`, `1 part found`; shown once `parts` is not null). Done: `Drawn`, then ` · <n> parts` when `parts` is not null. Failed: `Could not draw: <error>`. Cancelled: `Cancelled` |
+| `draw-choice-line` | waiting, while the draw runs: `Waiting for a free engine`; once the draw has ended: `Not started`. Running: `draw-choice-pulse`, then the `message` of the latest progress event whose `choice` is this choice, then `draw-choice-files` (`<n> files read`, `1 file read`; shown once `filesRead` is above 0), then `draw-choice-parts` (`<n> parts found`, `1 part found`; shown once `parts` is not null). Done: `Drawn`, then ` · <n> parts` when `parts` is not null. Failed: `Could not draw: <error>`. Cancelled: `Cancelled` |
 | `draw-choice-pulse` | a dot; `data-events` counts the progress events of this choice received so far, and the dot beats once on each |
-| `draw-choice-quiet` | in `draw-choice-line` in place of the message, while the choice runs and no engine line came for 30 s (its `lastEngineEventAt`, else its `startedAt`, at least 30 s before the server's now): `Quiet for <s> s — still running (limit <m> min)`, `<s>` whole seconds, every second; `<m>` the run time limit in whole minutes, `timeoutMs` of `GET /api/activity` / 60 000 rounded down. It goes with the next engine line |
+| `draw-choice-quiet` | in `draw-choice-line` in place of the message, while the choice runs and no engine line came for 30 s: the `at` of this choice's latest progress event with `source: "engine"` received on the stream, else its record's `lastEngineEventAt`, else its `startedAt`, is at least 30 s before the server's now. It reads `Quiet for <s> s — still running (limit <m> min)`, `<s>` the whole seconds since that time, every second; `<m>` the run time limit in whole minutes, `timeoutMs` of `GET /api/activity` / 60 000 rounded down. It goes with the next engine line |
 | `draw-line` | the draw's latest progress line; `Writing the drawing` while it writes |
-| `draw-ready` | once the draw `succeeded`, in place of `draw-line`: `Ready`, then `<k> drawing` or `<k> drawings`, `<k>` the `done` choices, then ` for a LinkedIn post`, ` for a README` or ` for a presentation`, then ` · <f> could not be drawn` when `<f>` choices failed; `draw-open` (`Open`: `/d/<diagramId>?choice=<choice>&channel=<channel>` of the run); and, when a choice failed, `draw-retry` |
-| `draw-error` | once the draw ended `failed` or `cancelled`, in place of `draw-line`: its `error` (`Cancelled` for a cancel), the `draw-choice` rows as it ended, and `draw-retry` |
-| `draw-retry` | `Try again`: `POST /api/runs/:runId/retry` (*Trying again*): after a draw that succeeded, its failed choices are drawn into its file; after one that failed or was cancelled, every choice into a new file, the finished ones from what was kept (a reused stage shows `running` with its `Using …` line, then `done`). On 202 the panel follows the new run; a refusal shows in `draw-error` |
+| `draw-ready` | once the draw `succeeded`, in place of `draw-line`: `Ready`, then `<k> drawing` or `<k> drawings`, `<k>` the `done` choices, then ` for a LinkedIn post`, ` for a README` or ` for a presentation`, then ` · <f> could not be drawn` when `<f>` choices failed; `draw-open` (`Open`: `/d/<diagramId>?choice=<choice>&channel=<channel>` of the run), `draw-another`; and, when a choice failed, `draw-retry` |
+| `draw-error` | inside `draw-progress`, under the rows, once the draw ended `failed` or `cancelled`: its `error` (`Cancelled` for a cancel), `role="alert"`, with `draw-retry` and `draw-another` |
+| `draw-retry` | `Try again`: `POST /api/runs/:runId/retry` (*Trying again*): after a draw that succeeded, its failed choices are drawn into its file; after one that failed or was cancelled, every choice into a new file, the finished ones from what was kept (a reused stage shows `running` with its `Using …` line, then `done`). On 202 the panel follows the new run. A refusal shows its message in `draw-error` after a draw that failed or was cancelled, and in `start-error` after one that succeeded |
 
-Nothing opens the editor but `draw-open`, `job-notice-open`, `activity-open`
-and the library (JOB-8).
+No job opens the editor by itself (JOB-8): it opens only when the user
+presses `draw-open`, `job-notice-open`, `activity-open`,
+`start-open-existing`, `home-continue-open`, `library-example`, a library
+card, or imports a file.
 
 ### Activity
 
@@ -198,12 +213,12 @@ between answers.
 
 | Test id | Element and behaviour |
 |---|---|
-| `activity` | the header `Activity` with `activity-count`, then the jobs that are `running` (waiting ones included), newest first, then `Done` over the ended ones, newest first; `activity-none` (`Nothing is running.`) when no job runs; at the bottom `activity-keep`: `Keeps going if you reload. Up to <total> at once.`, `<total>` the answer's `slots.total` |
+| `activity` | the header `Activity` with `activity-count`, then the jobs that are `running` (waiting ones included), newest `createdAt` first, then `Done` over the ended ones, newest `endedAt` first; `activity-none` (`Nothing is running.`) when no job runs; at the bottom `activity-keep`: `Keeps going if you reload. Up to <total> at once.`, `<total>` the answer's `slots.total` |
 | `activity-count` | `<n> running`, `<n>` the jobs `running` and not `waiting`; hidden when 0 |
-| `activity-job` | one per listed job: `data-job` its id, `data-type` (`scan`, `draw`), `data-state` (`waiting` while its `waiting` is true, else its `status`), `aria-current="true"` on the followed one. It shows a status dot, `activity-job-name` (its `name`), `activity-job-status` and, while it runs, `activity-job-time` (`mm:ss` from its `startedAt`, from its `createdAt` while it waits). Pressing it makes the panel follow it |
+| `activity-job` | one per listed job: `data-job` its id, `data-type` (`scan`, `draw`), `data-state` (`waiting` while its `waiting` is true, else its `status`), `aria-current="true"` on the followed one. It shows a status dot, `activity-job-name` (its `name`), `activity-job-status` and, while it runs, `activity-job-time` (`mm:ss` from its `startedAt`, from its `createdAt` while `startedAt` is null). Pressing it makes the panel follow it |
 | `activity-job-status` | a scan: `Scanning`; `Scan · <n> sections and flows` once it succeeded (`<n>` its options); `Scan failed`; `Scan cancelled`. A draw, after its channel's name (`LinkedIn post`, `README drawing`, `Presentation`) and ` · `: `<d> of <n> drawn` with several choices, `step <s> of 3` with one (`<s>` the place of its stage, 1–3); `quiet for <s> s` when a running choice is quiet (*Following a job*), the longest; `writing the drawing`; `Ready`, with `, <f> failed` after it when choices failed; `failed`; `cancelled`. While a job waits, whatever its type: `Waiting for a free engine` |
 | `activity-open` | on an ended job: `Open` on a draw that succeeded (the editor, as `draw-open`); `Choose` on a scan that succeeded (the panel follows it) |
-| `job-notice` | when a draw the page saw running ends `succeeded`: `<name> is ready` with `job-notice-open` (`Open`, as `draw-open`) and a close button (`Dismiss`), `role="status"`, at the top centre; it leaves after 8 s |
+| `job-notice` | when a draw the page saw running ends `succeeded`: `<name> is ready` with `job-notice-open` (`Open`, as `draw-open`) and `job-notice-dismiss` (a close button, accessible name `Dismiss`), `role="status"`, at the top centre; it leaves after 8 s |
 | `jobs-restarted` | when `instance` changes while the page followed jobs `running` (JOB-9): `The server restarted; <n> jobs stopped` (`The server restarted; 1 job stopped`), once, at the top of `activity`, until the page reloads |
 
 ### The engine
@@ -215,7 +230,7 @@ between answers.
 
 ### Drawings
 
-Under `home-start`: the heading `Drawings` with `library-count`, then
+Under `start`: the heading `Drawings` with `library-count`, then
 `library-search` and `library-layout`, then the drawings.
 
 | Test id | Element and behaviour |
@@ -234,6 +249,7 @@ Under `home-start`: the heading `Drawings` with `library-count`, then
 | `library-menu` | button `⋯`, accessible name `More actions for <title>`; opens `library-menu-list` (Escape or a click elsewhere closes it) |
 | `library-forget` | `Remove from list` (registered file) or `Delete` (imported); asks `confirm()` (`Remove "<title>" from this list? The file stays where it is.` / `Delete the imported drawing "<title>"?`). For a drawing in a copy it then asks `confirm("Also delete the copy of <link> from this computer?")` and, on yes, sends `DELETE /api/diagrams/:id?deleteCopy=true`; a refusal shows its message in `form-error` |
 | `import-input` | file input (`.json`) behind `home-import`: a valid `@4`, `@3`, `@2` or `@1` document is imported and opened (`@3`, `@2` and `@1` converted, drawing contract); otherwise `form-error` shows the server's message and up to 8 violations, or `Not a JSON file: <message>` |
+| `form-error` | under the top bar, `role="alert"`: an import's refusal (`import-input`) or a refusal of `library-forget`; cleared by the next import or forget |
 | `library-empty` | when the library is empty: `No drawings yet` and `library-example` |
 | `library-example` | `Open the example drawing`: `POST /api/example`, then opens it; shown in `library-empty` and with `start-no-engine` |
 | `home-continue` | in the side column while the panel is on the `Folder` step and the library is not empty: the header `Continue`, the newest drawing's preview (as `library-item-preview`), its title, `edited <relative time>` and `home-continue-open` (`Open`) |
@@ -241,7 +257,7 @@ Under `home-start`: the heading `Drawings` with `library-count`, then
 ### The keyboard
 
 Every control is reachable with Tab in this order: the top bar, `home-nav`,
-`home-start` (the tabs, the field, `start-pick`, `start-scan`; or the
+`start` (the tabs, the field, `start-pick`, `start-scan`; or the
 choices, the destinations, `start-change-folder`, `draw-start`; or the
 rows' controls), the drawings, the side column. `Ctrl K` (`⌘ K` on macOS)
 selects This computer and focuses `start-folder`, after `draw-another` when

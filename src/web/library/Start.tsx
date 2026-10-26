@@ -4,6 +4,7 @@ import { api, ApiError, type DiagramSummary, type DrawChannel, type DrawChoiceSt
 import { navigate } from "../App";
 import { chooseEngine, engineName, ENGINE_KEY, modelKey, rememberedModel } from "../editor/runner";
 import { afterPaint, paced } from "./pace";
+import { Icon } from "../ui/Icon";
 
 /**
  * Starting a drawing from a folder (ui contract, Starting a drawing from a folder; START-4): four
@@ -223,7 +224,16 @@ export function Start({ list, onExample, exampleBusy }: { list: DiagramSummary[]
 
   return (
     <section className="start" data-testid="start" aria-label="Start a drawing from a folder">
-      <h2>Draw a project</h2>
+      <div className="start-heading">
+        <span className="start-heading-icon"><Icon name="spark" size={21} /></span>
+        <div className="start-heading-copy">
+          <span className="start-kicker">CREATE SOMETHING NEW</span>
+          <h2>Draw a project</h2>
+          <p>Choose a folder and let your coding agent map what's inside.</p>
+        </div>
+        <span className="start-number">01 <span>/</span> 03</span>
+      </div>
+      <div className="start-field-label"><Icon name="file" size={14} /> REPOSITORY FOLDER</div>
       <div className="start-row">
         <input type="text" data-testid="start-folder" aria-label="Folder of the project" placeholder={windows ? "C:\\code\\my-project" : "/home/me/my-project"}
           list="start-folders" value={folder} disabled={busy} onChange={(e) => setFolder(e.target.value)}

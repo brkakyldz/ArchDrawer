@@ -129,8 +129,9 @@ A **slot** is one engine process (JOB-1, ADR 0016). The server has
 `ARCHDRAW_ENGINE_SLOTS` of them (default 3; testing contract), for every
 engine together. A slot is held by:
 
-- a scan that starts an engine (a cached scan takes none), from its start to
-  its end;
+- a scan that starts an engine, from the moment it asks for one (after the
+  copy or update of a link's repository, which holds none: *A scan with a
+  link*) to its end; a scan whose result is cached takes none;
 - each choice of a `draw` run, from its first line to its end, through all
   its calls (read, overview, channel and their repair turns); a choice whose
   stages are all reused (*What a failed draw keeps*) takes one too;
@@ -142,9 +143,10 @@ never runs more engine processes than it has slots. Detecting engines
 (`GET /api/engines`) takes no slot.
 
 **The queue.** What asks for a slot when none is free waits in one queue for
-the whole server and gets one in the order it asked: a scan or a run when it
-was accepted (`202`), a draw's choices in request order when the run was
-accepted, a joined choice when its join was accepted. A slot freed goes to
+the whole server and gets one in the order it asked: a run when it was
+accepted (`202`), a scan when it was accepted or, for a scan with a link,
+once its copy is made or updated, a draw's choices in request order when
+the run was accepted, a joined choice when its join was accepted. A slot freed goes to
 the oldest waiting request at once.
 
 **Waiting.** A job that waits is `running`, with `waiting: true` in its
@@ -152,8 +154,11 @@ record, and its stream gets one progress line, `Waiting for a free engine`
 (`source: "server"`; for a draw's choice, with that `choice` and `stage`
 null), when it is put in the queue. A request that finds a free slot gets no
 such line. A draw's choice that waits has `status: "waiting"`. The time
-spent waiting counts toward no deadline: a scan's, a run's and a choice's
-deadline (`ARCHDRAW_RUN_TIMEOUT_MS`) start when it takes its slot. Cancel
+spent waiting counts toward no deadline: a run's and a choice's deadline
+(`ARCHDRAW_RUN_TIMEOUT_MS`) start when it takes its slot, and so does a
+scan's engine deadline. The copy or update of a link's repository has its
+own deadline, from the scan's `createdAt`, and holds no slot (*A scan with a
+link*). Cancel
 takes a waiting request out of the queue without starting an engine. A
 running request's slot is freed once its engine's process tree has exited.
 
@@ -169,7 +174,9 @@ Every `progress` event of a scan and a run carries:
   `Searching for “…”`, `Writing the diagram`, the fixture's lines, …),
   `server` for every other line (`Waiting for a free engine`,
   `Gathering the repository`, `Drawing "<title>" (<i> of <n>)`,
-  `Checking the facts`, `Saved`, …).
+  `Checking the facts`, `Saved`, …), the lines of a link's copy and update
+  (`Copying <link>`, `Fetching …`, *A scan with a link*) included: git is no
+  engine, so those lines never move `lastEngineEventAt`.
 
 A **file read** is a file the engine reports reading by its path: Claude
 Code's `Read` tool, and a Codex command that reads a file it names (its line
@@ -291,8 +298,11 @@ home screen always offers them (SCAN-3).
 **Lifecycle.** As a run's: `running`, `succeeded`, `failed` or `cancelled`,
 the same timeout, and cancel kills the engine's process tree. A scan that
 starts an engine holds a slot (*Engine slots*): it takes it, or waits for
-it, before `Gathering the repository`, and its deadline starts when it has
-it. A failed or cancelled scan caches nothing. The latest succeeded scan of
+it, before `Gathering the repository` (for a scan with a link, after its
+copy is made or updated, which holds no slot), and its engine deadline
+starts when it has it. A scan that a running `draw` started from is not
+forgotten while that draw runs (*Joining a running draw*); once the draw has
+ended, the rules below apply to it again. A failed or cancelled scan caches nothing. The latest succeeded scan of
 each folder is kept while the server runs, so a `draw` can follow it at any
 time: a newer success forgets every earlier finished scan of the folder, a
 newer failure or cancel only the earlier failed and cancelled ones. Its
@@ -306,17 +316,20 @@ included, for one hour after it ended, or until it is forgotten.
 
 - `commit` is null outside git; `card` and `options` are null until success.
 - `message`: the latest progress line, null before the first.
-- `name`: the card's `name` once the scan succeeded, else the folder's last
-  path segment.
-- `createdAt`: when the scan was accepted; `startedAt`: when it took its
-  slot (for a cached scan, `createdAt`), null while it waits; `endedAt`: when
-  it ended, null while it runs. Times are ISO 8601 in UTC with milliseconds.
+- `name`: the card's `name` once the scan succeeded; before, for a scan with
+  a link the link's `<repo>`, else the folder's last path segment.
+- `createdAt`: when the scan was accepted; `startedAt`: when its first step
+  began — the copy or update of a link's repository, else taking its slot
+  (for a cached scan of a local folder, `createdAt`) — null before;
+  `endedAt`: when it ended, null while it runs. Times are ISO 8601 in UTC
+  with milliseconds.
 - `waiting`: true while it waits for a slot.
 - `lastEngineEventAt`: the `at` of its latest `engine` line, null before
   one.
 
-**Progress:** `Waiting for a free engine` when it has to wait, then
-`Gathering the repository`, then the engine's lines, then `Checking the
+**Progress:** for a scan with a link, the lines of its copy or update
+first (*A scan with a link*); then `Waiting for a free engine` when it has
+to wait, then `Gathering the repository`, then the engine's lines, then `Checking the
 scan`, then `Done`. A cached scan's only line is `Scanned before at <short
 commit>`.
 
@@ -418,12 +431,24 @@ interleave in the stream in the order they happen.
 **Choice events.** A draw's stream also carries `event: choice`, whose data
 is one choice's record (*Run record*) as it is after the change. One is sent
 each time a choice's `status`, `stage`, `filesRead` or `parts` changes: when
-it is put in the queue or joins (`waiting`), when it takes its slot
-(`running`, stage `read`), at each new stage, after each new file read
-(*Progress lines*), once its read is checked (`parts` set), and when it ends.
-A `choice` event comes right after the progress line that goes with the
-change, when there is one. Past `choice` events are replayed with the rest,
-so a stream opened late ends up with every choice as the record has it.
+it has to wait for a slot (`waiting`), when it takes its slot (`running`,
+stage `read`), at each new stage, after each new file read (*Progress
+lines*), once its read is checked (`parts` set), and when it ends. A choice
+that finds a free slot gets no `waiting` event: its first `choice` event is
+`running`. A `choice` event comes right after the progress line that goes
+with the change, when there is one. Past `choice` events are replayed with
+the rest, so a stream opened late ends up with every choice as the record
+has it.
+
+**The first events.** When the run is accepted, before any other event of
+the draw, each choice in request order gets exactly two events: either
+`Drawing "<title>" (<i> of <n>)` (it found a free slot) or `Waiting for a
+free engine` (it did not), then its `choice` event (`running`, stage `read`;
+or `waiting`, stage null). A waiting choice that later takes a slot gets
+`Drawing "<title>" (<i> of <n>)`, then its `choice` event (`running`). So
+with 3 free slots, a draw of four choices starts with `Drawing "…" (1 of
+4)`, `choice`, `Drawing "…" (2 of 4)`, `choice`, `Drawing "…" (3 of 4)`,
+`choice`, `Waiting for a free engine`, `choice`.
 
 **Deadlines, a choice that fails, and cancel** (JOB-3, JOB-10). Each choice
 has its own deadline, `ARCHDRAW_RUN_TIMEOUT_MS` from its first line. A
@@ -520,7 +545,7 @@ write and register nothing.
 ADR 0016):
 
 ```jsonc
-{ "scan": "<scanId>",                  // the scan the draw started from
+{ "scan": "<scanId>",                  // a scan the choices come from (check 5)
   "choices": [ { "kind": "option", "option": "o3" } ] }   // 1–10, as for a draw
 ```
 
@@ -534,13 +559,19 @@ Joining choices take the draw's channel, engine and model; a `channel`,
 4. 409 `The draw is writing its file: start a new one once it has
    finished`, when `writing` is true;
 5. 400 `Give the scan the choices come from`, when `scan` is missing or not a
-   string; 409 `The draw was started from another scan of this folder`, for
-   any scan id but the draw's;
+   string; 400 `Scan the folder first: that scan is unknown or did not
+   succeed`; 409 `The draw was started from another scan of this folder`,
+   unless the scan is the draw's own or a succeeded scan of the same folder
+   (the same `root` and `folder`) at the same `commit` whose `options` are
+   the draw's (the same ids, kinds, titles, sentences and files, in the same
+   order). A scan outside git (`commit` null) other than the draw's own never
+   matches;
 6. 400 `Choose what to draw: give 1 to 10 choices`, when `choices` is
    missing, not a list, empty or holds more than 10; then each choice in order
    as check 4 of a draw (`Unknown focus: …`, `Unknown focus option "<id>"`,
    `Say what to focus on: the focus is empty`, `The focus is too long (300
-   characters at most)`), options looked up in the draw's scan;
+   characters at most)`), options looked up in the card and options the run
+   keeps from its own scan (as *Trying again* does);
 7. 400, within the body: `The whole system is chosen twice`, `The option
    "<id>" is chosen twice`, `Only one choice can be in your own words`; then
    against the draw, whose choices count whatever their status, a failed one
@@ -550,12 +581,19 @@ Joining choices take the draw's channel, engine and model; a `channel`,
 8. 400 `A draw holds at most 10 choices; this one has <n>`, when the draw's
    choices and the new ones are more than 10 (`<n>` the draw's count).
 
+A running draw pins its own scan: that scan is not forgotten while the draw
+runs (*Scans*, *Lifecycle*), so a page that has its id can always join. A
+newer scan of the folder at the same commit, a cached one included, has a
+new id and is accepted by check 5.
+
 A refused join changes nothing. An accepted one adds the choices at the end
 of the draw's list, in body order, with ids made as in *The choices*, free
 among the draw's choice ids (for a draw that adds to a file, also among the
 file's, as stored at that moment). Each gets the line `Added "<title>" to this
-draw` (stage null, its choice), a `choice` event (`waiting`) and its place
-in the slot queue. From then it is a choice of the draw like the others: its
+draw` (stage null, its choice), then, as at a draw's start, either
+`Drawing "<title>" (<i> of <n>)` or `Waiting for a free engine`, then its
+`choice` event (`running` or `waiting`); these events of every joined
+choice, in body order, come before the answer. From then it is a choice of the draw like the others: its
 deadline, its failure, cancel, the file, what is kept. A joined choice that
 has a record in *What a failed draw keeps* for the draw's scan, engine and
 model reuses it. The answer is 200 `{"runId", "choices": [the new ids, in
@@ -793,8 +831,8 @@ listed in *Activity* until then.
 `{"id", "kind", "choice", "channel", "view", "status", "progress": [string],
 "message", "diagramId", "error", "engine", "model", "changes",
 "layoutReport", "route", "path", "choices", "createdAt", "startedAt",
-"endedAt", "waiting", "lastEngineEventAt", "folder", "root", "name", "scan",
-"writing", "into", "retryOf"}`.
+"endedAt", "waiting", "lastEngineEventAt", "folder", "root", "link", "name",
+"scan", "writing", "into", "retryOf"}`.
 
 - `changes`, `layoutReport` and `path` (the drawing file a `draw` run wrote)
   are null until success.
@@ -813,7 +851,9 @@ listed in *Activity* until then.
   `draw`, of any of its choices), null before one.
 - A `draw`'s own fields, null on other kinds (`writing` false): `folder`
   and `root`, the scanned folder as resolved and its repository root
-  (*Folders*); `name`, the scan card's `name`; `scan`, the scan id;
+  (*Folders*); `link`, the scan's `link` (the copy's link, *A repository
+  from a link*; null for a local folder); `name`, the scan card's `name`;
+  `scan`, the scan id;
   `writing`, true from `Writing the drawing` until the run ends (*The draw
   run*); `into`, the `diagramId` the draw adds its choices to, null for a new
   file; `retryOf`, the draw it tries again (*Trying again*), else null.
@@ -944,16 +984,23 @@ needs no token.
 - `jobs`: each is the record that `GET /api/scans/:scanId` or
   `GET /api/runs/:runId` answers at that moment, with `type` (`scan` or
   `draw`) and `events` (the path of its event stream) added; newest
-  `createdAt` first, equal times by `id`.
+  `createdAt` first, equal times by `id`. Both records carry `link`, so a job
+  of a repository from a link shows its link (`github.com/owner/repo`), not
+  its copy's folder.
 
-A job is listed from the moment it is accepted (a cached scan too, already
-`succeeded`) until one hour after its `endedAt`, or until it is forgotten
+A job is listed from the moment it is accepted (a scan too, whether its
+result turns out cached or not) until one hour after its `endedAt`, or until it is forgotten
 before that (a scan forgotten by a newer scan of its folder, *Scans*). A
 finished scan is listed with its `card` and `options` (JOB-7). A listed
 job's `events` replays its past events — progress lines, a draw's `choice`
 events, and `done` for one that ended — then follows the new ones, so a page
 that reloads, or a second page, shows every job as it is and goes on
 following the running ones.
+
+**How long.** Every "one hour" in this contract about a finished job — a
+finished run kept, a finished scan listed, the entry of *What a failed draw
+keeps* — is `ARCHDRAW_JOB_KEEP_MS` (default 3 600 000, one hour; testing
+contract), so a test can shorten it.
 
 **A restart** (JOB-9). Nothing of a job is written to disk. After the
 server restarts, the list is empty, `instance` differs, and the old ids

@@ -136,7 +136,19 @@ reason.
     (`Try again` after a failed choice);
   - every progress event grows `at` and `source`, and a draw's stream
     carries `choice` events;
-  - held-out scenarios that expect a failed second choice to fail the whole
-    draw, or the editor to open after a draw, change.
+  - held-out scenarios whose asserted behaviour this decision changes are
+    superseded, and their author revises them:
+    - H192 (lines 70–83): the controls locked while the draw runs, the
+      choices one after another, the editor opening at the end;
+    - H194 (lines 36–41): every draw line with a `choice` and a `stage`,
+      choices never interleaved;
+    - H195 (lines 28–38): a failure in the second choice fails the run;
+    - H196 (lines 34–60): `Try again` from the first unfinished choice, then
+      the editor opening;
+    - H197 (line 12, lines 50–57): a cancel in the second choice while the
+      first is done and the later ones wait, then the editor opening;
+    - the editor opening by itself after a draw: H121 (lines 77–82), H122
+      (line 85), H123 (line 51), H148 (line 26), H149 (line 45), H157
+      (line 66).
 - **Cost to reverse:** medium — memory-only state and new endpoints, no file
   format change.

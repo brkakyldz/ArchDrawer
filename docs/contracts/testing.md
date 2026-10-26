@@ -35,6 +35,7 @@ Read by the server and the CLI:
 | `ARCHDRAW_ENGINES` | `claude,codex` | comma-separated engine ids, case-insensitive, in preference order; `fixture` adds the test engine; `ARCHDRAW_ENGINES=fixture` offers only it; an empty value offers none; unknown ids are ignored with a warning |
 | `ARCHDRAW_FIXTURE_STEP_MS` | `250` | delay between fixture progress messages (`0` or invalid gives the default) |
 | `ARCHDRAW_RUN_TIMEOUT_MS` | `1200000` (20 min) | a run's time limit; at least 10000 |
+| `ARCHDRAW_JOB_KEEP_MS` | `3600000` (1 hour) | how long a finished run is kept, a finished scan listed in the activity, and what a failed draw kept (api contract, *Activity*); at least 1000 |
 | `ARCHDRAW_ENGINE_SLOTS` | `3` | engine processes at a time for the whole server (api contract, *Engine slots*); an integer from 1 to 8, anything else gives the default |
 | `ARCHDRAW_NO_OPEN` | unset | any non-empty value: never open a browser |
 | `ARCHDRAW_CLAUDE_BIN`, `ARCHDRAW_CODEX_BIN` | unset | path of the `claude` / `codex` executable instead of looking it up on PATH |

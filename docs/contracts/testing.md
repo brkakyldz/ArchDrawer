@@ -451,7 +451,10 @@ writes it before it clicks. Its first line, trimmed, is the dialog:
 | anything else | `true` | the line is the folder chosen, checked as in *Folders*: 200 `{"status": "picked", …}`, or that check's 400 (a relative path: `The path must be absolute`) |
 
 A second line `slow` makes the dialog answer 3 s after the request, so a
-second pick in that time gets 409 `The folder dialog is already open`.
+second pick in that time gets 409 `The folder dialog is already open`. A
+slow dialog ends as a real one does when its request's connection closes or
+the server shuts down (api contract, *The folder dialog*): a pick made right
+after the first request's connection was closed opens at once, with no 409.
 
 ## Test links
 
@@ -464,11 +467,13 @@ network: the URL is `file://` plus the absolute path
 changes; the clone, the cache, the update, the progress lines and the errors
 are the real ones:
 
-- `<ARCHDRAW_TEST_REMOTES>/<host>` does not exist: the copy or the fetch fails
-  with `Could not reach <host>`, before git starts;
+- `<ARCHDRAW_TEST_REMOTES>/<host>` does not exist: every git call to the host
+  (clone, default branch, fetch) gets the error `Could not reach <host>`
+  without starting git, and the scan goes on as the api contract says for
+  that error (a clone or a switch fails, an update scans the copy as it is);
 - `<ARCHDRAW_TEST_REMOTES>/<host>/<owner>/<repo>` is not a git repository
-  with a commit: `This repository is private or does not exist`, before git
-  starts;
+  with a commit: the same, with `This repository is private or does not
+  exist`;
 - a branch the repository does not have: git's own error, so `The branch
   "<branch>" does not exist in <link>`;
 - a file `<ARCHDRAW_TEST_REMOTES>/<host>/<owner>/<repo>.slow` beside the
@@ -479,6 +484,20 @@ are the real ones:
 A test makes a remote with `git init`, a commit, and optionally a branch; a
 new commit to it is what a later scan fetches. The repository's default
 branch is the branch its `HEAD` names.
+
+**Fixture markers in a copy.** The fixture reads its markers from the
+folder's last path segment (*Scan*, *Draw*), but a repository name cannot
+hold `[`, `:` or `]`. For a folder in a copy, the fixture also reads them
+from the copy's repository name in a dashed form: each `fixture-<words>`
+that starts the name or follows a `-`, running to the next `-fixture-` or
+to the end, is the marker `[fixture:<words>]` with each `-` in `<words>` read
+as `:`. So `shop-fixture-fail` is `[fixture:fail]`,
+`shop-fixture-fail-overview` is `[fixture:fail:overview]`, and
+`shop-fixture-slow-fixture-many` is `[fixture:slow]` and `[fixture:many]`.
+They act exactly as the bracketed markers do, on the scan and on a draw of
+the copy; an unknown one is ignored. A test makes the remote
+`<ARCHDRAW_TEST_REMOTES>/github.com/acme/shop-fixture-fail` and pastes
+`https://github.com/acme/shop-fixture-fail`.
 
 ## Test suites
 

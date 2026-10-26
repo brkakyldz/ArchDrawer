@@ -51,8 +51,11 @@ recommended option, (a), of each of the five questions of issue #192 on
    needs no history.
 4. **The cache.** A copy lives under archdrawer's data folder at
    `repos/<host>/<owner>/<repo>`, one per repository, and its drawing is
-   written into it. A later scan of it fetches the newest commit of its branch
-   first. A copy stays until the user removes it: `Remove from list` on its
+   written into it. A later scan of it fetches the newest commit first: of
+   the branch a link names, of the default branch when a link names none,
+   or of the copy's own branch when the copy is chosen as a folder. While a
+   drawing or an instruction is using the copy it is not updated, and a link
+   asking for another branch is refused rather than scanning the wrong one. A copy stays until the user removes it: `Remove from list` on its
    drawing, or on its entry in *Recent*, offers to delete the copy too.
 5. **No dialog available** (Linux without `zenity` or `kdialog`, a machine
    with no desktop). `Choose folder…` is not shown; pasting a path stays.
@@ -67,8 +70,11 @@ network:
    cloned from. Both are off unless their variable is set; only the dialog or
    the network is replaced, everything after it runs as for a real one.
 7. **The clone is part of the scan.** A scan given a link copies or updates
-   the repository before it gathers its inputs, with the scan's progress,
-   cancel and timeout. A failed or cancelled copy leaves nothing in the cache.
+   the repository before it gathers its inputs, in the scan's progress and
+   cancel. The copy holds no engine slot (ADR 0016) and its deadline starts
+   when the scan is accepted; the engine's deadline starts when the scan
+   gets its slot. One scan at a time per copy. A failed or cancelled copy
+   leaves nothing in the cache.
 
 ## Rationale
 
@@ -110,7 +116,7 @@ hanging the scan on a password window the user never sees.
 | (3b) The whole history | Slow on a large repository; nothing reads it |
 | (4b) A size limit removing the least recently used copies | A drawing would lose its repository behind the user's back |
 | (5b) Show `Choose folder…` and explain why nothing opens | A button that never works |
-| A copy per branch (`<repo>@<branch>`) | A second folder for each branch; one copy follows the branch the latest link named |
+| A copy per branch (`<repo>@<branch>`) | A second folder for each branch; one copy follows the branch the latest link asked for, the default branch when it named none |
 
 ## Consequences
 

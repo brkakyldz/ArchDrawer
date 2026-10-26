@@ -74,9 +74,13 @@ the api contract, *Sources* (ADR 0017).
   archdrawer never asks for or keeps a password. A link it cannot take, a
   host it cannot reach and a repository it cannot see each fail with one
   plain sentence.
-- **SRC-5** (To build) A later scan of a copy fetches the newest commit of
-  its branch first. When the fetch fails, the scan goes on with the copy it
-  has and says so. The drawing files in the copy are never removed or
+- **SRC-5** (To build) A later scan of a copy fetches the newest commit
+  first: of the branch a link names, of the repository's default branch when
+  a link names none, or of the copy's own branch when the copy is chosen as
+  a folder. When the fetch fails, the scan goes on with the copy it has and
+  says so, naming its branch. While a drawing or an instruction uses the
+  copy, it is not updated, and a link asking for another branch fails with
+  one plain sentence. The drawing files in the copy are never removed or
   overwritten by an update.
 - **SRC-6** (To build) The library names a copy's drawing by its link instead
   of its path. `Remove from list` on that drawing, or on a copy's entry in

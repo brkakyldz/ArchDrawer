@@ -58,13 +58,16 @@ copy a user's CLI credentials.
    digits and `._:/@[]-`; the repository folder of an opened drawing file;
    the folder typed, pasted or picked on the home screen, which must be
    absolute, exist and be a directory; and a repository link, which reaches
-   only `git clone`. Each folder reaches the engine only as its repository
+   only `git clone`, and `git ls-remote`, `fetch` and `checkout` of its own
+   copy. Each folder reaches the engine only as its repository
    root, passed as the working directory and as the value of Codex's `-C`.
    A link must be an `https` link of github.com, gitlab.com or bitbucket.org
    with no user name or password, and git gets only the URL rebuilt from its
    checked host, owner and repository, as the argument after `--`; its
    branch, which never starts with `-`, is the one argument after
-   `--branch`. git runs with no terminal or credential prompt, no transport
+   `--branch` or `-B`, or sits inside `refs/heads/<branch>`. git runs with
+   no terminal or credential prompt, symlinks checked out as plain files, no
+   transport
    but `https` (`file` for test links, invariant 7), and none of the server's own `GIT_*` variables that point it
    at another repository or add config. The folder dialog helpers run fixed
    scripts with no user input in them.
@@ -127,6 +130,10 @@ copy a user's CLI credentials.
 - **A dialog behind the browser** — the folder dialog opens behind the
   browser window and the request seems frozen. Each helper asks the dialog
   to come to the front; a live check on each system confirms it.
+- **An orphaned dialog** — the page is reloaded or closed while the folder
+  dialog is open; the helper keeps running and every later pick gets 409.
+  A closed request connection or a shutdown kills the helper's process tree
+  and frees the dialog.
 - **A test switch left on** — the test dialog or test links answering while
   their variable is unset, so a real user's link is never really copied.
   The start-up line names every test switch that is on.

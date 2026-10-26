@@ -2,7 +2,7 @@
 id: 0010
 title: "A failed draw keeps its read in memory, and Try again starts where it stopped"
 date: 2026-10-22
-status: accepted (extended by 0015: kept per choice)
+status: accepted (extended by 0015: kept per choice; extended by 0016: kept for a choice that failed in a draw that wrote its file)
 deciders: [brkakyldz]
 supersedes: []
 ---

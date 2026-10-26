@@ -11,7 +11,8 @@ by `archdrawer open`. Bodies are JSON, UTF-8. Errors are
 
 Implemented by: `src/server/app.ts` (routes), `src/server/main.ts`
 (listener), `src/server/store.ts`, `src/server/files.ts`,
-`src/server/runs.ts`, `src/server/scans.ts`, `src/server/engines/*`,
+`src/server/runs.ts`, `src/server/draw.ts`, `src/server/scans.ts`,
+`src/server/slots.ts`, `src/server/engines/*`,
 `src/core/scan.ts`, `src/core/evidence.ts`, `src/core/report.ts`,
 `src/core/diff.ts`, `src/core/export/share.ts`, `src/core/export/mermaid.ts`.
 
@@ -52,13 +53,16 @@ Implemented by: `src/server/app.ts` (routes), `src/server/main.ts`
 | `POST /api/folders/check` `{"folder"}` | 200 `{"folder", "root", "git", "drawing"}`: the folder as resolved, its repository root (*Folders*), whether `git` works there (*Folders*), and the path of `<folder>/docs/architecture.archdraw.json` when that file exists, else null | 400 as in *Folders* |
 | `POST /api/scans` | 202 `{"scanId"}` | see *Scans* |
 | `GET /api/scans/:scanId` | 200 the scan record | 404 `Scan not found` |
-| `GET /api/scans/:scanId/events` | 200 event stream: past events replayed, then `progress` `{"message"}` …, then exactly one `done` `{"status", "error", "card", "options", "cached", "warnings"}` | 404 |
+| `GET /api/scans/:scanId/events` | 200 event stream: past events replayed, then `progress` `{"message", "at", "source"}` …, then exactly one `done` `{"status", "error", "card", "options", "cached", "warnings"}` | 404 |
 | `POST /api/scans/:scanId/cancel` | 200 `{"ok": true}` | 404 |
 | `POST /api/runs` | 202 `{"runId"}` | see *Runs* |
 | `GET /api/runs/:runId` | 200 the run record | 404 `Run not found` |
-| `GET /api/runs/:runId/events` | 200 event stream: past events replayed, then `progress` `{"message", "stage", "choice"}` …, then exactly one `done` `{"status", "diagramId", "error", "changes", "choice", "channel", "view", "layoutReport", "route", "path", "choices"}` | 404 |
-| `POST /api/runs/:runId/cancel` | 200 `{"ok": true}` | 404 |
-| `POST /api/shutdown` | 200 `{"ok": true}`; then the server cancels running runs and scans, removes `server.json` if it is still its own, and exits | — |
+| `GET /api/runs/:runId/events` | 200 event stream: past events replayed, then `progress` `{"message", "stage", "choice", "at", "source"}` and, for a `draw`, `choice` (a choice record, *Run record*) events …, then exactly one `done` `{"status", "diagramId", "error", "changes", "choice", "channel", "view", "layoutReport", "route", "path", "choices"}` | 404 |
+| `POST /api/runs/:runId/cancel` | 200 `{"ok": true}`; for a `draw`, every choice of it, joined ones included (*The draw run*) | 404 |
+| `POST /api/runs/:runId/choices` | 200 `{"runId", "choices": [id, …]}`: the choices join the running draw (*Joining a running draw*) | see there |
+| `POST /api/runs/:runId/retry` | 202 `{"runId"}`: a new `draw` run of the choices the draw did not finish (*Trying again*) | see there |
+| `GET /api/activity` | 200 every scan and draw running or ended within the last hour (*Activity*) | — |
+| `POST /api/shutdown` | 200 `{"ok": true}`; then the server cancels running and waiting runs and scans, removes `server.json` if it is still its own, and exits | — |
 
 ### Saving (`PUT /api/diagrams/:id`)
 
@@ -118,6 +122,68 @@ repository's own config runs no command, nothing is written to it, and no
 inherited `GIT_DIR` or `GIT_WORK_TREE` points git elsewhere. An input that is a
 symlink, is not a file, or lies in a folder leading out of the root (a
 symlinked folder or a junction) is left out of the listing and never read.
+
+## Engine slots
+
+A **slot** is one engine process (JOB-1, ADR 0016). The server has
+`ARCHDRAW_ENGINE_SLOTS` of them (default 3; testing contract), for every
+engine together. A slot is held by:
+
+- a scan that starts an engine, from the moment it asks for one (after the
+  copy or update of a link's repository, which holds none: *A scan with a
+  link*) to its end; a scan whose result is cached takes none;
+- each choice of a `draw` run, from its first line to its end, through all
+  its calls (read, overview, channel and their repair turns); a choice whose
+  stages are all reused (*What a failed draw keeps*) takes one too;
+- each run of another kind (refine, story, post, simplify, revise), from its
+  start to its end, through all its calls.
+
+"Its end" is when its last engine process tree has exited, so the server
+never runs more engine processes than it has slots. Detecting engines
+(`GET /api/engines`) takes no slot.
+
+**The queue.** What asks for a slot when none is free waits in one queue for
+the whole server and gets one in the order it asked: a run when it was
+accepted (`202`), a scan when it was accepted or, for a scan with a link,
+once its copy is made or updated, a draw's choices in request order when
+the run was accepted, a joined choice when its join was accepted. A slot freed goes to
+the oldest waiting request at once.
+
+**Waiting.** A job that waits is `running`, with `waiting: true` in its
+record, and its stream gets one progress line, `Waiting for a free engine`
+(`source: "server"`; for a draw's choice, with that `choice` and `stage`
+null), when it is put in the queue. A request that finds a free slot gets no
+such line. A draw's choice that waits has `status: "waiting"`. The time
+spent waiting counts toward no deadline: a run's and a choice's deadline
+(`ARCHDRAW_RUN_TIMEOUT_MS`) start when it takes its slot, and so does a
+scan's engine deadline. The copy or update of a link's repository has its
+own deadline, from the scan's `createdAt`, and holds no slot (*A scan with a
+link*). Cancel
+takes a waiting request out of the queue without starting an engine. A
+running request's slot is freed once its engine's process tree has exited.
+
+## Progress lines
+
+Every `progress` event of a scan and a run carries:
+
+- `message`: the line;
+- `at`: when the server sent it, ISO 8601 in UTC with milliseconds
+  (`2026-10-26T09:14:03.120Z`);
+- `source`: `engine` for a line an engine call reports while it runs (the
+  engine adapter's lines: `Starting Claude Code`, `Reading <path>`,
+  `Searching for “…”`, `Writing the diagram`, the fixture's lines, …),
+  `server` for every other line (`Waiting for a free engine`,
+  `Gathering the repository`, `Drawing "<title>" (<i> of <n>)`,
+  `Checking the facts`, `Saved`, …), the lines of a link's copy and update
+  (`Copying <link>`, `Fetching …`, *A scan with a link*) included: git is no
+  engine, so those lines never move `lastEngineEventAt`.
+
+A **file read** is a file the engine reports reading by its path: Claude
+Code's `Read` tool, and a Codex command that reads a file it names (its line
+is `Reading <path>`). A search (`Grep`, `Glob`, `Searching for …`,
+`Listing …`) and a read that names no file (`Reading files`) are none. The
+same path read twice counts once. The fixture reports its file reads as the
+testing contract says.
 
 ## Scans
 
@@ -230,32 +296,53 @@ home screen always offers them (SCAN-3).
   replaced.
 
 **Lifecycle.** As a run's: `running`, `succeeded`, `failed` or `cancelled`,
-the same timeout, and cancel kills the engine's process tree. A failed or
-cancelled scan caches nothing. The latest succeeded scan of each folder is kept
-while the server runs, so a `draw` can follow it at any time: a newer success
-forgets every earlier finished scan of the folder, a newer failure or cancel
-only the earlier failed and cancelled ones. Its cache entry
-stays.
+the same timeout, and cancel kills the engine's process tree. A scan that
+starts an engine holds a slot (*Engine slots*): it takes it, or waits for
+it, before `Gathering the repository` (for a scan with a link, after its
+copy is made or updated, which holds no slot), and its engine deadline
+starts when it has it. A scan that a running `draw` started from is not
+forgotten while that draw runs (*Joining a running draw*); once the draw has
+ended, the rules below apply to it again. A failed or cancelled scan caches nothing. The latest succeeded scan of
+each folder is kept while the server runs, so a `draw` can follow it at any
+time: a newer success forgets every earlier finished scan of the folder, a
+newer failure or cancel only the earlier failed and cancelled ones. Its
+cache entry stays. A finished scan is listed in *Activity*, card and options
+included, for one hour after it ended, or until it is forgotten.
 
 **Scan record** (`GET /api/scans/:scanId`):
-`{"id", "status", "progress", "folder", "root", "commit", "cached", "card",
-"options", "warnings", "error", "engine", "model"}`. `commit` is null outside
-git; `card` and `options` are null until success.
+`{"id", "status", "progress", "message", "folder", "root", "name", "commit",
+"cached", "card", "options", "warnings", "error", "engine", "model",
+"createdAt", "startedAt", "endedAt", "waiting", "lastEngineEventAt"}`.
 
-**Progress:** `Gathering the repository`, then the engine's lines, then
-`Checking the scan`, then `Done`. A cached scan's only line is `Scanned
-before at <short commit>`.
+- `commit` is null outside git; `card` and `options` are null until success.
+- `message`: the latest progress line, null before the first.
+- `name`: the card's `name` once the scan succeeded; before, for a scan with
+  a link the link's `<repo>`, else the folder's last path segment.
+- `createdAt`: when the scan was accepted; `startedAt`: when its first step
+  began — the copy or update of a link's repository, else taking its slot
+  (for a cached scan of a local folder, `createdAt`) — null before;
+  `endedAt`: when it ended, null while it runs. Times are ISO 8601 in UTC
+  with milliseconds.
+- `waiting`: true while it waits for a slot.
+- `lastEngineEventAt`: the `at` of its latest `engine` line, null before
+  one.
+
+**Progress:** for a scan with a link, the lines of its copy or update
+first (*A scan with a link*); then `Waiting for a free engine` when it has
+to wait, then `Gathering the repository`, then the engine's lines, then `Checking the
+scan`, then `Done`. A cached scan's only line is `Scanned before at <short
+commit>`.
 
 ## The draw run
 
 `POST /api/runs` with `kind: "draw"` starts a new drawing of one or several
-choices (SCAN-3, STORY-1, READ-1–3, START-7, ADR 0015). It takes no
-`diagramId`:
+choices (SCAN-3, STORY-1, READ-1–3, START-7, JOB-2–JOB-4, ADR 0015,
+ADR 0016). It takes no `diagramId`:
 
 ```jsonc
 { "kind": "draw",
   "scan": "<scanId>",                 // a succeeded scan of the folder
-  "choices": [                        // 1–10 choices, drawn in this order
+  "choices": [                        // 1–10 choices, started in this order
     { "kind": "whole" },
     { "kind": "option", "option": "o2" },
     { "kind": "typed", "text": "How a booking is paid" } ],
@@ -284,12 +371,14 @@ The checks run in this order, each a 400:
 6. `Choose the channel: linkedin, readme or presentation`;
 7. the model and the engine, as for any run.
 
-A second `draw` run on a folder while one is running gets 409
-`A drawing of this folder is already being made`.
+A `draw` for a folder whose draw is running gets 409
+`{"error": "A drawing of this folder is already being made", "runId": "<the
+running draw's id>"}`: its choices can join that draw instead (*Joining a
+running draw*).
 
-**The choices.** Each requested choice becomes a choice of the new file
-(drawing contract, *Choice*), in request order, and is listed in the run
-record from the start (*Run record*):
+**The choices.** Each requested choice becomes a choice of the run, in
+request order, and is listed in the run record from the start (*Run
+record*):
 
 | requested | `id` | `kind` | `title` | `about` |
 |---|---|---|---|---|
@@ -301,18 +390,24 @@ A slug is the text lower-cased, accents removed, every run of characters
 other than `a`–`z` and `0`–`9` turned into one `-`, cut to 40 characters, with
 `-` trimmed from both ends; an empty one is `choice`. `system` is kept for the
 whole system: a slug equal to it, or to an earlier choice's id, gets `-2`,
-`-3`, …
+`-3`, … The **draw's order** is request order, then the joined choices in
+the order they joined.
 
-**Each choice in turn.** The run draws the choices one after another, in
-request order, and each choice makes three engine calls in order. A story
-call whose answer has a problem gets one repair turn (drawing contract,
-*Problems and the repair turn*). The repair turn is no stage of its own: its
-progress lines carry the stage of the call it repairs. A choice starts with
-the line `Drawing "<title>" (<i> of <n>)` (stage `read`). A stage's progress
-line (`Drawing the overview`, `Drawing the <channel>`) is emitted when its
-call starts, so a stage that fails still shows it; `Checking the facts` comes
+**Side by side** (JOB-2, ADR 0016). When the run is accepted, its choices
+are put in the slot queue in request order (*Engine slots*). Each starts as
+soon as it has a slot, independently of the others, and makes three engine
+calls in order. A story call whose answer has a problem gets one repair turn
+(drawing contract, *Problems and the repair turn*). The repair turn is no
+stage of its own: its progress lines carry the stage of the call it repairs.
+A choice starts with the line `Drawing "<title>" (<i> of <n>)` (stage
+`read`), `<i>` its place in the draw's order and `<n>` the number of choices
+the draw holds at that moment, joined ones included. A stage's progress line
+(`Drawing the overview`, `Drawing the <channel>`) is emitted when its call
+starts, so a stage that fails still shows it; `Checking the facts` comes
 after the read's answer. Every progress event of a draw carries the `choice`
-id it belongs to.
+id it belongs to, except `Writing the drawing` and the `Saved` line, whose
+`choice` and `stage` are null. The lines of choices running at the same time
+interleave in the stream in the order they happen.
 
 1. **Read** (`stage: "read"`). Tools: read-only (Claude Code
    `Read,Grep,Glob`, Codex read-only). The prompt holds the choice (the
@@ -333,21 +428,80 @@ id it belongs to.
    channel's story from the choice's facts and overview. Progress:
    `Drawing the <LinkedIn post | README drawing | presentation>`.
 
-**Deadlines and cancel.** Each choice has its own deadline,
-`ARCHDRAW_RUN_TIMEOUT_MS` from its first line; a choice that passes it ends
-the run as timed out (*Lifecycle*). Writing the file has no deadline of its
-own. Cancel and timeout kill the engine's whole process tree. A choice that
-fails, is cancelled or times out ends the run: no later choice starts.
+**Choice events.** A draw's stream also carries `event: choice`, whose data
+is one choice's record (*Run record*) as it is after the change. One is sent
+each time a choice's `status`, `stage`, `filesRead` or `parts` changes: when
+it has to wait for a slot (`waiting`), when it takes its slot (`running`,
+stage `read`), at each new stage, after each new file read (*Progress
+lines*), once its read is checked (`parts` set), and when it ends. A choice
+that finds a free slot gets no `waiting` event: its first `choice` event is
+`running`. A `choice` event comes right after the progress line that goes
+with the change, when there is one. Past `choice` events are replayed with
+the rest, so a stream opened late ends up with every choice as the record
+has it.
 
-**The result**, once every choice is drawn, is a new `@4` document:
+**The first events.** When the run is accepted, before any other event of
+the draw, each choice in request order gets exactly two events: either
+`Drawing "<title>" (<i> of <n>)` (it found a free slot) or `Waiting for a
+free engine` (it did not), then its `choice` event (`running`, stage `read`;
+or `waiting`, stage null). A waiting choice that later takes a slot gets
+`Drawing "<title>" (<i> of <n>)`, then its `choice` event (`running`). So
+with 3 free slots, a draw of four choices starts with `Drawing "…" (1 of
+4)`, `choice`, `Drawing "…" (2 of 4)`, `choice`, `Drawing "…" (3 of 4)`,
+`choice`, `Waiting for a free engine`, `choice`.
+
+**Deadlines, a choice that fails, and cancel** (JOB-3, JOB-10). Each choice
+has its own deadline, `ARCHDRAW_RUN_TIMEOUT_MS` from its first line. A
+choice that fails (an engine error, an answer that cannot become a drawing,
+a read with no fact left after the evidence check) or passes its deadline
+ends alone:
+
+- its engine's process tree is killed, then its slot is freed;
+- its `status` is `failed`, its `stage` the stage it was in, and its `error`
+  the reason (`Timed out after <n> min — try a narrower instruction` for the
+  deadline, as for a run);
+- the line `Could not draw "<title>": <error>` is sent, with its stage and
+  its choice, then its `choice` event.
+
+The other choices carry on, and waiting ones still start. Cancel
+(`POST /api/runs/:runId/cancel`) ends the whole draw: every running choice's
+engine process tree is killed and that choice is `cancelled`; waiting
+choices leave the queue and stay `waiting`; finished choices stay `done`;
+nothing is written; the run ends `cancelled`. Writing the file has no
+deadline, and a cancel asked once the run is writing changes nothing: the
+file is written and the run ends as it would have (the cancel still answers
+`{"ok": true}`).
+
+**When every choice has ended** (none `running` or `waiting`):
+
+- with at least one `done`, the run is **writing**: `writing` is true in its
+  record, the line `Writing the drawing` is sent, and the file is written
+  with the `done` choices in the draw's order (*The result*); no choice can
+  join from then (*Joining a running draw*);
+- with none `done` (every choice failed), the run ends `failed`, writes
+  nothing, and its `error` is the `error` of the first choice in the draw's
+  order.
+
+**Ids** (JOB-2). A choice's id is the one the run record gave it. View ids
+are given when the file is written, choice by choice in the draw's order
+among the choices the file holds, as the drawing contract's *The view* and
+*The map* give them: the file's first choice's first view of a channel is
+the channel's name, another choice's `<choice id>-<channel name>`, a detail
+view of the map `<part id>-inside`, and an id that a view earlier in that
+order already has gets `-2`, `-3`, … So the same choices give the same ids
+whichever finished first, and the ids are those of a draw that drew them one
+after another. A draw that adds to an existing file (*Trying again*) counts
+every view the file already holds as earlier.
+
+**The result** of a draw that writes a new file is a new `@4` document:
 
 - `title`: the card's name;
 - `source`: the root;
-- `choices`: every requested choice in request order, each with its facts,
+- `choices`: every `done` choice in the draw's order, each with its facts,
   its overview channel and the chosen channel, its other two channels empty;
-- `warnings`: every repair warning, choice by choice and in stage order
-  within each; in a run of several choices each starts with
-  `<choice title>: `.
+- `warnings`: every repair warning of those choices, choice by choice in the
+  draw's order and in stage order within each; in a file of several choices
+  each starts with `<choice title>: `.
 
 It is validated, then written to `<folder>/docs/architecture.archdraw.json`,
 or the first free `architecture-<n>.archdraw.json` (n = 2, 3, … 99) when that
@@ -363,39 +517,160 @@ which could lead out of the folder), the folder is read-only, every name is
 taken) the run fails with `Could not write the drawing in <folder>/docs:
 <reason>`. The file is then registered as `POST /api/files` would register
 it; when registering fails, the written file is removed and the run fails.
+Then the line `Saved` or `Saved with <n> warning(s)` is sent, `<n>` the
+number of the file's `warnings`.
 
 On success the run has:
 
 - `diagramId`;
 - `path`, the written file;
-- `choice`, the first choice's id;
-- `channel`, the chosen one, and its `view` in the first choice;
+- `choice`, the first choice the file holds (for a draw that adds to a
+  file, the first choice it added);
+- `channel`, the chosen one, and its `view` in that choice;
 - `layoutReport`, for that view in the channel's default format;
 - `changes`: everything in that view `added`;
-- `choices`, every one `done`.
+- `choices`, every choice of the draw, `done` or `failed`.
 
 `succeeded` implies a `diagramId`, a `path` and a readable, registered file
-holding every requested choice, each with its overview and the chosen
-channel drawn. A failure, cancel or timeout in any choice writes and
-registers nothing.
+holding every choice the record lists as `done`, each with its overview and
+the chosen channel drawn, and no choice `running` or `waiting`. A `failed`
+choice is not in the file. A cancelled draw, a draw in which every choice
+failed, and a draw whose file cannot be written or registered (the run
+`failed` with that error, each choice keeping the status it ended with)
+write and register nothing.
 
-**What a failed draw keeps** (ADR 0010, ADR 0015). A draw that ends without
-a drawing (failed, cancelled or timed out) keeps, in the server's memory
-only, a record for each choice that got past its read:
+### Joining a running draw
 
-- a choice that finished: its read answer, its overview, and its view of the
-  chosen channel, with that channel;
-- the choice it stopped in: its read answer once it was checked, and its
-  overview once its answer (after its repair turn, if any) was converted
-  (for `system`, split into the map). An overview cut off before that is not
-  kept.
+`POST /api/runs/:runId/choices` adds choices to a running draw (JOB-4,
+ADR 0016):
+
+```jsonc
+{ "scan": "<scanId>",                  // a scan the choices come from (check 5)
+  "choices": [ { "kind": "option", "option": "o3" } ] }   // 1–10, as for a draw
+```
+
+Joining choices take the draw's channel, engine and model; a `channel`,
+`engine` or `model` in the body is ignored. The checks run in this order:
+
+1. 404 `Run not found`;
+2. 400 `Only a draw takes more choices`, for a run of another kind;
+3. 409 `This draw has ended: start a new one`, when its status is not
+   `running` or its cancel was asked;
+4. 409 `The draw is writing its file: start a new one once it has
+   finished`, when `writing` is true;
+5. 400 `Give the scan the choices come from`, when `scan` is missing or not a
+   string; 400 `Scan the folder first: that scan is unknown or did not
+   succeed`; 409 `The draw was started from another scan of this folder`,
+   unless the scan is the draw's own or a succeeded scan of the same folder
+   (the same `root` and `folder`) at the same `commit` whose `options` are
+   the draw's (the same ids, kinds, titles, sentences and files, in the same
+   order). A scan outside git (`commit` null) other than the draw's own never
+   matches;
+6. 400 `Choose what to draw: give 1 to 10 choices`, when `choices` is
+   missing, not a list, empty or holds more than 10; then each choice in order
+   as check 4 of a draw (`Unknown focus: …`, `Unknown focus option "<id>"`,
+   `Say what to focus on: the focus is empty`, `The focus is too long (300
+   characters at most)`), options looked up in the card and options the run
+   keeps from its own scan (as *Trying again* does);
+7. 400, within the body: `The whole system is chosen twice`, `The option
+   "<id>" is chosen twice`, `Only one choice can be in your own words`; then
+   against the draw, whose choices count whatever their status, a failed one
+   included: `The whole system is already in this draw`, `The option "<id>"
+   is already in this draw`, `This draw already has a choice in your own
+   words`;
+8. 400 `A draw holds at most 10 choices; this one has <n>`, when the draw's
+   choices and the new ones are more than 10 (`<n>` the draw's count).
+
+A running draw pins its own scan: that scan is not forgotten while the draw
+runs (*Scans*, *Lifecycle*), so a page that has its id can always join. A
+newer scan of the folder at the same commit, a cached one included, has a
+new id and is accepted by check 5.
+
+A refused join changes nothing. An accepted one adds the choices at the end
+of the draw's list, in body order, with ids made as in *The choices*, free
+among the draw's choice ids (for a draw that adds to a file, also among the
+file's, as stored at that moment). Each gets the line `Added "<title>" to this
+draw` (stage null, its choice), then, as at a draw's start, either
+`Drawing "<title>" (<i> of <n>)` or `Waiting for a free engine`, then its
+`choice` event (`running` or `waiting`); these events of every joined
+choice, in body order, come before the answer. From then it is a choice of the draw like the others: its
+deadline, its failure, cancel, the file, what is kept. A joined choice that
+has a record in *What a failed draw keeps* for the draw's scan, engine and
+model reuses it. The answer is 200 `{"runId", "choices": [the new ids, in
+body order]}`.
+
+### Trying again
+
+`POST /api/runs/:runId/retry`, with no body, starts a new `draw` run from a
+draw that has ended, with the draw's scan, channel, engine and model
+(JOB-3, ADR 0010, ADR 0016):
+
+- after a draw that `succeeded` with `failed` choices: those choices, in the
+  draw's order, **added to the file it wrote**;
+- after a draw that ended `failed` or `cancelled`: every choice of the draw,
+  in its order, into a new file. The choices that finished are drawn from
+  what was kept, with no engine call.
+
+The checks run in this order:
+
+1. 404 `Run not found` (a finished run is forgotten one hour after it
+   ended);
+2. 400 `Only a draw can be tried again`, for a run of another kind;
+3. 409 `The draw is still running`;
+4. 400 `Every choice of this draw was drawn`, for a draw that succeeded with
+   no `failed` choice;
+5. the scan's folder, checked again as in *Folders*;
+6. the draw's engine, as for any run (`<label> is not available:
+   <detail>`);
+7. for a draw that succeeded: 409 `The drawing this draw wrote is gone:
+   start a new draw`, when its `diagramId` is no longer registered or its
+   file cannot be read;
+8. 409 `A drawing of this folder is already being made`, with the running
+   draw's `runId`.
+
+The scan itself need not be kept any more: the run keeps its scan's card and
+options. The answer is 202 `{"runId"}`. The new run's record has `retryOf`
+(the draw's id) and `into` (the `diagramId` it adds to, null for a new
+file). Its choices keep their ids; one that the file holds when the retry
+is accepted gets `-2`, `-3`, … It goes as any draw: side by side, what was kept reused, joins
+accepted.
+
+A draw that adds to a file writes once every choice has ended and at least
+one is `done`. It reads the file as stored at that moment, appends the `done`
+choices after the file's own in the draw's order, gives their views ids
+counting every view of the file as earlier (*Ids*), validates the document
+and saves it as a run's save: the file's `warnings` become this run's (drawing
+contract, *warnings*), `updatedAt` moves, `changed` fires, and the file's
+other choices stay exactly as they were. When the file is gone or unreadable
+at that moment, the run fails with `The drawing this draw wrote is gone:
+start a new draw`. On success `diagramId` and `path` are that file's.
+
+### What a failed draw keeps
+
+ADR 0010, ADR 0015, ADR 0016. A choice of a
+draw that ends without being written keeps, in the server's memory only, a
+record when it got past its read:
+
+- in a draw that wrote nothing (cancelled, every choice failed, or the file
+  could not be written): every such choice;
+- in a draw that wrote its file: each `failed` choice.
+
+A record holds:
+
+- for a choice that finished: its read answer, its overview, and its view of
+  the chosen channel, with that channel;
+- for a choice that failed or was cancelled: its read answer once it was
+  checked, and its overview once its answer (after its repair turn, if any)
+  was converted (for `system`, split into the map). An overview cut off
+  before that is not kept.
 
 A record belongs to the run's scan id, engine (the one the run used) and
 `model` (as sent; null is its own value), and to its choice as requested:
-`whole`, the option's id, or the typed text as trimmed. A later `draw` with
-the same scan, engine and model reuses the record of every choice it lists
-that has one, whatever else it lists and in whatever order; the channel is
-free. Each choice then goes, in its turn:
+`whole`, the option's id, or the typed text as trimmed. A later draw with
+the same scan, engine and model — a new draw, a retry, or a choice joining a
+draw — reuses the record of every choice it holds that has one, whatever
+else it holds and in whatever order; the channel is free. Each such choice
+then goes:
 
 1. with a record, `Using the facts already read` (`stage: "read"`), then
    `Checking the facts`: the kept read answer is repaired and its evidence
@@ -409,20 +684,19 @@ free. Each choice then goes, in its turn:
    post | README drawing | presentation> already drawn` (`stage: "channel"`);
    otherwise the channel call is made as usual.
 
-So `Try again` with the same choices makes no engine call for the choices
-that finished and starts from the first choice that did not finish, at its
-first unfinished stage; a draw without the failed choice draws the others
-from what is kept. The result's warnings are those of every stage, in order,
-as one run that never failed would have them. A new scan, a `refresh`
-included, has a new id and so reads again.
+So `Try again` makes no engine call for the choices that finished, and every
+other choice starts at its first unfinished stage. A draw without the failed
+choice draws the others from what is kept. The result's warnings are those
+of every stage, in order, as one run that never failed would have them. A
+new scan, a `refresh` included, has a new id and so reads again.
 
 Each folder keeps at most one entry, for one scan, engine and model. A draw
-of the folder that ends without a drawing adds its records to the entry when
-its scan, engine and model are the entry's (a choice's newer record replaces
-its older one), and otherwise replaces the entry with its own. A draw that
-succeeds removes the entry. It goes one hour after the last draw that added
-to it, or when the server stops. The reused draw is a new run, with its own
-deadlines.
+that keeps records adds them to the entry when its scan, engine and model are
+the entry's (a choice's newer record replaces its older one), and otherwise
+replaces the entry with its own. A draw that writes its file removes from
+the entry the records of the choices it wrote; an entry left with none goes.
+The entry goes one hour after the last draw that added to it, or when the
+server stops. A reused draw is a new run, with its own deadlines.
 
 ## Runs
 
@@ -493,7 +767,7 @@ model it used in the document's `engine`.
 | `story` | a story intent (drawing contract, Story answers) under the channel's brief; the brief carries the facts, the overview channel's first view (for a `system` choice the map and its detail views in `views-panel` order, skipping parts with a `detail`) and, for a redraw, the channel's current view, and the optional instruction is added to it. `readCode` defaults to false: the engine is asked to read no file and Claude Code runs with no tools (STORY-1); `true` lets it read the code read-only | only the channel's one view (created or replaced, its `outdated` emptied) and, for the presentation, its steps; the facts and other channels stay | LinkedIn `feed` (default) or `linkedin`; README `readme`; presentation `slide` |
 | `post` | a `story` on the LinkedIn channel, with `readCode` defaulting to true (`Design the post`) | as `story` on LinkedIn | `feed` (1080 × 1350, default) or `linkedin` (1620 × 1080) |
 | `revise` | one round of fixes after looking at the image (*The second look*): on LinkedIn, README or presentation the channel's story; on the overview a refine draft | as a refine's `story` route (*Routing*): only how the channel tells the facts; the facts stay | the channel's default |
-| `draw` | per choice, three answers: the read (drawing contract, Read answers), then the overview's story and the chosen channel's story (Story answers) | a new drawing file holding every choice (*The draw run*) | the chosen channel's default |
+| `draw` | per choice, three answers: the read (drawing contract, Read answers), then the overview's story and the chosen channel's story (Story answers) | a new drawing file holding every choice that finished, or those choices added to the file a draw wrote (*The draw run*, *Trying again*) | the chosen channel's default |
 
 **Routing (refine).** A refine first asks the engine one small question with
 no tools (Claude Code `--tools ""`; Codex read-only): does the instruction
@@ -544,23 +818,65 @@ with `The drawing changed while the instruction ran.` (post:
 cancelled, invalid or coverage-losing result writes nothing. `succeeded`
 means the file was rewritten with a valid document; `diagramId`, the final
 `channel` and `view` (for a post, `linkedin` and its view), `changes` and
-`layoutReport` are then set. Runs time out after `ARCHDRAW_RUN_TIMEOUT_MS` (`Timed out after <n> min
-— try a narrower instruction`); cancel and timeout kill the engine's whole
-process tree. A finished run is forgotten after one hour.
+`layoutReport` are then set. A run holds a slot (*Engine slots*): it takes
+it, or waits for it, before its first line other than `Waiting for a free
+engine`; a `draw`'s choices hold one each instead (*The draw run*). Runs
+time out after `ARCHDRAW_RUN_TIMEOUT_MS` from taking the slot (`Timed out
+after <n> min — try a narrower instruction`); a `draw`'s choices have their
+own deadlines. Cancel and timeout kill the engine's whole process tree. A
+finished run is forgotten one hour after it ended, and a finished `draw` is
+listed in *Activity* until then.
 
 **Run record** (`GET /api/runs/:runId`):
-`{"id", "kind", "choice", "channel", "view", "status", "progress": [string], "diagramId", "error",
-"engine", "model", "changes", "layoutReport", "route", "path", "choices"}`; `changes`,
-`layoutReport` and `path` (the drawing file a `draw` run wrote) are null until
-success. Every run changes one choice, `choice` (for a `draw`, its first
-choice's id, where the editor opens). `choices` is a `draw`'s list, null on
-other kinds: one `{"id", "kind", "title", "status", "stage"}` per requested
-choice in request order, with `status` `waiting`, `running`, `done`, `failed`
-or `cancelled` (a choice that timed out is `failed`) and `stage` the stage it
-is at or ended in (`read`, `overview`, `channel`; null while `waiting`).
-After a failed or cancelled draw, the choices before the one it ended in are
-`done` and those after it `waiting`. `done` carries `choice` and `choices`
-as the record has them.
+`{"id", "kind", "choice", "channel", "view", "status", "progress": [string],
+"message", "diagramId", "error", "engine", "model", "changes",
+"layoutReport", "route", "path", "choices", "createdAt", "startedAt",
+"endedAt", "waiting", "lastEngineEventAt", "folder", "root", "link", "name",
+"scan", "writing", "into", "retryOf"}`.
+
+- `changes`, `layoutReport` and `path` (the drawing file a `draw` run wrote)
+  are null until success.
+- Every run changes one choice, `choice`. For a `draw` it is its first
+  choice's id until the run ends, then the choice where the editor opens
+  (*The draw run*, on success).
+- `message`: the latest progress line, null before the first.
+- `createdAt`: when the run was accepted. `startedAt`: when it took its
+  slot; for a `draw`, the earliest `startedAt` of its choices; null before.
+  `endedAt`: when it ended, null while it runs. Times are ISO 8601 in UTC
+  with milliseconds.
+- `waiting`: true while the run waits for a slot; for a `draw`, while it is
+  not writing, none of its choices is `running` and at least one is
+  `waiting`.
+- `lastEngineEventAt`: the `at` of the run's latest `engine` line (for a
+  `draw`, of any of its choices), null before one.
+- A `draw`'s own fields, null on other kinds (`writing` false): `folder`
+  and `root`, the scanned folder as resolved and its repository root
+  (*Folders*); `link`, the scan's `link` (the copy's link, *A repository
+  from a link*; null for a local folder); `name`, the scan card's `name`;
+  `scan`, the scan id;
+  `writing`, true from `Writing the drawing` until the run ends (*The draw
+  run*); `into`, the `diagramId` the draw adds its choices to, null for a new
+  file; `retryOf`, the draw it tries again (*Trying again*), else null.
+- `choices` is a `draw`'s list in the draw's order, null on other kinds. Each
+  **choice record** is `{"id", "kind", "title", "status", "stage", "error",
+  "startedAt", "endedAt", "lastEngineEventAt", "filesRead", "parts"}`:
+  - `status`: `waiting` (it has no slot yet), `running`, `done`, `failed`
+    (a choice that timed out included) or `cancelled`;
+  - `stage`: the stage it is at or ended in (`read`, `overview`,
+    `channel`), null while `waiting`;
+  - `error`: why it failed, null otherwise;
+  - `startedAt`: when it took its slot (its first line), null while
+    `waiting`; `endedAt`: when it ended, null until then;
+  - `lastEngineEventAt`: the `at` of its latest `engine` line, null before
+    one;
+  - `filesRead`: the number of different files the engine has read for it
+    (*Progress lines*); 0 before any, and when its read was reused;
+  - `parts`: the number of component facts its read holds once checked
+    (mechanisms included, facts dropped by the evidence check not counted),
+    null until then.
+- After a cancelled draw, the choices that finished are `done`, those that
+  were running `cancelled`, and those that never started `waiting`.
+- `done` carries `choice` and `choices` as the record has them.
 
 **Progress.** A refine starts with the routing question's engine lines, if
 any, then its route line (`Changing the facts` or `Redrawing this channel
@@ -570,7 +886,9 @@ engine lines (`Starting Claude Code`, `Reading <path>`,
 (story and post: `Checking the post`), then `Saved` or `Saved with <n>
 warning(s)`. A `draw` run's events carry `stage`: `read`, `overview` or
 `channel`, and `choice`: the id of the choice the line belongs to (both null
-on other kinds).
+on other kinds). Every progress event carries `at` and `source` (*Progress
+lines*). A run that has to wait for a slot starts with `Waiting for a free
+engine` (*Engine slots*).
 
 A story answer with a problem (story, post, a revise's story, a draw's
 overview or channel) adds, right after its own check line, `Fixing <n>
@@ -589,7 +907,7 @@ of these lines carries the stage of the call it repairs.
 `{"added", "removed", "changed", "moved", "edgesAdded", "edgesRemoved",
 "edgesChanged"}`, id lists, computed over the channel views the run could change
 (refine `view`/`parts` and revise: that view; post: the LinkedIn view; draw:
-the chosen channel's view of its first choice; otherwise every
+the chosen channel's view of the choice its `choice` names; otherwise every
 view of the run's channel). A
 component is `changed` when any field but its position differs and `moved`
 when its position differs (never a group). One that moved to another view is
@@ -638,6 +956,66 @@ image draws it, with the format's starting switches (ui contract):
 - `longestConnection`: the longest curve ÷ the diagonal of the components'
   bounding box; 0 without connections.
 
+## Activity
+
+`GET /api/activity` lists the **jobs** — every scan and every `draw` run —
+that are running, or that ended less than one hour ago and are still kept
+(JOB-7, ADR 0016). Runs of other kinds are not listed. It is a `GET`, so it
+needs no token.
+
+```jsonc
+{ "instance": "9f2c4e1a7b3d5c80",          // this server process
+  "now": "2026-10-26T09:14:03.120Z",        // the server's clock
+  "timeoutMs": 1200000,                     // ARCHDRAW_RUN_TIMEOUT_MS
+  "slots": { "total": 3, "busy": 3, "waiting": 1 },
+  "jobs": [
+    { "type": "draw", "events": "/api/runs/r_…/events", "id": "r_…", "status": "running", "choices": [ … ], … },
+    { "type": "scan", "events": "/api/scans/s_…/events", "id": "s_…", "status": "succeeded", "card": { … }, "options": [ … ], … } ] }
+```
+
+- `instance`: 16 lower-case hexadecimal characters, random each time the
+  server starts and the same for the life of the process. Another value than
+  the one a page saw before means the server restarted (JOB-9).
+- `now`: the server's time, ISO 8601 in UTC with milliseconds, so the time
+  since a choice started or since its last engine line can be counted on the
+  server's clock.
+- `timeoutMs`: `ARCHDRAW_RUN_TIMEOUT_MS` in milliseconds, the deadline of
+  each scan, run and draw choice from the moment it takes its slot
+  (*Engine slots*), so a page can say how long a running choice may still
+  take.
+- `slots`: `total`, the number of slots (*Engine slots*); `busy`, the slots
+  held now by any scan, choice or run, instruction runs included; `waiting`,
+  the requests in the queue.
+- `jobs`: each is the record that `GET /api/scans/:scanId` or
+  `GET /api/runs/:runId` answers at that moment, with `type` (`scan` or
+  `draw`) and `events` (the path of its event stream) added; newest
+  `createdAt` first, equal times by `id`. Both records carry `link`, so a job
+  of a repository from a link shows its link (`github.com/owner/repo`), not
+  its copy's folder.
+
+A job is listed from the moment it is accepted (a scan too, whether its
+result turns out cached or not) until one hour after its `endedAt`, or until it is forgotten
+before that (a scan forgotten by a newer scan of its folder, *Scans*). A
+finished scan is listed with its `card` and `options` (JOB-7). A listed
+job's `events` replays its past events — progress lines, a draw's `choice`
+events, and `done` for one that ended — then follows the new ones, so a page
+that reloads, or a second page, shows every job as it is and goes on
+following the running ones.
+
+**How long.** Every "one hour" in this contract about a finished job — a
+finished run kept, a finished scan listed, the entry of *What a failed draw
+keeps* — is `ARCHDRAW_JOB_KEEP_MS` (default 3 600 000, one hour; testing
+contract), so a test can shorten it.
+
+**A restart** (JOB-9). Nothing of a job is written to disk. After the
+server restarts, the list is empty, `instance` differs, and the old ids
+answer 404 on `GET /api/runs/:runId`, `GET /api/scans/:scanId` and their
+`events`. What a failed draw kept goes with the old process too. A page
+that was following jobs `running` (waiting ones included) when it last heard
+from the old server says once `The server restarted; <n> jobs stopped`
+(`The server restarted; 1 job stopped` for one), `<n>` the number of those
+jobs, and lists them no more.
+
 ## Engines
 
 | id | label | available when |
@@ -681,3 +1059,5 @@ when those were set, `ANTHROPIC_BASE_URL`. The server never reads an API key.
 - Every write goes to a temporary file and is renamed into place; a `draw`
   run's new file is linked into place instead (*The draw run*), so it never
   replaces one.
+- Jobs, the slot queue and what a failed draw kept live in memory only;
+  nothing of them is on disk (*Activity*).

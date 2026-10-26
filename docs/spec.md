@@ -34,10 +34,13 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **START-6** (Today) A draw that fails after its read keeps what it read,
   and `Try again` starts from the stage that did not finish, with no new
   read (ADR 0010).
-- **START-7** (To build) A draw of several choices draws them one after
-  another, one read each. A choice that fails or is cancelled keeps the
-  choices that finished; `Try again` starts from the first choice that did
-  not finish. Nothing is written until every choice is drawn (ADR 0015).
+- **START-7** (To change) A draw of several choices draws them side by side,
+  one read each, as many at a time as the server has free engine slots
+  (JOB-1). A choice that fails or times out does not stop the others: the
+  file is written with every choice that finished, and `Try again` draws the
+  failed choice into that file (JOB-3). A cancelled draw, or one in which
+  every choice failed, writes nothing and keeps what finished for `Try
+  again` (ADR 0010, ADR 0016).
 
 ### Scan and choices (SCAN)
 
@@ -53,6 +56,57 @@ and its files, and a guided tour for learning a repository (ADR 0001).
   draw makes every choice ticked, into one drawing file.
 - **SCAN-4** (Today) A scan is cached per commit; opening the same commit
   again does not rescan.
+
+### Jobs (JOB)
+
+A **job** is a scan or a draw. A **slot** is one engine process (ADR 0016;
+api contract, *Engine slots*, *The draw run*, *Activity*).
+
+- **JOB-1** (To build) At most 3 engine processes run at a time for the
+  whole server. A scan that starts an engine, each choice of a draw and each
+  instruction run of the editor holds one slot until its engine has exited;
+  what finds none free waits, first come first served, and says
+  `Waiting for a free engine`. Waiting counts toward no time limit.
+- **JOB-2** (To build) A draw starts its choices in request order, each as
+  soon as it has a slot, each with its own read, overview, channel and time
+  limit. The ids in the written file are the same whichever choice finishes
+  first: those of the same choices drawn one after another in request order.
+- **JOB-3** (To build) A choice that fails or times out ends alone and the
+  others carry on. Once every choice has ended, the file is written with
+  every choice that finished and the draw succeeds, its record marking the
+  failed choice with its error; `Try again` on that draw draws the failed
+  choices into the same file, reusing what they had read. When every choice
+  fails, the draw fails and writes nothing.
+- **JOB-4** (To build) Choices started for a folder whose draw is running
+  join that draw: they take its channel, engine and model, wait for slots
+  like its own choices, and go into its file. A choice the draw already
+  holds is refused, and so is a second choice in the user's own words. Once
+  the draw has started writing its file, a join is refused with
+  `The draw is writing its file: start a new one once it has finished`.
+- **JOB-5** (To build) Scans and draws of different folders run at the same
+  time, sharing the slots; a job never waits for another job to end, only
+  for a slot.
+- **JOB-6** (To build) While a draw runs, each of its choices reports its
+  state (`waiting`, `running`, `done`, `failed`, `cancelled`), its stage,
+  when it started, the time of the engine's last line, the number of files
+  the engine has read for it, and, once its read is checked, the number of
+  parts the read found. Every progress line carries its time and whether the
+  engine or the server wrote it.
+- **JOB-7** (To build) The server lists every scan and draw that is running
+  or ended within the last hour (`GET /api/activity`). A reloaded page, or a
+  second page, shows them all again and follows the running ones from where
+  they are. A finished scan keeps its card and options there for that hour,
+  so the user can go back to choosing.
+- **JOB-8** (To build) When a draw finishes, the screen stays where it is:
+  the Activity rail shows the job as `Ready` with `Open`, and a notice
+  appears. Nothing opens the editor but the user.
+- **JOB-9** (To build) Jobs live in the server's memory only. A page that was
+  following running or waiting jobs when the server restarted says once
+  `The server restarted; <n> jobs stopped` (`1 job stopped` for one), and
+  lists them no more.
+- **JOB-10** (To build) Cancelling a job stops every engine it started,
+  frees their slots and takes its waiting choices out of the queue. A
+  cancelled draw writes nothing.
 
 ### Deep read and facts (READ)
 

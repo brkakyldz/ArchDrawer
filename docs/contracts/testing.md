@@ -35,6 +35,8 @@ Read by the server and the CLI:
 | `ARCHDRAW_ENGINES` | `claude,codex` | comma-separated engine ids, case-insensitive, in preference order; `fixture` adds the test engine; `ARCHDRAW_ENGINES=fixture` offers only it; an empty value offers none; unknown ids are ignored with a warning |
 | `ARCHDRAW_FIXTURE_STEP_MS` | `250` | delay between fixture progress messages (`0` or invalid gives the default) |
 | `ARCHDRAW_RUN_TIMEOUT_MS` | `1200000` (20 min) | a run's time limit; at least 10000 |
+| `ARCHDRAW_JOB_KEEP_MS` | `3600000` (1 hour) | how long a finished run is kept, a finished scan listed in the activity, and what a failed draw kept (api contract, *Activity*); at least 1000 |
+| `ARCHDRAW_ENGINE_SLOTS` | `3` | engine processes at a time for the whole server (api contract, *Engine slots*); an integer from 1 to 8, anything else gives the default |
 | `ARCHDRAW_NO_OPEN` | unset | any non-empty value: never open a browser |
 | `ARCHDRAW_CLAUDE_BIN`, `ARCHDRAW_CODEX_BIN` | unset | path of the `claude` / `codex` executable instead of looking it up on PATH |
 
@@ -230,8 +232,9 @@ post (drawing contract, Story answers).
 ### Scan
 
 Markers are read from the folder's last path segment, the same markers as
-above: `[fixture:fail]` fails the scan, and `[fixture:slow]` adds the 30 slow
-lines. Progress is `Reading the inputs`, then `Writing the card`.
+above: `[fixture:fail]` fails the scan, `[fixture:slow]` adds the 30 slow
+lines, and `[fixture:quiet]` sends no line for 45 s after `Reading the
+inputs`. Progress is `Reading the inputs`, then `Writing the card`.
 
 The answer is built from the inputs code gathered:
 
@@ -288,9 +291,22 @@ choice, and from a typed choice's text, where they act on that choice only:
   with `Fixture failure requested` the first time this server process makes
   it for the folder (its root), whatever the channel, focus, engine or model,
   and answer as usual every later time. A call the draw does not make (an
-  overview reused, api contract *What a failed draw keeps*) does not count.
+  overview reused, api contract *What a failed draw keeps*) does not count;
+- `[fixture:quiet]` makes the read call send no line for 45 s after its
+  `Reading the code` line, then go on as usual (for the quiet notice: the
+  choice's `lastEngineEventAt` stays at that line's time meanwhile).
 
-Each call has the fixture's progress lines.
+A failure that a marker requests fails only the choice whose call it is; the
+draw's other choices go on (api contract, *The draw run*). Each call has the
+fixture's progress lines, all `source: "engine"`.
+
+**File reads.** The read call reports reading A, then B when B differs (the
+files of *Read* below), both with its `Reading the code` line: the choice's
+`filesRead` becomes 2 (1 when the listing has one file) at that line, and its
+`choice` event follows it. No other call reports a file read, so a reused
+read leaves `filesRead` at 0. The checked read of the answer below holds 8
+component facts (`ghost` is dropped), so `parts` is 8 once the read is
+checked.
 
 **Read.** Let A be the listing's first file and B its second (else A). The
 answer is always the following, for every choice.

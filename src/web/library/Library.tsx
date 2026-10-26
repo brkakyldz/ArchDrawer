@@ -87,7 +87,7 @@ export function Library() {
             <div className="lib-nav-heading">RECENT PROJECTS</div>
             <div className="lib-nav-recents">
               {(list ?? []).slice(0, 5).map((d) => (
-                <button className="lib-recent-link" key={d.id} onClick={() => navigate(\`/d/\${d.id}\`)} title={d.path ?? d.title}>
+                <button className="lib-recent-link" key={d.id} onClick={() => navigate(`/d/${d.id}`)} title={d.path ?? d.title}>
                   <span className="lib-recent-symbol"><Icon name="file" size={14} /></span>
                   <span className="lib-recent-name">{d.title}</span>
                   <Icon name="open" size={13} className="lib-recent-arrow" />
@@ -146,7 +146,7 @@ export function Library() {
                               <span className="p" data-testid="library-item-path" title={d.path ?? undefined}>{d.path ?? "Imported"}</span>
                             </div>
                             <div className="row-menu">
-                              <button className="btn small icon-btn" data-testid="library-menu" aria-label={\`More actions for \${d.title}\`} aria-haspopup="menu" aria-expanded={menu === d.id}
+                              <button className="btn small icon-btn" data-testid="library-menu" aria-label={`More actions for ${d.title}`} aria-haspopup="menu" aria-expanded={menu === d.id}
                                 onClick={() => setMenu(menu === d.id ? null : d.id)}><Icon name="more" size={17} /></button>
                               {menu === d.id && (
                                 <div className="menu" role="menu" data-testid="library-menu-list">
@@ -159,7 +159,7 @@ export function Library() {
                           </div>
                           <div className="lib-drawing-bottom">
                             <span className="when"><Icon name="file" size={13} /> {when(d.updatedAt)}</span>
-                            <button className="btn small primary" data-testid="library-open" onClick={() => navigate(\`/d/\${d.id}\`)}>Open drawing <Icon name="send" size={14} /></button>
+                            <button className="btn small primary" data-testid="library-open" onClick={() => navigate(`/d/${d.id}`)}>Open drawing <Icon name="send" size={14} /></button>
                           </div>
                         </div>
                       </li>

@@ -12,7 +12,8 @@ by `archdrawer open`. Bodies are JSON, UTF-8. Errors are
 Implemented by: `src/server/app.ts` (routes), `src/server/main.ts`
 (listener), `src/server/store.ts`, `src/server/files.ts`,
 `src/server/runs.ts`, `src/server/draw.ts`, `src/server/scans.ts`,
-`src/server/slots.ts`, `src/server/engines/*`,
+`src/server/slots.ts`, `src/server/sources.ts`, `src/server/picker.ts`,
+`src/server/remote.ts`, `src/server/engines/*`,
 `src/core/scan.ts`, `src/core/evidence.ts`, `src/core/report.ts`,
 `src/core/diff.ts`, `src/core/export/share.ts`, `src/core/export/mermaid.ts`.
 
@@ -38,22 +39,26 @@ Implemented by: `src/server/app.ts` (routes), `src/server/main.ts`
 |---|---|---|
 | `GET /api/health` | 200 `{"ok": true, "app": "archdrawer", "version", "build"}`; `build` is a hash of the code this process runs (the web page embeds the build it was made from) | — |
 | `GET /api/engines` | 200 `{"engines": [{"id", "label", "available", "version", "detail", "test", "models"}]}` in `ARCHDRAW_ENGINES` order; detection is cached for 60 s | — |
-| `GET /api/diagrams` | 200 `{"diagrams": [{"id", "title", "path", "root", "updatedAt"}]}`, newest `updatedAt` first; `path` is the file of a registered drawing, `null` for an imported one; `root` is a registered drawing's repository root (drawing contract rule 14), `null` for an imported one | — |
+| `GET /api/diagrams` | 200 `{"diagrams": [{"id", "title", "path", "root", "link", "updatedAt"}]}`, newest `updatedAt` first; `path` is the file of a registered drawing, `null` for an imported one; `root` is a registered drawing's repository root (drawing contract rule 14), `null` for an imported one; `link` is the link of the copy the file lies in (*A repository from a link*, `github.com/owner/repo`), else `null` | — |
 | `POST /api/files` `{"path"}` | 200 `{"id", "url"}`: validates (a path missing from the repository is no error, drawing contract rule 14), normalises, writes back and registers the file; the same path (case-insensitive on Windows) gets the same id; the file's own `id` is kept unless another drawing has it | 400 `Give the absolute path of a drawing file` / `The path must be absolute` / `Not found: <path>` / `The file is not a valid drawing` + `errors` |
 | `POST /api/diagrams` (a document, `@4`, `@3`, `@2` or `@1`) | 201 `{"id"}`: imported into the data directory under a new id, an older format converted (drawing contract); files are not checked | 400 `Invalid diagram` + `errors` |
 | `POST /api/example` | 201 `{"id"}`: imports the bundled `examples/shop.archdraw.json` (title `Sample Shop`) | 500 |
 | `GET /api/diagrams/:id` | 200 the document, re-read from disk (an `@3` or `@2` file is converted and written back as `@4` first) | 404 `Diagram not found`; 400 `The file <name> is not a valid drawing` + `errors` |
 | `PUT /api/diagrams/:id` | 200 `{"ok": true, "updatedAt"}`; atomic write | see *Saving* |
-| `DELETE /api/diagrams/:id` | 204: forgets a registered file (it stays on disk) or deletes an imported document | 404 |
+| `DELETE /api/diagrams/:id?deleteCopy=true` | 204: forgets a registered file (it stays on disk) or deletes an imported document; with `deleteCopy=true` also deletes the copy the file lies in (*Deleting a copy*) | 404; with `deleteCopy=true` as in *Deleting a copy* |
 | `GET /api/diagrams/:id/events` | 200 `text/event-stream`: `event: changed`, `data: {"updatedAt"}` when the stored document changes other than through `PUT` (a session or the CLI edited the file, a request was saved, a run saved its result); a `: ping` comment every 20 s | 404 |
 | `GET /api/diagrams/:id/export.svg?choice=&channel=&view=&format=&theme=&parts=` | 200 `image/svg+xml`: the share image (ui contract) of a channel view of one choice with title, steps, labels, colour key and texts on, description off and sub-lines as the view's switch says; `choice` defaults to the choice holding `view` when `view` is given, else the first choice, `channel` to `overview`, `view` to the channel's first, `format` to `linkedin`, `theme` to the document's (an unknown theme falls back to it); `parts` (comma-separated ids) draws only those components, everything inside the groups among them, and the connections between them | 404; 400 `Unknown choice "<c>"`, `Unknown channel "<c>"; use one of overview, linkedin, readme, presentation`, `The channel "<c>" has no drawing`, `Unknown view "<v>"` (a view of another choice included), `Unknown format "<f>"; use one of linkedin, readme, slide, square, feed`, `Unknown component "<id>" in the view "<v>"` |
 | `GET /api/diagrams/:id/export.mmd?choice=&channel=&view=` | 200 `text/plain`: a Mermaid `flowchart LR` of the channel view (groups as subgraphs); defaults as for `export.svg` | 404; 400 unknown choice, unknown or empty channel, unknown view |
 | `POST /api/diagrams/:id/requests` `{"choice", "channel", "view", "text"}` | 201 `{"id"}` (`q<n>`): appends to `requests`; `choice` defaults to the choice holding `view` when `view` is given, else the first choice, `channel` to `overview` | 400 `The instruction is empty` / `The instruction is too long (4000 characters at most)` / `Unknown choice "<c>"` / unknown channel / unknown view; 404; 409 `The drawing could not be saved` |
 | `POST /api/diagrams/:id/check-files` `{"files": [path, …]}` | 200 `{"missing": [path, …]}`: the given repository-relative paths that do not exist under the drawing's repository root (*Runs*), symlinks resolved; none when that folder is not on this machine | 400 `files must be at most 20 repository-relative paths`; 404 |
-| `POST /api/folders/check` `{"folder"}` | 200 `{"folder", "root", "git", "drawing"}`: the folder as resolved, its repository root (*Folders*), whether `git` works there (*Folders*), and the path of `<folder>/docs/architecture.archdraw.json` when that file exists, else null | 400 as in *Folders* |
+| `POST /api/folders/check` `{"folder"}` or `{"link"}` | 200 `{"folder", "root", "git", "drawing", "link", "branch", "copied"}`: the folder as resolved (for a link, its copy's folder, *A repository from a link*), its repository root (*Folders*), whether `git` works there (*Folders*), the path of `<folder>/docs/architecture.archdraw.json` when that file exists, else null, `link`: the link given, or the link of the copy the folder lies in, else null; `branch`: the branch the link names, else null; `copied`: whether `folder` is a copy that exists on disk. Nothing is copied or fetched | 400 as in *Folders* |
+| `POST /api/folders/pick` | 200 `{"status": "picked", "folder", "root", "git", "drawing", "link", "branch", "copied"}` (the picked folder, as `POST /api/folders/check` answers it), `{"status": "cancelled"}` or `{"status": "unavailable"}` (*The folder dialog*) | 400 as in *Folders*; 409 `The folder dialog is already open`; 500 `The folder dialog failed: <reason>` |
+| `GET /api/sources` | 200 `{"picker", "recent", "found", "foundAt"}` (*Recent and found*); writes nothing | — |
+| `POST /api/sources/refresh` | 200 the answer of `GET /api/sources`, with the found list made again at once (*Recent and found*) | — |
+| `POST /api/sources/forget` `{"path", "deleteCopy"}` | 200 `{"ok": true, "deleted"}`: removes an entry from *Recent*, and its copy when asked (*Recent and found*) | 400, 404, 409 as in *Recent and found*; 500 `Could not delete the copy at <path>: <reason>` |
 | `POST /api/scans` | 202 `{"scanId"}` | see *Scans* |
 | `GET /api/scans/:scanId` | 200 the scan record | 404 `Scan not found` |
-| `GET /api/scans/:scanId/events` | 200 event stream: past events replayed, then `progress` `{"message", "at", "source"}` …, then exactly one `done` `{"status", "error", "card", "options", "cached", "warnings"}` | 404 |
+| `GET /api/scans/:scanId/events` | 200 event stream: past events replayed, then `progress` `{"message", "at", "source"}` …, then exactly one `done` `{"status", "error", "card", "options", "cached", "warnings", "link"}` | 404 |
 | `POST /api/scans/:scanId/cancel` | 200 `{"ok": true}` | 404 |
 | `POST /api/runs` | 202 `{"runId"}` | see *Runs* |
 | `GET /api/runs/:runId` | 200 the run record | 404 `Run not found` |
@@ -92,14 +97,26 @@ moves (unless the writer set a new valid one) and `changed` fires.
 
 ## Folders
 
-The home screen starts a drawing from a local folder (START-4). The folder
-is given as `folder` in `POST /api/folders/check`, `POST /api/scans` and a
-`draw` run, and checked the same way, 400 before anything else happens:
+The home screen starts a drawing from a folder (START-4). The folder is given
+as `folder` in `POST /api/folders/check`, `POST /api/scans` and a `draw`
+run, or as `link` in place of `folder` in `POST /api/folders/check` and
+`POST /api/scans`, and checked the same way, 400 before anything else
+happens:
 
-- `Give the absolute path of a folder`: missing or not a string;
-- `The path must be absolute`;
-- `Not found: <path>`;
-- `Not a folder: <path>`.
+- `Give a folder or a link, not both`: both `folder` and `link` are given
+  and neither is null;
+- with `link`: the checks of *Reading a link*, and no others; the folder is
+  then the link's copy (*The copy*), which need not exist yet;
+- without `link` (absent or null), the folder's checks:
+  - `Give the absolute path of a folder`: missing or not a string;
+  - `The path must be absolute`;
+  - `Not found: <path>`;
+  - `Not a folder: <path>`.
+
+A folder picked in the system's dialog (`POST /api/folders/pick`) and a
+folder of a *Recent* or *Found* entry are given as `folder` like a pasted
+one. A `draw` run takes its folder from its scan, so a link reaches a draw
+only through the scan.
 
 A trailing separator is dropped and the path resolved, symlinks included.
 The **repository root** is the nearest ancestor of the folder (the folder
@@ -122,6 +139,371 @@ repository's own config runs no command, nothing is written to it, and no
 inherited `GIT_DIR` or `GIT_WORK_TREE` points git elsewhere. An input that is a
 symlink, is not a file, or lies in a folder leading out of the root (a
 symlinked folder or a junction) is left out of the listing and never read.
+
+## Sources
+
+Where a repository comes from (SRC-1 … SRC-6, ADR 0017): *This computer*, a
+local folder from the lists below, the system's folder dialog or a pasted
+path; or *Link*, a repository copied from a pasted link.
+
+### Recent and found
+
+`GET /api/sources` answers:
+
+```jsonc
+{ "picker": true,                  // whether POST /api/folders/pick can open a dialog (The folder dialog)
+  "recent": [ /* entries, most recently used first, at most 20 */ ],
+  "found":  [ /* entries, newest last commit first, at most 50 */ ],
+  "foundAt": "2026-10-26T09:12:00.000Z" }   // when the found list was made
+```
+
+Every entry has the same shape:
+
+```jsonc
+{ "name": "shop",                  // the folder's last path segment
+  "path": "C:\\code\\shop",        // as POST /api/folders/check resolves it
+  "branch": "main",                // the branch HEAD names; null when HEAD is detached or there is no repository
+  "lastCommitAt": "2026-10-25T18:40:11+03:00",  // HEAD's committer date (ISO 8601); null without a commit
+  "link": null,                    // a copy's link, "github.com/owner/repo"; else null
+  "diagrams": ["d_…"],             // registered drawings whose file lies in this folder or below it, newest updatedAt first
+  "usedAt": "2026-10-26T09:10:02.000Z" }  // recent: when it was last used; found: null
+```
+
+`branch` and `lastCommitAt` are read from the repository root of `path`
+(*Folders*), with `git` run as there; both are null when that root is not in
+git. The page shows the age of the last commit from `lastCommitAt`.
+
+**Recent** (SRC-1) is made on every request from two lists:
+
+- the folders used before, kept in `<ARCHDRAW_DATA_DIR>/sources.json`: a
+  folder is added, or moved to the top with a new `usedAt`, when a scan of it
+  succeeds (a cached scan included) and when a drawing file in it is
+  registered (a `draw` run, `POST /api/files`, `archdrawer open`), the file's
+  repository root being the folder then;
+- the repository root of every registered drawing, with `usedAt` the newest
+  `updatedAt` of the drawings in it when `sources.json` has no later one.
+
+A path is listed once (compared case-insensitively on Windows); a folder that
+no longer exists is left out. The list is ordered by `usedAt`, newest first,
+and cut to 20. `GET /api/sources` writes nothing (AGENTS.md invariant 3): a
+folder that no longer exists is dropped from `sources.json` the next time a
+request carrying the token writes it (a scan that succeeds, a registration,
+`POST /api/sources/forget`).
+
+**Found on this computer** (SRC-2) is made by walking the disk:
+
+- **Search roots:** the home folder (`ARCHDRAW_SEARCH_HOME` when set,
+  testing contract), its subfolders `code`, `src`, `projects`, `repos`, `dev`
+  and `Documents/GitHub` (any case where the disk ignores case), and the
+  parent folder of the repository root of every registered drawing. A root
+  that does not exist is skipped; a root reached twice is walked once.
+- **What counts:** a folder one or two levels below a search root that holds
+  `.git` as *Folders* counts one. The search root itself never counts. A
+  repository's own subfolders are not searched.
+- **What is skipped:** folders whose name starts with `.`, the folders the
+  scan's walk skips (*Scans*, *Listing*), `AppData`, `Library` and
+  `Applications`, symlinks and junctions, and everything inside
+  `ARCHDRAW_DATA_DIR`.
+- **Bounds:** the walk looks at no more than 5000 folders and stops after
+  10 s; the list is then what it found.
+- **The list:** every repository found that is not in *Recent*, newest
+  `lastCommitAt` first (null last, ties by `path`), cut to 50.
+
+The found list is kept for five minutes from `foundAt`; a `GET` in that
+time answers it again, and `POST /api/sources/refresh` (token required, as
+for every `POST`) makes it at once and answers as `GET /api/sources` does.
+Requests that arrive while it is being made wait for the same walk. *Recent*
+and `picker` are never kept.
+
+**Forgetting an entry.** `POST /api/sources/forget` `{"path", "deleteCopy"}`
+removes a folder from `sources.json`. `deleteCopy` is optional, default
+`false`. The checks, in this order:
+
+1. 400 `Give the path of a recent folder` when `path` is missing or not a
+   string; 400 `deleteCopy must be true or false`;
+2. 404 `Not in the recent list` when `path` is not the `path` of an entry of
+   *Recent*, as `GET /api/sources` would list it now;
+3. 409 `Remove its drawings from the list first` when the entry's
+   `diagrams` is not empty;
+4. with `deleteCopy: true`: 400 `Only a copy made from a link can be
+   deleted` when the entry's `link` is null; 409 `Other drawings in the list
+   are in this copy` when a registered drawing lies anywhere in the copy the
+   entry is in; 409 `This repository is in use: try again when its scans and
+   instructions have ended` when a scan of a folder in the copy is running
+   or the copy is in use (*In use*, *A repository from a link*).
+
+Nothing is changed before every check has passed. On success it answers
+`{"ok": true, "deleted": <whether the copy was deleted>}`; the copy is
+removed as in *Deleting a copy*. Without
+`deleteCopy`, a copy stays on disk: pasting its link again uses it.
+
+### The folder dialog
+
+`POST /api/folders/pick` (no body, or `{}`; the token is required as for
+every `POST`) opens the operating system's own folder dialog, titled `Choose
+the folder of a project`, asks it to come to the front, and answers when it
+closes:
+
+| The dialog | Answer |
+|---|---|
+| a folder is chosen | 200 `{"status": "picked", …}`: the folder, checked as in *Folders* and answered as `POST /api/folders/check` answers it; a refused one gets that 400 |
+| it is closed or cancelled, answers nothing, or is still open after 10 minutes (it is then closed) | 200 `{"status": "cancelled"}` |
+| no dialog is available on this machine | 200 `{"status": "unavailable"}` |
+| a helper fails otherwise | 500 `The folder dialog failed: <the helper's first line of error, or its exit code>` |
+
+One dialog is open at a time per server: a second `POST /api/folders/pick`
+while one is open gets 409 `The folder dialog is already open` and opens
+nothing. The dialog lives no longer than its request: when the request's
+connection closes before the dialog does (the page was reloaded or closed),
+or the server shuts down, the server closes the dialog by killing the
+helper's process tree, and the next pick may open one at once. A closed
+connection gets no answer. Nothing from a request reaches a helper: each runs a fixed script,
+without a shell, as an argument array (AGENTS.md invariant 1).
+
+| System | Helper | Available when |
+|---|---|---|
+| Windows | Windows PowerShell by its absolute path, never looked up on PATH: `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -NonInteractive -STA -EncodedCommand <fixed script>` (`%SystemRoot%` read from the environment, else `C:\Windows`): the script shows the shell's folder picker (`IFileOpenDialog` with `FOS_PICKFOLDERS` and `FOS_FORCEFILESYSTEM`, the modern Explorer dialog, not the old folder tree), owned by a topmost window, and writes the chosen path to stdout as UTF-8 | that `powershell.exe` exists |
+| macOS | `osascript` with a fixed AppleScript: `activate`, then `choose folder with prompt "Choose the folder of a project"`, printing the folder's POSIX path; error −128 (the user cancelled) is `cancelled` | `/usr/bin/osascript` exists |
+| Linux | `zenity --file-selection --directory --modal --title=Choose the folder of a project` when `zenity` is on PATH, else `kdialog --getexistingdirectory <home folder> --title "Choose the folder of a project"`; exit code 1 is `cancelled` | `DISPLAY` or `WAYLAND_DISPLAY` is set and `zenity` or `kdialog` is on PATH |
+
+On other systems no dialog is available. Availability is found once per
+server process (with `ARCHDRAW_TEST_PICKER` set, at every request); `picker` in `GET /api/sources` is that answer, and the home
+screen shows `Choose folder…` only when it is `true` (ADR 0017). The helper's
+answer is trimmed of its line end; an empty answer is `cancelled`. Every
+helper's output is read as UTF-8, so a path with letters outside ASCII
+(`C:\Users\Berke\Masaüstü\shop`) arrives unchanged. With
+`ARCHDRAW_TEST_PICKER` set, no helper runs (testing contract, *The test
+folder dialog*).
+
+### A repository from a link
+
+**Reading a link.** `link` is trimmed, then read as
+
+```
+[https://][www.]<host>/<owner>/<repo>[.git][<branch part>][/][?…][#…]
+```
+
+and checked in this order, each a 400:
+
+1. `link` given (present and not null) but not a string, or empty once
+   trimmed: `Give the link of a repository`;
+2. over 300 characters, a scheme other than `https://` (`http://`, `ssh://`,
+   `git://`, `file://`, `ext::` …), the `git@<host>:<path>` form, or a port:
+   `Not a repository link`;
+3. a user name or password before the host (`https://user@github.com/…`,
+   `https://user:secret@…`): `Leave the user name and password out of the
+   link`;
+4. a host other than `github.com`, `gitlab.com` and `bitbucket.org`
+   (compared case-insensitively, a leading `www.` dropped): `Only
+   github.com, gitlab.com and bitbucket.org links can be drawn`;
+5. a path other than the ones below; an owner or repository (its `.git`
+   dropped) that is not 1–100 characters of `A–Z a–z 0–9 . _ -`, starts with
+   `-` or `.`, ends with `.`, or is a Windows device name (`con`, `prn`,
+   `aux`, `nul`, `com1`–`com9`, `lpt1`–`lpt9`, any case, alone or followed by
+   `.` and more); or a branch that breaks the branch rule below: `Not a
+   repository link`;
+6. no `git` on PATH: `Drawing from a link needs git: install git and try
+   again`.
+
+The query (`?…`) and the fragment (`#…`) are dropped, then one trailing `/`,
+then a trailing `.git` on the repository. The path holds exactly the owner
+and the repository, then optionally the host's branch part, whose rest (every
+segment after it, joined by `/`) is the branch:
+
+| Host | Branch part |
+|---|---|
+| github.com | `/tree/<branch>` |
+| gitlab.com | `/-/tree/<branch>` |
+| bitbucket.org | `/src/<branch>` |
+
+So `https://github.com/acme/shop/tree/feature/pay` names the branch
+`feature/pay`, and a link to a folder of a branch (`/tree/main/src`) names
+the branch `main/src`, which the copy then does not find. A GitLab link
+with subgroups (`gitlab.com/group/sub/repo`) is `Not a repository link`. A
+branch is 1–200 characters of `A–Z a–z 0–9 . _ / -`, starts with a letter,
+a digit or `_`, holds no `..` and no `//`, and does not end with `/`, `.` or
+`.lock`.
+
+A link that passes is read as:
+
+- its **link**, `<host>/<owner>/<repo>` lower-cased (`github.com/acme/shop`):
+  what `link` fields and messages show;
+- its **branch**, or null;
+- its **URL**, `https://<link>.git`, rebuilt from those parts: the only form
+  of the link that reaches git.
+
+**The copy.** A link's copy is the folder
+`<ARCHDRAW_DATA_DIR>/repos/<host>/<owner>/<repo>`, its parts lower-cased: one
+copy per repository. It is a folder like any other (*Folders*): scanned and
+drawn as one, its drawing written to `<copy>/docs/architecture.archdraw.json`
+(*The draw run*) and registered there. A file in the library lies in a copy
+when its path is under such a folder; its `link` (`GET /api/diagrams`,
+*Recent and found*) is then that copy's link. A copy is always on a local
+branch, named as the host's branch it was copied from.
+
+`POST /api/folders/check` `{"link"}` for a copy that is not on disk yet
+answers `folder` and `root` the copy's folder, `git: false`, `drawing:
+null` and `copied: false`.
+
+**Which branch.** A link naming a branch means that branch. A link naming
+none means the repository's default branch, the branch its `HEAD` names on
+the host, whatever branch the copy is on. A scan of a folder in a copy (the
+copy's own folder or one below it), given by its path, follows the copy's
+own branch.
+
+**In use.** A copy is in use while a run of any kind, running or waiting
+for a slot, has its drawing file or its repository root in the copy (a
+`draw` run: its scan's folder). One scan at a time per copy: a second scan of
+any folder in it, while one is running, gets 409 `A scan of this repository
+is already running` (*Scans*), so a scan never finds another scan on its
+copy.
+
+**A scan with a link** (`POST /api/scans` `{"link", …}`, after the checks of
+*Scans*) makes or updates the copy before it gathers its inputs; the scan's
+`folder` and `root` are the copy's folder. A scan of a folder in a copy,
+given by its path, updates the copy the same way. The scan record and its
+`done` event carry `"link"`: the copy's link, else null.
+
+**Order, slots and deadlines.** The copy or its update runs first, as soon as
+the scan is accepted, and holds no engine slot (*Engine slots*). Its deadline,
+`ARCHDRAW_RUN_TIMEOUT_MS`, starts at the scan's `createdAt`; passing it ends
+the scan as a scan's timeout does. Then the scan is either cached (`Scanned
+before at <short commit>`, no slot), or it asks for a slot and its engine
+deadline starts when it gets one. So its progress is: the lines of the copy
+or the update below, then `Waiting for a free engine` when it waits, then
+`Gathering the repository`, … Every line of the copy and the update is
+`source: "server"` and leaves `lastEngineEventAt` as it is. Cancel during the
+copy or the update kills git's process tree, and the scan is `cancelled`.
+
+1. **No copy yet.** Progress `Copying <link>`. The clone (*Git for a link*)
+   goes into a new folder `<ARCHDRAW_DATA_DIR>/repos/.partial/<pid>-<random>/`
+   and checks out the wanted branch as a local branch; the folder is renamed
+   to the copy's folder once git succeeds. A failed, cancelled or timed-out
+   clone removes the partial folder, so the cache never holds half a copy.
+   Once it has bound its port, a starting server removes every folder in
+   `repos/.partial/` whose `<pid>` is not a running process.
+2. **A damaged copy**, one that is not in git (*Folders*), is copied again
+   as in step 1 (`Copying <link>`) when no registered drawing lies in it and
+   it is not in use; otherwise the scan fails with `The copy of <link> is
+   damaged: remove its drawings from the list and try again`.
+3. **A copy exists.** Progress `Fetching the newest commit of <link>`.
+   1. *The wanted branch.* For a link naming none, the default branch is
+      asked of the host (`ls-remote`). When that fails, nothing changes:
+      `Could not fetch the newest commit: <the error of When git fails>.
+      Scanning the copy at <short commit> on <branch>`, with the copy's
+      branch, and the scan goes on with the copy as it is.
+   2. *Another branch than the copy's.* When the copy is in use, the scan
+      fails with `This repository is in use on the branch "<the copy's
+      branch>": try again when its drawings and instructions have ended`, and
+      nothing changes. Otherwise progress `Fetching <branch> of <link>`; the
+      branch's newest commit is fetched and checked out, then `Switched to
+      <branch> at <short commit>`. When the fetch fails the scan fails with
+      the error of *When git fails*; when the checkout would replace a
+      drawing (below), with `Could not switch the copy of <link> to
+      "<branch>": it would replace <path>`. The copy then stays as it was.
+   3. *The copy's own branch.* When the copy is in use, nothing is fetched:
+      `This repository is in use: scanning the copy at <short commit> on
+      <branch>`. Otherwise the branch's newest commit is fetched and checked
+      out, then `Up to date at <short commit>` when it is the commit the copy
+      had, else `Updated to <short commit>`. A fetch that fails does not
+      fail the scan: `Could not fetch the newest commit: <the error of When
+      git fails>. Scanning the copy at <short commit> on <branch>`, and the
+      scan goes on with the copy as it is.
+   4. *The drawings stay.* An update never removes or changes a file git
+      does not track, so the drawings archdrawer wrote stay. When the new
+      commit would replace a drawing registered in the library (it holds a
+      file at the path of one that git does not track, or the drawing is
+      tracked and differs from the copy's commit), nothing is checked out:
+      on the copy's own branch `Kept the copy at <short commit>: the newest
+      commit would replace <path>`, and the scan goes on with the copy as it
+      is. A checkout git refuses (a local change in the way) keeps the copy
+      the same way: `Kept the copy at <short commit>: <git's last line of
+      error output>`.
+4. The scan then goes on as any scan of the copy's folder: `Waiting for a
+   free engine` when it waits, `Gathering the repository`, … or, when the
+   commit was scanned before, `Scanned before at <short commit>` and
+   `cached: true`. A scan with a link, or of a folder in a copy, is created
+   `running` even when its result is cached: its lines above come first.
+
+`<short commit>` is the commit's first 7 characters.
+
+**When git fails.** git runs with `LC_ALL=C`, so its messages can be read.
+Its error output decides the scan's error, in this order:
+
+| git says (any case) | Error |
+|---|---|
+| `transport '<name>' not allowed` (a `url.<base>.insteadOf` setting sends the link over another transport) | `Your git settings send <host> links over another transport than https: archdrawer copies over https only` |
+| `Remote branch <branch> not found`, `couldn't find remote ref` | `The branch "<branch>" does not exist in <link>` |
+| `Could not resolve host`, `Failed to connect`, `Connection timed out`, `Connection refused`, `Network is unreachable` | `Could not reach <host>` |
+| `Repository not found`, `not found`, `Authentication failed`, `could not read Username`, `terminal prompts disabled`, `403` | `This repository is private or does not exist` |
+| anything else | `Could not copy <link>: <git's last line of error output>` |
+
+A default branch whose name breaks the branch rule (*Reading a link*) is
+`Could not copy <link>: its default branch "<name>" has a name archdrawer
+does not take`.
+
+**Git for a link.** Every `git` call on a copy is one of the four below, an
+argument array run without a shell, with `<safe options>`:
+
+```
+-c core.fsmonitor=false -c core.untrackedCache=false --no-optional-locks
+-c protocol.allow=never -c protocol.https.allow=always
+-c core.symlinks=false -c core.askPass=
+-c core.longpaths=true                      (Windows only)
+```
+
+| Call | Arguments | Working directory |
+|---|---|---|
+| clone | `git <safe options> clone --depth 1 --single-branch --no-tags --quiet [--branch <branch>] -- <URL> <partial folder>` | `<ARCHDRAW_DATA_DIR>/repos/.partial` |
+| default branch | `git <safe options> ls-remote --symref -- <URL> HEAD`, read from its `ref: refs/heads/<branch>` line | the copy |
+| fetch | `git <safe options> fetch --depth 1 --no-tags --quiet -- <URL> refs/heads/<branch>` | the copy |
+| checkout | `git <safe options> checkout --quiet -B <branch> FETCH_HEAD` | the copy |
+
+Reading the copy's branch (`git symbolic-ref --short HEAD`) and commit runs
+as *Folders* says. Besides:
+
+- `protocol.allow=never` with `protocol.https.allow=always` keeps the link,
+  a redirect and an `insteadOf` setting from reaching another transport
+  (with `ARCHDRAW_TEST_REMOTES` set, `file` is the one transport allowed
+  instead, testing contract); `core.symlinks=false` checks a symlink out as a
+  plain file, so nothing in a copy leads out of it;
+- the environment is the server's minus the `GIT_*` variables *Folders*
+  names, with no prompt of any kind: `GIT_TERMINAL_PROMPT=0`,
+  `GCM_INTERACTIVE=never`, no `GIT_ASKPASS` or `SSH_ASKPASS`, and
+  `core.askPass` empty. A sign-in git already holds for that host (a
+  credential helper's stored one) is used; a private repository without one
+  fails at once with `This repository is private or does not exist`, and no
+  window or prompt appears. Also `GIT_LFS_SKIP_SMUDGE=1`, so large files
+  stored with Git LFS stay pointers, and `LC_ALL=C`;
+- the URL is always the rebuilt one, never the text the user typed, and it
+  is the argument after `--`; the branch, which never starts with `-`, is
+  the one argument after `--branch` or `-B`, or is inside
+  `refs/heads/<branch>`.
+
+archdrawer never reads, writes or asks for a password or a token.
+
+### Deleting a copy
+
+`DELETE /api/diagrams/:id?deleteCopy=true` forgets the drawing as without
+the parameter, then deletes the copy its file lies in. Every check comes
+before anything is forgotten, each leaving everything as it was:
+
+- 400 `This drawing is not in a copy made from a link` when the drawing is
+  imported or its file lies in no copy;
+- 409 `Other drawings in the list are in this copy` when another registered
+  drawing lies in the same copy;
+- 409 `This repository is in use: try again when its scans and instructions
+  have ended` when a scan of a folder in the copy is running or the copy is
+  in use (*In use*: a run of any kind, running or waiting).
+
+The folder deleted is always rebuilt from the copy's link,
+`<ARCHDRAW_DATA_DIR>/repos/<host>/<owner>/<repo>`, never taken from a
+request. It is removed with everything in it, read-only files included; a
+symlink or a junction inside it is removed as a link, never followed. On
+Windows a file still busy is retried for up to 5 s. Its entry leaves
+*Recent*. When the folder cannot be removed whole, the answer is 500 `Could
+not delete the copy at <path>: <reason>`; the drawing stays forgotten.
+`deleteCopy` with any value other than `true` is ignored.
 
 ## Engine slots
 
@@ -190,7 +572,7 @@ testing contract says.
 `POST /api/scans` body:
 
 ```jsonc
-{ "folder": "C:/code/shop",   // absolute (Folders)
+{ "folder": "C:/code/shop",   // absolute (Folders); or "link" in its place (A repository from a link)
   "engine": null, "model": null,  // as for a run
   "refresh": false }          // optional boolean: scan again even when cached
 ```
@@ -204,7 +586,9 @@ The checks run in this order, each a 400:
    …`).
 
 A second scan of a folder while one is running gets 409
-`A scan of this folder is already running`.
+`A scan of this folder is already running`; a second scan of any folder in
+a copy while a scan of a folder in the same copy is running gets 409 `A scan
+of this repository is already running` (*A repository from a link*).
 
 **Inputs.** Code gathers them from the folder, never the engine. Choosing
 files from the listing is pure (`src/core/scan.ts`); reading them is the
@@ -312,9 +696,11 @@ included, for one hour after it ended, or until it is forgotten.
 **Scan record** (`GET /api/scans/:scanId`):
 `{"id", "status", "progress", "message", "folder", "root", "name", "commit",
 "cached", "card", "options", "warnings", "error", "engine", "model",
-"createdAt", "startedAt", "endedAt", "waiting", "lastEngineEventAt"}`.
+"createdAt", "startedAt", "endedAt", "waiting", "lastEngineEventAt", "link"}`.
 
 - `commit` is null outside git; `card` and `options` are null until success.
+- `link`: the link of the copy the folder lies in, else null (*A repository
+  from a link*).
 - `message`: the latest progress line, null before the first.
 - `name`: the card's `name` once the scan succeeded; before, for a scan with
   a link the link's `<repo>`, else the folder's last path segment.
@@ -1055,6 +1441,16 @@ when those were set, `ANTHROPIC_BASE_URL`. The server never reads an API key.
 - `<ARCHDRAW_DATA_DIR>/scans/<key>.json`: cached scans (*Scans*).
 - `<ARCHDRAW_DATA_DIR>/revise/<pid>-<random>/`: a running revise's image
   (*The second look*); a dead server's folders are removed at start-up.
+- `<ARCHDRAW_DATA_DIR>/sources.json`: the folders used before,
+  `{"recent": [{"path", "usedAt"}]}` (*Recent and found*). An unreadable file
+  counts as empty and is written anew on the next use.
+- `<ARCHDRAW_DATA_DIR>/repos/<host>/<owner>/<repo>/`: the copy of a
+  repository made from a link, with the drawings written into it
+  (*A repository from a link*). It stays until it is deleted through
+  `deleteCopy` (*Deleting a copy*, *Recent and found*).
+- `<ARCHDRAW_DATA_DIR>/repos/.partial/<pid>-<random>/`: a copy being made;
+  renamed into place when git succeeds, removed otherwise, and a dead
+  server's folders are removed at start-up.
 - `<ARCHDRAW_DATA_DIR>/server.json` and `server.log` (cli contract).
 - Every write goes to a temporary file and is renamed into place; a `draw`
   run's new file is linked into place instead (*The draw run*), so it never

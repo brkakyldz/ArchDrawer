@@ -51,14 +51,26 @@ copy a user's CLI credentials.
 
 ## Invariants
 
-1. Nothing the user types reaches a shell. Engine CLIs and `git` are
-   spawned with argument arrays and the prompt goes through stdin. Three user
-   inputs reach an engine's arguments: the model name, refused when it starts
-   with `-` or holds anything but letters, digits and `._:/@[]-`; the
-   repository folder of an opened drawing file; and the folder typed on the
-   home screen, which must be absolute, exist and be a directory. Each folder
-   reaches the engine only as its repository root, passed as the working
-   directory and as the value of Codex's `-C`.
+1. Nothing the user types reaches a shell. Engine CLIs, `git` and the
+   folder dialog helpers are spawned with argument arrays and the prompt goes
+   through stdin. Four user inputs reach a program's arguments: the model
+   name, refused when it starts with `-` or holds anything but letters,
+   digits and `._:/@[]-`; the repository folder of an opened drawing file;
+   the folder typed, pasted or picked on the home screen, which must be
+   absolute, exist and be a directory; and a repository link, which reaches
+   only `git clone`, and `git ls-remote`, `fetch` and `checkout` of its own
+   copy. Each folder reaches the engine only as its repository
+   root, passed as the working directory and as the value of Codex's `-C`.
+   A link must be an `https` link of github.com, gitlab.com or bitbucket.org
+   with no user name or password, and git gets only the URL rebuilt from its
+   checked host, owner and repository, as the argument after `--`; its
+   branch, which never starts with `-`, is the one argument after
+   `--branch` or `-B`, or sits inside `refs/heads/<branch>`. git runs with
+   no terminal or credential prompt, symlinks checked out as plain files, no
+   transport
+   but `https` (`file` for test links, invariant 7), and none of the server's own `GIT_*` variables that point it
+   at another repository or add config. The folder dialog helpers run fixed
+   scripts with no user input in them.
 2. Engines only read: Claude with read/search tools only and
    `--permission-mode dontAsk`; Codex with `--sandbox read-only`. Never
    `--bare` (it breaks subscription sign-in), never a write-capable tool.
@@ -74,7 +86,9 @@ copy a user's CLI credentials.
    (`docs/contracts/diagram.md`).
 7. The fixture engine goes through the same pipeline as the real ones; only
    the agent call is replaced. It is offered only when `ARCHDRAW_ENGINES`
-   names it.
+   names it. In the same way the test folder dialog replaces only the dialog
+   and test links only where a link is copied from, each on only when
+   `ARCHDRAW_TEST_PICKER` or `ARCHDRAW_TEST_REMOTES` is set.
 
 ### Failures that do not announce themselves
 
@@ -93,6 +107,36 @@ copy a user's CLI credentials.
 - **Shell injection through an input** — a model name like `x; rm -rf ~` or
   `--dangerously-skip-permissions`, or a drawing path with shell characters,
   reaching an engine CLI as anything other than a single argument.
+- **A link reaching git as an option** — a link like
+  `--upload-pack=touch x`, `ext::sh -c …`, `file:///etc` or
+  `https://github.com/-x/y` reaching `git clone` as an option or another
+  transport. It is refused before git starts, and git only ever gets the
+  rebuilt `https` URL after `--`.
+- **A clone that waits for a password** — a private repository without a
+  stored sign-in makes git prompt in a terminal or a sign-in window nobody
+  sees, and the scan hangs until its timeout. It must fail at once with
+  `This repository is private or does not exist`.
+- **Half a copy** — a failed, cancelled or timed-out clone leaves a folder in
+  the cache that a later scan takes for a copy. A clone is made in
+  `repos/.partial/` and renamed into place only when git succeeds.
+- **A drawing lost on update** — a later scan's fetch removes or overwrites a
+  drawing file in a copy (a `git clean`, a hard reset onto a commit with a
+  file at the drawing's path). The update test checks the drawing is
+  byte-for-byte unchanged.
+- **A garbled picked path** — the dialog helper's output read in the
+  console's code page turns `Masaüstü` into another, missing folder. Every
+  helper's output is read as UTF-8; a test picks a folder with letters
+  outside ASCII.
+- **A dialog behind the browser** — the folder dialog opens behind the
+  browser window and the request seems frozen. Each helper asks the dialog
+  to come to the front; a live check on each system confirms it.
+- **An orphaned dialog** — the page is reloaded or closed while the folder
+  dialog is open; the helper keeps running and every later pick gets 409.
+  A closed request connection or a shutdown kills the helper's process tree
+  and frees the dialog.
+- **A test switch left on** — the test dialog or test links answering while
+  their variable is unset, so a real user's link is never really copied.
+  The start-up line names every test switch that is on.
 - **Orphaned engine processes** — cancel marks the run cancelled but the CLI
   keeps running (on Windows a `.cmd` shim kill stops only the shell). The
   cancel test checks the child exits.

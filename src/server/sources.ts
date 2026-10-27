@@ -54,7 +54,8 @@ const isFolder = (p: string) => { try { return statSync(p).isDirectory(); } catc
  * link `<host>/<owner>/<repo>`, lower-cased; null for a path in no copy.
  */
 export function copyOf(dataDir: string, path: string): { link: string; dir: string } | null {
-  const repos = join(resolve(dataDir), "repos");
+  // As the disk names it, like the checked folders: a data folder given by its 8.3 short name still matches.
+  const repos = real(join(resolve(dataDir), "repos"));
   if (!within(repos, path)) return null;
   const parts = relative(keyOf(repos), keyOf(resolve(path))).split(sep).filter(Boolean);
   if (parts.length < 3 || !LINK_HOSTS.has(parts[0].toLowerCase())) return null;

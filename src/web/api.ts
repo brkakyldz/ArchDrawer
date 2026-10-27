@@ -4,7 +4,7 @@ import type { RunScope } from "../core/repair";
 
 export interface EngineModel { id: string; label: string }
 export interface EngineInfo { id: string; label: string; available: boolean; version: string | null; detail: string; test: boolean; models: EngineModel[] }
-export interface DiagramSummary { id: string; title: string; path: string | null; root: string | null; updatedAt: string }
+export interface DiagramSummary { id: string; title: string; path: string | null; root: string | null; link?: string | null; updatedAt: string }
 export type ScanType = "agent" | "backend" | "fullstack" | "other";
 export interface RepoCard { name: string; sentence: string; type: ScanType; languages: string[]; entryPoints: string[] }
 export interface FocusOption { id: string; kind: "section" | "flow"; title: string; sentence: string; files: string[] }
@@ -21,6 +21,12 @@ export interface RunRecord {
   id: string; status: "running" | "succeeded" | "failed" | "cancelled"; progress: string[]; diagramId: string | null; error: string | null;
   engine: string; model: string | null; changes: Changes | null; choice?: string; choices?: DrawChoiceState[] | null;
 }
+/** An entry of Recent or Found on this computer (api contract, Recent and found). */
+export interface SourceEntry { name: string; path: string; branch: string | null; lastCommitAt: string | null; link: string | null; diagrams: string[]; usedAt: string | null }
+export interface Sources { picker: boolean; recent: SourceEntry[]; found: SourceEntry[]; foundAt: string }
+/** A job as `GET /api/activity` lists it: the scan or draw record with its `type` and `events` (api contract, Activity). */
+export interface ActivityJob { type: "scan" | "draw"; events: string; id: string; status: "running" | "succeeded" | "failed" | "cancelled"; waiting?: boolean; createdAt?: string; [k: string]: unknown }
+export interface Activity { instance: string; now: string; timeoutMs: number; slots: { total: number; busy: number; waiting: number }; jobs: ActivityJob[] }
 export interface Health { ok: boolean; app: string; version: string; build: string }
 export interface RunStart { engine: string | null; model: string | null; scope: RunScope; kind?: "refine" | "post" | "simplify" | "story" | "revise"; format?: string; readCode?: boolean; image?: string }
 
@@ -57,6 +63,10 @@ export const api = {
   health: () => call<Health>("GET", "/api/health"),
   engines: () => call<{ engines: EngineInfo[] }>("GET", "/api/engines").then((r) => r.engines),
   list: () => call<{ diagrams: DiagramSummary[] }>("GET", "/api/diagrams").then((r) => r.diagrams),
+  /** The home screen's Recent and Found on this computer. */
+  sources: () => call<Sources>("GET", "/api/sources"),
+  /** Every scan and draw running or kept (Activity). */
+  activity: () => call<Activity>("GET", "/api/activity"),
   get: (id: string) => call<Document4>("GET", `/api/diagrams/${encodeURIComponent(id)}`),
   /** Save; `base` is the `updatedAt` the edit started from (409 when the file moved on). */
   save: (doc: Document4, base: string | null) =>
@@ -66,7 +76,7 @@ export const api = {
     call<{ missing: string[] }>("POST", `/api/diagrams/${encodeURIComponent(id)}/check-files`, { files }).then((r) => r.missing),
   import: (doc: unknown) => call<{ id: string }>("POST", "/api/diagrams", doc).then((r) => r.id),
   example: () => call<{ id: string }>("POST", "/api/example").then((r) => r.id),
-  forget: (id: string) => call<void>("DELETE", `/api/diagrams/${encodeURIComponent(id)}`),
+  forget: (id: string, deleteCopy = false) => call<void>("DELETE", `/api/diagrams/${encodeURIComponent(id)}${deleteCopy ? "?deleteCopy=true" : ""}`),
   request: (id: string, choice: string, channel: string, view: string, text: string) => call<{ id: string }>("POST", `/api/diagrams/${encodeURIComponent(id)}/requests`, { choice, channel, view, text }),
   startRun: (diagramId: string, choice: string, channel: string, view: string | null, instruction: string, o: RunStart) =>
     call<{ runId: string }>("POST", "/api/runs", {

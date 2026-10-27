@@ -6,8 +6,8 @@ import { Logo } from "../ui/Logo";
 import { ActivityPanel, ActivityToggle, useActivity } from "./Activity";
 import { Continue, Drawings } from "./Drawings";
 import { EngineChip, EnginePanel, useEngine } from "./Engine";
+import { SourceList } from "./Source";
 import { ScanCard, StartPanel, useStart } from "./Start";
-import { relativeTime, serverNow } from "./time";
 import "./home.css";
 
 /**
@@ -20,8 +20,6 @@ const THEME_KEY = "archdraw-theme";
 type Theme = "light" | "dark";
 const storedTheme = (): Theme | null => { try { const t = localStorage.getItem(THEME_KEY); return t === "light" || t === "dark" ? t : null; } catch { return null; } };
 const systemTheme = (): Theme => (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-/** Recent and Found take the kind hues in turn for their swatches. */
-const SWATCHES = ["api", "llm", "service", "data", "ops", "client", "worker", "gate"] as const;
 const mac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent);
 
 function useMedia(query: string): boolean {
@@ -48,31 +46,12 @@ function useTheme() {
   return { theme, flip };
 }
 
-/** `<branch> · <age of the last commit>`, either part left out when unknown. */
-const sourceLine = (e: SourceEntry) => [e.branch, relativeTime(e.lastCommitAt, serverNow())].filter(Boolean).join(" · ");
-
-function SourceList({ testId, title, entries, onTake }: { testId: string; title: string; entries: SourceEntry[]; onTake: (path: string) => void }) {
-  if (!entries.length) return null;
-  return (
-    <div className="hm-src">
-      <h3>{title}</h3>
-      <div data-testid={testId}>
-        {entries.map((e, i) => (
-          <button key={e.path} type="button" className="hm-src-item" data-testid="source-item" data-path={e.path} title={e.link ?? e.path} onClick={() => onTake(e.path)}>
-            <i className="sw" style={{ background: `var(--k-${SWATCHES[i % SWATCHES.length]})` }} aria-hidden="true" />
-            <span className="t"><span className="n">{e.name}</span>{sourceLine(e) && <span className="m">{sourceLine(e)}</span>}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function Home() {
   const [list, setList] = useState<DiagramSummary[] | null>(null);
   const [sources, setSources] = useState<Sources | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exampleBusy, setExampleBusy] = useState(false);
+  const [looking, setLooking] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
   const scanRef = useRef<HTMLButtonElement>(null);
@@ -81,10 +60,10 @@ export function Home() {
   const folded = useMedia("(max-width: 1240px)");
   const engine = useEngine();
   const activity = useActivity();
-  const start = useStart({ engine, list, onJob: activity.bump });
+  const loadSources = () => api.sources().then(setSources, () => undefined);
+  const start = useStart({ engine, onJob: activity.bump, onSources: () => void loadSources() });
 
   const load = () => api.list().then(setList, (e: Error) => setError(e.message));
-  const loadSources = () => api.sources().then(setSources, () => undefined);
   useEffect(() => { void load(); void loadSources(); document.title = "archdrawer"; }, []);
   // A scan that succeeded joins Recent.
   useEffect(() => { if (start.scan) void loadSources(); }, [start.scan?.id]);
@@ -101,6 +80,22 @@ export function Home() {
 
   const toStart = () => document.getElementById("start")?.scrollIntoView({ block: "start", behavior: "smooth" });
   const take = (path: string) => { start.take(path); toStart(); };
+
+  /** `source-forget`: asks first, and for a copy whether to delete it too; a refusal shows in `start-error`. */
+  const forgetSource = async (e: SourceEntry) => {
+    if (!confirm(`Remove "${e.name}" from Recent?`)) return;
+    const deleteCopy = !!e.link && confirm(`Also delete the copy of ${e.link} from this computer?`);
+    start.setError(null);
+    await api.forgetSource(e.path, deleteCopy).catch((err: Error) => start.setError(err.message));
+    void loadSources();
+  };
+  /** `source-found-refresh`: the found list made again now; off until it answers. */
+  const lookAgain = () => {
+    setLooking(true);
+    api.refreshSources().then(setSources, () => undefined).finally(() => setLooking(false));
+  };
+  // A scan the panel follows that waits for a free engine says so (its job in Activity).
+  const scanWaits = !!start.scanning?.id && !!activity.data?.jobs.some((j) => j.id === start.scanning!.id && (j as { waiting?: unknown }).waiting === true);
 
   const onImport = async (f: File | undefined) => {
     if (!f) return;
@@ -152,14 +147,15 @@ export function Home() {
             onClick={() => document.getElementById("drawings")?.scrollIntoView({ block: "start", behavior: "smooth" })}>
             <Icon name="layers" size={18} />Drawings <span className="n">{list?.length ?? 0}</span>
           </button>
-          <button type="button" className="hm-nav-a" data-testid="home-nav-new" onClick={() => { start.fresh(); toStart(); }}><Icon name="plus" size={18} />New drawing</button>
-          <SourceList testId="source-recent" title="Recent" entries={sources?.recent ?? []} onTake={take} />
-          <SourceList testId="source-found" title="Found on this computer" entries={sources?.found ?? []} onTake={take} />
+          <button type="button" className="hm-nav-a" data-testid="home-nav-new" onClick={() => { start.newDrawing(); toStart(); }}><Icon name="plus" size={18} />New drawing</button>
+          {!!sources?.recent.length && <SourceList testId="source-recent" title="Recent" entries={sources.recent} onTake={take} onForget={(e) => void forgetSource(e)} />}
+          <SourceList testId="source-found" title="Found on this computer" entries={sources?.found ?? []} onTake={take}
+            extra={<button type="button" className="hm-look" data-testid="source-found-refresh" aria-label="Look again" title="Look again" disabled={looking} onClick={lookAgain}><Icon name="refresh" size={14} /></button>} />
           <p className="hm-server" data-testid="home-server"><span className="hm-dot" aria-hidden="true" />{location.host}</p>
         </nav>
         <main className="hm-work">
           <div className="hm-work-in">
-            <StartPanel s={start} narrow={narrow} folderRef={folderRef} scanRef={scanRef} />
+            <StartPanel s={start} sources={sources} scanWaits={scanWaits} narrow={narrow} folderRef={folderRef} scanRef={scanRef} />
             <Drawings list={list} onForget={(d) => void forget(d)} example={exampleButton} />
           </div>
         </main>

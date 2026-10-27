@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { api, ApiError, type DiagramSummary, type DrawChannel, type DrawChoiceState, type DrawFocus, type FocusOption, type RepoCard, type ScanRecord } from "../api";
+import { api, ApiError, type DrawChannel, type DrawChoiceState, type DrawFocus, type FocusOption, type FolderCheck, type PickAnswer, type RepoCard, type ScanRecord, type ScanTarget, type Sources } from "../api";
 import { navigate } from "../App";
 import { Icon } from "../ui/Icon";
 import type { EngineState } from "./Engine";
 import { afterPaint, paced } from "./pace";
+import { SourceRow } from "./Source";
 
 /**
  * The `Draw a project` panel (ui contract, Home: *Choosing a repository*, *The scan and the repository card*,
@@ -33,7 +34,7 @@ const SHOWN_FILES = 3;
 const UNREACHABLE = "Could not reach the archdrawer server";
 
 /** The server's folder refusal in one plain sentence. */
-function folderSentence(message: string): string {
+export function folderSentence(message: string): string {
   if (/^Not found: /.test(message)) return "This folder does not exist.";
   if (/^Not a folder: /.test(message)) return "This is a file, not a folder.";
   if (/must be absolute|Give the absolute path/.test(message)) return "Give the whole path, starting from the drive or from /.";
@@ -42,7 +43,11 @@ function folderSentence(message: string): string {
 
 type Ticked = { whole: boolean; options: string[]; typed: boolean };
 const NONE: Ticked = { whole: false, options: [], typed: false };
-export interface Scan { id: string; folder: string; card: RepoCard; options: FocusOption[]; cached: boolean; commit: string | null; link: string | null }
+export interface Scan { id: string; target: ScanTarget; folder: string; card: RepoCard; options: FocusOption[]; cached: boolean; commit: string | null; link: string | null }
+/** Where the repository comes from (ui contract, `start-source`). */
+export type SourceTab = "local" | "link";
+/** The latest check of the link field's text: its answer, or the server's refusal. */
+type LinkCheck = { text: string; answer: FolderCheck | null; error: string | null };
 /** A draw run the panel follows: its choices as the run record lists them, the latest line, and how it ended. */
 interface Draw { status: "running" | "failed"; rows: DrawChoiceState[]; line: string; error: string | null; runId: string | null }
 type End = { status: string; error: string | null; diagramId?: string | null; choice?: string; choices?: DrawChoiceState[] | null };
@@ -99,11 +104,16 @@ function advance(rows: DrawChoiceState[], choice: string | null | undefined, sta
 
 export type StartState = ReturnType<typeof useStart>;
 
-export function useStart({ engine: eng, list, onJob }: { engine: EngineState; list: DiagramSummary[] | null; onJob: () => void }) {
+export function useStart({ engine: eng, onJob, onSources }: { engine: EngineState; onJob: () => void; onSources: () => void }) {
   const { engine, model } = eng;
+  const [source, setSource] = useState<SourceTab>("local");
   const [folder, setFolder] = useState("");
+  const [link, setLink] = useState("");
+  const [linkCheck, setLinkCheck] = useState<LinkCheck | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [pickGone, setPickGone] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [existing, setExisting] = useState<{ drawing: string; folder: string } | null>(null);
+  const [existing, setExisting] = useState<{ drawing: string; target: ScanTarget } | null>(null);
   const [scanning, setScanning] = useState<{ id: string | null; line: string } | null>(null);
   const [scan, setScan] = useState<Scan | null>(null);
   const [ticked, setTicked] = useState<Ticked>(NONE);
@@ -121,11 +131,11 @@ export function useStart({ engine: eng, list, onJob }: { engine: EngineState; li
 
   const following = scanning !== null || scan !== null || draw !== null;
   const busy = scanning !== null || draw?.status === "running";
-  const roots = [...new Set((list ?? []).map((d) => d.root).filter((r): r is string => !!r))];
   const sections = scan?.options.filter((o) => o.kind === "section") ?? [];
   const flows = scan?.options.filter((o) => o.kind === "flow") ?? [];
   const count = (ticked.whole ? 1 : 0) + ticked.options.length + (ticked.typed ? 1 : 0);
   const step: Step = draw ? "Draw" : scan ? (count > 0 ? "Destination" : "Focus") : "Folder";
+  const linkOk = !!linkCheck?.answer && linkCheck.text === link;
   const current = () => epoch.current;
   const still = (at: number) => mounted.current && epoch.current === at;
 
@@ -135,17 +145,28 @@ export function useStart({ engine: eng, list, onJob }: { engine: EngineState; li
     for (const stop of [...live.current]) stop();
     setScanning(null); setScan(null); setDraw(null); setTicked(NONE); setChannel(null); setText("");
     setError(null); setExisting(null); lastDraw.current = null;
-    if (emptied) setFolder("");
+    if (emptied) { setFolder(""); setLink(""); }
   };
   const askFocus = (el: "folder" | "scan") => setFocusAsk((f) => ({ el, n: (f?.n ?? 0) + 1 }));
 
-  const runScan = async (path: string, refresh: boolean) => {
+  // The link is checked 300 ms after its last change; an answer for an older text is dropped.
+  useEffect(() => {
+    if (!link.trim()) { setLinkCheck(null); return; }
+    let gone = false;
+    const timer = setTimeout(() => {
+      api.checkFolder({ link }).then((answer) => { if (!gone) setLinkCheck({ text: link, answer, error: null }); },
+        (e: Error) => { if (!gone) setLinkCheck({ text: link, answer: null, error: e.message }); });
+    }, 300);
+    return () => { gone = true; clearTimeout(timer); };
+  }, [link]);
+
+  const runScan = async (target: ScanTarget, refresh: boolean) => {
     if (!engine) return;
     const at = current();
     setError(null); setExisting(null); setDraw(null); setScan(null); setTicked(NONE); setChannel(null);
     setScanning({ id: null, line: "Starting" });
     let id: string;
-    try { id = await api.startScan(path, { engine: engine.id, model: model || null, refresh }); }
+    try { id = await api.startScan(target, { engine: engine.id, model: model || null, refresh }); }
     catch (e) {
       // A scan of this folder already running: the panel follows that one.
       const running = e instanceof ApiError && e.status === 409 && typeof e.body?.scanId === "string" ? (e.body.scanId as string) : null;
@@ -162,25 +183,58 @@ export function useStart({ engine: eng, list, onJob }: { engine: EngineState; li
     let r: ScanRecord & { link?: string | null };
     try { r = await api.scan(id); } catch (e) { if (still(at)) setError((e as Error).message); return; }
     if (!still(at)) return;
-    setScan({ id, folder: r.folder, card: r.card!, options: r.options ?? [], cached: r.cached, commit: r.commit, link: r.link ?? null });
+    setScan({ id, target, folder: r.folder, card: r.card!, options: r.options ?? [], cached: r.cached, commit: r.commit, link: r.link ?? null });
   };
 
-  /** Scan: the folder is checked first; one that holds a drawing is offered before anything is scanned. */
+  /**
+   * Scan: a folder is checked first, a link was checked as it was typed; one that holds a drawing is offered
+   * before anything is scanned.
+   */
   const onScan = async () => {
     if (!engine || following) return;
+    if (source === "link") {
+      const answer = linkOk ? linkCheck!.answer! : null;
+      if (!answer) return;
+      setError(null); setExisting(null);
+      if (answer.drawing) { setExisting({ drawing: answer.drawing, target: { link } }); return; }
+      await runScan({ link }, false);
+      return;
+    }
     setError(null); setExisting(null);
     if (!folder.trim()) { setError("Give the whole path, starting from the drive or from /."); return; }
     const at = current();
     let check;
-    try { check = await api.checkFolder(folder); } catch (e) { if (still(at)) setError(folderSentence((e as Error).message)); return; }
+    try { check = await api.checkFolder({ folder }); } catch (e) { if (still(at)) setError(folderSentence((e as Error).message)); return; }
     if (!still(at)) return;
-    if (check.drawing) { setExisting({ drawing: check.drawing, folder: check.folder }); return; }
-    await runScan(check.folder, false);
+    if (check.drawing) { setExisting({ drawing: check.drawing, target: { folder: check.folder } }); return; }
+    await runScan({ folder: check.folder }, false);
+  };
+
+  /** `start-pick`: the system's folder dialog; a picked folder goes into the field and Scan takes the focus. */
+  const pick = async () => {
+    if (picking || following) return;
+    const at = current();
+    setPicking(true);
+    let r: PickAnswer;
+    try { r = await api.pickFolder(); }
+    catch (e) {
+      if (mounted.current) setPicking(false);
+      if (still(at)) setError(e instanceof ApiError && e.status === 400 ? folderSentence(e.message) : (e as Error).message);
+      return;
+    }
+    if (!mounted.current) return;
+    setPicking(false);
+    if (!still(at)) return;
+    if (r.status === "unavailable") { setPickGone(true); return; }
+    if (r.status !== "picked") return;
+    setError(null); setFolder(r.folder);
+    setExisting(r.drawing ? { drawing: r.drawing, target: { folder: r.folder } } : null);
+    askFocus("scan");
   };
 
   const openExisting = async () => {
     if (!existing) return;
-    try { navigate(`/d/${await api.openFile(existing.drawing)}`); } catch (e) { setError((e as Error).message); }
+    try { const id = await api.openFile(existing.drawing); onSources(); navigate(`/d/${id}`); } catch (e) { setError((e as Error).message); }
   };
 
   /** The ticked choices in the order of `focus-list`: the whole system, the sections, the flows, then the typed text. */
@@ -224,17 +278,22 @@ export function useStart({ engine: eng, list, onJob }: { engine: EngineState; li
   };
 
   return {
-    folder, setFolder, error, existing, scanning, scan, ticked, setTicked, text, setText, channel, setChannel, draw,
-    following, busy, roots, sections, flows, count, step, canDraw, focusAsk, lastDraw, engine, noEngine: eng.none,
+    source, folder, setFolder, link, setLink, linkCheck, linkOk, picking, pickGone, pick,
+    error, setError, existing, scanning, scan, ticked, setTicked, text, setText, channel, setChannel, draw,
+    following, busy, sections, flows, count, step, canDraw, focusAsk, lastDraw, engine, noEngine: eng.none,
     onScan, runScan, openExisting, onDraw, startDraw, leave, askFocus,
+    /** `start-source-local` / `start-source-link`; off while the panel follows a job. */
+    chooseSource: (t: SourceTab) => { if (following || t === source) return; setSource(t); setError(null); setExisting(null); },
     cancelScan: () => { if (scanning?.id) void api.cancelScan(scanning.id).then(onJob, (e: Error) => setError(e.message)); },
     cancelDraw: () => { if (draw?.runId) void api.cancelRun(draw.runId).then(onJob, (e: Error) => setError(e.message)); },
     /** `start-change-folder`: back to the Folder step, the folder kept, the ticks and the channel cleared. */
     changeFolder: () => leave(false),
-    /** A repository taken from a list: its path in the field, Scan focused; nothing is scanned. */
-    take: (path: string) => { if (following) leave(false); setFolder(path); askFocus("scan"); },
-    /** `Ctrl K`, `home-nav-new`: the panel freed (as `draw-another`) and the folder field focused. */
-    fresh: () => { if (following) leave(true); askFocus("folder"); },
+    /** A repository taken from a list: This computer, its path in the field, Scan focused; nothing is scanned. */
+    take: (path: string) => { if (following) leave(false); setSource("local"); setError(null); setExisting(null); setFolder(path); askFocus("scan"); },
+    /** `Ctrl K`: This computer and the folder field focused, after freeing the panel (as `draw-another`) when it follows a job. */
+    fresh: () => { if (following) leave(true); setSource("local"); askFocus("folder"); },
+    /** `home-nav-new`: as `draw-another` (the fields emptied), then This computer and the folder field focused. */
+    newDrawing: () => { leave(true); setSource("local"); askFocus("folder"); },
   };
 }
 
@@ -304,7 +363,10 @@ function Rows({ rows, channel }: { rows: DrawChoiceState[]; channel: DrawChannel
   );
 }
 
-export function StartPanel({ s, narrow, folderRef, scanRef }: { s: StartState; narrow: boolean; folderRef: React.RefObject<HTMLInputElement | null>; scanRef: React.RefObject<HTMLButtonElement | null> }) {
+export function StartPanel({ s, sources, scanWaits, narrow, folderRef, scanRef }: {
+  s: StartState; sources: Sources | null; scanWaits: boolean; narrow: boolean;
+  folderRef: React.RefObject<HTMLInputElement | null>; scanRef: React.RefObject<HTMLButtonElement | null>;
+}) {
   const textEl = useRef<HTMLInputElement>(null);
   const { scan, draw, ticked, setTicked } = s;
   // Ticking Something else puts the cursor in its field.
@@ -333,29 +395,19 @@ export function StartPanel({ s, narrow, folderRef, scanRef }: { s: StartState; n
         <Stepper step={s.step} narrow={narrow} />
       </div>
       <div className="hm-start-body">
-        <div className="hm-folder-row">
-          <label className="hm-field"><Icon name="folder" size={18} />
-            <input ref={folderRef} type="text" data-testid="start-folder" aria-label="Folder of the project" placeholder="Search your repositories, or paste a path"
-              list="start-folders" autoComplete="off" spellCheck={false} value={s.folder} disabled={s.following} onChange={(e) => s.setFolder(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void s.onScan(); } }} />
-          </label>
-          <datalist id="start-folders">{s.roots.map((r) => <option key={r} value={r} />)}</datalist>
-          {(!s.following || s.scanning) && (
-            <button ref={scanRef} type="button" className="btn primary" data-testid="start-scan" disabled={!s.engine || s.following} onClick={() => void s.onScan()}>Scan</button>
-          )}
-        </div>
+        <SourceRow s={s} sources={sources} folderRef={folderRef} scanRef={scanRef} />
         {s.error && <p className="hm-error" data-testid="start-error" role="alert">{s.error}</p>}
         {s.existing && (
           <div className="hm-existing" data-testid="start-existing">
             <p>This folder already has a drawing.</p>
             <button type="button" className="btn primary small" data-testid="start-open-existing" onClick={() => void s.openExisting()}>Open it</button>
-            <button type="button" className="btn small" data-testid="start-again" onClick={() => void s.runScan(s.existing!.folder, false)}>Start again</button>
+            <button type="button" className="btn small" data-testid="start-again" onClick={() => void s.runScan(s.existing!.target, false)}>Start again</button>
           </div>
         )}
         {s.scanning && (
           <div className="hm-scan-live" data-testid="scan-progress" role="status">
             <span className="hm-spin" aria-hidden="true" />
-            <div className="txt"><b>Scanning</b><span>{s.scanning.line}</span><div className="hm-track"><i /></div></div>
+            <div className="txt"><b>{scanWaits ? "Waiting for a free engine" : "Scanning"}</b><span>{s.scanning.line}</span><div className="hm-track"><i /></div></div>
             <button type="button" className="btn small" data-testid="scan-cancel" disabled={!s.scanning.id} onClick={s.cancelScan}>Cancel</button>
           </div>
         )}
@@ -446,7 +498,7 @@ export function ScanCard({ s }: { s: StartState }) {
   const { card } = scan;
   return (
     <section className="hm-panel hm-proj" data-testid="scan-card" aria-label="Project">
-      <header>Project <button type="button" className="btn small hm-ghost" data-testid="scan-again" disabled={s.busy} onClick={() => void s.runScan(scan.folder, true)}>Scan again</button></header>
+      <header>Project <button type="button" className="btn small hm-ghost" data-testid="scan-again" disabled={s.busy} onClick={() => void s.runScan(scan.target, true)}>Scan again</button></header>
       <div className="pad">
         <b className="name" data-testid="scan-card-name">{card.name}</b>
         {scan.link && <span className="link" data-testid="scan-card-link">{scan.link}</span>}

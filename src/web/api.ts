@@ -8,10 +8,15 @@ export interface DiagramSummary { id: string; title: string; path: string | null
 export type ScanType = "agent" | "backend" | "fullstack" | "other";
 export interface RepoCard { name: string; sentence: string; type: ScanType; languages: string[]; entryPoints: string[] }
 export interface FocusOption { id: string; kind: "section" | "flow"; title: string; sentence: string; files: string[] }
-export interface FolderCheck { folder: string; root: string; git: boolean; drawing: string | null }
+/** `POST /api/folders/check`: the folder as resolved (a link's copy for a link), and whether a copy of it is on disk. */
+export interface FolderCheck { folder: string; root: string; git: boolean; drawing: string | null; link: string | null; branch: string | null; copied: boolean }
+/** What a scan starts from: a folder, or a repository link (api contract, Folders). */
+export type ScanTarget = { folder: string } | { link: string };
+/** `POST /api/folders/pick` (api contract, The folder dialog). */
+export type PickAnswer = ({ status: "picked" } & FolderCheck) | { status: "cancelled" } | { status: "unavailable" };
 export interface ScanRecord {
   id: string; status: "running" | "succeeded" | "failed" | "cancelled"; progress: string[]; folder: string; root: string; commit: string | null;
-  cached: boolean; card: RepoCard | null; options: FocusOption[] | null; warnings: string[]; error: string | null;
+  cached: boolean; card: RepoCard | null; options: FocusOption[] | null; warnings: string[]; error: string | null; link?: string | null;
 }
 export type DrawFocus = { kind: "option"; option: string } | { kind: "whole" } | { kind: "typed"; text: string };
 export type DrawChannel = "linkedin" | "readme" | "presentation";
@@ -70,6 +75,9 @@ export const api = {
   list: () => call<{ diagrams: DiagramSummary[] }>("GET", "/api/diagrams").then((r) => r.diagrams),
   /** The home screen's Recent and Found on this computer. */
   sources: () => call<Sources>("GET", "/api/sources"),
+  /** Make the found list again now; answers as `sources()`. */
+  refreshSources: () => call<Sources>("POST", "/api/sources/refresh"),
+  forgetSource: (path: string, deleteCopy: boolean) => call<{ ok: true; deleted: boolean }>("POST", "/api/sources/forget", { path, deleteCopy }),
   get: (id: string) => call<Document4>("GET", `/api/diagrams/${encodeURIComponent(id)}`),
   /** Save; `base` is the `updatedAt` the edit started from (409 when the file moved on). */
   save: (doc: Document4, base: string | null) =>
@@ -89,9 +97,11 @@ export const api = {
   cancelRun: (id: string) => call<{ ok: true }>("POST", `/api/runs/${id}/cancel`),
   /** Register a drawing file by its path (POST /api/files). */
   openFile: (path: string) => call<{ id: string; url: string }>("POST", "/api/files", { path }).then((r) => r.id),
-  checkFolder: (folder: string) => call<FolderCheck>("POST", "/api/folders/check", { folder }),
-  startScan: (folder: string, o: { engine: string | null; model: string | null; refresh?: boolean }) =>
-    call<{ scanId: string }>("POST", "/api/scans", { folder, engine: o.engine, model: o.model, ...(o.refresh ? { refresh: true } : {}) }).then((r) => r.scanId),
+  checkFolder: (target: ScanTarget) => call<FolderCheck>("POST", "/api/folders/check", target),
+  /** The system's folder dialog; answers when it closes. */
+  pickFolder: () => call<PickAnswer>("POST", "/api/folders/pick", {}),
+  startScan: (target: ScanTarget, o: { engine: string | null; model: string | null; refresh?: boolean }) =>
+    call<{ scanId: string }>("POST", "/api/scans", { ...target, engine: o.engine, model: o.model, ...(o.refresh ? { refresh: true } : {}) }).then((r) => r.scanId),
   scan: (id: string) => call<ScanRecord>("GET", `/api/scans/${id}`),
   cancelScan: (id: string) => call<{ ok: true }>("POST", `/api/scans/${id}/cancel`),
   startDraw: (body: { scan: string; choices: DrawFocus[]; channel: DrawChannel; engine: string | null; model: string | null }) =>

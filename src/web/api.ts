@@ -24,9 +24,6 @@ export interface RunRecord {
 /** An entry of Recent or Found on this computer (api contract, Recent and found). */
 export interface SourceEntry { name: string; path: string; branch: string | null; lastCommitAt: string | null; link: string | null; diagrams: string[]; usedAt: string | null }
 export interface Sources { picker: boolean; recent: SourceEntry[]; found: SourceEntry[]; foundAt: string }
-/** A job as `GET /api/activity` lists it: the scan or draw record with its `type` and `events` (api contract, Activity). */
-export interface ActivityJob { type: "scan" | "draw"; events: string; id: string; status: "running" | "succeeded" | "failed" | "cancelled"; waiting?: boolean; createdAt?: string; [k: string]: unknown }
-export interface Activity { instance: string; now: string; timeoutMs: number; slots: { total: number; busy: number; waiting: number }; jobs: ActivityJob[] }
 export interface Health { ok: boolean; app: string; version: string; build: string }
 /** What every job record carries for the activity list (api contract, Scan record, Run record). */
 export interface JobFields { message: string | null; name: string | null; createdAt: string; startedAt: string | null; endedAt: string | null; link: string | null; events: string }
@@ -73,8 +70,6 @@ export const api = {
   list: () => call<{ diagrams: DiagramSummary[] }>("GET", "/api/diagrams").then((r) => r.diagrams),
   /** The home screen's Recent and Found on this computer. */
   sources: () => call<Sources>("GET", "/api/sources"),
-  /** Every scan and draw running or kept (Activity). */
-  activity: () => call<Activity>("GET", "/api/activity"),
   get: (id: string) => call<Document4>("GET", `/api/diagrams/${encodeURIComponent(id)}`),
   /** Save; `base` is the `updatedAt` the edit started from (409 when the file moved on). */
   save: (doc: Document4, base: string | null) =>

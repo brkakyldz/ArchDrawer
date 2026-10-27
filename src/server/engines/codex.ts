@@ -148,7 +148,7 @@ export function describeCommand(raw: string): string {
 /** Turns `codex exec --json` JSONL events into progress messages; remembers the last error. */
 export class CodexEventParser {
   error: string | null = null;
-  constructor(private readonly progress: (m: string) => void) {}
+  constructor(private readonly progress: (m: string, files?: string[]) => void) {}
 
   line(raw: string): void {
     let ev: Record<string, unknown>;
@@ -157,7 +157,9 @@ export class CodexEventParser {
     if (type === "item.started" || type === "item.completed") {
       const item = (ev.item ?? {}) as Record<string, unknown>;
       if (item.type === "command_execution" && type === "item.started") {
-        this.progress(describeCommand(String(item.command ?? "")));
+        // "Reading <path>" names the file it reads; "Reading files" names none (api contract, Progress lines).
+        const line = describeCommand(String(item.command ?? ""));
+        this.progress(line, line.startsWith("Reading ") && line !== "Reading files" ? [line.slice("Reading ".length)] : undefined);
       } else if (item.type === "reasoning" && type === "item.completed") {
         const t = String(item.text ?? "").replace(/\*\*/g, "").trim().split(/\r?\n/)[0];
         if (t) this.progress(t.slice(0, 90));

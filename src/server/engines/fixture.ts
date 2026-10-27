@@ -289,9 +289,12 @@ export class FixtureEngine implements Engine {
       }
     }
     if (req.model) req.progress(`Using model ${req.model}`);
+    // The read reports reading A, then B when it differs, with its `Reading the code` line (testing contract, File reads).
+    const listing = req.task?.data?.listing ?? [];
+    const reads = stage === "read" ? [...new Set([listing[0] ?? "fixture/empty.ts", listing[1] ?? listing[0] ?? "fixture/empty.ts"])] : undefined;
     for (const step of FIXTURE_STEPS) {
       await sleep(this.stepMs, req.signal);
-      req.progress(step);
+      req.progress(step, step === "Reading the code" ? reads : undefined);
     }
     await sleep(this.stepMs, req.signal);
     if (marked(stage === "read" ? "[fixture:fail]" : `[fixture:fail:${stage}]`)) throw new EngineError("Fixture failure requested");

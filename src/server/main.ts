@@ -8,6 +8,7 @@ import { writeAtomic } from "./files";
 import { RunManager } from "./runs";
 import { ScanManager } from "./scans";
 import { serverFile } from "./serverfile";
+import { EngineSlots } from "./slots";
 import { Store } from "./store";
 import { ClaudeEngine } from "./engines/claude";
 import { CodexEngine } from "./engines/codex";
@@ -17,8 +18,10 @@ import type { Engine } from "./engines/types";
 
 const config = loadConfig();
 const store = new Store(config.dataDir);
-const runs = new RunManager(store, { timeoutMs: config.runTimeoutMs });
-const scans = new ScanManager(config.dataDir, { timeoutMs: config.runTimeoutMs });
+// One set of engine slots for every scan, draw choice and run of the server (api contract, Engine slots).
+const slots = new EngineSlots(config.engineSlots);
+const runs = new RunManager(store, { timeoutMs: config.runTimeoutMs, slots });
+const scans = new ScanManager(config.dataDir, { timeoutMs: config.runTimeoutMs, slots });
 const factories: Record<string, () => Engine> = {
   claude: () => new ClaudeEngine(),
   codex: () => new CodexEngine(),

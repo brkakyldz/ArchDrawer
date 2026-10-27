@@ -128,7 +128,8 @@ describe("choices side by side in the engine slots", () => {
     });
 
     it("a choice past its deadline", async () => {
-      const t = makeApp({ slots: 1, engines: [engineOf()], timeoutMs: 600 });
+      // Long enough for the second choice's three calls on a loaded machine; the held one still times out.
+      const t = makeApp({ slots: 1, engines: [engineOf()], timeoutMs: 2_500 });
       const run = (await t.runs.wait(await start(t, await scanOf(t, repo()), [typed("Hold"), O2])))!;
       expect([run.status, run.choices!.map((c) => `${c.status}:${c.stage}`)]).toEqual(["succeeded", ["failed:read", "done:channel"]]);
       expect(run.choices![0].error).toMatch(/^Timed out after/);

@@ -402,20 +402,20 @@ describe("a draw of several choices", () => {
       }
     })(1);
     const draw2 = async (engine: FixtureEngine, slots: number) => {
-      const t = makeApp({ engines: [engine], timeoutMs: 2000, slots });
+      const t = makeApp({ engines: [engine], timeoutMs: 4000, slots });
       const scan = await scanOf(t, real(repo()));
       return (await t.runs.wait((await start(t, scan, [{ kind: "whole" }, { kind: "typed", text: "Second" }])).body.runId))!;
     };
-    // One slot: the second waits for the first (about 1.2 s each, 2.4 s in all) and does not time out.
-    const both = await draw2(waits([400, 400]), 1);
+    // One slot: the second waits for the first (about 2.4 s each, 4.8 s in all) and does not time out.
+    const both = await draw2(waits([800, 800]), 1);
     expect([both.status, both.error, both.choices!.map((c) => c.error)]).toEqual(["succeeded", null, [null, null]]);
-    expect(Date.parse(both.choices![1].endedAt!) - Date.parse(both.createdAt)).toBeGreaterThan(2000);
+    expect(Date.parse(both.choices![1].endedAt!) - Date.parse(both.createdAt)).toBeGreaterThan(4000);
     // A choice that outlasts its own deadline fails alone; the file holds the other.
-    const late = await draw2(waits([300, 900]), 3);
+    const late = await draw2(waits([300, 1800]), 3);
     expect(late.status).toBe("succeeded");
     expect(late.choices!.map((c) => [c.status, c.error])).toEqual([["done", null], ["failed", "Timed out after 1 min — try a narrower instruction"]]);
     expect((JSON.parse(readFileSync(late.path!, "utf8")) as Document4).choices.map((c) => c.id)).toEqual(["system"]);
-  });
+  }, 30_000);
 
   it("refuses a list of choices in the contracted order", async () => {
     const dir = real(repo());

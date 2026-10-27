@@ -96,6 +96,9 @@ export const api = {
   cancelScan: (id: string) => call<{ ok: true }>("POST", `/api/scans/${id}/cancel`),
   startDraw: (body: { scan: string; choices: DrawFocus[]; channel: DrawChannel; engine: string | null; model: string | null }) =>
     call<{ runId: string }>("POST", "/api/runs", { kind: "draw", ...body }).then((r) => r.runId),
+  /** Add choices to a running draw of the same folder; they take its channel, engine and model (api contract, Joining a running draw). */
+  joinDraw: (runId: string, body: { scan: string; choices: DrawFocus[] }) =>
+    call<{ runId: string; choices: string[] }>("POST", `/api/runs/${runId}/choices`, body),
   /** The running and recently ended scans and draws, newest first (api contract, Activity). */
   activity: () => call<Activity>("GET", "/api/activity"),
 };

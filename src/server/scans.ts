@@ -104,6 +104,30 @@ export class ScanManager {
     return s && s.status === "succeeded" ? { ...this.get(id)!, rel: s.rel } : null;
   }
 
+  /** The scans running draws started from, with how many draws hold each (api contract, Lifecycle). */
+  private readonly pins = new Map<string, number>();
+
+  /**
+   * A running draw holds the scan it started from: it is not forgotten while the draw runs, so choices can join from it
+   * (api contract, Joining a running draw). The answer lets it go; once nothing holds it, a newer success of its folder
+   * forgets it as if it had just finished.
+   */
+  pin(id: string): () => void {
+    if (!this.scans.has(id)) return () => {};
+    this.pins.set(id, (this.pins.get(id) ?? 0) + 1);
+    let held = true;
+    return () => {
+      if (!held) return;
+      held = false;
+      const n = (this.pins.get(id) ?? 1) - 1;
+      if (n > 0) { this.pins.set(id, n); return; }
+      this.pins.delete(id);
+      // Its own success forgot every earlier finished scan of the folder, so another success is a newer one.
+      const s = this.scans.get(id);
+      if (s && [...this.scans.values()].some((o) => o.id !== id && o.key === s.key && o.status === "succeeded")) this.scans.delete(id);
+    };
+  }
+
   /** The running scan of this folder, if any (one at a time per folder): the 409 names it. */
   runningOn(f: Folder): string | null {
     const key = `${f.root}\0${f.rel}`;
@@ -180,7 +204,7 @@ export class ScanManager {
     void scan.finished.then(() => {
       // A success replaces every earlier finished scan of the folder; a failure only the earlier failures.
       for (const [other, s] of this.scans) {
-        if (other === id || s.key !== scan.key || s.status === "running") continue;
+        if (other === id || s.key !== scan.key || s.status === "running" || this.pins.has(other)) continue;
         if (scan.status === "succeeded" || s.status !== "succeeded") this.scans.delete(other);
       }
     });

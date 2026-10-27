@@ -20,7 +20,7 @@ import { EngineError, type Engine } from "./engines/types";
 import { docText } from "./files";
 import { headCommit, listFolder, repoFile, type Folder } from "./folders";
 import type { DrawStage, StoryChannel } from "./runs";
-import { WAITING, type EngineSlots } from "./slots";
+import { WAITING, type EngineSlots, type SlotTicket } from "./slots";
 import { nowIso, type Store } from "./store";
 import { storyAnswer } from "./story-turn";
 
@@ -41,6 +41,8 @@ export interface DrawRequest {
   options?: unknown[];
   /** The scan's link (a copy of a repository from a link), else null. */
   link?: string | null;
+  /** The scan's commit, null outside git: a scan a choice joins from must match it (api contract, Joining a running draw). */
+  commit?: string | null;
   /** The choices to draw, in request order (api contract, The draw run). */
   focuses: DrawFocus[];
   channel: StoryChannel;
@@ -106,6 +108,12 @@ const NAMES = ["architecture.archdraw.json", ...Array.from({ length: 98 }, (_, i
 /** A server or engine line of a draw (api contract, Progress lines); it answers the line's `at`. */
 export type DrawLine = (message: string, stage: DrawStage | null, choice: string | null, source?: "engine" | "server") => string;
 
+/**
+ * Adds choices to a running draw (api contract, Joining a running draw): their focuses, and their records with the ids
+ * already made. False once every choice has ended: the draw is writing or about to end, and takes no more.
+ */
+export type DrawJoin = (focuses: DrawFocus[], choices: DrawChoice[]) => boolean;
+
 const KNOWN = [EngineError, EmptyDiagramError, StoryError, CoverageError, ReadAnswerError, DrawError];
 
 /**
@@ -128,6 +136,8 @@ export async function runDraw(req: DrawRequest, ctx: {
   wrote: (path: string) => void;
   choices: DrawChoice[];
   kept?: ReadonlyMap<string, KeptChoice> | null; done?: Map<string, KeptChoice>;
+  /** Given the draw's join while it takes choices (api contract, Joining a running draw). */
+  joins?: (join: DrawJoin) => void;
 }): Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string; choice: string }> {
   const { channel } = req, { signal } = ctx;
   const drawn = new Map<string, { choice: Pick<Choice4, "id" | "title" | "kind" | "about">; doc: Document3 }>();
@@ -139,13 +149,15 @@ export async function runDraw(req: DrawRequest, ctx: {
     state.startedAt = ctx.line(`Drawing "${state.title}" (${i + 1} of ${ctx.choices.length})`, "read", state.id);
     ctx.changed(state);
   };
-  // The first events: each choice in request order, its slot or the queue, before any other event of the draw.
-  const tickets = ctx.choices.map((state, i) => {
-    const ticket = ctx.slots.request();
+  // A choice asks for its slot: `Drawing …` when it has one, else `Waiting for a free engine` and its `waiting` record.
+  const tickets: SlotTicket[] = [];
+  const ask = (i: number) => {
+    const ticket = (tickets[i] = ctx.slots.request());
     if (ticket.granted) begin(i);
-    else { ctx.line(WAITING, null, state.id); ctx.changed(state); }
-    return ticket;
-  });
+    else { ctx.line(WAITING, null, ctx.choices[i].id); ctx.changed(ctx.choices[i]); }
+  };
+  // The first events: each choice in request order, its slot or the queue, before any other event of the draw.
+  ctx.choices.forEach((_, i) => ask(i));
 
   const runChoice = async (i: number) => {
     const state = ctx.choices[i], ticket = tickets[i];
@@ -209,7 +221,22 @@ export async function runDraw(req: DrawRequest, ctx: {
       ticket.release();
     }
   };
-  await Promise.all(ctx.choices.map((_, i) => runChoice(i)));
+  const pending = ctx.choices.map((_, i) => runChoice(i));
+  // Joined choices go at the end of the draw's order, in the order given: each is said to be added, then asks for its
+  // slot as a choice does at the draw's start. `<n>` counts them all, so they are listed before any of them starts.
+  let open = true;
+  ctx.joins?.((focuses, choices) => {
+    if (!open || signal.aborted) return false;
+    const from = ctx.choices.length;
+    req.focuses.push(...focuses);
+    ctx.choices.push(...choices);
+    choices.forEach((c, k) => { ctx.line(`Added "${c.title}" to this draw`, null, c.id); ask(from + k); });
+    choices.forEach((_, k) => pending.push(runChoice(from + k)));
+    return true;
+  });
+  // Every choice has ended, those that joined while the others ran included; from here no choice joins.
+  for (let n = 0; n !== pending.length;) { n = pending.length; await Promise.all(pending); }
+  open = false;
 
   // When every choice has ended: nothing is written after a cancel, or when no choice finished.
   if (signal.aborted) throw new EngineError("Cancelled");

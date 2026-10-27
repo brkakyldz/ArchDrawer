@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildId } from "../../scripts/build-id.mjs";
 
@@ -28,6 +28,8 @@ export interface Config {
   build: string;
   /** Directory with the built web client (index.html). */
   webDir: string;
+  /** `ARCHDRAW_TEST_REMOTES`: links are copied from the local repositories in it (testing contract, *Test links*); null when unset. */
+  testRemotes: string | null;
 }
 
 /** The environment of docs/contracts/testing.md, shared by the server and the CLI. */
@@ -49,5 +51,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     version: VERSION,
     build: BUILD,
     webDir: join(APP_ROOT, "dist"),
+    testRemotes: env.ARCHDRAW_TEST_REMOTES?.trim() && isAbsolute(env.ARCHDRAW_TEST_REMOTES.trim()) ? resolve(env.ARCHDRAW_TEST_REMOTES.trim()) : null,
   };
 }

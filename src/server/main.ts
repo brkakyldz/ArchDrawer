@@ -6,6 +6,7 @@ import { createApp, envelopeError } from "./app";
 import { loadConfig } from "./config";
 import { writeAtomic } from "./files";
 import { RunManager } from "./runs";
+import { Remotes } from "./remote";
 import { ScanManager } from "./scans";
 import { serverFile } from "./serverfile";
 import { Store } from "./store";
@@ -19,6 +20,7 @@ const config = loadConfig();
 const store = new Store(config.dataDir);
 const runs = new RunManager(store, { timeoutMs: config.runTimeoutMs });
 const scans = new ScanManager(config.dataDir, { timeoutMs: config.runTimeoutMs });
+const remotes = new Remotes(config.dataDir, config.testRemotes);
 const factories: Record<string, () => Engine> = {
   claude: () => new ClaudeEngine(),
   codex: () => new CodexEngine(),
@@ -60,7 +62,7 @@ const shutdown = async () => {
   process.exit(0);
 };
 
-const app = createApp({ config, store, runs, scans, engines, token, onShutdown: () => void shutdown() });
+const app = createApp({ config, store, runs, scans, engines, remotes, token, onShutdown: () => void shutdown() });
 
 // The envelope's Host/Origin check runs before the adapter: a Host such as "127.0.0.1:4317.evil.example"
 // is not a valid URL authority, and the adapter would answer 400 instead of the contract's 403.
@@ -79,8 +81,11 @@ server.listen(config.port, "127.0.0.1", () => {
   store.watch();
   // Once the port is ours: the images a killed server's second looks left behind go; a live server's stay.
   sweepReviseFolders(config.dataDir);
+  // And the half-made copies of a server that is no longer running (api contract, *A scan with a link*).
+  remotes.sweepPartial();
   console.log(`archdrawer listening on ${url}`);
-  console.log(`Data: ${config.dataDir} · engines: ${[...engines.keys()].join(", ") || "none"}`);
+  // Every test switch that is on is named, so one left on is seen (AGENTS.md, "A test switch left on").
+  console.log(`Data: ${config.dataDir} · engines: ${[...engines.keys()].join(", ") || "none"}${config.testRemotes ? " · test links" : ""}`);
 });
 server.on("error", (e: NodeJS.ErrnoException) => {
   console.error(e.code === "EADDRINUSE" ? `Port ${config.port} is in use. Set PORT to another port.` : e.message);

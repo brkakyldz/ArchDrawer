@@ -15,6 +15,7 @@ import { CoverageError, keepUnrelatedViews, missingFacts, SIMPLIFY_INSTRUCTION }
 import { answerToDocument, documentToDraft, DRAFT_JSON_SCHEMA, EmptyDiagramError, type RunScope } from "../core/repair";
 import { removeReviseFolder, reviseOverviewPrompt, reviseStoryPrompt, type ReviseImage } from "./engines/revise";
 import { repoFile } from "./folders";
+import { isInside } from "./remote";
 import { nowIso, type Store } from "./store";
 import { EngineError, type Engine } from "./engines/types";
 import { ReadAnswerError } from "../core/read";
@@ -180,6 +181,19 @@ export class RunManager {
   /** The running draw of a folder, if any (one at a time per folder). */
   drawingOn(folderKey: string): string | null {
     return this.runningOn(`folder:${folderKey}`);
+  }
+
+  /**
+   * Whether a run of any kind, running or waiting, has its drawing file or its repository root in
+   * `dir` (api contract, *In use*): a copy in use is not updated, switched or deleted.
+   */
+  usesFolder(dir: string): boolean {
+    for (const r of this.runs.values()) {
+      if (r.status !== "running") continue;
+      const path = r.target.startsWith("folder:") ? r.target.slice(7).split("\0")[0] : this.store.pathOf(r.target);
+      if (path && isInside(dir, path)) return true;
+    }
+    return false;
   }
 
   /** Start a `draw` run (api contract, The draw run): a new drawing file from a scanned folder. */

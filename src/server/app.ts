@@ -17,7 +17,8 @@ import type { Config } from "./config";
 import { FileError, nowIso, type Store } from "./store";
 import type { RunManager } from "./runs";
 import type { ScanManager } from "./scans";
-import { checkFolder, headCommit } from "./folders";
+import { checkFolder, headCommit, type Folder } from "./folders";
+import { copyOfPath, isInside, linkOfPath, NEEDS_GIT, readLink, Remotes, type Link } from "./remote";
 import type { DrawFocus } from "./engines/prompt";
 import { decodeImage, writeReviseImage } from "./engines/revise";
 import type { Engine, EngineInfo } from "./engines/types";
@@ -28,6 +29,8 @@ export interface AppDeps {
   runs: RunManager;
   scans: ScanManager;
   engines: Map<string, Engine>;
+  /** Copies of repositories from links (api contract, *A repository from a link*); made from `config` when absent. */
+  remotes?: Remotes;
   token: string;
   /** Called after `POST /api/shutdown` has answered. */
   onShutdown?: () => void;
@@ -50,6 +53,7 @@ export function envelopeError(port: number, host: string | undefined, origin: st
 /** The HTTP surface of docs/contracts/api.md, as a Hono app (testable with app.request). */
 export function createApp(deps: AppDeps): Hono {
   const { config, store, runs, scans, engines, token } = deps;
+  const remotes = deps.remotes ?? new Remotes(config.dataDir, config.testRemotes);
   const app = new Hono();
   type Status = 400 | 403 | 404 | 409 | 413 | 500;
   const err = (c: Context, status: Status, message: string, extra: Record<string, unknown> = {}) => c.json({ error: message, ...extra }, status);
@@ -146,7 +150,21 @@ export function createApp(deps: AppDeps): Hono {
     return err(c, 400, r.error, { errors: r.errors });
   });
 
-  app.delete("/api/diagrams/:id", (c) => (store.delete(c.req.param("id")) ? c.body(null, 204) : err(c, 404, "Diagram not found")));
+  app.delete("/api/diagrams/:id", (c) => {
+    const id = c.req.param("id");
+    if (c.req.query("deleteCopy") !== "true") return store.delete(id) ? c.body(null, 204) : err(c, 404, "Diagram not found");
+    // Deleting a copy (api contract): every check before anything is forgotten.
+    if (!store.exists(id)) return err(c, 404, "Diagram not found");
+    const path = store.isRegistered(id) ? store.pathOf(id) : null;
+    const copy = path ? copyOfPath(config.dataDir, path) : null;
+    const link = path ? linkOfPath(config.dataDir, path) : null;
+    if (!copy || !link) return err(c, 400, "This drawing is not in a copy made from a link");
+    if (store.list().some((d) => d.id !== id && d.path && isInside(copy, d.path))) return err(c, 409, "Other drawings in the list are in this copy");
+    if (copyBusy(copy)) return err(c, 409, IN_USE);
+    store.delete(id);
+    const gone = remotes.deleteCopy(link);
+    return "error" in gone ? err(c, 500, gone.error) : c.body(null, 204);
+  });
 
   app.get("/api/diagrams/:id/events", (c) => {
     const id = c.req.param("id");
@@ -249,24 +267,69 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   // Folders and scans (api contract, Folders, Scans).
+  const IN_USE = "This repository is in use: try again when its scans and instructions have ended";
+  /** A scan of a folder in the copy runs, or a run has its drawing or repository in it (*In use*). */
+  const copyBusy = (copy: string) => scans.runningInCopy(copy) !== null || runs.usesFolder(copy);
+
+  /**
+   * A body's `folder` or `link` (api contract, *Folders*): the folder checked as typed, or the link read
+   * and its copy's folder, which need not exist yet. `link` is the link given, or the copy's the folder lies in.
+   */
+  const target = async (b: Record<string, unknown> | null): Promise<{ f: Folder; given: Link | null; link: string | null; copy: string | null } | { error: string }> => {
+    const body = b && typeof b === "object" ? b : {};
+    const hasFolder = body.folder !== undefined && body.folder !== null;
+    const hasLink = body.link !== undefined && body.link !== null;
+    if (hasFolder && hasLink) return { error: "Give a folder or a link, not both" };
+    if (hasLink) {
+      const l = readLink(body.link);
+      if ("error" in l) return l;
+      if (await remotes.gitMissing()) return { error: NEEDS_GIT };
+      const copy = remotes.copyDir(l);
+      return { f: { folder: copy, root: copy, rel: "" }, given: l, link: l.link, copy };
+    }
+    const f = checkFolder(body.folder);
+    if ("error" in f) return f;
+    return { f, given: null, link: linkOfPath(config.dataDir, f.folder), copy: copyOfPath(config.dataDir, f.folder) };
+  };
+
   app.post("/api/folders/check", async (c) => {
-    const b = (await readJson(c)) as Record<string, unknown> | null;
-    const f = checkFolder(b && typeof b === "object" ? b.folder : undefined);
-    if ("error" in f) return err(c, 400, f.error);
+    const t = await target((await readJson(c)) as Record<string, unknown> | null);
+    if ("error" in t) return err(c, 400, t.error);
+    const { f } = t;
     const drawing = join(f.folder, "docs", "architecture.archdraw.json");
-    return c.json({ folder: f.folder, root: f.root, git: (await headCommit(f.root)) !== null, drawing: existsSync(drawing) ? drawing : null });
+    const copied = t.copy !== null && existsSync(t.copy);
+    return c.json({
+      folder: f.folder, root: f.root, git: copied || !t.given ? (await headCommit(f.root)) !== null : false, drawing: existsSync(drawing) ? drawing : null,
+      link: t.link, branch: t.given?.branch ?? null, copied,
+    });
   });
 
   app.post("/api/scans", async (c) => {
     const b = (await readJson(c)) as Record<string, unknown> | null;
-    const f = checkFolder(b && typeof b === "object" ? b.folder : undefined);
-    if ("error" in f) return err(c, 400, f.error);
+    const t = await target(b);
+    if ("error" in t) return err(c, 400, t.error);
+    const { f } = t;
     const body = b!;
     if (body.refresh !== undefined && typeof body.refresh !== "boolean") return err(c, 400, "refresh must be true or false");
     const picked = await pickEngine(body);
     if (typeof picked === "string") return err(c, 400, picked);
-    const scanId = await scans.start(f, picked.engine, picked.model, body.refresh === true);
-    if (!scanId) return err(c, 409, "A scan of this folder is already running");
+    // A link, or a folder in a copy, makes or updates the copy first (*A scan with a link*).
+    const l = t.given ?? (t.link ? readLink(`https://${t.link}`) : null);
+    const copy = t.copy;
+    const source = l && copy && !("error" in l) ? {
+      link: l.link, copy,
+      prepare: (signal: AbortSignal, progress: (m: string) => void) => remotes.prepare(l, t.given ? { branch: l.branch } : "own", {
+        signal, progress, inUse: () => runs.usesFolder(copy),
+        drawings: () => store.list().flatMap((d) => (d.path && isInside(copy, d.path) ? [d.path] : [])),
+      }),
+    } : undefined;
+    if (copy) {
+      const running = scans.runningInCopy(copy);
+      if (running) return err(c, 409, "A scan of this repository is already running", { scanId: running });
+    }
+    const scanId = await scans.start(f, picked.engine, picked.model, body.refresh === true, source);
+    if (!scanId) return copy ? err(c, 409, "A scan of this repository is already running", { scanId: scans.runningInCopy(copy) })
+      : err(c, 409, "A scan of this folder is already running");
     return c.json({ scanId }, 202);
   });
 

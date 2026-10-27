@@ -8,10 +8,11 @@ import {
 
 const TYPED = 'How a booking is paid';
 
-// START-7, SCAN-3, STORY-1 (api contract, *The draw run*): one `draw` run of several choices draws them one after another, one read
-// each. The run record lists them from the start; every progress event names its choice; `succeeded` means a registered, readable
-// `@4` file that holds every choice, each with its overview and the chosen channel and its other channels empty. Ids are slugs.
-test('H194 [START-7 SCAN-3 STORY-1 READ-1 FILE-2 #181 #182] one draw run of three choices lists them from the start, reads each in turn with events that name their choice, and writes one valid format 4 file with every choice, its overview and the README; ids are slugs', async ({ request }) => {
+// START-7, SCAN-3, STORY-1 (api contract, *The draw run*, ADR 0016): one `draw` run of several choices draws them side by side, one read
+// each. The run record lists them from the start; every progress event of a choice names its choice (the two lines of the write name none);
+// `succeeded` means a registered, readable `@4` file that holds every choice, each with its overview and the chosen channel and its other
+// channels empty. Ids are slugs.
+test('H194 [START-7 SCAN-3 STORY-1 READ-1 FILE-2 #181 #182 #196] one draw run of three choices lists them from the start, reads each with events that name their choice, and writes one valid format 4 file with every choice, its overview and the README; ids are slugs', async ({ request }) => {
   test.setTimeout(420_000);
   const auth = await token(request);
   const project = await gitRepo('draw-three');
@@ -27,20 +28,26 @@ test('H194 [START-7 SCAN-3 STORY-1 READ-1 FILE-2 #181 #182] one draw run of thre
   const run = await finishRun(request, runId, 'succeeded', 240_000);
 
   // The finished record: every choice done at its last stage, the first choice and the README of it, the report of that view.
-  expect(run.choices as RunChoice[]).toEqual(wanted.map(c => ({ ...c, status: 'done', stage: 'channel' })));
+  // (A choice record also carries its times, its error and its counts since ADR 0016: H217 holds those.)
+  expect((run.choices as RunChoice[]).map(c => ({ id: c.id, kind: c.kind, title: c.title, status: c.status, stage: c.stage }))).toEqual(wanted.map(c => ({ ...c, status: 'done', stage: 'channel' })));
+  expect((run.choices as { error: unknown }[]).every(c => c.error === null)).toBe(true);
   expect(run).toMatchObject({ status: 'succeeded', error: null, choice: 'system', channel: 'readme', view: 'readme' });
   expect(run.layoutReport).toMatchObject({ choice: 'system', channel: 'readme', view: 'readme', format: 'readme' });
   expect(run.changes.added.length).toBeGreaterThan(0);
   const file = join(project.dir, 'docs', 'architecture.archdraw.json');
   expect(samePath(run.path, file), run.path).toBe(true); expect(run.diagramId).toMatch(/^d_[a-z0-9]{6,}$/);
 
-  // The events: a line opening each choice, every draw line carrying its choice and stage, choices never interleaved, the stages in order.
+  // The events: a line opening each choice, every line of a choice carrying its choice and stage, the stages of each choice in order. The
+  // choices run side by side, so their lines may interleave; only the two lines of the write, `Writing the drawing` and `Saved`, belong to no choice.
   const events = await runEvents(runId);
   const lines = progressOf(events);
   expect(lines.length).toBeGreaterThan(9);
-  expect(lines.every(e => typeof e.data.choice === 'string' && ['read', 'overview', 'channel'].includes(e.data.stage)), 'every progress line of a draw names its choice and stage').toBe(true);
-  const order = lines.map(e => wanted.findIndex(w => w.id === e.data.choice));
-  expect(order.every(i => i >= 0)).toBe(true); expect(order, 'one choice after another').toEqual([...order].sort((a, b) => a - b));
+  const ofAChoice = lines.filter(e => e.data.choice !== null), ofTheWrite = lines.filter(e => e.data.choice === null);
+  expect(ofAChoice.every(e => typeof e.data.choice === 'string' && ['read', 'overview', 'channel'].includes(e.data.stage)), 'every progress line of a choice names its choice and stage').toBe(true);
+  expect(ofAChoice.every(e => wanted.some(w => w.id === e.data.choice))).toBe(true);
+  expect(ofTheWrite.map(e => e.data.message), 'the lines of the write').toEqual(['Writing the drawing', expect.stringMatching(/^Saved( with \d+ warnings?)?$/)]);
+  expect(ofTheWrite.every(e => e.data.stage === null)).toBe(true);
+  expect(lines.slice(-2).map(e => e.data.choice), 'the write comes last').toEqual([null, null]);
   wanted.forEach((w, i) => {
     const mine = messagesOf(events, w.id);
     expect(mine[0], `${w.id} opens with its own line`).toBe(`Drawing "${w.title}" (${i + 1} of 3)`);

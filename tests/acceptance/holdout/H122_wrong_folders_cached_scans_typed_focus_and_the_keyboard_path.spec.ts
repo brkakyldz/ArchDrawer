@@ -5,8 +5,9 @@ import { choiceSlug } from './helpers-selections';
 
 // START-4 and SCAN-3/4 at the home screen: a wrong folder gets one plain sentence and starts nothing; the same commit shows
 // its card at once as scanned before, with a way to scan again; a focus in the user's own words is typed; and the whole
-// path can be done from the keyboard.
-test('H122 [START-4, SCAN-3, SCAN-4, STORY-1, #181] a wrong folder gets a plain sentence and starts nothing, a scanned commit shows its card at once and can be scanned again, and a typed focus is drawn from the keyboard alone', async ({ page, request }) => {
+// path can be done from the keyboard. From ADR 0016 and 0017 the folder field is a combobox of the recent and found repositories
+// (the repository of a registered drawing is in Recent), and a finished draw waits on Ready until the user presses Open.
+test('H122 [START-4, SCAN-3, SCAN-4, STORY-1, SRC-1, HOME-2, HOME-10, JOB-8, #181, #200, #201, #202] a wrong folder gets a plain sentence and starts nothing, a scanned commit shows its card at once and can be scanned again, and a typed focus is drawn from the keyboard alone', async ({ page, request }) => {
   test.setTimeout(240_000);
   const project = await gitRepo('start-keys');
   const home = await workspaceRaw('start-keys-home', shop3('Keyboard shop'));
@@ -20,10 +21,10 @@ test('H122 [START-4, SCAN-3, SCAN-4, STORY-1, #181] a wrong folder gets a plain 
     const folder = page.getByTestId('start-folder'), error = page.getByTestId('start-error');
     await page.goto(`${server.base}/`); await expect(page.getByTestId('start')).toBeVisible();
 
-    // The folders of the library are offered for the field (each root once); a wrong folder gets one sentence.
-    const listId = await folder.getAttribute('list'); expect(listId, 'the field has a list of folders').toBeTruthy();
-    const offeredNow = () => page.locator(`datalist[id="${listId}"] option`).evaluateAll(els => els.map(el => (el as HTMLOptionElement).value));
-    // the list fills when GET /api/diagrams answers, so wait for the option instead of reading once
+    // The repository of the registered drawing is offered by the field (Recent, each folder once); a wrong folder gets one sentence.
+    await folder.focus(); await expect(page.getByTestId('start-folder-list')).toBeVisible();
+    // the list fills when GET /api/sources answers, so wait for the option instead of reading once
+    const offeredNow = () => page.getByTestId('start-folder-option').evaluateAll(els => els.map(el => el.getAttribute('data-path') ?? ''));
     await expect.poll(async () => (await offeredNow()).filter(value => samePath(value, home.dir)).length, { timeout: 30_000 }).toBe(1);
     const wrong: [string, string][] = [
       [join(project.dir, 'no-such-folder'), 'This folder does not exist.'],
@@ -82,10 +83,13 @@ test('H122 [START-4, SCAN-3, SCAN-4, STORY-1, #181] a wrong folder gets a plain 
     for (let i = 0; i < 12 && !(await page.evaluate(() => !!document.activeElement?.closest('[data-testid="draw-start"]'))); i++) await page.keyboard.press('Tab');
     await expect(page.getByTestId('draw-start')).toBeFocused(); await page.keyboard.press('Enter');
     await expect(page.getByTestId('draw-progress')).toBeVisible();
-    await expect(page.getByTestId('editor')).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 120_000 });
+    await page.waitForTimeout(1000); await expect(page.getByTestId('editor'), 'the editor opens only from Open').toHaveCount(0);
+    await page.getByTestId('draw-open').click();
+    await expect(page.getByTestId('editor')).toBeVisible({ timeout: 30_000 });
     const run = posts.find(p => p.path === '/api/runs')!;
     expect(run.body).toMatchObject({ kind: 'draw', choices: [{ kind: 'typed', text }], channel: 'linkedin' }); expect(run.body).not.toHaveProperty('focus');
-    await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin'); await expect(page.getByTestId('editor')).toHaveAttribute('data-choice', choiceSlug(text)); // a slug cut to 40 characters await expect(page.getByTestId('node-intake')).toBeVisible();
+    await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin'); await expect(page.getByTestId('editor')).toHaveAttribute('data-choice', choiceSlug(text)); // a slug cut to 40 characters
     // Must not happen: more than one drawing written, or a draw before the keyboard asked for it.
     expect(posts.filter(p => p.path === '/api/runs')).toHaveLength(1);
     expect(await exists(join(project.dir, 'docs', 'architecture.archdraw.json'))).toBe(true); expect(await exists(join(project.dir, 'docs', 'architecture-2.archdraw.json'))).toBe(false);

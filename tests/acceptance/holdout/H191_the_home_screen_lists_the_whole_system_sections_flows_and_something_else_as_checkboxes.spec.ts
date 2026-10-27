@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
-import { gitRepo, plainFolder, textLines } from './helpers';
+import { gitRepo, plainFolder } from './helpers';
 import { OPTIONS, scanThroughHome, optionBox, isCheckbox, focusListOrder, optionsOnScreen } from './helpers-selections';
 
 // SCAN-2 and SCAN-3 at the home screen (ADR 0015): after a scan the user sees "What should it draw?" and the choices as
 // checkboxes, in this order: the whole system (with its line), the sections, the flows, "Something else". None is ticked at
-// first; an option shows its title, its sentence and one line per file, and no part count and no start → end line. A folder
+// first; an option shows its title, its sentence and its files as chips (the first three, the rest behind `+<n> more`, ui contract), and no part count and no start → end line. A folder
 // the scan found no section or flow in says so and still offers the whole system and "Something else".
-test('H191 [SCAN-2 SCAN-3 #180 #181] after a scan the home screen lists the whole system, the sections, the flows and something else as checkboxes, none ticked, each option with its title, sentence and files, and says so when the scan found no option', async ({ page }) => {
+test('H191 [SCAN-2 SCAN-3 HOME-3 #180 #181 #200] after a scan the home screen lists the whole system, the sections, the flows and something else as checkboxes, none ticked, each option with its title, sentence and file chips, and says so when the scan found no option', async ({ page }) => {
   test.setTimeout(180_000);
   const project = await gitRepo('home-list');
   await scanThroughHome(page, project.dir);
@@ -31,9 +31,10 @@ test('H191 [SCAN-2 SCAN-3 #180 #181] after a scan the home screen lists the whol
     expect(await isCheckbox(box), `${id} is a checkbox`).toBe(true);
     await expect(box).toHaveAttribute('data-kind', o.kind);
     await expect(box).toContainText(o.title); await expect(box).toContainText(o.sentence);
-    const files = await textLines(box.getByTestId('focus-option-files'));
-    expect(files, `${id}: one line per file`).toHaveLength(o.files.length);
-    o.files.forEach((file, i) => expect(files[i]).toContain(file));
+    // The files are chips: every file is in the box (a chip each), and with three or fewer there is nothing more to show.
+    const files = box.getByTestId('focus-option-files');
+    for (const file of o.files) await expect(files, `${id}: a chip for ${file}`).toContainText(file);
+    await expect(box.getByTestId('focus-option-files-more'), `${id}: no more chips`).toHaveCount(0);
     const text = (await box.innerText()).replace(/\s+/g, ' ');
     expect(text, `${id}: no part count`).not.toMatch(/\b\d+\s+parts?\b/i);
     expect(text, `${id}: no start → end line`).not.toMatch(/→|->|\bstart\b.*\bend\b/i);

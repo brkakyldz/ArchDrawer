@@ -1,5 +1,5 @@
 import { defineConfig } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,8 +17,16 @@ const port = process.env.ARCHDRAW_HOLDOUT_PORT ?? String(await new Promise<numbe
   });
 }));
 const data = process.env.ARCHDRAW_HOLDOUT_DATA ?? mkdtempSync(join(tmpdir(), 'archdrawer-holdout-'));
+// The testing contract (*Test suites*): the browser suites point the search home, the test folder dialog and the test links at a temp
+// folder of their own, so no scenario walks the real home folder, opens a real dialog or reaches the network. The search home is empty,
+// no picker file exists (the dialog answers `cancelled`) and the remotes folder is empty. The scenarios of the ADR 0016–0017 round that
+// need other values start a server of their own.
+const around = process.env.ARCHDRAW_HOLDOUT_AROUND ?? mkdtempSync(join(tmpdir(), 'archdrawer-holdout-around-'));
+const searchHome = join(around, 'home'), remotes = join(around, 'remotes');
+mkdirSync(searchHome, { recursive: true }); mkdirSync(remotes, { recursive: true });
 process.env.ARCHDRAW_HOLDOUT_PORT = port;
 process.env.ARCHDRAW_HOLDOUT_DATA = data;
+process.env.ARCHDRAW_HOLDOUT_AROUND = around;
 const baseURL = `http://127.0.0.1:${port}`;
 const escapedDirectory = here.replace(/[\\/]+$/, '').split(/[\\/]/)
   .map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\\\/]');
@@ -44,6 +52,7 @@ export default defineConfig({
     env: {
       PORT: port, ARCHDRAW_DATA_DIR: data, ARCHDRAW_ENGINES: 'fixture',
       ARCHDRAW_NO_OPEN: '1', ARCHDRAW_FIXTURE_STEP_MS: '100',
+      ARCHDRAW_SEARCH_HOME: searchHome, ARCHDRAW_TEST_PICKER: join(around, 'picker.txt'), ARCHDRAW_TEST_REMOTES: remotes,
     },
   },
 });

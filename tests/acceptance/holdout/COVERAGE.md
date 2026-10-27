@@ -1,6 +1,6 @@
 # Held-out coverage
 
-The suite has 149 scenarios. A requirement id appears in a scenario title only
+The suite has 188 scenarios. A requirement id appears in a scenario title only
 when the scenario observes it; an id the spec marks *To build* appears only
 once a step has built something to observe (the 0.3 round: START-4, SCAN-1 to
 SCAN-4, READ-1 to READ-3, STORY-2 to STORY-5 and AI-5, with STORY-1 and
@@ -91,7 +91,7 @@ is refused by one. H137 (batch C) also asserts `ai-look-again` is off with no en
 
 The ADR 0013–0015 round (calm connections and a steady drag, an outline per kind and no rows on the canvas, choices, sections and
 flows, the system map; `archdraw/diagram@4`). It is written by three independent authors and indexed by a third pass. Its
-scenarios are numbered H167–H184 (drawing) and H190–H208 (selections); H185–H189 and H209–H214 are unused. A title of the round
+scenarios are numbered H167–H184 (drawing) and H190–H208 (selections); H185–H189 are unused (H209 on belongs to the ADR 0016–0017 round, below). A title of the round
 reads `H<nn> [IDS #issue …] journey`: the requirement ids, then the build issues the scenario accepts (`ISSUES-drawing.md`,
 `ISSUES-selections.md`), separated by spaces; every scenario from H167 on names at least one issue:
 
@@ -109,6 +109,24 @@ file's first choice, which for a converted `@3` file is its one choice `system`.
 requests of that choice without their `choice` key; `sessionWrite` on a `@4` file merges the change back into its first choice and
 keeps the other choices and their requests. A scenario that asserts the format string of a file reads it with `readStoredRaw`.
 
+The ADR 0016–0017 round (jobs side by side in shared engine slots, sources, the rebuilt home screen). It is written by three independent
+authors, two areas and an index pass. Its scenarios are H209–H228 (jobs and sources on the server) and H229–H247 (the home screen); the
+older files below are rewritten for the same rules. A title of the round reads `H<nn> [IDS #issue …] journey`; the issues are those of
+`ISSUES-home.md`, #195–#202. Every file of H209–H247 starts a server of its own (`jobServer`, `homeServer`) because the round's variables
+(`ARCHDRAW_ENGINE_SLOTS`, `ARCHDRAW_RUN_TIMEOUT_MS`, `ARCHDRAW_JOB_KEEP_MS`, `ARCHDRAW_SEARCH_HOME`, `ARCHDRAW_TEST_PICKER`,
+`ARCHDRAW_TEST_REMOTES`) differ per scenario, and stops it in a `finally`:
+
+| Batch | Lands with | Scenarios |
+|---|---|---|
+| A-jobs-sources | #195 (activity), #196 (slots, side by side, a failed choice), #197 (joining), #198 (Recent, Found, the dialog), #199 (links) | H209–H228 (new); H194, H195 (changed; H195 renamed: its old file is deleted); `helpers-jobs.ts` (new) |
+| B-home | #200 (the screen's layout, the choosing step, the drawings), #201 (the combobox, the dialog and the link tab), #202 (the draw panel, Activity, the notice) | H229–H247 (new); H27, H121, H122, H123, H148, H149, H156, H157, H191, H192, H196 (changed); `helpers-home.ts` (new) |
+| Z-index (home) | last | H197 (the merged text of both areas, see below); `playwright.config.ts` (the three test switches point at empty temp paths); `COVERAGE.md`, `verify.json`, `README.md`, `author-check.mjs` |
+
+H197 mixes the home screen and the API and both halves broke, so it is one file with both: the screen half on the suite's shared
+server, the API half after it. B's H247 is the same screen half on a server of its own and the two double-cover the cancel rows; kept
+on purpose, the first proves the suite's own harness server is enough for a cancel, the second the rows with a server whose variables
+the scenario controls. Either may be dropped without losing a requirement id.
+
 ## Scenarios
 
 | Id | Lands in | Journey |
@@ -125,7 +143,7 @@ keeps the other choices and their requests. A scenario that asserts the format s
 | H24 | A (migrated), H (0.3, changed), C-conversation (0.4, changed) | apply and repair an instruction, undo it, cancel and protect a concurrent session edit; the progress lines of the refine are asserted in order, not by count, since a refine starts with the routing question's engine lines, if any, then its route line (`Changing the facts`), and the fixture's answer adds no line of its own; from 0.4 the result is a preview, kept before the ordinary undo, and the single-line instruction is typed in the AI panel and shows `Nothing changed` with no preview |
 | H25 | A (migrated), C-conversation (0.4, changed) | a machine without engines saves a literal request, with its channel and view, for the next session and stops only its own server; from 0.4 it is typed in the AI panel and shows as a `saved` turn, which a reload empties |
 | H26 | A (migrated) | save to the repository file, follow an outside edit and refuse a stale editor write with a reload offer |
-| H27 | A (migrated) | migrate an old drawing to `@3`, import both versions and forget them without deleting repository files |
+| H27 | A (migrated); B-home (0.6: `library-open` shows on hover or focus) | migrate an old drawing to `@3`, import both versions and forget them without deleting repository files |
 | H28 | — | preview and download an image for every destination in both themes and keep the drawing untouched |
 | H29 | A (migrated) | use a local drawing while forged writes are refused, and find the plugin manifests and launcher in place |
 | H30 | H (0.3, changed), C-conversation (0.4, changed; title changed) | pick a test model in the AI panel, follow progress, keep the previewed change and undo it; progress lines asserted in order, as H24; the engine note names the canned second look; the changed part stays lit until Accept |
@@ -179,9 +197,9 @@ keeps the other choices and their requests. A scenario that asserts the format s
 | H118 | C (0.3) | a draw takes the next free file name up to 99 and replaces nothing, one kept scan serves several draws, a subfolder is drawn under its own docs folder with paths from the root, and a folder outside git (also a subfolder of one) is its own root |
 | H119 | C (0.3) | a draw that fails at the read, overview or channel, is cancelled, or cannot write its file (`docs` is a file, every name taken) writes and registers nothing; a left-out fact is added with one warning; the 409 |
 | H120 | C (0.3), F-second-look (0.4, changed) | a draw request is refused in the contracted order: scan, the scan's folder checked again, focus, option, text, channel, model, engine; `draw` stays a known run kind and the sentence for a wrong kind lists `revise` too |
-| H121 | E (0.3) | folder, card, focus, LinkedIn, draw and the editor on LinkedIn, offered the drawing the folder already holds first |
-| H122 | E (0.3) | wrong folders get one sentence and start nothing, a scanned commit shows its card at once and can be scanned again, a typed focus is drawn from the keyboard |
-| H123 | E (0.3) | a failed draw keeps every choice and Try again repeats the request; with no engine the screen says what to install and offers the example |
+| H121 | E (0.3); B-home (0.6) | folder, card, focus, LinkedIn, draw and the editor on LinkedIn (opened by `draw-open`, never by itself since ADR 0016), offered the drawing the folder already holds first |
+| H122 | E (0.3); B-home (0.6) | wrong folders get one sentence and start nothing, a scanned commit shows its card at once and can be scanned again, a typed focus is drawn from the keyboard; the folder field is the combobox (`start-folder-list`) |
+| H123 | E (0.3); B-home (0.6) | a failed draw stays in its panel with every choice shown, `draw-error`, `draw-retry` (the retry endpoint, no body) and `draw-another`; with no engine the screen says what to install and offers the example |
 | H124 | F (0.3), D-preview (0.4, changed) | Draw it on the README tab (a preview, kept before the undo) is one undo step with the held rows drawn; a reworded limit it shows marks nothing, a new limit or a new fact marks it, Keep as it is and Redraw it each clear the mark in one undoable step; Share defaults to README |
 | H125 | F (0.3) | with no engine the README tab prepares the overview as the simple version, and editing the README splits between the facts and itself like any channel |
 | H126 | G (0.3), D-preview (0.4, changed) | Draw it on the Presentation tab (a preview, kept before the steps are looked at) keeps the fixture's three steps and drops the fourth with one warning; choosing, stepping and leaving a step light and dim parts, never resizing or editing; Share defaults to the slide |
@@ -206,16 +224,16 @@ keeps the other choices and their requests. A scenario that asserts the format s
 | H145 | story-limits | a post and a README story whose first answer has an over-long description are repaired by the engine: saved with its own shorter text, `Fixing 1 problem in the answer` between the two check lines, no `Shortened` warning, the repair adding no warning |
 | H146 | story-limits | with `[fixture:stubborn]` the over-long description is saved at 240 characters ending in `…` with exactly one `Shortened the description to 240 characters` warning, after one repair turn only, for a post and a README story; the run succeeds |
 | H147 | story-limits | a post with a connection to `ghost` is saved without it after the repair turn; with `[fixture:stubborn]` too the run fails naming `The engine's LinkedIn post cannot be drawn:` and `ghost`, and the drawing file is byte for byte unchanged |
-| H148 | story-limits | a draw from the home screen whose overview answer is over-long: one `Fixing 1 problem in the answer` with `stage: "overview"`, after the read and before the channel, a written drawing holding the engine's own overview description and no `Shortened` warning |
-| H149 | story-limits | a draw failing at the channel stage writes nothing; `Try again` from the home screen makes no new scan or read (`Using the facts already read`, no engine lines in the read stage), reuses the overview, writes one drawing, and its warnings equal those of a draw of the same project that never failed |
+| H148 | story-limits; B-home (0.6: `draw-ready`, then `draw-open`) | a draw from the home screen whose overview answer is over-long: one `Fixing 1 problem in the answer` with `stage: "overview"`, after the read and before the channel, a written drawing holding the engine's own overview description and no `Shortened` warning |
+| H149 | story-limits; B-home (0.6: the retry endpoint) | a draw failing at the channel stage writes nothing; `Try again` from the home screen makes no new scan or read (`Using the facts already read`, no engine lines in the read stage), reuses the overview, writes one drawing, and its warnings equal those of a draw of the same project that never failed |
 | H150 | story-limits | a draw failing at the overview stage, then a draw with another channel: the read is reused, the overview is drawn by a call (engine lines, nothing reused), only that channel is drawn; after that success the next draw reads again |
 | H151 | story-limits | a draw failing at the channel stage, a file the read cites deleted from the folder with no new scan, the same draw again: `Using the facts already read` then `Checking the facts`, no engine line in the read stage, the overview drawn by a call (no `Using the overview already drawn`), a written drawing whose facts no longer cite the deleted file (nor hold the facts only it backed), with a warning naming it; another focus with the same scan reads again |
 | H152 | edges-behind | a connection level with a group's name, in the readme and the square image: the name is cut out of the line (no pixel differs from the same drawing without the line), the line is drawn left of the group, in it beyond the name and right of it, as one cubic with its label and badge, the report lists no part, and nothing moves |
 | H153 | edges-behind | three stored parts in a column and a line from the first to the third: the overview draws it straight down behind the middle part, under it, and lists that part; the LinkedIn post turns it out on one side as one cubic clear of the part by 8 px with 24 px handles and lists nothing, its other two lines stay straight on facing sides, its label stays within 10 px, nothing moves |
 | H154 | story-limits-2 | six draws that all fail at the channel, one scan: another model and then another focus (and the other model again) each read the code again (`Reading the code`, `Checking the facts`, overview drawn by a call, no `Using …` line); the same trimmed focus and model with another channel, twice, reuses the read and the overview with no engine line; nothing is written and nothing is registered |
 | H155 | story-limits-2 | a post answer with two problems (`[fixture:invalid][fixture:overlong]`): one repair turn announced `Fixing 2 problems in the answer` right after the first check line, saved without `ghost` and with the engine's own description and no `Shortened` warning; with `[fixture:stubborn]` too, the same plural line once, the run fails naming the LinkedIn post and `ghost`, the file is as it was |
-| H156 | story-limits-2 | a draw from the home screen whose overview answer stays over 240 characters after its repair turn (`[fixture:overlong][fixture:stubborn]`): one `Fixing 1 problem in the answer` in the overview stage and no second, an editor and no `draw-error`, the file written and registered, the overview lede 240 characters ending in `…` with exactly one `Shortened the description to 240 characters`, the read's four warnings first, the post not cut |
-| H157 | story-limits-2 | a draw failing at the overview call, then `draw-retry` on the home screen: the screen is recorded; the read stage shows `running` with `Using the facts already read`, `done` once the overview is `running`, no stage starts before the one before is done, the overview is drawn by a call, the drawing opens and is written once with the four read warnings |
+| H156 | story-limits-2; B-home (0.6: `draw-ready`, then `draw-open`) | a draw from the home screen whose overview answer stays over 240 characters after its repair turn (`[fixture:overlong][fixture:stubborn]`): one `Fixing 1 problem in the answer` in the overview stage and no second, an editor and no `draw-error`, the file written and registered, the overview lede 240 characters ending in `…` with exactly one `Shortened the description to 240 characters`, the read's four warnings first, the post not cut |
+| H157 | story-limits-2; B-home (0.6: the retry endpoint, `draw-open`) | a draw failing at the overview call, then `draw-retry` on the home screen: the screen is recorded; the read stage shows `running` with `Using the facts already read`, `done` once the overview is `running`, no stage starts before the one before is done, the overview is drawn by a call, the drawing opens and is written once with the four read warnings |
 | H158 | A-present | `present-start` and `tour-start` exist on the presentation channel only, stay in the header at 820 px with their names and out of `header-menu`, are off with the title `Add a step first` with no drawing or no step; Present opens `present` in `present` mode on the opening slide in the drawing's theme (dark, then light after `tool-theme`) with focus on the layer and Tab held inside, asks for full screen and `data-fullscreen` agrees with `document.fullscreenElement`, the layer fills the window, the browser's own exit (when granted) or Escape leaves with focus on `present-start` and no step current; nothing saved and no run |
 | H159 | A-present | Right, Down, Space, PageDown, Left, Up, PageUp, Home, End and a click on `present-slide` walk the opening slide and three steps, never past either end; `present-status` `Step <i> of <n>: <text>` and the caption title on the opening slide; the band's text (whole) and `<i> / <n>`; the opening slide dims nothing and has no band, a step slide dims the parts outside the step (a group even with a part in it lit), every edge unless both ends are in the step, and the text, with `data-dim` and `opacity` 0.25; boxes keep their shape; the hint goes with the first change and stays gone |
 | H160 | A-present | `present-note-toggle` hidden on the opening slide and N doing nothing there, `aria-expanded` closed on entry, N or the button opens it, kept open or closed from step to step, the note with its newline or `No note for this step`; Space and Enter on the focused button toggle without moving; Escape, `Exit` and Enter on a focused `Exit` leave with focus on `present-start`, the step shown current and lit in the steps panel; Delete, Backspace, tool keys, `/`, Ctrl+K, Ctrl+Z and a click on another part's place reach nothing: selection, tool, search and file unchanged |
@@ -244,13 +262,13 @@ keeps the other choices and their requests. A scenario that asserts the format s
 | H183 | D-drawing | the empty LinkedIn stage chooses the engine and model that Draw it uses, shares the choice with the AI panel both ways, goes off while a run is going, and is absent with no engine |
 | H184 | D-drawing | a part with an inside draws the same open mark in the editor and in the exported image, on a card, a compact part, a panel and a group, and the mark changes no size |
 | H190 | S-selections | a scan offers the project\ |
-| H191 | S-selections | after a scan the home screen lists the whole system, the sections, the flows and something else as checkboxes, none ticked, each option with its title, sentence and files, and says so when the scan found no option |
-| H192 | S-selections | tick the whole system, a section, a flow and your own words from the keyboard, choose the LinkedIn post, draw all four in one run, and land on the first choice with one file that holds them all |
+| H191 | S-selections; B-home (0.6: the files of an option are chips) | after a scan the home screen lists the whole system, the sections, the flows and something else as checkboxes, none ticked, each option with its title, sentence and files, and says so when the scan found no option |
+| H192 | S-selections; B-home (0.6) | tick the whole system, a section, a flow and your own words from the keyboard, choose the LinkedIn post, draw all four in one run (three side by side, the fourth waiting), see `Ready`, press `Open` and land on the first choice with one file that holds them all |
 | H193 | S-selections | a draw of several choices is refused with the first fault in the contracted order, a single focus still works as a list of one, and nothing is started or written |
-| H194 | S-selections | one draw run of three choices lists them from the start, reads each in turn with events that name their choice, and writes one valid format 4 file with every choice, its overview and the README; ids are slugs |
-| H195 | S-selections | a failure in the second choice writes nothing and keeps the first, the same draw again goes through the first without an engine call and starts at the second, and a draw without the failed choice reuses what was kept in any order |
-| H196 | S-selections | a draw whose second choice fails shows the first done and the second failed, writes nothing and keeps every tick; Try again goes through the first without a new read and draws the second; a changed third choice reuses the first two |
-| H197 | S-selections | cancelling a draw in its second choice shows the first done and the second cancelled, writes nothing, and the next draw reuses the first |
+| H194 | S-selections; A-jobs-sources (0.6) | one draw run of three choices lists them from the start, reads each with events that name their choice (a choice's lines name it and its stage, the two lines of the write name none and come last), and writes one valid format 4 file with every choice, its overview and the README; ids are slugs |
+| H195 | S-selections; A-jobs-sources (0.6; renamed) | a failure in a later choice no longer stops the file: it is written with the finished choices and the failed one is marked, the same draw again reads anew, and `Try again` adds the failed choice to the same file; the control is the drawing of a draw that never failed |
+| H196 | S-selections; B-home (0.6) | a draw whose second choice fails is `Ready` with the first choice written and the second marked; `Try again` draws the failed choice into the same file; a choice that fails every time fails its retry with `draw-error` |
+| H197 | S-selections; Z-index (0.6; merged text) | cancelling a draw in its second choice shows the first done and the second cancelled, writes nothing, `Try again` draws every choice into a new file with the finished one from what was kept; over the API the third choice (started beside the slow one) is done too and the next draw reuses both |
 | H198 | S-selections | a format 3 file opens as one choice with every fact, view, request and mark as it was and no new warning, is written back as format 4 by migrate and by the server, draws exactly the same images, and an invalid one is not converted |
 | H199 | S-selections | a file of four choices validates, opens, imports, saves and reopens; each broken rule is refused with its choice in the path; twelve choices are valid and thirteen are not; a fact in a detail view is drawn |
 | H200 | S-selections | a move, a rename, a new part and the steps switch in one choice change that choice alone, the other choices stay byte for byte and unmarked, and undo walks back through the edits of every choice |
@@ -262,6 +280,45 @@ keeps the other choices and their requests. A scenario that asserts the format s
 | H206 | S-selections | the keyboard reaches every entry of the views panel in order, Up and Down do not wrap, Home and End, Enter and Space go to the view; the panel is 240 px beside a stage that narrows, folds to a 40 px strip that is remembered for every drawing, and is absent for one choice with one view |
 | H207 | S-selections | below 900 px the views panel is in the header menu with the same entries, choosing one goes there and closes the menu, 900 px brings the panel back beside the stage, and the old views button exists at no width |
 | H208 | S-selections | the address, the tabs and their marks, the crumbs, search and an instruction all follow the current choice, and an older link with only a view opens the choice that holds it |
+| H209 | A-jobs-sources | a draw of four choices on three slots: three running at once, the fourth `waiting` with `Waiting for a free engine`, the contracted first eight events, one file in request order |
+| H210 | A-jobs-sources | one slot: choices, a scan of another folder and an instruction run go one after another in the order they asked; a cached scan takes no slot |
+| H211 | A-jobs-sources | time spent waiting for a slot counts toward no time limit, for a choice or a scan (a 10 s limit, a longer wait, still run) |
+| H212 | A-jobs-sources | cancel takes waiting choices and a waiting scan out of the queue, frees the slot for the next draw and writes nothing |
+| H213 | A-jobs-sources | a choice that fails ends alone, the others go on, the file holds the finished ones, the run `succeeded` and the failed choice carries its error; ids as without it |
+| H214 | A-jobs-sources | `Try again` after a draw that succeeded with a failed choice draws that choice into the same file and drawing, the other choices exactly as they were, `changed` fired, and its refusals |
+| H215 | A-jobs-sources | a draw in which every choice failed, or that was cancelled, writes nothing; `Try again` draws every choice into a new file from what was kept; refusals in order |
+| H216 | A-jobs-sources | the view ids of a draw do not depend on which choice finishes first (the first choice finishes last) |
+| H217 | A-jobs-sources | every progress line carries `at` and `source`; a choice reports `filesRead`, `parts` and `lastEngineEventAt`; the `choice` events and the record's fields |
+| H218 | A-jobs-sources | choices ticked while a draw runs join it, take its channel, wait for slots like its own, and land in its one file; a second draw is told which one to join |
+| H219 | A-jobs-sources | every refusal of a join in the contracted order (a duplicate, a second typed text, another scan, a draw that is writing or ended), a newer scan accepted, a cancel stops the joined choice |
+| H220 | A-jobs-sources | the Activity list shows running, waiting and finished scans and draws with their fields, in order, and replays their event streams; the 409 names `scanId` / `runId` |
+| H221 | A-jobs-sources | finished jobs are listed for the keep time only, a scan stays usable, what a failed draw kept expires, a restart empties the list and changes `instance` |
+| H222 | A-jobs-sources | Recent lists the folders scanned, cached, registered or drawn, newest first up to twenty, leaves a gone folder out, and an entry without drawings is forgotten with its checks in order |
+| H223 | A-jobs-sources | Found lists the git repositories under the search home two levels deep, newest commit first up to fifty, kept five minutes, made again on request, Recent excluded |
+| H224 | A-jobs-sources | the test folder dialog answers a folder, cancelled, unavailable or a failure; one dialog opens at a time and a closed request frees it; a picked folder scans like a pasted one; the start-up line names the switch |
+| H225 | A-jobs-sources | a test link is checked without copying, copied (shallow), scanned and drawn into its copy; a second scan fetches the newest commit; a branch link switches the copy and back; the drawing stays byte for byte |
+| H226 | A-jobs-sources | about ninety refused links (shell characters, a leading dash, credentials, other schemes, unknown hosts, device names, branch rules) are refused on check and on scan before anything is copied |
+| H227 | A-jobs-sources | a link that cannot be copied fails with one plain sentence and leaves no copy; a cancelled copy frees its lock while other copies go on; an update that cannot fetch scans the copy as it is |
+| H228 | A-jobs-sources | a copy is deleted with its last drawing or from Recent only when nothing else is in it and nothing runs on it; every refusal forgets nothing; a copy in use is not updated or switched |
+| H229 | B-home | the home screen: three columns that fold at 1240, 860 and 640 px, `activity-toggle`, the stepper, Activity idle, the theme kept in the browser, no hero or footer |
+| H230 | B-home | the drawings are cards with previews that step through the views on hover, search by title and path, `library-none`, a layout kept in the browser, Enter opens, the empty state |
+| H231 | B-home | the folder combobox and the navigation list Recent and Found with branch and age; filtering, `start-folder-none`, a pasted path closes the list; taking an entry scans nothing; `Look again` |
+| H232 | B-home | `Choose folder…` with the test dialog: a slow pick (disabled, `Dialog open…`), a path outside ASCII, a folder with a drawing, cancelled, refused, failed and unavailable change nothing |
+| H233 | B-home | a pasted link is checked as typed, copied, scanned and drawn; the copy is named by its link in the card, the lists and the library; a newer commit is fetched |
+| H234 | B-home | a link that cannot be copied ends with the server's sentence; a cancelled copy leaves no half copy and frees the panel |
+| H235 | B-home | a scanned folder joins Recent and is forgotten on request; a copy is deleted only when the second question is accepted |
+| H236 | B-home | the choosing step counts what is ticked, names the destination in its summary and `Change folder` clears the ticks and the channel |
+| H237 | B-home | three choices run side by side with their own time, line, files and parts; the draw ends on `Ready` with a notice and no editor; Activity; one file; ids in request order |
+| H238 | B-home | one engine slot: choices wait and say so, a scan of another folder waits in the same queue, Activity and the panel say so, pressing a job moves the panel |
+| H239 | B-home | a draw runs on while another repository is scanned and drawn; Activity lists each job; the panel follows the one pressed and keeps the ended ones; each file in its own repository |
+| H240 | B-home | a choice that fails leaves the others in the file; `Ready` offers `Try again`, which draws it into the same file through the retry endpoint |
+| H241 | B-home | choosing more for a folder whose draw runs adds them to that draw with its channel locked and explained; rows are added; one file holds them all |
+| H242 | B-home | reloading the page in the middle of a three-choice draw finds the job again with the same rows going on, and a second page sees it too |
+| H243 | B-home | when the server restarts in the middle of a draw the page says `The server restarted; 1 job stopped` once, lists none and frees the panel |
+| H244 | B-home | a choice whose engine says nothing for 30 s shows `Quiet for <s> s — still running (limit <m> min)` with the server's limit while the others do not; it goes with the next line |
+| H245 | B-home | the home screen works from the keyboard in order: `Ctrl K` finds the folder search, Enter takes and scans, Enter on a destination draws |
+| H246 | B-home | Activity keeps a finished scan with its choices across a reload until it expires; the panel stops following what is gone or left; `New drawing` |
+| H247 | B-home | cancelling a draw with a slow second choice keeps the first done, shows the second cancelled, writes nothing, and `Try again` draws both into a new file (the screen half of H197, on a server of its own) |
 
 ## Requirement map
 
@@ -789,3 +846,122 @@ not (H198 asserts the second half, H108 relies on the first); (3) the map target
 `system` choice only, so a converted `@3` drawing's overview carries it and its README and presentation views do not (H114, H115);
 (4) a violation path is `choices[<n>].…` even for a file written as `@3` (rule 1), because the file is converted first; (5) a request
 read through `readDocument` belongs to the first choice unless it names another.
+
+## Requirement and issue map of the ADR 0016–0017 round
+
+Every requirement id this round marks *To build* or *To change* in `spec.md` (START-4 and START-7 as rewritten, JOB-1–10, SRC-1–6,
+HOME-1–12) and every build issue of `ISSUES-home.md` (#195–#202), with the scenarios whose title carries it. A scenario that observes an
+id without naming it (for example a screen scenario that also reads Activity) is not listed here. It extends the *Requirement map* above
+for these ids: where a row above lists fewer scenarios, this table is the current one. H194 and H195 name `#196` and H195 `JOB-3`.
+
+| Requirement | Scenarios | Evidence and limit |
+|---|---|---|
+| START-4 | H220, H222, H223, H224, H225, H226, H227, H228 (server); H121, H122, H123, H148, H149, H156, H157, H231, H232, H233, H245 (screen) | A repository is chosen by a click on Recent or Found, by the system's dialog, by a pasted path or by a pasted link, and none of the first four scans by itself. Limit: the real dialog, a real network clone and a real engine are not run (below). |
+| START-6 | H149, H157, H195, H196, H197, H214, H215, H221 | What a failed draw keeps, now per choice and also for a failed choice of a draw that wrote its file; it expires with the keep time. |
+| START-7 | H123, H149, H157, H192, H194, H195, H196, H197, H209–H219 (server); H240, H241, H247 (screen) | Choices run side by side, a failed choice does not stop the file, `Try again` draws it into that file, a cancel or every choice failed writes nothing. |
+| JOB-1 | H192, H209, H210, H211, H212, H228, H237, H238 | Three slots by default, one for a scan that starts an engine, a choice and an instruction run; first come first served; waiting says `Waiting for a free engine` and counts toward no limit. |
+| JOB-2 | H192, H197, H209, H213, H216, H237 | Choices start in request order; ids do not depend on the finish order (H216 finishes the first choice last). |
+| JOB-3 | H123, H149, H157, H195, H196, H213, H214, H215, H240 | A failed choice ends alone; the file holds the finished ones; `Try again` draws the failed choice into the same file; every choice failed writes nothing. |
+| JOB-4 | H218, H219, H241 | Joining a running draw: channel, engine and model taken, the file shared, every refusal in the contracted order. Limit: the *writing* sentence cannot be forced (below). |
+| JOB-5 | H210, H220, H227, H238, H239 | Jobs of different folders run together, sharing slots; a job never waits for another job, only for a slot. |
+| JOB-6 | H209, H217, H237, H244 | State, stage, start, last engine line, files read and parts of each choice; `at` and `source` of every line; the quiet line. |
+| JOB-7 | H217, H220, H221, H239, H242, H246 | The Activity list, its fields, order and replay; kept for the keep time; a finished scan keeps its card and options; a reload finds the jobs again. |
+| JOB-8 | H121, H122, H148, H156, H192, H196, H237, H240 | `Ready` with `Open` and a notice; the screen stays where it is; nothing opens the editor but the user (H148, H156, H121, H122, H192, H196 changed for it). |
+| JOB-9 | H221, H243 | A restart empties the list and changes `instance`; the page says `The server restarted; <n> jobs stopped` once. |
+| JOB-10 | H197, H212, H215, H219, H227, H234, H247 | A cancel stops every engine, frees the slots, takes waiting choices out of the queue, writes nothing; a cancelled copy frees its lock. |
+| SRC-1 | H122, H222, H223, H231, H235 | Recent: newest first, twenty at most, a gone folder left out, an entry without drawings forgotten. |
+| SRC-2 | H223, H231 | Found: two levels below the search home, skipped folders, newest commit first, fifty at most, five minutes, `Look again`. |
+| SRC-3 | H224, H232 | The test folder dialog answers a folder, `cancelled`, `unavailable` or a failure; a slow one; non-ASCII; one dialog at a time. |
+| SRC-4 | H225, H226, H227, H233, H234, H235 | A link is checked, copied (shallow), scanned and drawn; about ninety refused links; links that cannot be copied; no half copy. |
+| SRC-5 | H225, H227, H228, H233, H234, H235 | A second scan fetches the newest commit; a branch link switches the copy; the drawing is byte for byte as it was; a copy in use is not updated. |
+| SRC-6 | H225, H228, H233 | The library names a copy's drawing by its link; the copy is deleted with its last drawing, or kept. |
+| HOME-1 | H229 | Three columns that fold at 1240, 860 and 640 px. |
+| HOME-2 | H121, H122, H231, H232, H233, H235, H236, H245 | The four steps of `Draw a project` and the source panel. |
+| HOME-3 | H191, H236 | The choosing step: cards in two columns, chips for files, the count, the summary. Limit: `+<n> more` (below). |
+| HOME-4 | H123, H192, H197, H234, H237, H238, H242, H247 | The panel follows the scan or the draw of the folder chosen; rows, stages, time and line. |
+| HOME-5 | H244 | `Quiet for <s> s — still running (limit <m> min)` after 30 s with no engine line, the limit read from `GET /api/activity`. |
+| HOME-6 | H121, H123, H148, H149, H156, H157, H192, H196, H197, H237, H239, H240, H242, H247 | `Ready` with `Open`, the notice, `Try again`, `Draw another project`; no editor by itself. |
+| HOME-7 | H238, H239, H242, H243, H246 | Activity in every state, the job pressed, the ended jobs kept, a reload, a restart. |
+| HOME-8 | H241 | Choosing more for a folder whose draw runs adds to that draw, with its channel locked and explained. |
+| HOME-9 | H27, H230 | The drawings as cards with previews that step through the views, search, a kept layout, the empty state. |
+| HOME-10 | H122, H245 | The keyboard reaches every control in order; `Ctrl K`; Enter on a destination draws. |
+| HOME-11 | H229 | The theme is kept in the browser. |
+| HOME-12 | H229 | No hero, slogan, process guide or footer line. |
+| #195 | H217, H220, H221 | |
+| #196 | H194, H195, H209, H210, H211, H212, H213, H214, H215, H216, H217 | |
+| #197 | H218, H219 | |
+| #198 | H222, H223, H224 | |
+| #199 | H225, H226, H227, H228 | |
+| #200 | H27, H121, H122, H123, H191, H192, H196, H197, H229, H230, H236, H237, H241, H245, H247 | |
+| #201 | H122, H231, H232, H233, H234, H235, H245 | |
+| #202 | H121, H122, H123, H148, H149, H156, H157, H192, H196, H197, H234, H237, H238, H239, H240, H241, H242, H243, H244, H246, H247 | |
+
+Held-out scenarios that `ISSUES-home.md` lists as superseded, and what was done: H122 (the datalist → the combobox), H121 (the channel
+control disabled during the draw → the choices are not shown while the draw is followed), H123 and H197 (the ticks kept and editable
+after a failed or cancelled draw → the draw stays in `draw-progress` with `draw-error`, `draw-retry`, `draw-another`), `draw-retry`
+(the retry endpoint, no body; H123, H149, H157, H196, H197), the editor opening by itself (H121, H122, H123, H148, H149, H156, H157,
+H192, H196 wait for `draw-ready`, check the editor is still closed and press `draw-open`), `scan-card` in the side column (ids
+unchanged), H191 (the files are chips) and the draw rows (`draw-error` inside `draw-progress`). H195 and H194 were rewritten
+for ADR 0016 decisions 2 and 3 on the API side. Checked and unchanged because their assertions still hold: H110–H113, H117–H120, H150,
+H151, H154, H183, H190, H193, H199, H201, H202, H24, H205, H41.
+
+### Not covered this round
+
+- **The real dialog helpers, a real network clone, a real engine**: only the fixture engine, `ARCHDRAW_TEST_PICKER` and
+  `ARCHDRAW_TEST_REMOTES` stand in (AGENTS.md invariant 7); each platform's dialog command, that the dialog opens in front of the
+  browser and a live clone of one public repository are manual checks the issues record in the ledger.
+- **A join while the draw is writing** (JOB-4): the write is a short window the contract gives no way to hold open. H219 fires joins the
+  moment `Writing the drawing` is seen and asserts each answer is the writing sentence or the ended sentence (never a 200); it cannot
+  force the writing sentence itself.
+- **`+<n> more`** (`focus-option-files-more`): the fixture's options hold at most two files, so no option has more than three; H191 and
+  H236 assert the button is absent for three files or fewer, not the button itself.
+- **`start-pick` while a job is followed**: the ui contract says both that it is hidden off the *Folder* step and that it is disabled while a
+  job is followed; no scenario asserts either state while a scan is followed.
+- **A reloaded page following a running draw by itself**: the contract says the panel follows the job last pressed in Activity; H242 and
+  H246 press the job after a reload and assert the rows then.
+- **The stepper's markup** is only `data-state` of the four steps; H229 and H236 read the name from the text of the first `now` step.
+- **Folder-name markers on Windows**: no scenario puts a fixture marker in a folder name; draw markers travel in typed texts and a link's
+  marker in the repository name (the dashed form), so every journey runs on Windows.
+- **Durations**: no scenario asserts a duration except H211 (a wait longer than the shortest limit the contract allows, 10 s) and H224 (the
+  slow dialog answers after about 3 s, as the testing contract says); the others assert states and orders, with fixture steps of 300 ms
+  to 1 s so that "at the same time" is observable by polling.
+- **Not run**: no scenario of the round has been compiled or run (no product and no runner in the authoring sandboxes). The index pass
+  could not run `author-check.mjs` either (the session refused to run node on files); its rules were checked by reading and by searching
+  the files, and the first run of `node --disable-warning=ExperimentalWarning author-check.mjs` in the landing is the first real check.
+
+## Contract gaps found while writing the ADR 0016–0017 scenarios
+
+The authors' readings, kept as they wrote them (each is a place where the contract allowed more than one), and the index pass's own at
+the end. A build step that reads the contract another way should say so in its issue rather than change a scenario.
+
+**Jobs and sources (H209–H228):** scenarios start `npm start` themselves with only the variables they name; slots are taken, or the request
+queued, while the request is accepted (the first record already shows `running` or `waiting`); a waiting scan has `startedAt` null and
+only the line `Waiting for a free engine`, and a cancelled waiting scan never gets `Gathering the repository`; the fixture reports two files
+at one line and H217 accepts one or two `choice` events (1 then 2) after `Reading the code`; `Drawing "<t>" (<i> of <n>)` for a choice that
+joins reads `<n>` as 3 or 4 for the first of two joined choices and 4 for the last; after the keep time the run is forgotten and the scan
+is no longer listed but can still be drawn from, and what a failed draw kept expires with the draw; a retry that fails is `failed`, with
+`diagramId` null and `into` the drawing it was to add to, the file byte for byte as it was; a text that is not a link at all (`-x`,
+`--upload-pack=…`) gets only a 400 with some sentence; a repository with no commit counts as found (`.git` with a `HEAD`), listed last, ties
+by path; instruction runs are shown by a refine run on a registered drawing (`add Cache`), which queues for a slot and is no job.
+
+**The home screen (H229–H247):** files sit flat in the suite; no config change is needed because each scenario owns its variables; the
+dialog's 400 for a relative path shows either the server's message or `Give the whole path, starting from the drive or from /.`
+(H232 accepts either); `focus-in-draw` is one marker per choice the draw holds, found anywhere in the list, text `In this draw`;
+`channel-choice-*` words are read from the element or the label that holds them; `draw-retry` after a draw that failed or was cancelled
+has an empty body or `{}`; relative times older than six days are `<d> <Mon>` (with the year when not this year) in the test process's
+calendar; `activity-job-status` is checked in full only for a finished draw (`LinkedIn post · Ready`, `LinkedIn post · Ready, 1 failed`)
+and a finished scan (`Scan · 3 sections and flows`), and while running only the channel name and `·`; the notice's name is the card's
+`name` (the repository folder's name for the fixture scan); a closed list under `Found` may still list a repository that moved to Recent
+until `Look again`, so H231 and H235 assert Found only after a refresh; the seeded library drawing is a repository named `library-shop`
+under the server's own temp folder, the Recent entry the scenarios expect; `(limit 10 min)` is read from `timeoutMs` of
+`GET /api/activity` with the server started at `ARCHDRAW_RUN_TIMEOUT_MS=600000`.
+
+**Index pass:** (1) both areas' files are at their suite paths and the shared server needs no variable: `playwright.config.ts` now points
+the search home, the test dialog and the test links at empty temp paths as the testing contract says, and no scenario relies on them being
+set to anything else; (2) H197 stays one file with both halves (the home half on the shared server with the default three slots, the API
+half after it) rather than being split, so its id keeps every requirement id it had and gains HOME-4, HOME-6, #200 and #202; H247 is
+its screen half on a server of its own; (3) with three slots the third choice of the API half runs beside the slow one and is `done`
+before the cancel, and a finished choice of a cancelled draw is kept, so the next draw reuses it (api contract, *What a failed draw keeps*:
+in a draw that wrote nothing every choice that got past its read is kept); (4) START-4 and START-7 are *To change*, so the check treats
+them as `change` and requires a scenario for each, JOB, SRC and HOME ids are `round`; (5) a title carries an id only when the scenario
+observes it, so a requirement a screen scenario touches in passing (HOME-1 in H245, for example) is not listed above.

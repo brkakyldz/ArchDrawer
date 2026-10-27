@@ -42,9 +42,16 @@ drawn in one run (START-7, STORY-1), the whole-system map (STORY-8), a part that
 views panel (NAV-2), H167–H184 and H190–H208 — was written by three independent authors, Claude Sonnet 5.5
 (`claude-sonnet-5-5`), 2026-10-22: one for the drawing area, one for the selections area and one for the index pass
 (the readers of `helpers.ts` for `@4`, the files both areas' topics reach, `COVERAGE.md`, `verify.json`, `README.md` and
-`author-check.mjs`), each from the spec, ADRs 0013–0015 and the contracts alone, with no product code read.
+`author-check.mjs`), each from the spec, ADRs 0013–0015 and the contracts alone, with no product code read; and on 2026-10-27 the ADR
+0016–0017 round — jobs side by side in shared engine slots (JOB-1–10), sources: Recent, Found, the system's folder dialog and
+links copied into a cache (SRC-1–6), START-4 and START-7 rewritten, and the rebuilt home screen (HOME-1–12), H209–H247 and the
+older home-screen files rewritten for it — was written by three independent passes, Claude Sonnet 5.5 (`claude-sonnet-5-5`),
+2026-10-27: one for jobs and sources on the server (H194, H195, H209–H228, `helpers-jobs.ts`), one for the home screen (H27, H121–H123,
+H148, H149, H156, H157, H191, H192, H196, H229–H247, `helpers-home.ts`) and one for the index pass (H197 as the merged text of
+both areas, `playwright.config.ts`, `COVERAGE.md`, `verify.json`, `README.md`, `author-check.mjs`), each from the spec, ADRs
+0016–0017 and the contracts alone, with no product code read.
 
-The suite holds 149 Playwright acceptance journeys, written from the product
+The suite holds 188 Playwright acceptance journeys, written from the product
 contracts and never from product code. Each title reads
 `H<nn> [REQUIREMENT IDS] journey`; the ids are the requirements of the product
 spec that the journey observes.
@@ -175,10 +182,26 @@ spec that the journey observes.
   whole-system map, a click that goes into a part, the open mark, and the views panel (list,
   keyboard, strip, narrow header, addresses). Older files rewritten for the same rules: H15, H16,
   H27, H35, H88–H90, H96, H106, H107, H110, H117–H123, H148–H151, H156, H157.
+- `H209`–`H228` `*.spec.ts` (20 journeys, the ADR 0016–0017 round, jobs and sources on the server; `helpers-jobs.ts`): four
+  choices on three slots (three side by side, the fourth waits and says so), one slot and the queue's order, waiting that counts
+  toward no limit, a cancel that frees the slots, a choice that fails alone and the file that holds the others, `Try again` into
+  the same file or into a new one, view ids that do not depend on the finish order, the time and source of every progress line,
+  choices that join a running draw and every refusal of a join, the Activity list and its keeping time and a restart, Recent,
+  Found, the test folder dialog, a test link copied, scanned and drawn into its copy, about ninety refused links, links that cannot
+  be copied, and a copy deleted only when nothing else is in it. Every one starts a server of its own (`jobServer`) with the
+  variables it needs and stops it in a `finally`. `H194` and `H195` (renamed) rewritten for the same rules.
+- `H229`–`H247` `*.spec.ts` (19 journeys, the same round, the home screen; `helpers-home.ts`): the three columns and their folds,
+  the drawings as cards, the folder combobox and the navigation lists, `Choose folder…` with the test dialog, a pasted link, links that
+  cannot be copied, Recent and its forgetting, the choosing step, three choices side by side, one slot, two repositories at once, a
+  failed choice and `Try again`, joining a running draw, a reload and a restart in the middle of a draw, a quiet choice, the keyboard,
+  Activity across a reload, and a cancel with a slow second choice. Every one starts a server of its own (`homeServer`). Older files
+  rewritten for the new screen: H27, H121–H123, H148, H149, H156, H157, H191, H192, H196, and H197 (the merged text of both areas).
 - `verify.json`: the selected ids and the pass thresholds (runs 3, perScenario 2,
   overall 0.9).
 - `playwright.config.ts`: harness configuration. It assumes the suite sits in
-  `tests/acceptance/holdout/` of an installed archdrawer checkout.
+  `tests/acceptance/holdout/` of an installed archdrawer checkout. Since the ADR 0016–0017 round it also points
+  `ARCHDRAW_SEARCH_HOME`, `ARCHDRAW_TEST_PICKER` and `ARCHDRAW_TEST_REMOTES` at a temp folder of its own, as the testing contract says
+  (an empty search home, no picker file, an empty remotes folder).
 - `COVERAGE.md`: the scenario list with the batch each lands in, the
   requirement-to-scenario map, what is not covered and the contract gaps found.
 - `author-check.mjs`: checks of the suite itself.
@@ -254,3 +277,9 @@ and its rewrites) and `Z-index`, the index pass (`helpers.ts`, H108, H114, H115,
 `verify.json`, `README.md`, `author-check.mjs`). A title of the round reads `H<nn> [IDS #issue …] journey`,
 and every scenario from H167 on names at least one issue so that a build step can run its own subset.
 `COVERAGE.md` lists what the round could not test.
+
+The ADR 0016–0017 round is three batches that land with issues #195–#202 (`ISSUES-home.md`): `A-jobs-sources` (H209–H228, H194,
+H195 and `helpers-jobs.ts`), `B-home` (H229–H247, the older home-screen files and `helpers-home.ts`) and `Z-index`, the index pass
+(H197, `playwright.config.ts`, `COVERAGE.md`, `verify.json`, `README.md`, `author-check.mjs`). The renamed H195 replaces the file of
+the same id whose old name is deleted. A scenario of the round starts the product itself with the variables it needs (`jobServer`,
+`homeServer`); the shared harness server carries none of them except the three test switches that point at empty temp paths.

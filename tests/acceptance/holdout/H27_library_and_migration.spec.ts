@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { drawing, workspace, writeJSON, cli, openDrawing, register, baseURL } from './helpers';
 import { readRaw, readDrawing } from './helpers-selections'; // a file the server wrote is format 4: `readRaw` is the stored document, `readDrawing` its first choice drawn
 
-test('H27 [START-5, FILE-1, FILE-2, #182] migrate an old drawing, import both versions and forget them without deleting repository files', async ({ page, request }) => {
+test('H27 [START-5, FILE-1, FILE-2, HOME-9, #182, #200] migrate an old drawing, import both versions and forget them without deleting repository files', async ({ page, request }) => {
   const { dir, file } = await workspace('library', drawing('Library source'));
   const first = await openDrawing(page, request, file); const normal = await readRaw(file);
   // This legacy example uses only fields named in the v2 migration contract.
@@ -35,7 +35,7 @@ test('H27 [START-5, FILE-1, FILE-2, #182] migrate an old drawing, import both ve
   await page.goto('/'); await expect(page.getByTestId('library')).toBeVisible();
   const ownRow = page.getByTestId('library-item').filter({ has: page.getByTestId('library-item-title').filter({ hasText: 'Library source' }) });
   await expect(ownRow).toHaveAttribute('data-diagram-id', first.id); await expect(ownRow.getByTestId('library-item-path')).toHaveText(file);
-  await ownRow.getByTestId('library-open').click(); await expect(page.getByTestId('repo-name')).toHaveText('Library source'); await page.goto('/');
+  await ownRow.hover(); await ownRow.getByTestId('library-open').click(); await expect(page.getByTestId('repo-name')).toHaveText('Library source'); await page.goto('/');
   await page.getByTestId('import-input').setInputFiles(legacyImport); await expect(page.getByTestId('editor')).toBeVisible();
   await expect(page.getByTestId('node-legacy-web')).toHaveAttribute('data-kind', 'client'); await expect(page.getByTestId('warnings')).toBeVisible();
   const importedV1 = new URL(page.url()).pathname.split('/').at(-1)!; expect(importedV1).not.toBe(first.id);

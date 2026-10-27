@@ -12,8 +12,8 @@ const FOUR_WARNINGS = [
 
 // STORY-7 (ADR 0009) inside START-4: the overview answer of a draw stays over the lede's limit after its one repair turn. A length
 // never fails a run: the text is shortened to 240 characters with `…`, one warning, and the draw goes on to the channel, writes the
-// file and registers it. The user sees an editor, not an error.
-test('H156 [STORY-7, START-4, STORY-1, #181] a draw from the home screen whose overview answer stays over its limit after the repair turn is shortened to 240 characters with one warning and still writes and registers the drawing', async ({ page, request }) => {
+// file and registers it. The user sees a Ready draw, not an error; the editor opens from Open (ADR 0016).
+test('H156 [STORY-7, START-4, STORY-1, JOB-8, #181, #202] a draw from the home screen whose overview answer stays over its limit after the repair turn is shortened to 240 characters with one warning and still writes and registers the drawing', async ({ page, request }) => {
   test.setTimeout(240_000);
   const project = await gitRepo('story-home-stubborn');
   const listedBefore = (await listedDiagrams(request)).length;
@@ -27,9 +27,12 @@ test('H156 [STORY-7, START-4, STORY-1, #181] a draw from the home screen whose o
   const started = await startedRun(page, () => page.getByTestId('draw-start').click());
   expect(started.body).toMatchObject({ kind: 'draw', channel: 'linkedin', choices: [{ kind: 'typed', text: focus }] }); expect(started.body).not.toHaveProperty('focus');
 
-  await expect(page.getByTestId('editor')).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId('draw-error')).toHaveCount(0); await expect(page.getByTestId('draw-ready')).not.toContainText('could not be drawn');
+  await page.waitForTimeout(800); await expect(page.getByTestId('editor'), 'the editor opens from Open, not by itself').toHaveCount(0);
+  await page.getByTestId('draw-open').click();
+  await expect(page.getByTestId('editor')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin');
-  await expect(page.getByTestId('draw-error')).toHaveCount(0);
 
   // The events: one repair turn in the overview stage, never a second, one overview call, and the run went on to the channel.
   const events = (await runEvents(started.runId)).filter(e => e.event === 'progress');

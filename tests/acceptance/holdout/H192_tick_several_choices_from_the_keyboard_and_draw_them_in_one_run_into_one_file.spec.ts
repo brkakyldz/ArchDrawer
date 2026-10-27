@@ -2,17 +2,20 @@ import { test, expect } from '@playwright/test';
 import { basename, join } from 'node:path';
 import { gitRepo, workspaceRaw, shop3, isolatedDrawing, startedRun, tabTo, exists } from './helpers';
 import {
-  OPTIONS, SLUG, FOUR_WARNINGS, scanThroughHome, optionBox, focusedChoice, watchPosts, drawRows, recordDrawRows, recordedRows, rowsAreInOrder, panelStructure, panelEntries,
+  OPTIONS, SLUG, FOUR_WARNINGS, scanThroughHome, optionBox, focusedChoice, watchPosts, drawRows, panelStructure, panelEntries,
   readChoices, where, missingFacts, viewIdsOf, type Doc4,
 } from './helpers-selections';
+import { recordRowFacts, recordedFacts, maxRunning } from './helpers-home';
 
 const TYPED = 'How a booking is paid';
 const TYPED_ID = 'how-a-booking-is-paid';
 
 // SCAN-3, STORY-1, START-7 at the home screen (ADR 0015): the user ticks the whole system, a section, a flow and their own words
-// from the keyboard, chooses one channel, and one `Draw all 4` draws every choice one after another: a row per choice with its three
-// stages, then the editor on the first choice at the chosen channel, the views panel listing all four and one file holding them.
-test('H192 [SCAN-3 STORY-1 START-7 NAV-2 #181 #182] tick the whole system, a section, a flow and your own words from the keyboard, choose the LinkedIn post, draw all four in one run, and land on the first choice with one file that holds them all', async ({ page, request }) => {
+// from the keyboard, chooses one channel, and one `Draw all 4` draws every choice: a row per choice with its three stages, then `Ready`
+// and, from `Open`, the editor on the first choice, the views panel listing all four and one file holding them. From ADR 0016 the choices
+// run side by side in the shared slots (three by default: the fourth waits for one), the choosing step is gone while the draw is
+// followed, and the editor opens only from `Open`.
+test('H192 [SCAN-3 STORY-1 START-7 NAV-2 JOB-1 JOB-2 JOB-8 HOME-4 HOME-6 #181 #182 #200 #202] tick the whole system, a section, a flow and your own words from the keyboard, choose the LinkedIn post, draw all four in one run side by side in three slots, and open from Ready the first choice of one file that holds them all', async ({ page, request }) => {
   test.setTimeout(420_000);
   const project = await gitRepo('home-several');
   const other = await workspaceRaw('home-several-lib', shop3('Home shop'));
@@ -50,14 +53,14 @@ test('H192 [SCAN-3 STORY-1 START-7 NAV-2 #181 #182] tick the whole system, a sec
     expect(posts.filter(p => p.path === '/api/runs'), 'nothing is drawn before the user asks').toEqual([]);
 
     // Draw all: one run whose choices are in the order of the list, not of the ticking, and carry no `focus`.
-    await recordDrawRows(page);
+    await recordRowFacts(page);
     const run = await startedRun(page, () => page.keyboard.press('Enter'));
     expect(run.body).not.toHaveProperty('focus');
     expect(run.body).toMatchObject({ kind: 'draw', channel: 'linkedin' });
     expect(run.body.choices).toEqual([{ kind: 'whole' }, { kind: 'option', option: 'o2' }, { kind: 'option', option: 'o1' }, { kind: 'typed', text: TYPED }]);
     expect(posts.filter(p => p.path === '/api/runs')).toHaveLength(1);
 
-    // The rows: one per choice in the order drawn, three stages each, the controls locked while it runs.
+    // The rows: one per choice in the order drawn, three stages each; the panel follows the draw and the choosing step is gone.
     await expect(page.getByTestId('draw-progress')).toBeVisible();
     await expect(page.getByTestId('draw-choice')).toHaveCount(4);
     const rows = await drawRows(page);
@@ -67,18 +70,26 @@ test('H192 [SCAN-3 STORY-1 START-7 NAV-2 #181 #182] tick the whole system, a sec
     expect(rows[0].stages.map(s => s.text)).toEqual([expect.stringContaining('Reading the code'), expect.stringContaining('Drawing the map'), expect.stringContaining('Drawing the LinkedIn post')]);
     for (const r of rows.slice(1)) expect(r.stages.map(s => s.text)).toEqual([expect.stringContaining('Reading the code'), expect.stringContaining('Drawing the overview'), expect.stringContaining('Drawing the LinkedIn post')]);
     await expect(page.getByTestId('draw-line')).toBeVisible(); await expect(page.getByTestId('draw-cancel')).toBeVisible();
-    await expect(page.getByTestId('start-folder')).toBeDisabled(); await expect(page.getByTestId('focus-whole')).toBeDisabled(); await expect(optionBox(page, 'o1')).toBeDisabled();
-    await expect(page.getByTestId('focus-text')).toBeDisabled(); await expect(page.getByTestId('channel-choice-readme')).toBeDisabled();
-    await expect(page.getByTestId('editor')).toBeVisible({ timeout: 300_000 });
+    await expect(page.getByTestId('start-folder')).toBeDisabled(); await expect(page.getByTestId('focus-list')).toHaveCount(0); await expect(page.getByTestId('draw-start')).toHaveCount(0);
+    await expect(page.getByTestId('channel-choice-readme')).toHaveCount(0);
+    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 300_000 });
+    expect((await page.getByTestId('draw-ready').textContent())!.replace(/\s+/g, ' ')).toMatch(/^Ready.*4 drawings for a LinkedIn post/);
+    await page.waitForTimeout(1000); await expect(page.getByTestId('editor'), 'the editor opens only from Open').toHaveCount(0);
 
-    // The rows went one choice after the other, each stage after the one before it, and no row was skipped.
-    const seen = await recordedRows(page);
+    // The rows went side by side in three slots: three choices at once, the fourth waiting for one, each stage after the one before it.
+    const seen = await recordedFacts(page);
     expect(seen.length).toBeGreaterThan(3);
-    expect(rowsAreInOrder(seen), 'one choice after the other, each stage after the one before').toEqual([]);
-    for (let k = 0; k < 4; k++) expect(seen.some(s => s.rows[k]?.state === 'running'), `choice ${k + 1} was seen running`).toBe(true);
-    expect(seen.some(s => s.rows[0].state === 'running' && s.rows.slice(1).every(r => r.state === 'waiting')), 'the first choice ran while the others waited').toBe(true);
+    expect(maxRunning(seen), 'three slots by default: three choices at once, never more').toBe(3);
+    expect(seen.some(rows => rows.length === 4 && rows.slice(0, 3).every(r => r.state === 'running') && rows[3].state === 'waiting' && rows[3].line === 'Waiting for a free engine'), 'the fourth choice waited for a free engine').toBe(true);
+    expect(seen.some(rows => rows[3]?.state === 'running' && rows.slice(0, 3).some(r => r.state === 'done')), 'and started when one of the others was done').toBe(true);
+    for (let k = 0; k < 4; k++) expect(seen.some(rows => rows[k]?.state === 'running'), `choice ${k + 1} was seen running`).toBe(true);
+    for (const snapshot of seen) for (const r of snapshot) {
+      const rank = (s: string) => s === 'done' ? 2 : s === 'running' || s === 'failed' ? 1 : 0;
+      r.stages.forEach((s, j) => { if (rank(s) >= 1) for (let i = 0; i < j; i++) expect(r.stages[i], `${r.choice}: stage ${j + 1} only after stage ${i + 1} is done`).toBe('done'); });
+    }
 
-    // The editor opens on the first choice at the chosen channel; the views panel lists all four, in its own order.
+    // Open: the editor on the first choice at the chosen channel; the views panel lists all four, in its own order.
+    await page.getByTestId('draw-open').click(); await expect(page.getByTestId('editor')).toBeVisible();
     await expect(page.getByTestId('editor')).toHaveAttribute('data-choice', 'system'); await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin');
     await expect(page).toHaveURL(/\/d\/[^/?]+\?choice=system&channel=linkedin/);
     await expect(page.getByTestId('repo-name')).toHaveText(basename(project.dir));

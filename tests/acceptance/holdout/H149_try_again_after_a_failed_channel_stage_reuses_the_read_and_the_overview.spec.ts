@@ -2,12 +2,14 @@ import { test, expect } from '@playwright/test';
 import { join } from 'node:path';
 import { gitRepo, startedRun, runEvents, listedDiagrams, exists, token, drawFolder, viewOf, baseURL } from './helpers';
 import { getDocument } from './helpers-selections'; // a draw writes format 4: this gives the drawn choice in the shape the scenario was written in
+import { startedRetry } from './helpers-home';
 
 const ENGINE_LINES = ['Reading the drawing', 'Reading the code', 'Updating the drawing'];
 
 // START-6 (ADR 0010) in START-4's home screen: the channel call fails, nothing is written, and `Try again` starts from the channel
-// stage: no new read, the overview reused, a drawing written whose warnings are those of a draw that never failed.
-test('H149 [START-6, START-4, READ-1, START-7, #181] a draw that fails at the channel stage and then Try again from the home screen makes no new read, reuses the overview, writes the drawing and carries the same warnings as a draw that never failed', async ({ page, request }) => {
+// stage: no new read, the overview reused, a drawing written whose warnings are those of a draw that never failed. From ADR 0016
+// `Try again` is the retry endpoint of the failed draw (no new draw request) and the draw ends on `Ready`, the editor opening from `Open`.
+test('H149 [START-6, START-4, READ-1, START-7, JOB-3, HOME-6, #181, #202] a draw that fails at the channel stage and then Try again from the home screen makes no new read, reuses the overview, writes the drawing and carries the same warnings as a draw that never failed', async ({ page, request }) => {
   test.setTimeout(300_000);
   const auth = await token(request);
   const project = await gitRepo('retry-channel');
@@ -24,7 +26,7 @@ test('H149 [START-6, START-4, READ-1, START-7, #181] a draw that fails at the ch
   await page.getByTestId('focus-typed').click(); await page.getByTestId('focus-text').fill('The tool loop [fixture:flaky:channel]');
   await page.getByTestId('channel-choice-linkedin').click();
 
-  // The first draw: read and overview succeed, the channel call fails; nothing is written and every choice stays.
+  // The first draw: read and overview succeed, the channel call fails; nothing is written and the panel keeps the draw.
   const first = await startedRun(page, () => page.getByTestId('draw-start').click());
   await expect(page.getByTestId('draw-error')).toBeVisible({ timeout: 120_000 });
   await expect(page.getByTestId('draw-error')).toContainText('Fixture failure requested');
@@ -38,11 +40,15 @@ test('H149 [START-6, START-4, READ-1, START-7, #181] a draw that fails at the ch
   expect(stageOf(firstEvents, 'channel')).toContain('Drawing the LinkedIn post');
   expect(firstEvents.at(-1)!.data).toMatchObject({ status: 'failed', diagramId: null, path: null });
 
-  // Try again: the same request, no scan, and a draw that starts from the channel.
+  // Try again: the retry endpoint of the first draw, no scan, no new draw request, and a draw that starts from the channel.
   const scans = posts.filter(p => p === '/api/scans').length;
-  const retry = await startedRun(page, () => page.getByTestId('draw-retry').click());
-  expect(retry.body).toEqual(first.body); expect(retry.runId).not.toBe(first.runId);
-  await expect(page.getByTestId('editor')).toBeVisible({ timeout: 120_000 });
+  const retry = await startedRetry(page, () => page.getByTestId('draw-retry').click());
+  expect(retry.from).toBe(first.runId); expect(retry.runId).not.toBe(first.runId);
+  expect(posts.filter(p => p === '/api/runs'), 'Try again is not a new draw request').toHaveLength(1);
+  await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 120_000 });
+  await page.waitForTimeout(800); await expect(page.getByTestId('editor'), 'the editor opens from Open').toHaveCount(0);
+  await page.getByTestId('draw-open').click();
+  await expect(page.getByTestId('editor')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin');
   expect(posts.filter(p => p === '/api/scans'), 'no new scan').toHaveLength(scans);
 
@@ -61,7 +67,7 @@ test('H149 [START-6, START-4, READ-1, START-7, #181] a draw that fails at the ch
 
   // The drawing is written once, registered, and its warnings are the ones of a draw of the same project that never failed.
   const run = await (await request.get(`${baseURL()}/api/runs/${retry.runId}`)).json();
-  expect(run).toMatchObject({ status: 'succeeded', error: null });
+  expect(run).toMatchObject({ status: 'succeeded', error: null, retryOf: first.runId, into: null });
   expect(await exists(join(project.dir, 'docs', 'architecture.archdraw.json'))).toBe(true);
   expect(await exists(join(project.dir, 'docs', 'architecture-2.archdraw.json'))).toBe(false);
   expect((await listedDiagrams(request)).length).toBe(listedBefore + 1);

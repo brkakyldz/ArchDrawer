@@ -8,7 +8,8 @@ import { optionBox, SLUG } from './helpers-selections';
 // kept while the user goes on. The user's own drawing in the folder is offered first and never replaced. Journeys that
 // open the editor after a draw choose LinkedIn: the editor shows README and presentation from steps F and G on.
 // From ADR 0015 the choices are checkboxes, sections first and flows after; H191 and H192 hold the list and several choices at once.
-test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1, #180, #181] type a folder, see its card and choices, tick a section and choose the LinkedIn post, draw it, and land in the editor on the LinkedIn channel, offered the drawing the folder already holds first', async ({ page, request }) => {
+// From ADR 0016 the screen stays where it is when the draw ends: `Ready` with `Open`, and the editor opens only when the user presses it.
+test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1, JOB-8, HOME-2, HOME-6, #180, #181, #200, #202] type a folder, see its card and choices, tick a section and choose the LinkedIn post, draw it, and land in the editor on the LinkedIn channel from Ready, offered the drawing the folder already holds first', async ({ page, request }) => {
   test.setTimeout(240_000);
   const project = await gitRepo('start-flow');
   const first = await writeExistingDrawing(project.dir, 'architecture.archdraw.json', 'Earlier drawing');
@@ -65,7 +66,7 @@ test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1, #180, #181] type a
     await page.getByTestId('channel-choice-linkedin').click(); await expect(page.getByTestId('channel-choice-linkedin')).toBeChecked(); await expect(page.getByTestId('draw-start')).toBeEnabled();
     await page.getByTestId('draw-start').click();
 
-    // The draw: its three stages in order, the choices locked while it runs, then the editor on the new drawing.
+    // The draw: its three stages in order, the panel following it (the choosing step is not shown), then Ready, and the editor only from Open.
     await expect(page.getByTestId('draw-progress')).toBeVisible();
     await expect(page.getByTestId('draw-stage')).toHaveCount(3);
     await expect(page.getByTestId('draw-stage').evaluateAll(els => els.map(el => el.getAttribute('data-stage')))).resolves.toEqual(['read', 'overview', 'channel']);
@@ -73,8 +74,12 @@ test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1, #180, #181] type a
     await expect(page.getByTestId('draw-stage').nth(2)).toContainText('Drawing the LinkedIn post');
     await expect(page.getByTestId('draw-choice')).toHaveCount(1); await expect(page.getByTestId('draw-choice')).toHaveAttribute('data-choice', SLUG.o2); await expect(page.getByTestId('draw-choice-title')).toHaveText('The agent loop');
     await expect(page.getByTestId('draw-line')).toBeVisible(); await expect(page.getByTestId('draw-cancel')).toBeVisible();
-    await expect(page.getByTestId('start-folder')).toBeDisabled(); await expect(page.getByTestId('channel-choice-readme')).toBeDisabled();
-    await expect(page.getByTestId('editor')).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByTestId('start-folder')).toBeDisabled(); await expect(page.getByTestId('channel-choice-readme')).toHaveCount(0); await expect(page.getByTestId('focus-list')).toHaveCount(0);
+    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByTestId('draw-ready')).toContainText('1 drawing for a LinkedIn post'); await expect(page.getByTestId('draw-open')).toBeVisible();
+    await page.waitForTimeout(1200); await expect(page.getByTestId('editor'), 'nothing opens the editor by itself').toHaveCount(0);
+    await page.getByTestId('draw-open').click();
+    await expect(page.getByTestId('editor')).toBeVisible({ timeout: 30_000 });
     const run = posts.find(p => p.path === '/api/runs')!;
     expect(run.body).toMatchObject({ kind: 'draw', choices: [{ kind: 'option', option: 'o2' }], channel: 'linkedin' }); expect(run.body).not.toHaveProperty('focus');
     expect(posts.filter(p => p.path === '/api/runs')).toHaveLength(1);

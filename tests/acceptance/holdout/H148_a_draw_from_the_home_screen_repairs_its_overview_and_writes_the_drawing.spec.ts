@@ -10,7 +10,8 @@ const FOUR_WARNINGS = [
 
 // STORY-7 (ADR 0009) inside START-4: the overview call of a draw has an answer with an over-long description. The repair turn
 // belongs to the overview stage, the draw goes on to the channel and ends in a written drawing, with the engine's own text.
-test('H148 [STORY-7, START-4, STORY-1, #181] a draw from the home screen whose overview answer is over-long gets one repair turn in the overview stage and ends in a written drawing with the engine\'s own description and no Shortened warning', async ({ page, request }) => {
+// From ADR 0016 the draw ends on `Ready` and the editor opens from `Open`.
+test('H148 [STORY-7, START-4, STORY-1, JOB-8, #181, #202] a draw from the home screen whose overview answer is over-long gets one repair turn in the overview stage and ends in a written drawing with the engine\'s own description and no Shortened warning', async ({ page, request }) => {
   test.setTimeout(240_000);
   const project = await gitRepo('story-home-repair');
   const listedBefore = (await listedDiagrams(request)).length;
@@ -23,9 +24,12 @@ test('H148 [STORY-7, START-4, STORY-1, #181] a draw from the home screen whose o
   const started = await startedRun(page, () => page.getByTestId('draw-start').click());
   expect(started.body).toMatchObject({ kind: 'draw', channel: 'linkedin', choices: [{ kind: 'typed', text: 'The tool loop [fixture:overlong]' }] }); expect(started.body).not.toHaveProperty('focus');
 
-  await expect(page.getByTestId('editor')).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin');
+  await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 120_000 });
   await expect(page.getByTestId('draw-error')).toHaveCount(0);
+  await page.waitForTimeout(800); await expect(page.getByTestId('editor'), 'the editor opens from Open, not by itself').toHaveCount(0);
+  await page.getByTestId('draw-open').click();
+  await expect(page.getByTestId('editor')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin');
 
   // The events: one `Fixing 1 problem in the answer`, in the overview stage, after the read and before the channel.
   const events = (await runEvents(started.runId)).filter(e => e.event === 'progress');

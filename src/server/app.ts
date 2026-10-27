@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, resolve, sep } from "node:path";
 import { Hono, type Context } from "hono";
@@ -29,9 +30,16 @@ export interface AppDeps {
   scans: ScanManager;
   engines: Map<string, Engine>;
   token: string;
+  /** The engine slots now (api contract, Activity `slots`); without a slot queue, a stand-in counted from the running jobs. */
+  slots?: () => SlotCounts;
+  /** This server process (api contract, Activity `instance`): 16 hex characters; random when not given. */
+  instance?: string;
   /** Called after `POST /api/shutdown` has answered. */
   onShutdown?: () => void;
 }
+
+/** The engine slots as the activity lists them (api contract, Activity). */
+export interface SlotCounts { total: number; busy: number; waiting: number }
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -265,9 +273,10 @@ export function createApp(deps: AppDeps): Hono {
     if (body.refresh !== undefined && typeof body.refresh !== "boolean") return err(c, 400, "refresh must be true or false");
     const picked = await pickEngine(body);
     if (typeof picked === "string") return err(c, 400, picked);
-    const scanId = await scans.start(f, picked.engine, picked.model, body.refresh === true);
-    if (!scanId) return err(c, 409, "A scan of this folder is already running");
-    return c.json({ scanId }, 202);
+    const started = await scans.start(f, picked.engine, picked.model, body.refresh === true);
+    // The running scan's id, so a page can follow it (api contract, Scans).
+    if ("running" in started) return err(c, 409, "A scan of this folder is already running", { scanId: started.running });
+    return c.json({ scanId: started.scanId }, 202);
   });
 
   app.get("/api/scans/:id", (c) => {
@@ -347,7 +356,8 @@ export function createApp(deps: AppDeps): Hono {
     const picked = await pickEngine(b);
     if (typeof picked === "string") return err(c, 400, picked);
     const folderKey = `${f.root}\0${f.rel}`;
-    if (runs.drawingOn(folderKey)) return err(c, 409, "A drawing of this folder is already being made");
+    const drawing = runs.drawingOn(folderKey);
+    if (drawing) return err(c, 409, "A drawing of this folder is already being made", { runId: drawing });
     const runId = runs.startDraw({ engine: picked.engine, model: picked.model, scan: b.scan as string, folder: f, folderKey, card: scan.card!, focuses, channel: b.channel });
     return c.json({ runId }, 202);
   };
@@ -469,6 +479,19 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   app.post("/api/runs/:id/cancel", (c) => (runs.cancel(c.req.param("id")) ? c.json({ ok: true }) : err(c, 404, "Run not found")));
+
+  // The jobs (api contract, Activity; ADR 0016 decision 6): every scan and draw running or ended within the keep time.
+  const instance = deps.instance ?? randomBytes(8).toString("hex");
+  app.get("/api/activity", (c) => {
+    const now = Date.now();
+    const jobs = [
+      ...scans.list(now).map((s) => ({ type: "scan" as const, events: `/api/scans/${s.id}/events`, ...s })),
+      ...runs.list(now).map((r) => ({ type: "draw" as const, events: `/api/runs/${r.id}/events`, ...r })),
+    ].sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.createdAt < b.createdAt ? 1 : -1));
+    // Until the slot queue counts them, each running scan and run holds one engine and nothing waits.
+    const slots = deps.slots?.() ?? { total: 3, busy: scans.list(now).filter((s) => s.status === "running").length + runs.runningCount(), waiting: 0 };
+    return c.json({ instance, now: new Date(now).toISOString(), timeoutMs: config.runTimeoutMs, slots, jobs });
+  });
 
   app.post("/api/shutdown", (c) => {
     setTimeout(() => deps.onShutdown?.(), 50).unref?.();

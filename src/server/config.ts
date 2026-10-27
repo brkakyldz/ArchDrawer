@@ -24,6 +24,8 @@ export interface Config {
   fixtureStepMs: number;
   noOpen: boolean;
   runTimeoutMs: number;
+  /** How long a finished job is kept and listed (`ARCHDRAW_JOB_KEEP_MS`; api contract, Activity). */
+  jobKeepMs: number;
   version: string;
   build: string;
   /** Directory with the built web client (index.html). */
@@ -46,6 +48,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     fixtureStepMs: Math.max(0, Number.parseInt(env.ARCHDRAW_FIXTURE_STEP_MS ?? "", 10) || 250),
     noOpen: Boolean(env.ARCHDRAW_NO_OPEN),
     runTimeoutMs: Math.max(10_000, Number.parseInt(env.ARCHDRAW_RUN_TIMEOUT_MS ?? "", 10) || 20 * 60_000),
+    jobKeepMs: Math.max(1000, Number.parseInt(env.ARCHDRAW_JOB_KEEP_MS ?? "", 10) || 3_600_000),
     version: VERSION,
     build: BUILD,
     webDir: join(APP_ROOT, "dist"),

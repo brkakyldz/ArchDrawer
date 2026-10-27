@@ -42,6 +42,8 @@ export interface RunRecord {
   view: string;
   status: RunStatus;
   progress: string[];
+  /** The latest progress line, null before the first. */
+  message: string | null;
   diagramId: string | null;
   error: string | null;
   /** The engine and model the run used. */
@@ -57,6 +59,16 @@ export interface RunRecord {
   path: string | null;
   /** A `draw`'s choices in request order with their state (api contract, Run record); null on other kinds. */
   choices: DrawChoice[] | null;
+  /** When the run was accepted, began and ended (api contract, Run record). */
+  createdAt: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  /** A `draw`'s scanned folder, its repository root, its copy's link, the card's name and the scan; null on other kinds. */
+  folder: string | null;
+  root: string | null;
+  link: string | null;
+  name: string | null;
+  scan: string | null;
 }
 
 interface Run extends RunRecord {
@@ -109,25 +121,45 @@ interface Look { image: ReviseImage; report: LayoutReport }
 const storyChannelOf = (req: StartRun): StoryChannel | null =>
   req.kind === "post" ? "linkedin" : req.kind === "story" ? ((req.channel as StoryChannel | undefined) ?? "linkedin") : null;
 
-/** How long what a failed draw kept stays (api contract, What a failed draw keeps). */
-const KEPT_MS = 3_600_000;
-
 /** Runs one instruction-box call end to end and keeps its event log for replay over SSE. */
 export class RunManager {
   private readonly runs = new Map<string, Run>();
+  /**
+   * How long a finished run is kept, a finished draw listed and what a failed draw kept stays
+   * (api contract, Activity: `ARCHDRAW_JOB_KEEP_MS`).
+   */
+  private readonly keepMs: number;
 
   constructor(
     private readonly store: Store,
-    private readonly opts: { timeoutMs: number },
-  ) {}
+    private readonly opts: { timeoutMs: number; keepMs?: number },
+  ) {
+    this.keepMs = opts.keepMs ?? 3_600_000;
+  }
 
   get(id: string): RunRecord | null {
     const r = this.runs.get(id);
     return r ? {
-      id: r.id, kind: r.kind, choice: r.choice, channel: r.channel, view: r.view, status: r.status, progress: [...r.progress], diagramId: r.diagramId, error: r.error,
+      id: r.id, kind: r.kind, choice: r.choice, channel: r.channel, view: r.view, status: r.status, progress: [...r.progress], message: r.message, diagramId: r.diagramId, error: r.error,
       engine: r.engine, model: r.model, changes: r.changes, layoutReport: r.layoutReport, route: r.route, path: r.path,
       choices: r.choices ? r.choices.map((c) => ({ ...c })) : null,
+      createdAt: r.createdAt, startedAt: r.startedAt, endedAt: r.endedAt,
+      folder: r.folder, root: r.root, link: r.link, name: r.name, scan: r.scan,
     } : null;
+  }
+
+  /** The draws the activity lists (api contract, Activity): running, or ended less than the keep time ago. Other kinds are no job. */
+  list(now = Date.now()): RunRecord[] {
+    return [...this.runs.values()]
+      .filter((r) => r.kind === "draw" && (r.endedAt === null || Date.parse(r.endedAt) + this.keepMs > now))
+      .map((r) => this.get(r.id)!);
+  }
+
+  /** How many runs of any kind are running (the activity's stand-in slot count). */
+  runningCount(): number {
+    let n = 0;
+    for (const r of this.runs.values()) if (r.status === "running") n++;
+    return n;
   }
 
   /** The running run on a drawing, if any (one at a time per drawing). */
@@ -191,7 +223,8 @@ export class RunManager {
     const done = new Map<string, KeptChoice>();
     const choices = drawChoices(req.focuses);
     return this.launch(
-      { kind: "draw", choice: choices[0].id, channel: req.channel, view: req.channel, engine: req.engine.id, model: req.model, target: `folder:${req.folderKey}`, choices },
+      { kind: "draw", choice: choices[0].id, channel: req.channel, view: req.channel, engine: req.engine.id, model: req.model, target: `folder:${req.folderKey}`, choices,
+        folder: req.folder.folder, root: req.folder.root, link: null, name: req.card.name, scan: req.scan },
       (signal, progress, run, restartDeadline) => runDraw(req, { store: this.store, timeoutMs: this.opts.timeoutMs, signal, progress, wrote: (path) => (run.path = path), choices, kept, done, restartDeadline }).then(
         (r) => { this.kept.delete(req.folderKey); return r; },
         (err: unknown) => {
@@ -208,7 +241,7 @@ export class RunManager {
             const entry = { key, at: Date.now(), records };
             this.kept.set(req.folderKey, entry);
             // It goes an hour after the last draw that added to it, unless a newer draw of the folder replaced it first.
-            setTimeout(() => { if (this.kept.get(req.folderKey) === entry) this.kept.delete(req.folderKey); }, KEPT_MS).unref();
+            setTimeout(() => { if (this.kept.get(req.folderKey) === entry) this.kept.delete(req.folderKey); }, this.keepMs).unref();
           }
           throw err;
         },
@@ -220,15 +253,19 @@ export class RunManager {
   private readonly kept = new Map<string, { key: string; at: number; records: Map<string, KeptChoice> }>();
 
   private launch(
-    init: Pick<RunRecord, "kind" | "choice" | "channel" | "view" | "engine" | "model"> & { target: string; choices?: DrawChoice[] },
+    init: Pick<RunRecord, "kind" | "choice" | "channel" | "view" | "engine" | "model"> & { target: string; choices?: DrawChoice[] } & Partial<Pick<RunRecord, "folder" | "root" | "link" | "name" | "scan">>,
     exec: (signal: AbortSignal, progress: (m: string, stage?: DrawStage | null, choice?: string | null) => void, run: Run, restartDeadline: () => void) => Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string }>,
   ): string {
     const id = `r_${randomBytes(6).toString("hex")}`;
+    const createdAt = nowIso();
     let resolveFinished!: () => void;
     const run: Run = {
       id, kind: init.kind, choice: init.choice, channel: init.channel, view: init.view,
-      status: "running", progress: [], diagramId: null, error: null, engine: init.engine, model: init.model,
+      status: "running", progress: [], message: null, diagramId: null, error: null, engine: init.engine, model: init.model,
       changes: null, layoutReport: null, route: null, path: null, target: init.target, choices: init.choices ?? null,
+      // Until a slot queue holds runs back, a run begins when it is accepted.
+      createdAt, startedAt: createdAt, endedAt: null,
+      folder: init.folder ?? null, root: init.root ?? null, link: init.link ?? null, name: init.name ?? null, scan: init.scan ?? null,
       events: [], listeners: new Set(), abort: new AbortController(),
       finished: new Promise((r) => (resolveFinished = r)), timedOut: false,
     };
@@ -245,6 +282,7 @@ export class RunManager {
     const progress = (message: string, stage: DrawStage | null = null, choice: string | null = null) => {
       if (run.status !== "running") return;
       run.progress.push(message);
+      run.message = message;
       emit({ type: "progress", message, stage, choice });
     };
     const end = (status: Exclude<RunStatus, "running">, diagramId: string | null, error: string | null, changes: Changes | null = null, report: LayoutReport | null = null) => {
@@ -256,6 +294,7 @@ export class RunManager {
       run.error = error;
       run.changes = changes;
       run.layoutReport = report;
+      run.endedAt = nowIso();
       emit({ type: "done", status, diagramId, error, changes, choice: run.choice, channel: run.channel, view: run.view, layoutReport: report, route: run.route, path: run.path, choices: run.choices ? run.choices.map((c) => ({ ...c })) : null });
       run.listeners.clear();
       resolveFinished();
@@ -272,8 +311,8 @@ export class RunManager {
         end("failed", null, known ? (err as Error).message : `Unexpected error: ${(err as Error)?.message ?? String(err)}`);
       },
     );
-    // Forget finished runs after an hour so a long-lived server does not grow without bound.
-    void run.finished.then(() => setTimeout(() => this.runs.delete(id), 3_600_000).unref());
+    // Forget finished runs after the keep time so a long-lived server does not grow without bound.
+    void run.finished.then(() => setTimeout(() => this.runs.delete(id), this.keepMs).unref());
     return id;
   }
 

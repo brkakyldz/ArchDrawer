@@ -6,6 +6,7 @@ import { scanPrompt } from "./engines/prompt";
 import { EngineError, type Engine } from "./engines/types";
 import { writeAtomic } from "./files";
 import { headCommit, listFolder, readPart, repoFile, type Folder } from "./folders";
+import { nowIso } from "./store";
 
 /**
  * Scans (api contract, *Scans*; ADR 0007): a repository card and focus options for a folder, from
@@ -20,9 +21,18 @@ export type ScanEvent =
 
 export interface ScanRecord {
   id: string; status: ScanStatus; progress: string[];
-  folder: string; root: string; commit: string | null; cached: boolean;
+  /** The latest progress line, null before the first. */
+  message: string | null;
+  folder: string; root: string;
+  /** The card's name once the scan succeeded; before, the folder's last path segment. */
+  name: string;
+  commit: string | null; cached: boolean;
   card: RepoCard | null; options: FocusOption[] | null; warnings: string[];
   error: string | null; engine: string; model: string | null;
+  /** When the scan was accepted, its first step began and it ended (api contract, Scan record). */
+  createdAt: string; startedAt: string | null; endedAt: string | null;
+  /** The link of the copy the folder lies in, else null (api contract, A repository from a link). */
+  link: string | null;
 }
 
 interface Scan extends ScanRecord {
@@ -41,12 +51,13 @@ const CACHE_VERSION = 2;
 
 export class ScanManager {
   private readonly scans = new Map<string, Scan>();
-  /** Folders whose scan is being set up (before its record exists): one scan per folder at a time. */
-  private readonly starting = new Set<string>();
   private readonly dir: string;
+  /** How long a finished scan is listed (api contract, Activity: `ARCHDRAW_JOB_KEEP_MS`). */
+  private readonly keepMs: number;
 
-  constructor(dataDir: string, private readonly opts: { timeoutMs: number }) {
+  constructor(dataDir: string, private readonly opts: { timeoutMs: number; keepMs?: number }) {
     this.dir = join(dataDir, "scans");
+    this.keepMs = opts.keepMs ?? 3_600_000;
   }
 
   get(id: string): ScanRecord | null {
@@ -56,18 +67,27 @@ export class ScanManager {
     return { ...record, progress: [...s.progress], warnings: [...s.warnings] };
   }
 
+  /**
+   * The scans the activity lists (api contract, Activity): running, or ended less than the keep time
+   * ago. A scan no longer listed stays what a draw can follow while it is the folder's latest.
+   */
+  list(now = Date.now()): ScanRecord[] {
+    return [...this.scans.values()]
+      .filter((s) => s.endedAt === null || Date.parse(s.endedAt) + this.keepMs > now)
+      .map((s) => this.get(s.id)!);
+  }
+
   /** A succeeded scan with the folder it was made of (a draw run starts from it). */
   succeeded(id: string): (ScanRecord & { rel: string }) | null {
     const s = this.scans.get(id);
     return s && s.status === "succeeded" ? { ...this.get(id)!, rel: s.rel } : null;
   }
 
-  /** Whether a scan of this folder is running or being started (one at a time per folder). */
-  runningOn(f: Folder): boolean {
+  /** The running scan of this folder, if any (one at a time per folder): the 409 names it. */
+  runningOn(f: Folder): string | null {
     const key = `${f.root}\0${f.rel}`;
-    if (this.starting.has(key)) return true;
-    for (const s of this.scans.values()) if (s.key === key && s.status === "running") return true;
-    return false;
+    for (const s of this.scans.values()) if (s.key === key && s.status === "running") return s.id;
+    return null;
   }
 
   subscribe(id: string, fn: (e: ScanEvent) => void): (() => void) | null {
@@ -103,27 +123,30 @@ export class ScanManager {
   }
 
   /**
-   * Start a scan; a cached one is created already succeeded and starts no engine. Null when a scan
-   * of the folder is already running: the folder is reserved before anything is awaited.
+   * Start a scan; a cached one is created already succeeded and starts no engine. When a scan of
+   * the folder is already running, its id: the record exists before anything is awaited, so two
+   * requests at once never start two scans.
    */
-  async start(f: Folder, engine: Engine, model: string | null, refresh: boolean): Promise<string | null> {
-    if (this.runningOn(f)) return null;
-    const reserved = `${f.root}\0${f.rel}`;
-    this.starting.add(reserved);
-    try { return await this.begin(f, engine, model, refresh); } finally { this.starting.delete(reserved); }
-  }
-
-  private async begin(f: Folder, engine: Engine, model: string | null, refresh: boolean): Promise<string> {
+  async start(f: Folder, engine: Engine, model: string | null, refresh: boolean): Promise<{ scanId: string } | { running: string }> {
+    const running = this.runningOn(f);
+    if (running) return { running };
     const id = `s_${randomBytes(6).toString("hex")}`;
-    const commit = await headCommit(f.root);
     let resolveFinished!: () => void;
+    const createdAt = nowIso();
     const scan: Scan = {
-      id, status: "running", progress: [], folder: f.folder, root: f.root, commit, cached: false,
+      id, status: "running", progress: [], message: null, folder: f.folder, root: f.root, name: basename(f.folder), commit: null, cached: false,
       card: null, options: null, warnings: [], error: null, engine: engine.id, model,
+      createdAt, startedAt: null, endedAt: null, link: null,
       events: [], listeners: new Set(), abort: new AbortController(),
       finished: new Promise((r) => (resolveFinished = r)), key: `${f.root}\0${f.rel}`, rel: f.rel,
     };
     this.scans.set(id, scan);
+    await this.begin(scan, f, engine, model, refresh, resolveFinished);
+    return { scanId: id };
+  }
+
+  private async begin(scan: Scan, f: Folder, engine: Engine, model: string | null, refresh: boolean, resolveFinished: () => void): Promise<void> {
+    const id = scan.id;
     // The latest finished scan of a folder is kept for a draw; an earlier one goes (api contract, Lifecycle).
     void scan.finished.then(() => {
       // A success replaces every earlier finished scan of the folder; a failure only the earlier failures.
@@ -133,10 +156,11 @@ export class ScanManager {
       }
     });
     const emit = (e: ScanEvent) => { scan.events.push(e); for (const l of scan.listeners) l(e); };
-    const progress = (message: string) => { if (scan.status !== "running") return; scan.progress.push(message); emit({ type: "progress", message }); };
+    const progress = (message: string) => { if (scan.status !== "running") return; scan.progress.push(message); scan.message = message; emit({ type: "progress", message }); };
     const end = (status: Exclude<ScanStatus, "running">, error: string | null, r: Cached | null = null) => {
       clearTimeout(deadline);
-      Object.assign(scan, { status, error, card: r?.card ?? null, options: r?.options ?? null, warnings: r?.warnings ?? [] });
+      Object.assign(scan, { status, error, card: r?.card ?? null, options: r?.options ?? null, warnings: r?.warnings ?? [], endedAt: nowIso() });
+      if (r) scan.name = r.card.name;
       emit({ type: "done", status, error, card: scan.card, options: scan.options, cached: scan.cached, warnings: [...scan.warnings] });
       scan.listeners.clear();
       resolveFinished();
@@ -145,6 +169,10 @@ export class ScanManager {
     const deadline = setTimeout(() => { timedOut = true; scan.abort.abort(); }, this.opts.timeoutMs);
     deadline.unref?.();
 
+    const commit = await headCommit(f.root).catch(() => null);
+    scan.commit = commit;
+    // A cancel while the commit was read.
+    if (scan.abort.signal.aborted) return end(timedOut ? "failed" : "cancelled", timedOut ? `Timed out after ${Math.round(this.opts.timeoutMs / 60_000) || 1} min` : "Cancelled");
     const cacheFile = commit ? this.entry(f, commit) : null;
     if (cacheFile && !refresh && existsSync(cacheFile)) {
       try {
@@ -152,12 +180,14 @@ export class ScanManager {
         // An entry of another shape (a corrupted file, an older format) is scanned again.
         if (!hit || typeof hit !== "object" || hit.version !== CACHE_VERSION || !hit.card || typeof hit.card.name !== "string" || !Array.isArray(hit.options) || !Array.isArray(hit.warnings)) throw new Error("not a scan");
         scan.cached = true;
+        scan.startedAt = scan.createdAt;
         progress(`Scanned before at ${commit!.slice(0, 7)}`);
         end("succeeded", null, hit);
-        return id;
+        return;
       } catch { /* an unreadable entry is scanned again */ }
     }
 
+    scan.startedAt = nowIso();
     void this.execute(f, engine, model, scan.abort.signal, progress).then(
       (r) => {
         if (cacheFile) {
@@ -173,7 +203,6 @@ export class ScanManager {
         end("failed", known ? (err as Error).message : `Unexpected error: ${(err as Error)?.message ?? String(err)}`);
       },
     );
-    return id;
   }
 
   private async execute(f: Folder, engine: Engine, model: string | null, signal: AbortSignal, progress: (m: string) => void): Promise<Cached> {

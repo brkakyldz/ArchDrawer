@@ -18,7 +18,10 @@ import type { Config } from "./config";
 import { FileError, nowIso, type Store } from "./store";
 import type { RunManager } from "./runs";
 import type { ScanManager } from "./scans";
-import { checkFolder, headCommit } from "./folders";
+import { checkFolder, headCommit, type Folder } from "./folders";
+import { repoRootOf } from "./files";
+import { FolderPicker } from "./picker";
+import { copyOf, Sources } from "./sources";
 import type { DrawFocus } from "./engines/prompt";
 import { decodeImage, writeReviseImage } from "./engines/revise";
 import type { Engine, EngineInfo } from "./engines/types";
@@ -30,10 +33,14 @@ export interface AppDeps {
   scans: ScanManager;
   engines: Map<string, Engine>;
   token: string;
-  /** The engine slots now (api contract, Activity `slots`): the server's `EngineSlots.stats()`. */
-  slots: () => SlotCounts;
+  /** The engine slots now (api contract, Activity `slots`); the runs' `EngineSlots` when absent. */
+  slots?: () => SlotCounts;
   /** This server process (api contract, Activity `instance`): 16 hex characters; random when not given. */
   instance?: string;
+  /** The system's folder dialog; made from the config when absent. */
+  picker?: FolderPicker;
+  /** Recent and found folders; made from the config when absent. */
+  sources?: Sources;
   /** Called after `POST /api/shutdown` has answered. */
   onShutdown?: () => void;
 }
@@ -59,6 +66,10 @@ export function envelopeError(port: number, host: string | undefined, origin: st
 export function createApp(deps: AppDeps): Hono {
   const { config, store, runs, scans, engines, token } = deps;
   const app = new Hono();
+  const picker = deps.picker ?? new FolderPicker({ testFile: config.testPicker });
+  const sources = deps.sources ?? new Sources({ dataDir: config.dataDir, library: store, searchHome: config.searchHome });
+  // A drawing file registered in a folder makes its repository a recent folder (api contract, Recent and found).
+  store.on("registered", (file: string) => sources.use(repoRootOf(file)));
   type Status = 400 | 403 | 404 | 409 | 413 | 500;
   const err = (c: Context, status: Status, message: string, extra: Record<string, unknown> = {}) => c.json({ error: message, ...extra }, status);
 
@@ -261,8 +272,42 @@ export function createApp(deps: AppDeps): Hono {
     const b = (await readJson(c)) as Record<string, unknown> | null;
     const f = checkFolder(b && typeof b === "object" ? b.folder : undefined);
     if ("error" in f) return err(c, 400, f.error);
+    return c.json(await folderAnswer(f));
+  });
+
+  /** A checked folder as `POST /api/folders/check` answers it; a folder in a copy names the copy's link. */
+  const folderAnswer = async (f: Folder) => {
     const drawing = join(f.folder, "docs", "architecture.archdraw.json");
-    return c.json({ folder: f.folder, root: f.root, git: (await headCommit(f.root)) !== null, drawing: existsSync(drawing) ? drawing : null });
+    const copy = copyOf(config.dataDir, f.folder);
+    return {
+      folder: f.folder, root: f.root, git: (await headCommit(f.root)) !== null, drawing: existsSync(drawing) ? drawing : null,
+      link: copy?.link ?? null, branch: null, copied: copy !== null,
+    };
+  };
+
+  // The system's folder dialog (api contract, The folder dialog): the folder it gives is checked as a pasted one.
+  app.post("/api/folders/pick", async (c) => {
+    const r = await picker.pick(c.req.raw.signal);
+    switch (r.status) {
+      case "busy": return err(c, 409, "The folder dialog is already open");
+      case "failed": return err(c, 500, `The folder dialog failed: ${r.reason}`);
+      case "picked": {
+        const f = checkFolder(r.folder);
+        if ("error" in f) return err(c, 400, f.error);
+        return c.json({ status: "picked", ...(await folderAnswer(f)) });
+      }
+      // A request that went away gets no answer; this one is never read.
+      case "closed": return c.json({ status: "cancelled" });
+      default: return c.json({ status: r.status });
+    }
+  });
+
+  // Recent and found (api contract, Recent and found).
+  app.get("/api/sources", async (c) => c.json(await sources.answer(picker.available())));
+  app.post("/api/sources/refresh", async (c) => c.json(await sources.answer(picker.available(), true)));
+  app.post("/api/sources/forget", async (c) => {
+    const r = await sources.forget(await readJson(c));
+    return c.json(r.body, r.status);
   });
 
   app.post("/api/scans", async (c) => {
@@ -276,6 +321,8 @@ export function createApp(deps: AppDeps): Hono {
     const started = await scans.start(f, picked.engine, picked.model, body.refresh === true);
     // The running scan's id, so a page can follow it (api contract, Scans).
     if ("running" in started) return err(c, 409, "A scan of this folder is already running", { scanId: started.running });
+    // A scan that succeeds, a cached one too, makes the folder a recent one.
+    scans.subscribe(started.scanId, (e) => { if (e.type === "done" && e.status === "succeeded") sources.use(f.folder); });
     return c.json({ scanId: started.scanId }, 202);
   });
 
@@ -520,7 +567,7 @@ export function createApp(deps: AppDeps): Hono {
       ...runs.list(now).map((r) => ({ type: "draw" as const, events: `/api/runs/${r.id}/events`, ...r })),
     ].sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.createdAt < b.createdAt ? 1 : -1));
     // Until the slot queue counts them, each running scan and run holds one engine and nothing waits.
-    const slots = deps.slots();
+    const slots = deps.slots?.() ?? runs.slots.stats();
     return c.json({ instance, now: new Date(now).toISOString(), timeoutMs: config.runTimeoutMs, slots, jobs });
   });
 

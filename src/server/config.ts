@@ -28,6 +28,16 @@ export interface Config {
   build: string;
   /** Directory with the built web client (index.html). */
   webDir: string;
+  /** The home folder *Found on this computer* searches (`ARCHDRAW_SEARCH_HOME`). */
+  searchHome: string;
+  /** `ARCHDRAW_TEST_PICKER`: the file the test folder dialog answers from; null for the real dialog. */
+  testPicker: string | null;
+}
+
+/** The start-up line after the listening one: the data folder, the engines and every test switch that is on. */
+export function startupLine(config: Config, engines: string[]): string {
+  const switches = config.testPicker !== null ? " · test folder dialog" : "";
+  return `Data: ${config.dataDir} · engines: ${engines.join(", ") || "none"}${switches}`;
 }
 
 /** The environment of docs/contracts/testing.md, shared by the server and the CLI. */
@@ -49,5 +59,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     version: VERSION,
     build: BUILD,
     webDir: join(APP_ROOT, "dist"),
+    searchHome: resolve(env.ARCHDRAW_SEARCH_HOME?.trim() || homedir()),
+    testPicker: env.ARCHDRAW_TEST_PICKER?.trim() ? resolve(env.ARCHDRAW_TEST_PICKER.trim()) : null,
   };
 }

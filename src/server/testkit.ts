@@ -41,12 +41,12 @@ export function shopRepo(extra: Record<string, string> = {}): { root: string; fi
   return { root, file };
 }
 
-export function makeApp(opts: { engines?: Engine[]; stepMs?: number; timeoutMs?: number } = {}) {
+export function makeApp(opts: { engines?: Engine[]; stepMs?: number; timeoutMs?: number; keepMs?: number } = {}) {
   const dataDir = tempDir("archdraw-data-");
   const config = loadConfig({ PORT: String(PORT), ARCHDRAW_DATA_DIR: dataDir, ARCHDRAW_ENGINES: "fixture" });
   const store = new Store(dataDir);
-  const runs = new RunManager(store, { timeoutMs: opts.timeoutMs ?? 60_000 });
-  const scans = new ScanManager(dataDir, { timeoutMs: opts.timeoutMs ?? 60_000 });
+  const runs = new RunManager(store, { timeoutMs: opts.timeoutMs ?? 60_000, keepMs: opts.keepMs });
+  const scans = new ScanManager(dataDir, { timeoutMs: opts.timeoutMs ?? 60_000, keepMs: opts.keepMs });
   const engines = new Map<string, Engine>((opts.engines ?? [new FixtureEngine(opts.stepMs ?? 1)]).map((e) => [e.id, e]));
   let shutdowns = 0;
   const app = createApp({ config, store, runs, scans, engines, token: TOKEN, onShutdown: () => { shutdowns++; } });

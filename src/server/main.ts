@@ -17,8 +17,8 @@ import type { Engine } from "./engines/types";
 
 const config = loadConfig();
 const store = new Store(config.dataDir);
-const runs = new RunManager(store, { timeoutMs: config.runTimeoutMs });
-const scans = new ScanManager(config.dataDir, { timeoutMs: config.runTimeoutMs });
+const runs = new RunManager(store, { timeoutMs: config.runTimeoutMs, keepMs: config.jobKeepMs });
+const scans = new ScanManager(config.dataDir, { timeoutMs: config.runTimeoutMs, keepMs: config.jobKeepMs });
 const factories: Record<string, () => Engine> = {
   claude: () => new ClaudeEngine(),
   codex: () => new CodexEngine(),

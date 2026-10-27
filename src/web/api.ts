@@ -22,6 +22,14 @@ export interface RunRecord {
   engine: string; model: string | null; changes: Changes | null; choice?: string; choices?: DrawChoiceState[] | null;
 }
 export interface Health { ok: boolean; app: string; version: string; build: string }
+/** What every job record carries for the activity list (api contract, Scan record, Run record). */
+export interface JobFields { message: string | null; name: string | null; createdAt: string; startedAt: string | null; endedAt: string | null; link: string | null; events: string }
+/** A job of `GET /api/activity`: a scan or a draw run, its record with `type` and `events` added. */
+export type Job =
+  | (ScanRecord & JobFields & { type: "scan"; name: string })
+  | (RunRecord & JobFields & { type: "draw"; kind: "draw"; folder: string; root: string; scan: string });
+/** `GET /api/activity` (api contract, Activity). */
+export interface Activity { instance: string; now: string; timeoutMs: number; slots: { total: number; busy: number; waiting: number }; jobs: Job[] }
 export interface RunStart { engine: string | null; model: string | null; scope: RunScope; kind?: "refine" | "post" | "simplify" | "story" | "revise"; format?: string; readCode?: boolean; image?: string }
 
 export class ApiError extends Error {
@@ -83,4 +91,6 @@ export const api = {
   cancelScan: (id: string) => call<{ ok: true }>("POST", `/api/scans/${id}/cancel`),
   startDraw: (body: { scan: string; choices: DrawFocus[]; channel: DrawChannel; engine: string | null; model: string | null }) =>
     call<{ runId: string }>("POST", "/api/runs", { kind: "draw", ...body }).then((r) => r.runId),
+  /** The running and recently ended scans and draws, newest first (api contract, Activity). */
+  activity: () => call<Activity>("GET", "/api/activity"),
 };

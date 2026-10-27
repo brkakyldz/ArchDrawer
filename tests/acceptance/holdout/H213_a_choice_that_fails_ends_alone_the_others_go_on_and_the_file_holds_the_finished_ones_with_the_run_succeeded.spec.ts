@@ -10,7 +10,7 @@ const PAY = 'Pay [fixture:fail]', PAY_ID = 'pay-fixture-fail';
 // ends alone. The others go on, the file is written with every choice that finished, the run is `succeeded` and its record marks the failed
 // choice with its error. The failed choice is in no file, the ids are those of a draw that never had it, and the file is valid.
 test('H213 [JOB-3 START-7 JOB-2 #196] a choice that fails ends alone while the others go on, and the file holds the finished ones in request order with the run succeeded and the failed choice marked', async () => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const server = await jobServer({ stepMs: 150 });
   try {
     const project = await gitRepo('one-fails');

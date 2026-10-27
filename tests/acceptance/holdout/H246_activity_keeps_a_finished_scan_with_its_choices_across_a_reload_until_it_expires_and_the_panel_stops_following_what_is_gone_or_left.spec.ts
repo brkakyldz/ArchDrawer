@@ -9,7 +9,7 @@ import { homeServer, openHome, jobsOnScreen, jobIn, stepper } from './helpers-ho
 // choices, so after a reload `Choose` goes back to the choosing step without scanning again; when the kept job is gone from the
 // list the panel that followed it follows nothing and is free; `New drawing` frees the panel while the job it left stays listed.
 test('H246 [JOB-7 HOME-7 #202] Activity keeps a finished scan with its choices across a reload so Choose goes back to choosing, and the panel stops following a job that has left the list or that the user leaves', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(120_000);
   const project = await gitRepo('home-keep');
   const server = await homeServer(page, request, { stepMs: '300', slots: 2, keepMs: 20_000 });
   try {

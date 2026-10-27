@@ -37,17 +37,14 @@ async function expectLook(surface: Locator, theme: 'light' | 'dark', what: strin
   }
 }
 async function away(page: Page) { const c = await box(page.getByTestId('canvas')); await page.mouse.move(c.x + c.width - 6, c.y + c.height - 6); }
-async function labelBorder(page: Page, id: string) {
-  return await page.getByTestId(`edge-label-${id}`).evaluate(el => { const r = el.tagName.toLowerCase() === 'rect' ? el : el.querySelector('rect'); return r ? getComputedStyle(r).stroke : 'no-rect'; });
-}
 async function focused(page: Page) {
   const snaps = await edgeSnaps(page); return Object.entries(snaps).filter(([, s]) => s.focus).map(([id]) => id).sort();
 }
 
-// LOOK-4: lines are one neutral colour; kind colours come with a step or with focus (a hovered or selected part, a hovered or selected line, a hovered label).
+// LOOK-4: lines are one neutral colour; kind colours come with a step or with focus (a hovered or selected part, a selected line; a hovered label: H173).
 // SHARE-1: every export is neutral except the numbered line, and none carries the editor's marks.
 test('H171 [LOOK-4 SHARE-1 #170] connections are neutral until a part or line is hovered or selected or the line is numbered, and every export draws the same neutral lines in light and dark', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { dir, file } = await workspaceRaw('calm-look', sketch('Calm look', PARTS, EDGES, { theme: 'light' }));
   const opened = await openDrawing(page, request, file);
   const canvas = page.getByTestId('canvas');
@@ -71,19 +68,7 @@ test('H171 [LOOK-4 SHARE-1 #170] connections are neutral until a part or line is
   for (const id of Object.keys(boxesBefore)) expect(sameBox(boxesHover[id], boxesBefore[id]), `${id} keeps its box`).toBe(true);
   await away(page);
   await expect(page.getByTestId('edge-e1')).not.toHaveAttribute('data-focus', 'true'); await expect(page.getByTestId('edge-e1')).toHaveAttribute('data-tone', 'neutral');
-
-  // Hovering a label puts its own connection in focus and the border of the label takes the colour with it.
-  await expect(page.getByTestId('edge-label-e5')).toHaveCount(1);
-  const labelBefore = await box(page.getByTestId('edge-label-e5')), borderBefore = await labelBorder(page, 'e5');
-  await page.getByTestId('edge-label-e5').hover();
-  await expect(page.getByTestId('edge-e5')).toHaveAttribute('data-focus', 'true');
-  expect(await focused(page)).toEqual(['e5']);
-  expect(await labelBorder(page, 'e5'), 'the label border takes the line colour').not.toBe(borderBefore);
-  const labelHover = await box(page.getByTestId('edge-label-e5'));
-  expect(Math.abs(labelHover.x - labelBefore.x) + Math.abs(labelHover.y - labelBefore.y), 'the label does not move when hovered').toBeLessThanOrEqual(0.5);
-  await away(page);
-  await expect(page.getByTestId('edge-e5')).not.toHaveAttribute('data-focus', 'true');
-  expect(await labelBorder(page, 'e5')).toBe(borderBefore);
+  // (Hovering a label lights its own line alone: H173.)
 
   // Selecting a line lights it; Escape clears it. Selecting a part lights its lines.
   await clickEdge(page, 'e2'); await away(page);

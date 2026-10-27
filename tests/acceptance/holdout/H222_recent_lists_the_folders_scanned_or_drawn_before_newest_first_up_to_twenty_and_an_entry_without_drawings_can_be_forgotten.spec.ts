@@ -10,7 +10,7 @@ import { jobServer, scanOn, drawOn, awaitRun, registerDrawing, sleep, readDoc, u
 // drawings; a folder that is gone is left out; asking writes nothing; an entry with no drawing in the list can be removed, with the
 // checks of the contract in their order.
 test('H222 [SRC-1 START-4 #198] Recent lists the folders scanned or drawn before newest first with their branch and last commit, leaves out a folder that is gone, holds twenty, and an entry without drawings can be forgotten', async () => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const server = await jobServer({ slots: 3, stepMs: 100 });
   try {
     const sources = async () => (await server.get('/api/sources')).body;
@@ -95,6 +95,6 @@ test('H222 [SRC-1 START-4 #198] Recent lists the folders scanned or drawn before
     expect(recent.every((e: { path: string }) => !samePath(e.path, regs[0].dir) && !samePath(e.path, regs[1].dir)), 'the two oldest fell off').toBe(true);
     const times = recent.map((e: { usedAt: string }) => ms(e.usedAt));
     expect(times).toEqual([...times].sort((x, y) => y - x));
-    await until(() => sources(), s => s.recent.length === 20, 'twenty entries', 5_000);
+    await until(() => sources(), s => s.recent.length === 20, 'twenty entries', 15_000);
   } finally { await server.stop(); }
 });

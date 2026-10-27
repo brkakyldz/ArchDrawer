@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { workspaceRaw, openDrawing, saved, svgInfo, previewSVG, settledReport } from './helpers';
-import { sketch, fullDetail, nodeSize, sizeIs, cardSize, imageOf, readChoice, readView, persistedChoice, openShare, closeShare, advancedOptions, countPuts } from './helpers-drawing';
+import { workspaceRaw, openDrawing, saved, svgInfo, previewSVG, settledReport, box } from './helpers';
+import { sketch, fullDetail, nodeSize, sizeIs, cardSize, imageOf, readChoice, readView, persistedChoice, openShare, closeShare, advancedOptions, countPuts, zoomFactor } from './helpers-drawing';
 
 // LOOK-3: under its label a part shows a one-line sub-line, on by default and switchable per view (`tool-sublines`); SHARE-2: the share image follows the
 // view's switch unless its own `show-sub` says otherwise. The switch is appearance: it changes only its channel, and "on" is the field's absence.
 test('H181 [LOOK-3 SHARE-1 SHARE-2 FILE-3 #177] the sub-line switch shrinks the parts of one view only, is one undoable saved edit that leaves no field when on, and the share image follows it unless show-sub says otherwise', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const doc = sketch('Sub-line switch', [
     { id: 'a', kind: 'service', label: 'Alpha', sub: 'first line', x: 0, y: 0 }, { id: 'b', kind: 'llm', label: 'Beta', sub: 'second line', x: 300, y: 0 },
     { id: 'c', kind: 'data', label: 'Gamma', sub: 'third line', x: 600, y: 0 }, { id: 'e', kind: 'service', form: 'compact', label: 'Epsilon', sub: 'compact line', x: 0, y: 220 },
@@ -34,6 +34,13 @@ test('H181 [LOOK-3 SHARE-1 SHARE-2 FILE-3 #177] the sub-line switch shrinks the 
   await expect(page.getByTestId('node-head-zone').getByTestId('node-sub')).toHaveCount(0);
   expect((await nodeSize(page, 'zone')).width, 'the group is as wide as its children and header need').toBeGreaterThan(0);
   await page.getByTestId('node-a').getByTestId('node-label').dblclick(); await expect(page.getByTestId('node-label-input')).toBeVisible();
+  await page.keyboard.press('Escape'); await expect(page.getByTestId('node-label-input')).toHaveCount(0);
+  // Just below the label, where the sub-line row was: with the view's sub-lines off there is none to edit (ui contract, Callout: "a sub-line → node-sub-input").
+  const label = await box(page.getByTestId('node-a').getByTestId('node-label')), part = await box(page.getByTestId('node-a')), zoom = await zoomFactor(page);
+  const below = { x: label.x + label.width / 2, y: label.y + label.height + 9 * zoom };
+  expect(below.y, 'the point is on the part').toBeLessThan(part.y + part.height);
+  await page.mouse.dblclick(below.x, below.y);
+  await page.waitForTimeout(300); // a short sleep: it proves that no input opens
   await expect(page.getByTestId('node-sub-input'), 'there is no sub-line to edit').toHaveCount(0); await page.keyboard.press('Escape');
 
   // One undoable edit: undo brings the sub-lines and the sizes back, redo takes them away again.

@@ -13,7 +13,7 @@ const HOLD = 'Hold [fixture:slow]';
 // an instruction run of the editor is no job; a listed job's events replay from the start; a finished scan keeps its card and options; a second
 // scan of a folder being scanned is refused with the running scan's id, and a second draw with the running draw's.
 test('H220 [JOB-7 JOB-5 START-4 #195] the activity list shows a running draw, a waiting scan and a finished scan with their fields and event streams, leaves out instruction runs, and a second scan or draw of a busy folder is refused naming the job to follow', async () => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const server = await jobServer({ slots: 1, stepMs: 300 });
   try {
     const a = await gitRepo('activity-a'), b = await gitRepo('activity-b');
@@ -24,7 +24,7 @@ test('H220 [JOB-7 JOB-5 START-4 #195] the activity list shows a running draw, a 
 
     const s1 = await scanOn(server, { folder: a.dir });
     const drawId = await drawOn(server, s1.id, [typed(HOLD), option('o2')], 'linkedin');
-    await until(() => runRec(server, drawId), r => r.progress.some((l: string) => /^Working \d+\/30$/.test(l)), 'the slow read to count', 90_000);
+    await until(() => runRec(server, drawId), r => r.progress.some((l: string) => /^Working \d+\/30$/.test(l)), 'the slow read to count', 30_000);
 
     // Another folder: its scan waits for the only slot, behind the draw's second choice; it is running, not failed or refused.
     const bScanId = await startScanOn(server, { folder: b.dir });
@@ -63,7 +63,7 @@ test('H220 [JOB-7 JOB-5 START-4 #195] the activity list shows a running draw, a 
 
     // A listed job's stream replays the past, then goes on: the draw's own first lines and records, the scan's lines and its done event.
     const live = watch(server, draw.events);
-    await live.wait(e => e.some(x => x.event === 'progress' && /^Working \d+\/30$/.test(x.data.message)), 'the replayed lines of the draw', 30_000);
+    await live.wait(e => e.some(x => x.event === 'progress' && /^Working \d+\/30$/.test(x.data.message)), 'the replayed lines of the draw', 15_000);
     expect(live.events[0]).toMatchObject({ event: 'progress', data: { message: `Drawing "${HOLD}" (1 of 2)`, stage: 'read', choice: 'hold-fixture-slow', source: 'server' } });
     expect(live.events[1]).toMatchObject({ event: 'choice', data: { id: 'hold-fixture-slow', status: 'running' } });
     expect(live.events.some(e => e.event === 'choice' && e.data.id === 'the-agent-loop' && e.data.status === 'waiting'), 'the choice that waits is replayed too').toBe(true);
@@ -75,7 +75,7 @@ test('H220 [JOB-7 JOB-5 START-4 #195] the activity list shows a running draw, a 
 
     // Cancel what is waiting and what is running: both stay listed, ended, with their last state; the slot is free.
     await server.post(`/api/scans/${bScanId}/cancel`); await server.post(`/api/runs/${refineId}/cancel`); await server.post(`/api/runs/${drawId}/cancel`);
-    await until(() => activityOf(server), x => x.slots.busy === 0 && x.slots.waiting === 0 && x.jobs.every((j: { status: string }) => j.status !== 'running'), 'every job to have ended', 60_000);
+    await until(() => activityOf(server), x => x.slots.busy === 0 && x.slots.waiting === 0 && x.jobs.every((j: { status: string }) => j.status !== 'running'), 'every job to have ended', 15_000);
     const after = await activityOf(server);
     expect(jobOf(after, drawId)).toMatchObject({ status: 'cancelled', waiting: false });
     expect(jobOf(after, bScanId)).toMatchObject({ status: 'cancelled', card: null });
@@ -85,7 +85,7 @@ test('H220 [JOB-7 JOB-5 START-4 #195] the activity list shows a running draw, a 
     expect((await eventsOf(server, jobOf(after, bScanId).events)).at(-1)).toMatchObject({ event: 'done', data: { status: 'cancelled', card: null } });
 
     // A newer success forgets the older scans of the folder: once the draw has ended its first scan is replaced and no longer listed.
-    const newer = await awaitScan(server, await startScanOn(server, { folder: a.dir }, { refresh: true }), 'succeeded', 90_000);
+    const newer = await awaitScan(server, await startScanOn(server, { folder: a.dir }, { refresh: true }), 'succeeded', 30_000);
     const last = await activityOf(server);
     expect(jobOf(last, newer.id)).toMatchObject({ type: 'scan', status: 'succeeded' });
     expect(jobOf(last, s1.id), 'the older scan of the folder is forgotten').toBeUndefined();

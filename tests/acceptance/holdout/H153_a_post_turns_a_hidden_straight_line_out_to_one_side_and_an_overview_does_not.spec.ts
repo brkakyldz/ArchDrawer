@@ -31,7 +31,7 @@ function columnDoc(title: string): Doc3 {
 // In a LinkedIn post a straight line down that would be hidden behind the part between its ends turns out on one side
 // as one cubic, clear of the part by 8 px and not listed, while the lines that are not hidden stay straight on facing sides.
 test('H153 [LAYOUT-2, LAYOUT-3, STORY-2, SHARE-1] a straight line hidden behind the part between its ends passes behind it in the overview, and in a LinkedIn post turns out on one side as one cubic clear of that part', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { dir, file } = await workspaceRaw('post-spine', columnDoc('Post spine'));
   await openDrawing(page, request, file);
   const before = await readDocument(file);

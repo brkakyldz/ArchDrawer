@@ -6,25 +6,26 @@ import { jobServer, scanOn, drawOn, awaitRun, states, viewsByChoice, readDoc, ms
 
 // JOB-2, START-7 (api contract, *The draw run*, *Ids*; the "Ids that depend on finish order" trap of AGENTS.md): choices drawn side by side take
 // their view ids when the file is written, as if they had been drawn one after another in request order. Here the first choice finishes last
-// (its read is slow), so the ids a finish-order scheme would give differ from the contracted ones; they are the ones of the same draw
-// with nothing slow, and the file keeps request order.
+// (its overview answer is too long and takes one more engine call, a repair turn: testing contract, *Draw* and `[fixture:overlong]`), so the
+// ids a finish-order scheme would give differ from the contracted ones; they are the ones of the same draw with no marker, and the file keeps
+// request order.
 test('H216 [JOB-2 START-7 #196] the ids in the written file are the same whichever choice finishes first: a draw whose first choice finishes last has the view ids of the same draw drawn in request order', async () => {
-  test.setTimeout(300_000);
-  const server = await jobServer({ slots: 3, stepMs: 150 });
+  test.setTimeout(90_000);
+  const server = await jobServer({ slots: 3, stepMs: 300 });
   try {
     const slow = await gitRepo('ids-slow-first'), control = await gitRepo('ids-control');
-    const SLOW = 'Slow first [fixture:slow]', SLOW_ID = 'slow-first-fixture-slow';
+    const SLOW = 'Slow first [fixture:overlong]', SLOW_ID = 'slow-first-fixture-overlong';
     const scanSlow = await scanOn(server, { folder: slow.dir }), scanControl = await scanOn(server, { folder: control.dir });
 
-    // The slow draw: the first choice's read counts to 30 two seconds at a time; the other two finish long before it.
-    const slowRun = await awaitRun(server, await drawOn(server, scanSlow.id, [typed(SLOW), WHOLE, option('o2')], 'readme'), 'succeeded', 240_000);
+    // The slow draw: the three start together; the first choice's overview gets a repair turn (four more steps), so the other two finish before it.
+    const slowRun = await awaitRun(server, await drawOn(server, scanSlow.id, [typed(SLOW), WHOLE, option('o2')], 'readme'), 'succeeded', 60_000);
     expect(states(slowRun)).toEqual([`${SLOW_ID}:done`, 'system:done', `${SLUG.o2}:done`]);
     const ended = slowRun.choices.map((c: { endedAt: string }) => ms(c.endedAt));
     expect(ended[0], 'the first choice finished last').toBeGreaterThan(ended[1]);
     expect(ended[0], 'the first choice finished after the third too').toBeGreaterThan(ended[2]);
 
-    // The control: the same choices with nothing slow, so they finish about in request order.
-    const controlRun = await awaitRun(server, await drawOn(server, scanControl.id, [typed('Slow first'), WHOLE, option('o2')], 'readme'), 'succeeded', 120_000);
+    // The control: the same choices with no marker, so they finish about in request order.
+    const controlRun = await awaitRun(server, await drawOn(server, scanControl.id, [typed('Slow first'), WHOLE, option('o2')], 'readme'), 'succeeded', 40_000);
     expect(states(controlRun)).toEqual(['slow-first:done', 'system:done', `${SLUG.o2}:done`]);
 
     const slowDoc = await readDoc(join(slow.dir, 'docs', 'architecture.archdraw.json')), controlDoc = await readDoc(join(control.dir, 'docs', 'architecture.archdraw.json'));

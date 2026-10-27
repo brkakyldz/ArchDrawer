@@ -1,8 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { drawing, component, workspace, openDrawing, previewSVG, svgInfo, baseURL } from './helpers';
-import { previewTextSizes, checkReadability } from './helpers';
-import { choiceDoc, readView } from './helpers-drawing';
+import { previewTextSizes, checkReadability, settledReport } from './helpers';
+import { choiceDoc, readView, SHARE_TOGGLES } from './helpers-drawing';
 
 // SHARE-3 helpers (kept in this file: helpers.ts is not edited). The `readability` line is the sentence alone: the
 // details toggle and the details are cut out of a copy first, because the contract does not say whether they sit inside it.
@@ -23,7 +23,7 @@ function sentencePattern(level: string, where: string, suggestions: string[]) {
   return new RegExp(`^The text will be too small to read ${escape(where)}, even when the image is opened${tail}$`);
 }
 
-test('H64 [LAYOUT-3 QUAL-2 SHARE-3 LOOK-3 #177] distinguish readable names from readable detail and report the level the measured sizes give, in the contracted sentence', async ({ page, request }) => {
+test('H64 [LAYOUT-3 QUAL-2 SHARE-3] distinguish readable names from readable detail and report the level the measured sizes give, in the contracted sentence, and never call a drawing with nothing to read good', async ({ page, request }) => {
   const doc = drawing('Readability levels');
   doc.views[0].nodes = [component('start', { label: 'Start', x: 0, y: 0 }), component('finish', { label: 'Finish', x: 1400, y: 0 })];
   doc.views[0].edges = [];
@@ -112,4 +112,14 @@ test('H64 [LAYOUT-3 QUAL-2 SHARE-3 LOOK-3 #177] distinguish readable names from 
     expect(Math.abs(Number(shown![3]) - actual.opened)).toBeLessThan(0.06);
     await toggle.click(); await expect(details).toBeHidden();
   }
+
+  // A cleared drawing with its caption hidden has no visible text; the meter must never call it good (moved from H63).
+  const empty = drawing('Cleared draft'); empty.views[0].nodes = []; empty.views[0].edges = [];
+  const blank = await workspace('h64-empty-image', empty); await openDrawing(page, request, blank.file);
+  await page.getByTestId('share-button').click();
+  if (await page.getByTestId('share-advanced-toggle').getAttribute('aria-expanded') !== 'true') await page.getByTestId('share-advanced-toggle').click();
+  await expect(page.getByTestId('share-advanced')).toBeVisible();
+  for (const id of SHARE_TOGGLES) await page.getByTestId(`show-${id}`).uncheck();
+  await expect.poll(() => settledReport(page)).toMatchObject({ opened: 0, inPlace: 0, level: 'warn', parts: 0, zones: 0, connections: 0, longest: 0, cut: 0 });
+  await expect(page.getByTestId('readability')).toHaveAttribute('data-level', 'warn');
 });

@@ -6,7 +6,7 @@ import { drawing, workspace, openDrawing, readDocument, readDrawing, persisted, 
 // outside the editor, which shows the outside change as ever; or a reload, which shows the file, and the file holds the result.
 // In each the result stays: accepted means kept.
 test('H140 [AI-3, AI-2, FILE-1] a new instruction accepts the previous preview first, an outside change to the file or a reload ends a preview as accepted, and the result is never lost', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const { file } = await workspace('preview-ends', drawing('Preview ends shop')); await openDrawing(page, request, file);
   const baseline = await readDocument(file);
 

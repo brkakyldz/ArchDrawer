@@ -5,7 +5,7 @@ import { sketch, pickUp, dragMarks, nodeRect, nodeOf, editorOnlyMarks, imageOf, 
 // The anchor sits at stored coordinates that are not multiples of 8 (203, 301), so a snap to its lines is told from the 8 px grid.
 // The mover m starts at (616, 640), clear of every line of the others. L and R are a row with a gap of 704 px (196 .. 900).
 test('H169 [EDIT-5 #168] alignment guides and equal-gap marks snap a dragged part within 6 screen pixels, Alt turns snapping off, release moves nothing, and no export draws a guide', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const size = cardSize('card');
   const doc = sketch('Guides', [
     { id: 'anchor', label: 'Anchor', sub: 'stays', x: 203, y: 301 }, { id: 'm', label: 'Mover', sub: 'is moved', x: 616, y: 640 },

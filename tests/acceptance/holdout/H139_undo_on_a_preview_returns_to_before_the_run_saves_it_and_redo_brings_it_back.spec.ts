@@ -4,7 +4,7 @@ import { drawing, workspace, openDrawing, readDocument, persistedDoc, saved, fac
 // AI-3: Undo on a preview returns to the drawing before the run, exactly as the ordinary undo would, and saves it, so the file
 // and a reload show it; Redo brings the result back. A run that changes nothing shows no preview.
 test('H139 [AI-3, FILE-1, EDIT-1] Undo on a preview returns the drawing to before the run and saves it, Redo brings the result back, a reload keeps what the file holds, and a run that changes nothing shows no preview', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspace('preview-undo', drawing('Undo shop')); await openDrawing(page, request, file);
   const baseline = await readDocument(file);
   const sameAsBaseline = (doc: Awaited<ReturnType<typeof readDocument>>) => { expect(doc.facts).toEqual(baseline.facts); expect(doc.channels).toEqual(baseline.channels); };

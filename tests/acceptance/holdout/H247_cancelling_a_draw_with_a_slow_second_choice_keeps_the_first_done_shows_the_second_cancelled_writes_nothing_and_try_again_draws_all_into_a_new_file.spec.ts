@@ -13,7 +13,7 @@ const SLOW_ID = 'slow-question-fixture-slow-second';
 // stage, the first done, `Try again` and `Draw another project`, no choosing step, no `Cancel`. `Try again` draws every choice into a new
 // file, the finished one from what was kept, with no engine call for it.
 test('H247 [START-7 JOB-10 HOME-4 HOME-6 SCAN-3 #200 #202] cancelling a draw while its second choice is slow shows the first done and the second cancelled, writes nothing, and Try again draws both into a new file with the finished one from what was kept', async ({ page, request }) => {
-  test.setTimeout(480_000);
+  test.setTimeout(300_000);
   const project = await gitRepo('home-cancel-rows');
   const server = await homeServer(page, request, { stepMs: '300' });
   try {
@@ -23,8 +23,8 @@ test('H247 [START-7 JOB-10 HOME-4 HOME-6 SCAN-3 #200 #202] cancelling a draw whi
     const run = await startedRun(page, () => page.getByTestId('draw-start').click());
 
     // Both start at once: the first is drawn in its own time, the second counts its lines every two seconds.
-    await expect(page.getByTestId('draw-line')).toContainText(/Working \d+\/30/, { timeout: 120_000 });
-    await expect.poll(async () => rowStates(await drawRows(page)), { timeout: 120_000 }).toEqual(['system:done', `${SLOW_ID}:running`]);
+    await expect(page.getByTestId('draw-line')).toContainText(/Working \d+\/30/, { timeout: 30_000 });
+    await expect.poll(async () => rowStates(await drawRows(page)), { timeout: 30_000 }).toEqual(['system:done', `${SLOW_ID}:running`]);
     await expect(page.getByTestId('draw-cancel')).toBeVisible();
     await page.getByTestId('draw-cancel').click();
     await finishRun(request, run.runId, 'cancelled', 60_000, server.base);
@@ -48,7 +48,7 @@ test('H247 [START-7 JOB-10 HOME-4 HOME-6 SCAN-3 #200 #202] cancelling a draw whi
     // Try again: every choice into a new file; the finished one from what was kept, the cancelled one read (slowly) again.
     const retry = await startedRetry(page, () => page.getByTestId('draw-retry').click());
     expect(retry.from).toBe(run.runId);
-    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 300_000 });
+    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 120_000 });
     const events = await runEvents(retry.runId, server.base);
     expect(messagesOf(events, 'system', 'read')).toContain('Using the facts already read');
     for (const line of ENGINE_LINES) expect(messagesOf(events, 'system'), `no engine call for the finished choice: "${line}"`).not.toContain(line);

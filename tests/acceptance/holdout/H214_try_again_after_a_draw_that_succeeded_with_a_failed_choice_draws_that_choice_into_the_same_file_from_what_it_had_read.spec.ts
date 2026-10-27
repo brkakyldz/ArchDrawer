@@ -10,7 +10,7 @@ const BILLING = 'Billing [fixture:flaky:channel]', BILLING_ID = 'billing-fixture
 // is `POST /api/runs/:runId/retry`. It draws the failed choice only, from what it had read, and adds it to the file the draw wrote: same
 // drawing, same path, the file's other choices exactly as they were, the choice's views numbered after the file's own, `changed` fired.
 test('H214 [JOB-3 START-6 START-7 #196] Try again after a draw that succeeded with a failed choice draws that choice into the same file from what it had read, leaves the other choices exactly as they were, and is refused once nothing is left to try', async () => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const server = await jobServer({ stepMs: 120 });
   try {
     const project = await gitRepo('retry-into');
@@ -33,7 +33,7 @@ test('H214 [JOB-3 START-6 START-7 #196] Try again after a draw that succeeded wi
     const started = await runRec(server, retryId);
     expect(started).toMatchObject({ kind: 'draw', retryOf: first.id, into: first.diagramId, scan: scan.id, channel: 'linkedin' });
     expect(started.choices.map((c: { id: string; kind: string; title: string }) => [c.id, c.kind, c.title])).toEqual([[BILLING_ID, 'custom', BILLING]]);
-    const retry = await awaitRun(server, retryId, 'succeeded', 120_000);
+    const retry = await awaitRun(server, retryId, 'succeeded', 15_000);
 
     // It read nothing again: the read and the overview come from what the failed draw kept, only the post is drawn by a call.
     const events = await runEventsOf(server, retryId);
@@ -67,7 +67,7 @@ test('H214 [JOB-3 START-6 START-7 #196] Try again after a draw that succeeded wi
     expect(await server.post(`/api/runs/${retryId}/retry`)).toMatchObject({ status: 400, body: { error: 'Every choice of this draw was drawn' } });
     expect((await server.del(`/api/diagrams/${first.diagramId}`)).status).toBe(204);
     expect(await server.post(`/api/runs/${first.id}/retry`)).toMatchObject({ status: 409, body: { error: 'The drawing this draw wrote is gone: start a new draw' } });
-    await until(() => diagramIds(server), ids => ids.length === 0, 'the list to be empty', 5_000);
+    await until(() => diagramIds(server), ids => ids.length === 0, 'the list to be empty', 15_000);
     expect(await exists(file), 'forgetting leaves the file on disk').toBe(true);
   } finally { await server.stop(); }
 });

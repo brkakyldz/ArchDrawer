@@ -10,8 +10,8 @@ import {
 // of a scan and a run carries `at` and `source` (`engine` for the engine's own lines, `server` for the rest); a choice reports the number of
 // files its engine read (2 at the read's `Reading the code` line, as the fixture says) and the parts its checked read found (8), each change in
 // a `choice` event that follows the line that goes with it; the record keeps the time of the last engine line.
-test('H217 [JOB-6 JOB-7 START-7 #196 #195] every progress line carries its time and source, and a choice reports files read, parts found and the time of its last engine line in its events and its record', async () => {
-  test.setTimeout(180_000);
+test('H217 [JOB-6 JOB-7 #196 #195] every progress line carries its time and source, and a choice reports files read, parts found and the time of its last engine line in its events and its record', async () => {
+  test.setTimeout(60_000);
   const server = await jobServer({ stepMs: 120 });
   try {
     const project = await gitRepo('structured-progress');
@@ -38,7 +38,7 @@ test('H217 [JOB-6 JOB-7 START-7 #196 #195] every progress line carries its time 
     // ---- A draw of one choice.
     const id = SLUG.o1;
     const runId = await drawOn(server, scanId, [option('o1')], 'linkedin');
-    const run = await awaitRun(server, runId, 'succeeded', 120_000);
+    const run = await awaitRun(server, runId, 'succeeded', 15_000);
     const events = await runEventsOf(server, runId);
     const progress = events.filter(e => e.event === 'progress');
     for (const e of progress) { expect(e.data.at, e.data.message).toMatch(ISO_MS); expect(['engine', 'server'], e.data.message).toContain(e.data.source); }

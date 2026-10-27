@@ -8,7 +8,7 @@ import { homeServer, openHome, stepper, squash } from './helpers-home';
 // `activity-toggle` for what runs, the navigation becomes one row at 860, everything one column at 640 with only the current step's
 // name; the theme is the browser's own once chosen. No process guide or footer line.
 test('H229 [HOME-1 HOME-11 HOME-12 #200] the home screen has three columns that fold at 1240, 860 and 640 px, shows the stepper and Activity, and keeps the theme chosen in the browser over the system one', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(90_000);
   const project = await gitRepo('home-frame');
   const server = await homeServer(page, request, { library: ['Library shop', 'Second shop'] });
   try {
@@ -41,18 +41,6 @@ test('H229 [HOME-1 HOME-11 HOME-12 #200] the home screen has three columns that 
     const text = squash(await page.getByTestId('home').innerText());
     expect(text, 'no step counter').not.toMatch(/\bstep \d+ of \d+\b/i); expect(text, 'no footer line').not.toMatch(/all rights reserved|©/i);
 
-    // 1240 px: the side column goes under the work column, and `activity-toggle` names what runs once something does.
-    const scan = await scanFolder(request, server.token, project.dir, {}, server.base);
-    const runId = await startDrawChoices(request, server.token, scan.id, [typed('Slow part [fixture:slow]')], 'linkedin', {}, server.base);
-    await page.setViewportSize({ width: 1240, height: 900 });
-    await expect(page.getByTestId('activity-toggle')).toHaveText('1 running', { timeout: 30_000 });
-    const folded = await box(page.getByTestId('activity')), foldedStart = await box(page.getByTestId('start'));
-    expect(folded.y, 'Activity is under the work column').toBeGreaterThan(foldedStart.y + foldedStart.height - 2); expect(folded.x).toBeLessThan(foldedStart.x + foldedStart.width);
-    await page.getByTestId('activity-toggle').click();
-    await expect.poll(async () => { const b = await box(page.getByTestId('activity')); return b.y >= -2 && b.y < 900; }, { message: 'pressing the toggle scrolls Activity into view' }).toBe(true);
-    expect((await postJSON(request, server.token, `/api/runs/${runId}/cancel`, {}, server.base)).status).toBe(200);
-    await expect(page.getByTestId('activity-toggle')).toHaveCount(0, { timeout: 30_000 }); // hidden when 0 run
-
     // 860 px: the navigation is one row with only Drawings and New drawing; Continue is hidden.
     await page.setViewportSize({ width: 860, height: 900 });
     const row = await box(page.getByTestId('home-nav')), narrowStart = await box(page.getByTestId('start'));
@@ -74,5 +62,18 @@ test('H229 [HOME-1 HOME-11 HOME-12 #200] the home screen has three columns that 
     await page.reload(); await expect(page.getByTestId('home')).toHaveAttribute('data-theme', 'dark');
     await page.emulateMedia({ colorScheme: 'dark' }); await page.getByTestId('home-theme').click(); await expect(page.getByTestId('home')).toHaveAttribute('data-theme', 'light');
     await page.reload(); await expect(page.getByTestId('home')).toHaveAttribute('data-theme', 'light'); // the chosen theme, not the system's dark
+
+    // 1240 px: the side column goes under the work column, and `activity-toggle` names what runs once something does. Last, as the
+    // only part that needs a running job: a failure here hides none of the folds above.
+    const scan = await scanFolder(request, server.token, project.dir, {}, server.base);
+    const runId = await startDrawChoices(request, server.token, scan.id, [typed('Slow part [fixture:slow]')], 'linkedin', {}, server.base);
+    await page.setViewportSize({ width: 1240, height: 900 });
+    await expect(page.getByTestId('activity-toggle')).toHaveText('1 running', { timeout: 30_000 });
+    const folded = await box(page.getByTestId('activity')), foldedStart = await box(page.getByTestId('start'));
+    expect(folded.y, 'Activity is under the work column').toBeGreaterThan(foldedStart.y + foldedStart.height - 2); expect(folded.x).toBeLessThan(foldedStart.x + foldedStart.width);
+    await page.getByTestId('activity-toggle').click();
+    await expect.poll(async () => { const b = await box(page.getByTestId('activity')); return b.y >= -2 && b.y < 900; }, { message: 'pressing the toggle scrolls Activity into view' }).toBe(true);
+    expect((await postJSON(request, server.token, `/api/runs/${runId}/cancel`, {}, server.base)).status).toBe(200);
+    await expect(page.getByTestId('activity-toggle')).toHaveCount(0, { timeout: 30_000 }); // hidden when 0 run
   } finally { await server.close(); }
 });

@@ -1,56 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { component, drawing, fromLegacy, workspace, writeJSON, cli, token, baseURL, type Doc3, type Drawing } from './helpers';
+import { component, drawing, fromLegacy, repo, writeJSON, cli, token, baseURL, type Doc3 } from './helpers';
 
-// A violation's or a warning's path starts at its choice (diagram contract, rule 1): the `@3` files of this scenario are one choice, `choices[0]`.
-const CHOICE = 'choices[0]';
-const OVERVIEW = `${CHOICE}.channels.overview.views[0]`;
-
-test('H16 [START-5, FILE-1, FILE-2, STORY-5, LOOK-3, #182] depth warnings permit a drawing but every broken field is reported without repair', async ({ request }) => {
-  const doc = drawing('Depth review');
-  doc.views[0].nodes = Array.from({ length: 6 }, (_, i) => component(`part-${i}`, { place: { row: 0, col: i }, sub: i === 0 ? '90 s' : '' }));
-  doc.views[0].edges = Array.from({ length: 5 }, (_, i) => ({ id: `flow-${i}`, from: `part-${i}`, to: `part-${i + 1}`, label: 'process', style: 'call', both: false, step: null }));
-  const { dir, file } = await workspace('depth', doc);
-  const bytes = await readFile(file, 'utf8'); const valid = await cli(['validate', file]);
-  expect(valid.code).toBe(0); expect(valid.stdout).toMatch(/valid with \d+ warning/);
-  const warningLines = valid.stdout.split(/\r?\n/).filter(line => /^WARN\s+/.test(line));
-  // From 0.4 (LOOK-3) six parts with no panel are no longer asked for held items: three depth warnings remain.
-  expect(warningLines.length).toBeGreaterThanOrEqual(3);
-  for (const phrase of [/flat|pipeline/i, /main path|step/i, /repeat/i]) {
-    expect(warningLines.some(line => phrase.test(line)), String(phrase)).toBe(true);
-  }
-  expect(warningLines.some(line => /held items|no panel/i.test(line)), 'no warning asks for held items').toBe(false);
-  // From 0.3 a number that explains a guarantee may show outside LinkedIn (STORY-5): `90 s` on an overview part is no
-  // longer a tuning-number warning, and no warning of any kind is left for the overview's size.
-  expect(warningLines.some(line => /tuning|90 s/i.test(line)), 'the tuning-number warning is LinkedIn only').toBe(false);
-  for (const line of warningLines) expect(line, 'only the depth warnings remain').toMatch(/flat|pipeline|main path|step|repeat/i);
-  // Warnings are checked on every channel view and name it.
-  expect(warningLines.every(line => line.startsWith(`WARN  ${OVERVIEW}`))).toBe(true);
-  expect(await readFile(file, 'utf8')).toBe(bytes);
-
-  // A drawing authored in the drawn shape, then broken field by field in the stored shape.
-  const broken = fromLegacy(drawing('Broken review')); const v = broken.channels.overview.views![0];
-  broken.facts.components[0].kind = 'database'; broken.facts.components[0].files = ['../escape.ts'];
-  broken.facts.components[1].items = []; v.nodes[2].parent = 'missing-group'; v.nodes[2].x = 40;
-  v.edges[0].to = 'ghost'; broken.facts.relations![1].style = 'wire';
-  const invalid = join(dir, 'invalid.json'); await writeJSON(invalid, broken);
-  const before = await readFile(invalid, 'utf8');
-  for (const command of ['validate', 'open']) {
-    const result = await cli([command, invalid, ...(command === 'open' ? ['--no-browser'] : [])]);
-    expect(result.code).toBe(1);
-    const errors = `${result.stdout}\n${result.stderr}`;
-    for (const path of [`${CHOICE}.facts.components[0].kind`, `${CHOICE}.facts.components[0].files`, `${OVERVIEW}.nodes[2].parent`, `${OVERVIEW}.edges[0].to`, `${CHOICE}.facts.relations[1].style`]) expect(errors).toContain(`ERROR ${path}`);
-    // A panel that shows no item is reported at the part or at the fact whose items it shows.
-    expect(errors).toMatch(new RegExp(`ERROR (${CHOICE.replace(/[[\].]/g, '\\$&')}\\.facts\\.components\\[1\\]\\.items|${OVERVIEW.replace(/[[\].]/g, '\\$&')}\\.nodes\\[1\\]\\.(form|items))`));
-    expect(errors).toMatch(/actor.*client.*api.*service/s); expect(errors).toMatch(/call.*async.*dep/s);
-    expect(errors).toMatch(/\d+ error/); expect(await readFile(invalid, 'utf8')).toBe(before);
-  }
+// The depth warnings are H134's (and the tuning number H114's), the broken fields and a missing repository path H90's: what is left
+// here is the lane rules, each refused on its own by the command line and the server, and a file that is not JSON.
+test('H16 [START-5, FILE-1, FILE-2, #182] every broken lane rule is refused by validate, open and the server, and a file that is not JSON by validate, without a write', async ({ request }) => {
+  const { dir } = await repo('depth');
   const auth = await token(request);
-  const registration = await request.post(`${baseURL()}/api/files`, { headers: { 'X-Archdraw-Token': auth }, data: { path: invalid } });
-  expect(registration.status()).toBe(400); expect((await registration.json()).errors.length).toBeGreaterThanOrEqual(6);
-  const listed = await (await request.get(`${baseURL()}/api/diagrams`)).json();
-  expect(listed.diagrams.some((entry: { path: string }) => entry.path === invalid)).toBe(false);
   // Each lane rule is broken on its own, so an unrelated error cannot mask its acceptance.
   const laneCases: { name: string; break: (d: Doc3) => void }[] = [
     ...[
@@ -93,13 +50,10 @@ test('H16 [START-5, FILE-1, FILE-2, STORY-5, LOOK-3, #182] depth warnings permit
       expect(JSON.stringify((await response.json()).errors), input.name).toContain('lane');
       expect(await readFile(path, 'utf8'), input.name).toBe(original);
     }
+    // A refused registration or import is not listed.
     expect((await (await request.get(`${baseURL()}/api/diagrams`)).json()).diagrams, input.name).toEqual(beforeList.diagrams);
   }
   const malformed = join(dir, 'malformed.json'); await writeFile(malformed, '{ nope');
   expect((await cli(['validate', malformed])).code).toBe(1);
   expect(await readFile(malformed, 'utf8')).toBe('{ nope');
-  const missing: Drawing = drawing('Missing code'); missing.views[0].nodes[0].files = ['src/not-present.ts'];
-  await writeJSON(join(dir, 'missing.json'), fromLegacy(missing));
-  const absent = await cli(['validate', join(dir, 'missing.json')]);
-  expect(absent.code).toBe(1); expect(`${absent.stdout}${absent.stderr}`).toContain(`${CHOICE}.facts.components[0].files`);
 });

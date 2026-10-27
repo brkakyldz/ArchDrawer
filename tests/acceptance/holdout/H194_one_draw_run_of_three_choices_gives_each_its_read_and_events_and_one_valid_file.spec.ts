@@ -13,7 +13,7 @@ const TYPED = 'How a booking is paid';
 // `succeeded` means a registered, readable `@4` file that holds every choice, each with its overview and the chosen channel and its other
 // channels empty. Ids are slugs.
 test('H194 [START-7 SCAN-3 STORY-1 READ-1 FILE-2 #181 #182 #196] one draw run of three choices lists them from the start, reads each with events that name their choice, and writes one valid format 4 file with every choice, its overview and the README; ids are slugs', async ({ request }) => {
-  test.setTimeout(420_000);
+  test.setTimeout(60_000);
   const auth = await token(request);
   const project = await gitRepo('draw-three');
   const listedBefore = (await listedDiagrams(request)).length;
@@ -25,7 +25,7 @@ test('H194 [START-7 SCAN-3 STORY-1 READ-1 FILE-2 #181 #182 #196] one draw run of
   expect(early).toMatchObject({ kind: 'draw', channel: 'readme', choice: 'system' });
   expect((early.choices as RunChoice[]).map(c => ({ id: c.id, kind: c.kind, title: c.title })), 'the choices are listed from the start, in request order, the typed text trimmed').toEqual(wanted);
   expect((early.choices as RunChoice[]).every(c => ['waiting', 'running', 'done'].includes(c.status))).toBe(true);
-  const run = await finishRun(request, runId, 'succeeded', 240_000);
+  const run = await finishRun(request, runId, 'succeeded', 30_000);
 
   // The finished record: every choice done at its last stage, the first choice and the README of it, the report of that view.
   // (A choice record also carries its times, its error and its counts since ADR 0016: H217 holds those.)

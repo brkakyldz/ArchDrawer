@@ -6,7 +6,7 @@ const OVERLONG_START = 'Drawn by the test engine, with a description written far
 // STORY-7 (ADR 0009): when the repair turn answers the same over-long text, a length never fails the run: the text is cut to its
 // limit and ends with `…`, with exactly one `Shortened …` warning, and there is never a second repair turn.
 test('H146 [STORY-7, STORY-2, FILE-1] with a stubborn engine the over-long description is saved at 240 characters ending in an ellipsis with exactly one Shortened warning, after one repair turn only and the run not failed', async ({ request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const SHORTENED = 'Shortened the description to 240 characters';
 
   const post = await workspaceRaw('story-stubborn-post', withLinkedIn(shop3('Stubborn shop')));

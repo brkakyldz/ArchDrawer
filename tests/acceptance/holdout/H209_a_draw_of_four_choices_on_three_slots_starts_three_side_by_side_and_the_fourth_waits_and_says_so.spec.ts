@@ -10,8 +10,8 @@ import {
 // A draw of four choices starts three at once and the fourth waits and says so; the first events of the stream are the contracted eight; the
 // waiting one starts when a slot is free, never before one of the others has ended; one file holds all four in the order asked.
 test('H209 [JOB-1 JOB-2 JOB-6 START-7 #196] a draw of four choices on three slots starts three side by side, the fourth waits and says so, starts when a slot is free, and one file holds all four in request order', async () => {
-  test.setTimeout(240_000);
-  const server = await jobServer({ slots: 3, stepMs: 300 });
+  test.setTimeout(60_000);
+  const server = await jobServer({ slots: 3, stepMs: 200 });
   try {
     const project = await gitRepo('slots-three');
     const scan = await scanOn(server, { folder: project.dir });

@@ -5,7 +5,7 @@ import { shop3, withLinkedIn, workspaceRaw, register, startKind, finishRun, read
 // STORY-7 (ADR 0009): a relation the answer violates (here the post's connection to `ghost`) is a problem for the repair turn, but
 // code never repairs a relation: the engine's second answer saves, or the run fails naming the channel and the file stays as it was.
 test('H147 [STORY-7, STORY-2, FILE-1] a post with a connection to ghost is saved without it after the repair turn, and with a stubborn engine the run fails naming the LinkedIn post and the connection, leaving the drawing file unchanged', async ({ request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('post-invalid', withLinkedIn(shop3('Invalid post shop')));
   const open = await register(request, file);
   const ask = (instruction: string) => startKind(request, open.token, { diagramId: open.id, kind: 'post', instruction, engine: 'fixture', model: null });

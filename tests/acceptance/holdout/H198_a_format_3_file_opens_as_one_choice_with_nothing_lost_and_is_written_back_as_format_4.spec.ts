@@ -28,8 +28,8 @@ const IMAGES: { name: string; args: string[] }[] = [
   { name: 'linkedin', args: ['--channel', 'linkedin', '--format', 'feed'] }, { name: 'readme', args: ['--channel', 'readme', '--format', 'readme'] },
 ];
 
-test('H198 [FILE-2 START-5 NAV-2 #182] a format 3 file opens as one choice with every fact, view, request and mark as it was and no new warning, is written back as format 4 by migrate and by the server, draws exactly the same images, and an invalid one is not converted', async ({ page, request }) => {
-  test.setTimeout(240_000);
+test('H198 [FILE-2 START-5 NAV-2 #182 #185] a format 3 file opens as one choice with every fact, view, request and mark as it was and no new warning, is written back as format 4 by migrate and by the server, draws exactly the same images, and an invalid one is not converted', async ({ page, request }) => {
+  test.setTimeout(60_000);
   const old = oldShop(), before = signature(old);
   const made = await workspaceRaw('f3-to-f4', old); const bytes = await readFile(made.file, 'utf8');
 

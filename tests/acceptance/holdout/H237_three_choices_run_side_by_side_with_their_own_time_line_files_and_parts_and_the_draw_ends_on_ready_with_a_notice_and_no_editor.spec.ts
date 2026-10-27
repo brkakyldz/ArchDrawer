@@ -10,7 +10,7 @@ import { startedRun } from './helpers';
 // line with a pulse on each new one, the files read so far and, once its read is checked, the parts found; when all have ended
 // the rows stay, `Ready` with `Open` replaces the line, a notice says the drawing is ready and the editor stays closed until Open.
 test('H237 [JOB-1 JOB-2 JOB-6 JOB-8 HOME-4 HOME-6 STORY-1 #200 #202] three choices run side by side, each row with its stages, time, latest line, files read and parts found, and the draw ends on Ready with a notice and Activity, the editor opening only from Open', async ({ page, request }) => {
-  test.setTimeout(360_000);
+  test.setTimeout(90_000);
   const project = await gitRepo('home-side');
   const server = await homeServer(page, request, { stepMs: '400' });
   try {
@@ -34,7 +34,7 @@ test('H237 [JOB-1 JOB-2 JOB-6 JOB-8 HOME-4 HOME-6 STORY-1 #200 #202] three choic
     const t0 = clock((await rowFacts(page))[0].time); await expect.poll(async () => clock((await rowFacts(page))[0].time) > t0 || (await rowFacts(page))[0].state !== 'running', { timeout: 15_000 }).toBe(true);
 
     // The end: Ready in place of the line, the rows shown once, Open, no retry, no cancel.
-    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 240_000 });
+    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 30_000 });
     expect(squash(await page.getByTestId('draw-ready').textContent())).toMatch(/^Ready.*3 drawings for a LinkedIn post/);
     await expect(page.getByTestId('draw-ready')).not.toContainText('could not be drawn'); await expect(page.getByTestId('draw-open')).toBeVisible();
     await expect(page.getByTestId('draw-retry')).toHaveCount(0); await expect(page.getByTestId('draw-line')).toHaveCount(0); await expect(page.getByTestId('draw-cancel')).toHaveCount(0);

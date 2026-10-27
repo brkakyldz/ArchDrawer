@@ -17,7 +17,7 @@ function groupOnly(title: string): Doc3 {
 // fixture (it first checks that the image exists and is a PNG) the answer is the channel's story on LinkedIn, README and
 // presentation and one small move on the overview; it names no route; a failed run writes nothing. Only the fixture runs here.
 test('H143 [LAYOUT-4, AI-1, FILE-3] a revise run is refused in the contracted order before any engine starts, then gives the channel its story or the overview one small move, names no route, and a failure writes nothing', async ({ request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('second-look', withPresentation(withReadme(withLinkedIn(shop3('Second look shop')))));
   const opened = await register(request, file);
   const before = await readDocument(file), beforeDrawing = await readDrawing(file);

@@ -9,7 +9,7 @@ const PLURAL = 'Fixing 2 problems in the answer';
 // progress line is the plural `Fixing 2 problems in the answer`. The engine's second answer fixes both and is saved as it is; a
 // stubborn engine still has the connection to `ghost`, so the run fails and the file is untouched.
 test('H155 [STORY-7, STORY-2, FILE-1] a post answer with two problems gets one repair turn announced as Fixing 2 problems in the answer, is saved without the connection and without shortening, and with a stubborn engine fails naming ghost with the file unchanged', async ({ request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('post-two-problems', withLinkedIn(shop3('Two problems shop')));
   const open = await register(request, file);
   const ask = (instruction: string) => startKind(request, open.token, { diagramId: open.id, kind: 'post', instruction, engine: 'fixture', model: null });

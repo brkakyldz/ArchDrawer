@@ -8,7 +8,7 @@ const POST_PARTS = ['approval', 'facts', 'intake', 'loop', 'request', 'result', 
 // PNG, and sends it with a `revise` run. With the fixture the answer on the overview is one part moved 40 px, and on LinkedIn the
 // channel's story; either arrives as a preview (AI-3). The control is off while a run goes and on a channel with no drawing.
 test('H144 [LAYOUT-4, AI-3, AI-2] Look at the drawing again sends the share image of the current view as a second look that ends in a preview, and is off during a run and on a channel with no drawing', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('look-again', withLinkedIn(shop3('Look again shop')));
   const posts: Record<string, any>[] = [];
   page.on('request', req => { if (req.method() === 'POST' && new URL(req.url()).pathname === '/api/runs') posts.push(req.postDataJSON()); });

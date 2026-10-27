@@ -39,7 +39,7 @@ const requirements = {
 };
 const builtins = ['@playwright/test', 'node:fs/promises', 'node:fs', 'node:path', 'node:os', 'node:url', 'node:net', 'node:child_process', 'node:crypto'];
 // Scenarios and files that left the suite; none of them may come back.
-const retiredScenarios = ['H37', 'H42', 'H43', 'H45', 'H49', 'H50', 'H51', 'H52', 'H53', 'H54', 'H55', 'H56', 'H60', 'H61', 'H62',
+const retiredScenarios = ['H131', 'H133', 'H37', 'H42', 'H43', 'H45', 'H49', 'H50', 'H51', 'H52', 'H53', 'H54', 'H55', 'H56', 'H60', 'H61', 'H62',
   ...Array.from({ length: 19 }, (_, i) => `H${65 + i}`)];
 // H195 was renamed by the ADR 0016 round (a later failure no longer stops the file); its old name must not come back beside the new one.
 const retiredFiles = [/^helpers-v\d+\.ts$/, /^border-cases\.ts$/, /^review.*baseline\.json$/, /^retired-v1$/,

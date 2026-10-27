@@ -9,7 +9,7 @@ import { homeServer, openHome, makeRepo } from './helpers-home';
 // unchanged and Scan takes the focus; a folder that already has a drawing offers it; cancelled changes nothing; a refused or failed
 // dialog shows its message; with no dialog the button is not offered, on the Link tab either. Nothing here opens a real dialog.
 test('H232 [SRC-3 HOME-2 START-4 #201] Choose folder opens the test dialog and fills the field with a path outside ASCII, a folder with a drawing offers it, and cancelled, refused, failed and unavailable answers change nothing but their message', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const server = await homeServer(page, request);
   try {
     const project = await makeRepo(join(server.tools, 'Masaüstü', 'shop-ü'));

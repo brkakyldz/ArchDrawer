@@ -1,22 +1,22 @@
 import { test, expect } from '@playwright/test';
 import { basename, join } from 'node:path';
-import { gitRepo, workspaceRaw, shop3, isolatedDrawing, startedRun, tabTo, exists } from './helpers';
+import { gitRepo, workspaceRaw, shop3, isolatedDrawing, startedRun, exists } from './helpers';
 import {
-  OPTIONS, SLUG, FOUR_WARNINGS, scanThroughHome, optionBox, focusedChoice, watchPosts, drawRows, panelStructure, panelEntries,
+  OPTIONS, SLUG, FOUR_WARNINGS, scanThroughHome, watchPosts, drawRows, panelStructure, panelEntries,
   readChoices, where, missingFacts, viewIdsOf, type Doc4,
 } from './helpers-selections';
-import { recordRowFacts, recordedFacts, maxRunning } from './helpers-home';
+import { recordRowFacts, recordedFacts, maxRunning, tickOnHome } from './helpers-home';
 
 const TYPED = 'How a booking is paid';
 const TYPED_ID = 'how-a-booking-is-paid';
 
-// SCAN-3, STORY-1, START-7 at the home screen (ADR 0015): the user ticks the whole system, a section, a flow and their own words
-// from the keyboard, chooses one channel, and one `Draw all 4` draws every choice: a row per choice with its three stages, then `Ready`
+// SCAN-3, STORY-1, START-7 at the home screen (ADR 0015): the user ticks the whole system, a section, a flow and their own words,
+// chooses one channel, and one `Draw all 4` draws every choice: a row per choice with its three stages, then `Ready`
 // and, from `Open`, the editor on the first choice, the views panel listing all four and one file holding them. From ADR 0016 the choices
 // run side by side in the shared slots (three by default: the fourth waits for one), the choosing step is gone while the draw is
-// followed, and the editor opens only from `Open`.
-test('H192 [SCAN-3 STORY-1 START-7 NAV-2 JOB-1 JOB-2 JOB-8 HOME-4 HOME-6 #181 #182 #200 #202] tick the whole system, a section, a flow and your own words from the keyboard, choose the LinkedIn post, draw all four in one run side by side in three slots, and open from Ready the first choice of one file that holds them all', async ({ page, request }) => {
-  test.setTimeout(420_000);
+// followed, and the editor opens only from `Open`. Ticking the same four from the keyboard, and the request it sends, is H250.
+test('H192 [SCAN-3 STORY-1 START-7 NAV-2 JOB-1 JOB-2 JOB-8 HOME-4 HOME-6 #181 #182 #200 #202] tick the whole system, a section, a flow and your own words, choose the LinkedIn post, draw all four in one run side by side in three slots, and open from Ready the first choice of one file that holds them all', async ({ page, request }) => {
+  test.setTimeout(90_000);
   const project = await gitRepo('home-several');
   const other = await workspaceRaw('home-several-lib', shop3('Home shop'));
   const server = await isolatedDrawing(page, request, other.file, '300'); // slow enough to watch the rows change
@@ -24,41 +24,10 @@ test('H192 [SCAN-3 STORY-1 START-7 NAV-2 JOB-1 JOB-2 JOB-8 HOME-4 HOME-6 #181 #1
     const posts = watchPosts(page);
     await scanThroughHome(page, project.dir, server.base);
 
-    // The keyboard path through the list: the whole system, the sections, the flows, then something else; Space ticks.
-    await tabTo(page, 'focus-whole');
-    expect(await focusedChoice(page)).toBe('focus-whole');
-    await page.keyboard.press('Space');
-    await expect(page.getByTestId('focus-whole')).toBeChecked(); await expect(page.getByTestId('focus-count')).toHaveText('1 chosen');
-    await expect(page.getByTestId('draw-start')).toContainText('Draw it'); await expect(page.getByTestId('draw-start')).toBeDisabled(); // no channel yet
-    for (const c of ['linkedin', 'readme', 'presentation']) { await expect(page.getByTestId(`channel-choice-${c}`)).toBeVisible(); await expect(page.getByTestId(`channel-choice-${c}`)).not.toBeChecked(); }
-    const walked: (string | null)[] = [];
-    await page.keyboard.press('Tab'); walked.push(await focusedChoice(page)); await page.keyboard.press('Space'); // the first section
-    await page.keyboard.press('Tab'); walked.push(await focusedChoice(page)); // the second section: passed over
-    await page.keyboard.press('Tab'); walked.push(await focusedChoice(page)); await page.keyboard.press('Space'); // the flow
-    await page.keyboard.press('Tab'); walked.push(await focusedChoice(page));
-    expect(walked, 'sections in option order, then flows, then something else').toEqual(['focus-option:o2', 'focus-option:o3', 'focus-option:o1', 'focus-typed']);
-    await page.keyboard.press('Space');
-    await expect(page.getByTestId('focus-typed')).toBeChecked(); await expect(page.getByTestId('focus-text')).toBeFocused();
-    await page.keyboard.type(TYPED);
-    await expect(optionBox(page, 'o2')).toBeChecked(); await expect(optionBox(page, 'o1')).toBeChecked(); await expect(optionBox(page, 'o3')).not.toBeChecked();
-    await expect(page.getByTestId('focus-count')).toHaveText('4 chosen');
-    await expect(page.getByTestId('draw-start')).toContainText('Draw all 4');
-    // The next stop is the channel; none is chosen until Space chooses it, and then Draw all is on.
-    await page.keyboard.press('Tab');
-    expect(await page.evaluate(() => document.activeElement?.closest('[data-testid]')?.getAttribute('data-testid') ?? '')).toMatch(/^channel-choice-/);
-    await page.keyboard.press('Space');
-    await expect(page.getByTestId('channel-choice-linkedin')).toBeChecked(); await expect(page.getByTestId('draw-start')).toBeEnabled();
-    for (let i = 0; i < 8 && (await focusedChoice(page)) !== 'draw-start'; i++) await page.keyboard.press('Tab');
-    expect(await focusedChoice(page)).toBe('draw-start');
-    expect(posts.filter(p => p.path === '/api/runs'), 'nothing is drawn before the user asks').toEqual([]);
-
-    // Draw all: one run whose choices are in the order of the list, not of the ticking, and carry no `focus`.
+    // Tick the four in the list's order, choose LinkedIn and press Draw all: one run.
+    await tickOnHome(page, { whole: true, options: ['o2', 'o1'], typed: TYPED }, 'linkedin');
     await recordRowFacts(page);
-    const run = await startedRun(page, () => page.keyboard.press('Enter'));
-    expect(run.body).not.toHaveProperty('focus');
-    expect(run.body).toMatchObject({ kind: 'draw', channel: 'linkedin' });
-    expect(run.body.choices).toEqual([{ kind: 'whole' }, { kind: 'option', option: 'o2' }, { kind: 'option', option: 'o1' }, { kind: 'typed', text: TYPED }]);
-    expect(posts.filter(p => p.path === '/api/runs')).toHaveLength(1);
+    await startedRun(page, () => page.getByTestId('draw-start').click());
 
     // The rows: one per choice in the order drawn, three stages each; the panel follows the draw and the choosing step is gone.
     await expect(page.getByTestId('draw-progress')).toBeVisible();
@@ -72,7 +41,7 @@ test('H192 [SCAN-3 STORY-1 START-7 NAV-2 JOB-1 JOB-2 JOB-8 HOME-4 HOME-6 #181 #1
     await expect(page.getByTestId('draw-line')).toBeVisible(); await expect(page.getByTestId('draw-cancel')).toBeVisible();
     await expect(page.getByTestId('start-folder')).toBeDisabled(); await expect(page.getByTestId('focus-list')).toHaveCount(0); await expect(page.getByTestId('draw-start')).toHaveCount(0);
     await expect(page.getByTestId('channel-choice-readme')).toHaveCount(0);
-    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 300_000 });
+    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 60_000 });
     expect((await page.getByTestId('draw-ready').textContent())!.replace(/\s+/g, ' ')).toMatch(/^Ready.*4 drawings for a LinkedIn post/);
     await page.waitForTimeout(1000); await expect(page.getByTestId('editor'), 'the editor opens only from Open').toHaveCount(0);
 

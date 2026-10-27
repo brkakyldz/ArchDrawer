@@ -36,7 +36,7 @@ async function hiddenIs(page: Page, ids: string[], hidden: boolean) {
 // editor and in every export; the editor shows them while an end is hovered, selected or dragged. LAYOUT-3: the report counts what is
 // drawn. EDIT-2: the callout still lists every connection.
 test('H176 [LOOK-4 LAYOUT-3 EDIT-2 #186] a part five parts use is marked used by 5 and its lines from them are not drawn but a step line is, the lines show on hover selection and drag, and the report counts only what is drawn', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const { dir, file } = await workspaceRaw('hub', sketch('Hub', PARTS, EDGES));
   const opened = await register(request, file);
 

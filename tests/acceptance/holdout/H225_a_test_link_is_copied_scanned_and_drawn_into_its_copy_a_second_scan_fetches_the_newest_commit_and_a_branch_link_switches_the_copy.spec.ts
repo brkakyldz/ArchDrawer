@@ -15,7 +15,7 @@ const LINK = 'github.com/acme/shop';
 // like a folder, its drawing written into the copy and listed with its link. A later scan fetches the newest commit first, whether the link,
 // the copy's folder or a branch link is scanned, and never touches the drawing file the copy holds.
 test('H225 [SRC-4 SRC-5 SRC-6 START-4 #199] a test link is copied, scanned and drawn into its copy and listed with its link, a second scan fetches the newest commit, and a branch link switches the copy and back', async () => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const server = await jobServer({ remotes: true, slots: 3, stepMs: 100 });
   try {
     expect(server.output(), 'the start-up line names the test switch that is on').toMatch(/engines: fixture · test links/);
@@ -107,6 +107,6 @@ test('H225 [SRC-4 SRC-5 SRC-6 START-4 #199] a test link is copied, scanned and d
     expect(back.progress.slice(0, 3)).toEqual([`Fetching the newest commit of ${LINK}`, `Fetching main of ${LINK}`, `Switched to main at ${short(third)}`]);
     expect(await branchOf(copy)).toBe('main'); expect(await headOf(copy)).toBe(third); expect(await exists(join(copy, 'pay.ts'))).toBe(false);
     expect(await readFile(drawing, 'utf8'), 'switching leaves the drawing byte for byte').toBe(drawingText);
-    await until(() => reposListing(server), l => l.partial.length === 0, 'no partial copy to be left', 5_000);
+    await until(() => reposListing(server), l => l.partial.length === 0, 'no partial copy to be left', 15_000);
   } finally { await server.stop(); }
 });

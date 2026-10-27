@@ -7,7 +7,7 @@ import { OPTIONS, scanThroughHome, optionBox, isCheckbox, focusListOrder, option
 // first; an option shows its title, its sentence and its files as chips (the first three, the rest behind `+<n> more`, ui contract), and no part count and no start → end line. A folder
 // the scan found no section or flow in says so and still offers the whole system and "Something else".
 test('H191 [SCAN-2 SCAN-3 HOME-3 #180 #181 #200] after a scan the home screen lists the whole system, the sections, the flows and something else as checkboxes, none ticked, each option with its title, sentence and file chips, and says so when the scan found no option', async ({ page }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(60_000);
   const project = await gitRepo('home-list');
   await scanThroughHome(page, project.dir);
 

@@ -1,38 +1,28 @@
 import { test, expect } from '@playwright/test';
 import { join } from 'node:path';
-import { gitRepo, startedRun, runEvents, listedDiagrams, exists, samePath, viewOf } from './helpers';
-import { getDocument } from './helpers-selections'; // a draw writes format 4: this gives the drawn choice in the shape the scenario was written in
+import { gitRepo, token, scanFolder, finishRun, runEvents, listedDiagrams, exists, samePath, viewOf, baseURL } from './helpers';
+import { getDocument, startDrawChoices, typed } from './helpers-selections'; // a draw writes format 4: getDocument gives the drawn choice in the shape the scenario was written in
 
 const FOUR_WARNINGS = [
   'ghost: dropped the evidence fixture/ghost.ts: not found', 'Dropped "ghost": no evidence left',
   'Dropped "r8": its component "ghost" was dropped', 'Dropped "ghost-limit": its component "ghost" was dropped',
 ];
 
-// STORY-7 (ADR 0009) inside START-4: the overview call of a draw has an answer with an over-long description. The repair turn
+// STORY-7 (ADR 0009) in a draw: the overview call of a draw has an answer with an over-long description. The repair turn
 // belongs to the overview stage, the draw goes on to the channel and ends in a written drawing, with the engine's own text.
-// From ADR 0016 the draw ends on `Ready` and the editor opens from `Open`.
-test('H148 [STORY-7, START-4, STORY-1, JOB-8, #181, #202] a draw from the home screen whose overview answer is over-long gets one repair turn in the overview stage and ends in a written drawing with the engine\'s own description and no Shortened warning', async ({ page, request }) => {
-  test.setTimeout(240_000);
+// The draw is started over the API; the same draw from the home screen (`Ready`, `Open`, the editor) is H121, H249 and H237.
+test('H148 [STORY-7, STORY-1, #181] a draw whose overview answer is over-long gets one repair turn in the overview stage and ends in a written drawing with the engine\'s own description and no Shortened warning', async ({ request }) => {
+  test.setTimeout(60_000);
+  const auth = await token(request);
   const project = await gitRepo('story-home-repair');
   const listedBefore = (await listedDiagrams(request)).length;
 
-  await page.goto('/'); await expect(page.getByTestId('start')).toBeVisible();
-  await page.getByTestId('start-folder').fill(project.dir); await page.getByTestId('start-scan').click();
-  await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 60_000 });
-  await page.getByTestId('focus-typed').click(); await page.getByTestId('focus-text').fill('The tool loop [fixture:overlong]');
-  await page.getByTestId('channel-choice-linkedin').click();
-  const started = await startedRun(page, () => page.getByTestId('draw-start').click());
-  expect(started.body).toMatchObject({ kind: 'draw', channel: 'linkedin', choices: [{ kind: 'typed', text: 'The tool loop [fixture:overlong]' }] }); expect(started.body).not.toHaveProperty('focus');
-
-  await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByTestId('draw-error')).toHaveCount(0);
-  await page.waitForTimeout(800); await expect(page.getByTestId('editor'), 'the editor opens from Open, not by itself').toHaveCount(0);
-  await page.getByTestId('draw-open').click();
-  await expect(page.getByTestId('editor')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin');
+  const scan = await scanFolder(request, auth, project.dir);
+  const runId = await startDrawChoices(request, auth, scan.id, [typed('The tool loop [fixture:overlong]')], 'linkedin');
+  await finishRun(request, runId, 'succeeded');
 
   // The events: one `Fixing 1 problem in the answer`, in the overview stage, after the read and before the channel.
-  const events = (await runEvents(started.runId)).filter(e => e.event === 'progress');
+  const events = (await runEvents(runId)).filter(e => e.event === 'progress');
   const messages = events.map(e => e.data.message as string);
   const fixing = events.filter(e => String(e.data.message).startsWith('Fixing'));
   expect(fixing).toHaveLength(1);
@@ -46,7 +36,7 @@ test('H148 [STORY-7, START-4, STORY-1, JOB-8, #181, #202] a draw from the home s
   expect(messages.some(m => m.startsWith('Shortened'))).toBe(false);
 
   // The drawing: written, registered, with the repaired overview description.
-  const run = await (await request.get(`${new URL(page.url()).origin}/api/runs/${started.runId}`)).json();
+  const run = await (await request.get(`${baseURL()}/api/runs/${runId}`)).json();
   expect(run).toMatchObject({ status: 'succeeded', kind: 'draw', channel: 'linkedin', error: null });
   expect(run.path && await exists(run.path)).toBe(true);
   expect(samePath(run.path, join(project.dir, 'docs', 'architecture.archdraw.json'))).toBe(true);

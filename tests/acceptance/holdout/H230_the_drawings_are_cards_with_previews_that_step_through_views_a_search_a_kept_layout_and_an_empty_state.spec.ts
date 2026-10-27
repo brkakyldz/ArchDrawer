@@ -8,8 +8,8 @@ import { homeServer, openHome, makeRepo, answerDialogs, squash } from './helpers
 // pill that steps through the views while the pointer is on the card, the kinds of its parts and when it changed; a search narrows
 // them by title or path and says when nothing matches; the layout is kept in the browser; Enter opens a card; an empty library
 // shows its own state and the example. A drawing that cannot be read still has a card.
-test('H230 [HOME-9 START-5 #200] the drawings are cards with previews that step through their views on hover, a search by title or path, a layout kept in the browser, and an empty state with the example once all are removed', async ({ page, request }) => {
-  test.setTimeout(240_000);
+test('H230 [HOME-9 #200] the drawings are cards with previews that step through their views on hover, a search by title or path, a layout kept in the browser, and an empty state with the example once all are removed', async ({ page, request }) => {
+  test.setTimeout(60_000);
   const server = await homeServer(page, request, { library: ['Alpha shop', 'Beta shop'] });
   try {
     // A drawing with two views in its overview channel, and one that is registered and then broken on disk.

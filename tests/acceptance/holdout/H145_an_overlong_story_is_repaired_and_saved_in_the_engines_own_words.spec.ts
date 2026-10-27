@@ -8,7 +8,7 @@ const OVERLONG_START = 'Drawn by the test engine, with a description written far
 // STORY-7 (ADR 0009): a story answer over a hard limit gets one repair turn and the engine's second answer is saved as it is: no
 // code shortening, no warning for the length. The progress puts `Fixing 1 problem in the answer` between the two check lines.
 test('H145 [STORY-7, STORY-2, STORY-3] a post and a README story whose first answer has an over-long description are repaired by the engine: saved with its own shorter text, the Fixing line between the two check lines, no shortening and no warning', async ({ request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
 
   // A post over an existing LinkedIn channel.
   const post = await workspaceRaw('story-overlong-post', withLinkedIn(shop3('Overlong shop')));

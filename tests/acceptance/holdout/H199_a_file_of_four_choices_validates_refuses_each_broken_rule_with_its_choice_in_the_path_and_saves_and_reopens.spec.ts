@@ -36,8 +36,8 @@ const cases: { name: string; pattern: RegExp; break: (d: Doc4) => void }[] = [
   { name: 'schema-not-this-format', pattern: /^ERROR schema/m, break: d => { d.schema = 'archdraw/diagram@9'; } },
 ];
 
-test('H199 [FILE-2 START-5 FILE-1 #182] a file of four choices validates, opens, imports, saves and reopens; each broken rule is refused with its choice in the path; twelve choices are valid and thirteen are not; a fact in a detail view is drawn', async ({ page, request }) => {
-  test.setTimeout(420_000);
+test('H199 [FILE-2 START-5 FILE-1 NAV-2 #182 #185 #200] a file of four choices validates, opens, imports, saves and reopens; each broken rule is refused with its choice in the path; twelve choices are valid and thirteen are not; a fact in a detail view is drawn', async ({ page, request }) => {
+  test.setTimeout(60_000);
   const folder = await repo('f4-rules'); const auth = await token(request);
   const everyLine = (result: { stdout: string; stderr: string }) => outputLines(result);
 

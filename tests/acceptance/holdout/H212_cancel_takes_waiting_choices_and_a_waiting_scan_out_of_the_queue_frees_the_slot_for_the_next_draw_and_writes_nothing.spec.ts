@@ -10,7 +10,7 @@ import {
 // frees its slot, takes its waiting choices out of the queue without starting them, writes nothing, and the next job in the queue starts at once.
 // A waiting scan that is cancelled leaves the queue without ever starting an engine.
 test('H212 [JOB-10 JOB-1 START-7 #196] cancelling a draw frees its slot for the next draw in the queue, its waiting choices never start, a cancelled waiting scan never starts an engine, and nothing is written', async () => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const server = await jobServer({ slots: 1, stepMs: 300 });
   try {
     const a = await gitRepo('cancel-a'), b = await gitRepo('cancel-b'), c = await gitRepo('cancel-c');
@@ -28,7 +28,7 @@ test('H212 [JOB-10 JOB-1 START-7 #196] cancelling a draw frees its slot for the 
     const waitingScan = await until(() => scanRec(server, cScanId), r => r.waiting === true, 'the scan to wait', 15_000);
     expect(waitingScan.progress).toEqual([WAITING]);
     expect((await activityOf(server)).slots).toEqual({ total: 1, busy: 1, waiting: 4 });
-    await until(() => runRec(server, holdRun), r => r.progress.some((l: string) => /^Working \d+\/30$/.test(l)), 'the slow read to count', 90_000);
+    await until(() => runRec(server, holdRun), r => r.progress.some((l: string) => /^Working \d+\/30$/.test(l)), 'the slow read to count', 30_000);
 
     // Cancelling the waiting scan takes it out of the queue; no engine ever started for it.
     expect((await server.post(`/api/scans/${cScanId}/cancel`)).body).toEqual({ ok: true });
@@ -40,7 +40,7 @@ test('H212 [JOB-10 JOB-1 START-7 #196] cancelling a draw frees its slot for the 
     // Cancelling the draw: the running choice is cancelled, the waiting ones stay waiting, nothing is written.
     const cancelAt = Date.now();
     expect((await server.post(`/api/runs/${holdRun}/cancel`)).body).toEqual({ ok: true });
-    const hold = await awaitRun(server, holdRun, 'cancelled', 60_000);
+    const hold = await awaitRun(server, holdRun, 'cancelled', 15_000);
     expect(states(hold)).toEqual([`${HOLD_ID}:cancelled`, `${SLUG.o2}:waiting`, `${SLUG.o3}:waiting`]);
     expect(hold).toMatchObject({ diagramId: null, path: null, changes: null, writing: false });
     expect(hold.choices[1]).toMatchObject({ startedAt: null, endedAt: null, stage: null });
@@ -51,7 +51,7 @@ test('H212 [JOB-10 JOB-1 START-7 #196] cancelling a draw frees its slot for the 
     expect(await exists(join(a.dir, 'docs'))).toBe(false); expect((await a.git(['status', '--porcelain'])).trim()).toBe('');
 
     // The freed slot went to the next in the queue: the other folder's draw runs now and writes its own file.
-    const queuedDone = await awaitRun(server, queuedRun, 'succeeded', 90_000);
+    const queuedDone = await awaitRun(server, queuedRun, 'succeeded', 30_000);
     expect(ms(queuedDone.choices[0].startedAt), 'it started only once the slot was freed').toBeGreaterThanOrEqual(cancelAt - 100);
     expect(states(queuedDone)).toEqual([`${SLUG.o2}:done`]);
     expect((await readChoices(join(b.dir, 'docs', 'architecture.archdraw.json'))).choices.map(x => x.id)).toEqual([SLUG.o2]);

@@ -5,19 +5,20 @@ import { exists } from './helpers';
 import { watchPosts } from './helpers-selections';
 import { homeServer, openHome, makeRemote, copyDir, stepper } from './helpers-home';
 
-// SRC-4, SRC-5, JOB-10, HOME-4 (ui contract, `scan-progress`, `start-error`; api contract, *A repository from a link*, *When git fails*;
-// testing contract, *Test links*): a link whose repository is missing, whose branch is missing or whose host cannot be reached
+// SRC-4, JOB-10, HOME-4 (ui contract, `scan-progress`, `start-error`, `start-link-hint`; api contract, *A repository from a link*, *When git
+// fails*; testing contract, *Test links*): a link whose repository is missing, whose branch is missing or whose host cannot be reached
 // ends its scan with the contract's sentence at once and the panel is back on the Folder step with the link kept; while a copy
 // is being made the panel follows it (fields off, `Copying <link>`), Cancel ends it with `Cancelled`, and no half copy is left.
-test('H234 [SRC-4 SRC-5 JOB-10 HOME-4 #201 #202] a link that cannot be copied ends with the sentence of the contract and the panel is free again, and cancelling a copy in progress leaves no half copy', async ({ page, request }) => {
-  test.setTimeout(240_000);
+// Scan is pressed only once the hint names the link just typed: until its check answers, Scan still stands for the previous link.
+test('H234 [SRC-4 JOB-10 HOME-4 #201] a link that cannot be copied ends with the sentence of the contract and the panel is free again, and cancelling a copy in progress leaves no half copy', async ({ page, request }) => {
+  test.setTimeout(60_000);
   const server = await homeServer(page, request);
   try {
     await makeRemote(server, 'github.com/acme/other');
     await makeRemote(server, 'github.com/acme/slowpoke');
     await writeFile(join(server.remotes, 'github.com', 'acme', 'slowpoke.slow'), '', 'utf8'); // each copy waits 30 s before git starts
     const posts = watchPosts(page);
-    const link = page.getByTestId('start-link'), scan = page.getByTestId('start-scan'), error = page.getByTestId('start-error');
+    const link = page.getByTestId('start-link'), scan = page.getByTestId('start-scan'), error = page.getByTestId('start-error'), hint = page.getByTestId('start-link-hint');
     const partial = async () => { try { return (await readdir(join(server.data, 'repos', '.partial'))).length; } catch { return 0; } };
     await openHome(page, server); await page.getByTestId('start-source-link').click();
 
@@ -27,7 +28,7 @@ test('H234 [SRC-4 SRC-5 JOB-10 HOME-4 #201 #202] a link that cannot be copied en
       ['https://gitlab.com/acme/anything', 'Could not reach gitlab.com', 'gitlab.com/acme/anything'],
     ];
     for (const [text, sentence, linkName] of failures) {
-      await link.fill(text); await expect(scan).toBeEnabled(); // a check copies nothing, so it cannot tell yet
+      await link.fill(text); await expect(hint).toContainText(linkName); await expect(scan).toBeEnabled(); // a check copies nothing, so it cannot tell yet
       await scan.click();
       await expect(error).toHaveText(sentence, { timeout: 60_000 }); await expect(error).toHaveAttribute('role', 'alert');
       expect(await stepper(page)).toMatchObject({ now: expect.stringContaining('Folder') });
@@ -38,7 +39,7 @@ test('H234 [SRC-4 SRC-5 JOB-10 HOME-4 #201 #202] a link that cannot be copied en
     expect(await partial(), 'no half copy after the failures').toBe(0);
 
     // A copy in progress: followed, the fields off, then Cancel ends it and the panel is free with the link kept.
-    await link.fill('https://github.com/acme/slowpoke'); await expect(scan).toBeEnabled(); await scan.click();
+    await link.fill('https://github.com/acme/slowpoke'); await expect(hint).toContainText('github.com/acme/slowpoke'); await expect(scan).toBeEnabled(); await scan.click();
     const progress = page.getByTestId('scan-progress');
     await expect(progress).toBeVisible(); await expect(progress).toContainText('Scanning'); await expect(progress).toContainText('Copying github.com/acme/slowpoke');
     await expect(link).toBeDisabled(); await expect(scan).toBeDisabled(); await expect(page.getByTestId('start-source-local')).toBeDisabled();

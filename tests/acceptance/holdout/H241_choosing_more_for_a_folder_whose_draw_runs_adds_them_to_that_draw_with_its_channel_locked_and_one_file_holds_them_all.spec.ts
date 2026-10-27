@@ -13,7 +13,7 @@ const SLOW_ID = 'slow-part-fixture-slow';
 // `In this draw`, the draw's channel chosen, disabled and explained, and the button as `Add … to the draw`; adding sends only the new
 // choices to the running draw, the panel follows the draw with the new rows added, and one file holds every choice in the draw's order.
 test('H241 [JOB-4 HOME-8 START-7 STORY-1 #200 #202] choosing more for a folder whose draw is running shows what the draw holds, locks its channel with a sentence, adds only the new choices to that draw and ends in one file with all of them', async ({ page, request }) => {
-  test.setTimeout(360_000);
+  test.setTimeout(300_000);
   const project = await gitRepo('home-join');
   const server = await homeServer(page, request, { stepMs: '400' });
   try {
@@ -26,7 +26,7 @@ test('H241 [JOB-4 HOME-8 START-7 STORY-1 #200 #202] choosing more for a folder w
     // The panel is freed and the same folder is chosen again: its scan is the same commit's, so the choosing step joins the draw.
     await page.getByTestId('draw-another').click(); await expect(page.getByTestId('draw-progress')).toHaveCount(0);
     await page.getByTestId('start-folder').fill(project.dir); await page.getByTestId('start-scan').click();
-    await expect(page.getByTestId('focus-list')).toBeVisible({ timeout: 60_000 }); await expect(page.getByTestId('scan-cached')).toContainText('Scanned before at ');
+    await expect(page.getByTestId('focus-list')).toBeVisible({ timeout: 15_000 }); await expect(page.getByTestId('scan-cached')).toContainText('Scanned before at ');
     await expect(page.getByTestId('focus-in-draw')).toHaveCount(2); await expect(page.getByTestId('focus-in-draw').first()).toHaveText('In this draw');
     for (const id of ['focus-whole', 'focus-typed']) { await expect(page.getByTestId(id)).toBeChecked(); await expect(page.getByTestId(id)).toBeDisabled(); }
     for (const id of ['o1', 'o2', 'o3']) { await expect(optionBox(page, id)).not.toBeChecked(); await expect(optionBox(page, id)).toBeEnabled(); }
@@ -47,12 +47,12 @@ test('H241 [JOB-4 HOME-8 START-7 STORY-1 #200 #202] choosing more for a folder w
     // The panel follows that draw: the new rows are added at the end and run beside the slow one.
     await expect(page.getByTestId('draw-progress')).toBeVisible(); await expect(page.getByTestId('draw-choice')).toHaveCount(4, { timeout: 30_000 });
     expect((await rowFacts(page)).map(r => r.choice)).toEqual(['system', SLOW_ID, SLUG.o3, SLUG.o1]);
-    await expect.poll(async () => (await rowFacts(page)).map(r => r.state), { timeout: 120_000 }).toEqual(['done', 'running', 'done', 'done']);
+    await expect.poll(async () => (await rowFacts(page)).map(r => r.state), { timeout: 60_000 }).toEqual(['done', 'running', 'done', 'done']);
     const jobs = await jobsOnScreen(page);
     expect(jobs.filter(j => j.type === 'draw'), 'one draw job, not two').toHaveLength(1); expect(jobs.find(j => j.id === draw.runId)).toMatchObject({ state: 'running', status: expect.stringMatching(/^README drawing · /) });
 
     // The slow choice ends: one Ready for the four, one file with all of them, the README drawn for each.
-    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 240_000 });
+    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 120_000 }); // the slow read is 30 lines two seconds apart
     expect(squash(await page.getByTestId('draw-ready').textContent())).toMatch(/^Ready.*4 drawings for a README$/);
     const doc = await readChoices(join(project.dir, 'docs', 'architecture.archdraw.json'));
     expect(doc.choices.map(c => c.id), 'the draw\'s order: its own choices, then the joined ones in the order they joined').toEqual(['system', SLOW_ID, SLUG.o3, SLUG.o1]);

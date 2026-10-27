@@ -13,7 +13,7 @@ const CHANNEL = 'Choose the channel: linkedin, readme or presentation';
 // starts: the scan, its folder, choices or focus (not both, one to ten), each choice in order, duplicates, the channel, then the
 // model and the engine. A request with `focus` in place of `choices` is the same as a list of that one choice.
 test('H193 [START-7 SCAN-3 STORY-1 #181] a draw of several choices is refused with the first fault in the contracted order, a single focus still works as a list of one, and nothing is started or written', async ({ request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const auth = await token(request);
   const project = await gitRepo('draw-choices-refusals');
   const scan = await scanFolder(request, auth, project.dir);

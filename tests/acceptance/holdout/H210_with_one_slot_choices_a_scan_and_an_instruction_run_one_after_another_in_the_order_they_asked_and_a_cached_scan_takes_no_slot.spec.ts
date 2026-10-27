@@ -11,8 +11,8 @@ import {
 // is cached takes no slot; an instruction run of the editor holds one): with one slot a draw of three choices goes one after another, a scan of
 // another folder and an instruction run on another drawing wait behind the choices that asked first, say so, and take the slot in that order.
 test('H210 [JOB-1 JOB-5 START-7 #196] with one slot the choices of a draw, a scan of another folder and an instruction run go one after another in the order they asked, each waiting one says so, and a cached scan takes no slot', async () => {
-  test.setTimeout(300_000);
-  const server = await jobServer({ slots: 1, stepMs: 400 });
+  test.setTimeout(60_000);
+  const server = await jobServer({ slots: 1, stepMs: 200 });
   try {
     const a = await gitRepo('one-slot-a'), b = await gitRepo('one-slot-b');
     const scanA = await scanOn(server, { folder: a.dir });

@@ -13,7 +13,7 @@ const idsOf = async (file: string) => (await stepsOf(file)).map(s => s.id);
 // Steps are appearance: every edit of them is one undoable step, saved like any edit, and changes only the presentation
 // channel. A part of the presentation drawing that a step names can still be deleted: the steps follow it.
 test('H127 [STORY-4, FILE-3, EDIT-1, NAV-2] editing the text, note, parts and order of steps, adding and removing one, are each undoable and touch only the presentation, and deleting a part a step names takes it out of the steps with a warning', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const doc: Doc3 = withPresentation(withReadme(agent3('Steps agent')), { steps: STEPS.map(s => structuredClone(s)) });
   const { file } = await workspaceRaw('step-edit', doc);
   await openDrawing(page, request, file);

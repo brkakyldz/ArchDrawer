@@ -32,7 +32,7 @@ const EDGES = [
 // LAYOUT-5 (#164): a side counts the ends it already holds, not only the angle; a handle never leaves the gap between close
 // parts; ports in line give a straight line; the arrowhead touches the part it points at. LAYOUT-3: the report agrees.
 test('H174 [LAYOUT-5 LAYOUT-3 #164] a connection leaves the next free side when its facing side is busy, close parts get handles that never leave the gap, ports in line give a straight line, and the arrowhead touches its part', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('busy-side', sketch('Busy side', PARTS, EDGES));
   const before = await positionsOf(file);
   const opened = await openDrawing(page, request, file);

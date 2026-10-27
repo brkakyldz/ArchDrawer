@@ -7,7 +7,7 @@ import { agent3, workspaceRaw, openDrawing, readDocument, persistedDoc, viewOf, 
 // story's: one per part, a text and a speaker note each, and a step that names a part that is not there is dropped with one
 // warning. Choosing a step lights its parts and dims the rest without resizing anything, and never edits the drawing.
 test('H126 [STORY-4, STORY-1, FILE-2, SHARE-2, NAV-2, AI-3] Draw it on the Presentation tab keeps the three steps the fixture story names and drops the one for a missing part, and choosing, stepping and leaving a step light and dim parts without resizing or editing anything', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('presentation-draw', agent3('Present agent'));
   const posts: any[] = [];
   page.on('request', req => { if (req.method() === 'POST' && new URL(req.url()).pathname === '/api/runs') { try { posts.push(JSON.parse(req.postData() ?? 'null')); } catch { /* not json */ } } });
@@ -70,9 +70,6 @@ test('H126 [STORY-4, STORY-1, FILE-2, SHARE-2, NAV-2, AI-3] Draw it on the Prese
   await expect(page.locator('[data-testid="step-item"][aria-current="true"]')).toHaveCount(0);
   expect(await litParts(page)).toEqual({ on: [], dim: [], all: ['agent', 'app', 'store'] });
   await page.getByTestId('step-next').click(); await expect(items.nth(0)).toHaveAttribute('aria-current', 'true'); expect((await litParts(page)).on).toEqual(['app']);
-  // Must not happen: looking at the steps being an edit.
-  await page.waitForTimeout(1200); // longer than the 350 ms save delay: a hidden edit would have been written by now
-  expect(await readFile(file, 'utf8')).toBe(bytes); await expect(page.getByTestId('save-status')).toHaveText('Saved');
 
   // Share defaults to the slide on this channel, with the presentation's own view.
   await page.getByTestId('share-button').click();
@@ -80,6 +77,10 @@ test('H126 [STORY-4, STORY-1, FILE-2, SHARE-2, NAV-2, AI-3] Draw it on the Prese
   await expect(page.getByTestId('share-preview')).toHaveAttribute('data-view', 'presentation'); await expect(page.getByTestId('share-size')).toHaveText('1920 × 1080');
   expect((await svgInfo(page, await previewSVG(page))).nodes.map(n => n.id).sort()).toEqual(['agent', 'app', 'store']);
   await page.keyboard.press('Escape'); await expect(page.getByTestId('share-dialog')).toHaveCount(0);
+  // Must not happen: looking at the steps (or sharing them) being an edit. The share step above already took longer than the
+  // 350 ms save delay since the last step was chosen; the short wait covers a save started by the last click.
+  await page.waitForTimeout(500);
+  expect(await readFile(file, 'utf8')).toBe(bytes); await expect(page.getByTestId('save-status')).toHaveText('Saved');
 
   // One undo step takes the whole presentation, steps and all, away; redo brings it back.
   await page.getByTestId('tool-undo').click();

@@ -4,9 +4,9 @@ import { shop3, withLinkedIn, workspaceRaw, openDrawing, readDocument, persisted
 
 // AI-5 at the surface: after a refine the AI panel says which way it went (`ai-route`, `data-route`), and the preview carries
 // the same sentence. A story-route instruction on the overview may move parts but changes no content; a parts scope is
-// always the facts. From 0.4 there is one place to type (AI-2) and the one-click fold is the `Simpler` suggestion (AI-4).
-test('H130 [AI-5, AI-1, AI-2, AI-4, STORY-6] the AI panel says whether an instruction changed the facts or redrew the channel from them, a story on the overview only moves things, a selection of parts always changes the facts, and Simpler names no route', async ({ page, request }) => {
-  test.setTimeout(240_000);
+// always the facts. From 0.4 there is one place to type (AI-2).
+test('H130 [AI-5, AI-1, AI-2, STORY-6] the AI panel says whether an instruction changed the facts or redrew the channel from them, a story on the overview only moves things, and a selection of parts always changes the facts', async ({ page, request }) => {
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('routing-ui', withLinkedIn(shop3('Route shop')));
   await openDrawing(page, request, file);
   const route = page.getByTestId('ai-route');
@@ -62,11 +62,7 @@ test('H130 [AI-5, AI-1, AI-2, AI-4, STORY-6] the AI panel says whether an instru
   await persistedDoc(file, d => factOf(d, 'web')?.label === 'Storefront');
   await expect(page.getByTestId('node-web').getByTestId('node-label')).toHaveText('Storefront');
 
-  // 6. Simpler names no route: there is no question to answer and the sentence is not shown.
-  const folding = await startedRun(page, () => page.getByTestId('ai-suggest-simpler').click());
-  expect(await runDone(page, folding.runId)).toBe('preview');
-  await expect(page.getByTestId('ai-summary')).toBeVisible();
-  await expect(route).toHaveCount(0);
+  // (That `Simpler` names no route is H141's: its run, its preview and no `ai-route`; H115 sees its summary.)
   // Must not happen: the story-route instructions having added or removed a fact.
   expect(sorted((await readDocument(file)).facts.components.map(f => f.id))).toEqual(['api', 'db', 'web']);
 });

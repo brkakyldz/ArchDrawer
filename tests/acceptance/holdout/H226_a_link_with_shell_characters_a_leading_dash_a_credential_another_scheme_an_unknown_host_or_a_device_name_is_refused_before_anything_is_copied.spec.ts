@@ -13,7 +13,7 @@ const GIVE = 'Give the link of a repository';
 // the `git@` form, a port, shell characters, a leading `-` or `.`, a Windows device name, a branch that breaks the rule, a user name or
 // password, a host other than the three. Nothing is copied, no scan starts, and a link that is fine is read as the contract says.
 test('H226 [SRC-4 START-4 #199] a link with shell characters, a leading dash, a credential, another scheme, an unknown host or a Windows device name is refused with the contracted sentence before anything is copied or started', async () => {
-  test.setTimeout(180_000);
+  test.setTimeout(60_000);
   const server = await jobServer({ remotes: true, stepMs: 100 });
   try {
     await makeRemote(server, 'github.com/acme/shop'); // a link to it is fine; none below reaches it

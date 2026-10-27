@@ -9,7 +9,7 @@ import { homeServer, tickOnHome, rowFacts, recordRowFacts, recordedFacts, maxRun
 // and says so in Activity and in the panel when followed; pressing jobs in Activity moves the panel between them while all go on;
 // the finished draw is opened from its Activity row. No job ever runs two engines past the slot limit.
 test('H238 [JOB-1 JOB-5 HOME-4 HOME-7 #202] with one engine slot the choices wait their turn and say so, a scan of another folder waits in the same queue and Activity and the panel say so, and pressing jobs moves the panel between them', async ({ page, request }) => {
-  test.setTimeout(360_000);
+  test.setTimeout(90_000);
   const first = await gitRepo('home-wait-a'), second = await gitRepo('home-wait-b');
   const server = await homeServer(page, request, { stepMs: '400', slots: 1 });
   try {
@@ -24,8 +24,11 @@ test('H238 [JOB-1 JOB-5 HOME-4 HOME-7 #202] with one engine slot the choices wai
     const waiting = await rowFacts(page);
     for (const r of waiting.slice(1)) expect(r).toMatchObject({ line: 'Waiting for a free engine', time: '', stages: ['waiting', 'waiting', 'waiting'] });
     await expect(page.getByTestId('draw-choice').nth(1).getByTestId('draw-choice-pulse')).toHaveCount(0);
+    // The first choice ends and only then the second takes the slot, the third still waiting (the rows are recorded only while the panel
+    // follows the draw, so this is seen here, before the panel moves to the scan).
+    await expect.poll(async () => (await rowFacts(page)).map(r => r.state), { timeout: 45_000 }).toEqual(['done', 'running', 'waiting']);
 
-    // A scan of another folder, asked while the draw holds the slot: it waits behind all three choices.
+    // A scan of another folder, asked while the draw holds the slot: it waits behind the draw's choices still queued.
     const scanId = await startScan(request, server.token, second.dir, {}, server.base);
     await expect.poll(async () => (await jobsOnScreen(page)).find(j => j.id === scanId)?.state, { timeout: 30_000 }).toBe('waiting');
     const jobs = await jobsOnScreen(page);
@@ -45,7 +48,7 @@ test('H238 [JOB-1 JOB-5 HOME-4 HOME-7 #202] with one engine slot the choices wai
     expect(seen.some(rows => rows.some(r => r.state === 'done') && rows.some(r => r.state === 'running')), 'the second choice ran after the first was done').toBe(true);
 
     // The scan gets the slot after the draw's choices and succeeds: the panel shows its card and choices.
-    await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 240_000 }); await expect(page.getByTestId('focus-list')).toBeVisible();
+    await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 60_000 }); await expect(page.getByTestId('focus-list')).toBeVisible();
     await expect(page.getByTestId('scan-card-name')).toHaveText(second.dir.replace(/\\/g, '/').split('/').at(-1)!);
     const drawRecord = await runRecord(request, run.runId, server.base);
     const scanDone = await scanRecord(request, scanId, server.base) as any;
@@ -53,7 +56,7 @@ test('H238 [JOB-1 JOB-5 HOME-4 HOME-7 #202] with one engine slot the choices wai
     if (drawRecord.status === 'running' || drawRecord.status === 'succeeded') expect(Date.parse(scanDone.startedAt), 'the scan took its slot after the choices queued before it').toBeGreaterThanOrEqual(lastEnd - 100);
 
     // Back to the draw by its row, then Open from Activity (the editor opens only when asked).
-    await jobIn(page, run.runId).getByTestId('activity-job-name').click(); await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 240_000 });
+    await jobIn(page, run.runId).getByTestId('activity-job-name').click(); await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 30_000 });
     const after = await jobsOnScreen(page);
     expect(after.find(j => j.id === scanId)).toMatchObject({ state: 'succeeded', status: 'Scan · 3 sections and flows', open: 'Choose' });
     expect(after.find(j => j.id === run.runId)).toMatchObject({ state: 'succeeded', status: 'LinkedIn post · Ready', open: 'Open' });

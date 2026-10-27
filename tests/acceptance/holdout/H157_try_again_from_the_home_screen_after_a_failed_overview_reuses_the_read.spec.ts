@@ -18,7 +18,7 @@ type Snapshot = { stages: Record<string, string>; line: string };
 // the draw ends on `Ready`, from which `Open` opens the drawing. The stage list is watched by a recorder in the page that logs every
 // state the screen is in, so no sleep decides what was seen.
 test('H157 [START-6, START-4, READ-2, START-7, JOB-3, HOME-6, #181, #202] after a draw failed in its overview stage Try again on the home screen shows the read stage running with Using the facts already read, then done once the overview starts, draws the overview by a call and opens the drawing from Ready', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(90_000);
   const project = await gitRepo('retry-overview-ui');
   const docs = join(project.dir, 'docs');
   const posts: string[] = [];
@@ -29,13 +29,13 @@ test('H157 [START-6, START-4, READ-2, START-7, JOB-3, HOME-6, #181, #202] after 
 
   await page.goto('/'); await expect(page.getByTestId('start')).toBeVisible();
   await page.getByTestId('start-folder').fill(project.dir); await page.getByTestId('start-scan').click();
-  await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 15_000 });
   await page.getByTestId('focus-typed').click(); await page.getByTestId('focus-text').fill('The tool loop [fixture:flaky:overview]');
   await page.getByTestId('channel-choice-linkedin').click();
 
   // The first draw: the read succeeds, the overview call fails once; nothing is written and the panel keeps the draw.
   const first = await startedRun(page, () => page.getByTestId('draw-start').click());
-  await expect(page.getByTestId('draw-error')).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId('draw-error')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('draw-error')).toContainText('Fixture failure requested');
   await expect(page.getByTestId('draw-retry')).toBeVisible();
   await expect(page.getByTestId('editor')).toHaveCount(0);
@@ -66,7 +66,7 @@ test('H157 [START-6, START-4, READ-2, START-7, JOB-3, HOME-6, #181, #202] after 
   const retry = await startedRetry(page, () => page.getByTestId('draw-retry').click());
   expect(retry.from).toBe(first.runId); expect(retry.runId).not.toBe(first.runId);
   expect(posts.filter(p => p === '/api/runs'), 'Try again is not a new draw request').toHaveLength(1);
-  await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 30_000 });
   await page.waitForTimeout(800); await expect(page.getByTestId('editor'), 'the editor opens from Open').toHaveCount(0);
   await page.getByTestId('draw-open').click();
   await expect(page.getByTestId('editor')).toBeVisible({ timeout: 30_000 });

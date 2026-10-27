@@ -9,7 +9,7 @@ const POST_PARTS = ['approval', 'facts', 'intake', 'loop', 'request', 'result', 
 // simplification of the overview's first view and takes the editor there first; `Show the loop` takes the facts route and,
 // as a verb the fixture does not know, changes nothing; the other three take the story route.
 test('H141 [AI-4, AI-5, AI-2, STORY-6] each channel offers its own suggestions, each is sent as a routed instruction that leaves the input alone, Simpler folds the overview from its first view, and every suggestion is disabled while a run goes', async ({ page, request }) => {
-  test.setTimeout(420_000);
+  test.setTimeout(60_000);
   // The detail view is added last: the README and the presentation are copies of the overview's first view and hold no `detail`.
   const { file } = await workspaceRaw('suggest', withDetail(withPresentation(withReadme(withLinkedIn(shop3('Suggest shop'))))));
   const opened = await openDrawing(page, request, file);

@@ -13,7 +13,7 @@ const AGE = /(just now|\d+ min ago)/;
 // each with its branch and the age of its last commit. Typing filters, a heading with nothing under it goes, a pasted path closes
 // the list, Enter takes the highlighted entry, and taking an entry puts its path in the field and scans nothing.
 test('H231 [SRC-1 SRC-2 HOME-2 START-4 #201] the folder combobox and the navigation list recent and found repositories with branch and age, typing filters them, a pasted path closes the list, and choosing one puts its path in the field and scans nothing', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const server = await homeServer(page, request);
   try {
     const at = (...parts: string[]) => join(server.home, ...parts);

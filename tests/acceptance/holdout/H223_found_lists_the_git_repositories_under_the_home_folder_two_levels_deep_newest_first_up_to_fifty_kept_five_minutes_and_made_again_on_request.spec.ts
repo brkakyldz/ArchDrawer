@@ -12,7 +12,7 @@ const at = (iso: string) => ms(iso);
 // ties by path), at most 50, kept for five minutes and made again at once on request. Hidden folders, the folders the scan skips, `AppData`,
 // `Library`, `Applications` and everything inside the data folder are not searched.
 test('H223 [SRC-2 SRC-1 START-4 #198] Found lists the git repositories below the home folder two levels deep, skipping what the contract skips, newest commit first, not those in Recent, at most fifty, kept five minutes and made again on request', async () => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const base = await tempDir('found');
   const home = join(base, 'home'), data = join(home, 'archdrawer-data'), extra = join(base, 'extra');
   const repo = (...parts: string[]) => join(home, ...parts);

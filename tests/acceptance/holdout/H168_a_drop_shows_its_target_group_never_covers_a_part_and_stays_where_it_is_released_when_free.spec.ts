@@ -5,7 +5,7 @@ import { sketch, pickUp, dragMarks, nodeRect, countPuts, positionsOf, nodeOf, ca
 // A group `zone` of four parts with a wide empty area between them, a loose part p to its left and an obstacle q below p.
 // Group members are k (400,100), k2 (1100,100), k3 (400,400) and k4 (1100,400): the empty area is around (848, 304).
 test('H168 [EDIT-5 #167 #168] a drop shows the group it would join while dragging, never covers another part, and stays exactly where it is released when it overlaps nothing', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const doc = sketch('Drop rule', [
     { id: 'zone', form: 'group', label: 'Processing zone' },
     { id: 'k', label: 'Parser', sub: 'reads it', x: 400, y: 100, parent: 'zone' }, { id: 'k2', label: 'Checker', sub: 'checks it', x: 1100, y: 100, parent: 'zone' },

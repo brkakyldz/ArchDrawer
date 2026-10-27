@@ -13,8 +13,8 @@ const SOLO = 'Solo [fixture:flaky:overview]', SOLO_ID = 'solo-fixture-flaky-over
 // choices that finished from what was kept with no engine call. Try again is refused in the contracted order: unknown run, not a draw, still
 // running, nothing left to try, a draw of the folder already running.
 test('H215 [JOB-3 JOB-10 START-6 START-7 #196] a draw whose every choice failed, and a cancelled draw, write nothing, and Try again draws every choice into a new file from what was kept, with its refusals in the contracted order', async () => {
-  test.setTimeout(360_000);
-  const server = await jobServer({ slots: 1, stepMs: 500 });
+  test.setTimeout(60_000);
+  const server = await jobServer({ slots: 1, stepMs: 200 });
   try {
     const reg = await registerDrawing(server, 'retry-editor');
     const registered = await diagramIds(server);
@@ -48,9 +48,9 @@ test('H215 [JOB-3 JOB-10 START-6 START-7 #196] a draw whose every choice failed,
     // ---- A cancelled draw: the first choice finished, the second is cancelled in its read, the third never started.
     const q = await gitRepo('retry-cancelled'), scanQ = await scanOn(server, { folder: q.dir });
     const cancelledId = await drawOn(server, scanQ.id, [option('o2'), option('o3'), option('o1')], 'linkedin');
-    await until(() => runRec(server, cancelledId), r => r.choices[0].status === 'done' && r.choices[1].status === 'running', 'the second choice to be running', 120_000, 50);
+    await until(() => runRec(server, cancelledId), r => r.choices[0].status === 'done' && r.choices[1].status === 'running', 'the second choice to be running', 30_000, 50);
     expect((await server.post(`/api/runs/${cancelledId}/cancel`)).body).toEqual({ ok: true });
-    const cancelled = await awaitRun(server, cancelledId, 'cancelled', 60_000);
+    const cancelled = await awaitRun(server, cancelledId, 'cancelled', 15_000);
     expect(states(cancelled)).toEqual([`${SLUG.o2}:done`, `${SLUG.o3}:cancelled`, `${SLUG.o1}:waiting`]);
     expect(cancelled).toMatchObject({ diagramId: null, path: null });
     expect(await exists(join(q.dir, 'docs'))).toBe(false); expect((await q.git(['status', '--porcelain'])).trim()).toBe('');
@@ -65,7 +65,7 @@ test('H215 [JOB-3 JOB-10 START-6 START-7 #196] a draw whose every choice failed,
     // While it runs: a second Try again of the cancelled draw finds the folder busy and names the running draw; Try again of the running one is refused.
     expect(await server.post(`/api/runs/${cancelledId}/retry`)).toEqual({ status: 409, body: { error: 'A drawing of this folder is already being made', runId: retryId } });
     expect(await server.post(`/api/runs/${retryId}/retry`)).toMatchObject({ status: 409, body: { error: 'The draw is still running' } });
-    const retry = await awaitRun(server, retryId, 'succeeded', 240_000);
+    const retry = await awaitRun(server, retryId, 'succeeded', 60_000);
     const events = await runEventsOf(server, retryId);
     expect(lines(events, SLUG.o2, 'read'), 'the finished choice goes through what was kept').toContain('Using the facts already read');
     for (const line of ENGINE_LINES) expect(lines(events, SLUG.o2), `no engine call for the finished choice: "${line}"`).not.toContain(line);
@@ -75,7 +75,7 @@ test('H215 [JOB-3 JOB-10 START-6 START-7 #196] a draw whose every choice failed,
 
     // ---- The other refusals, in the contracted order.
     expect(await server.post('/api/runs/r_nothing_here/retry')).toEqual({ status: 404, body: { error: 'Run not found' } });
-    const refineId = await refineOn(server, reg.id); await awaitRun(server, refineId, 'succeeded', 120_000);
+    const refineId = await refineOn(server, reg.id); await awaitRun(server, refineId, 'succeeded', 15_000);
     expect(await server.post(`/api/runs/${refineId}/retry`)).toEqual({ status: 400, body: { error: 'Only a draw can be tried again' } });
     expect(await server.post(`/api/runs/${retryId}/retry`), 'a draw that drew every choice').toEqual({ status: 400, body: { error: 'Every choice of this draw was drawn' } });
     expect(await server.post(`/api/runs/${retried.body.runId}/retry`)).toEqual({ status: 400, body: { error: 'Every choice of this draw was drawn' } });

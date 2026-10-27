@@ -6,12 +6,12 @@ import { homeServer, makeRepo, makeRemote, copyDir, navItems, names, answerDialo
 
 const LINK = 'github.com/acme/shop';
 
-// SRC-1, SRC-4, SRC-5, HOME-2 (ui contract, `source-forget`, `source-recent`, `source-found-refresh`; api contract, *Recent and found*, *Forgetting
+// SRC-1, SRC-4, SRC-6, HOME-2 (ui contract, `source-forget`, `source-recent`, `source-found-refresh`; api contract, *Recent and found*, *Forgetting
 // an entry*): a scanned folder joins Recent; an entry whose drawings are in the list cannot be forgotten from here; asking to forget
 // one is a question the user can answer no to (nothing is sent); yes forgets it and keeps the folder, which Found shows again once
 // it is made again; for a copy made from a link a second question asks whether to delete the copy too, and the copy goes only on yes.
-test('H235 [SRC-1 SRC-4 SRC-5 HOME-2 #201] a scanned folder joins Recent, an entry with drawings cannot be forgotten, forgetting asks first and keeps the folder, and a copy made from a link is deleted only when the second question is accepted', async ({ page, request }) => {
-  test.setTimeout(300_000);
+test('H235 [SRC-1 SRC-4 SRC-6 HOME-2 #201] a scanned folder joins Recent, an entry with drawings cannot be forgotten, forgetting asks first and keeps the folder, and a copy made from a link is deleted only when the second question is accepted', async ({ page, request }) => {
+  test.setTimeout(60_000);
   const server = await homeServer(page, request);
   try {
     const alpha = await makeRepo(join(server.home, 'code', 'alpha-app'));
@@ -51,7 +51,7 @@ test('H235 [SRC-1 SRC-4 SRC-5 HOME-2 #201] a scanned folder joins Recent, an ent
     // A copy from a link: two questions. Yes then no forgets the entry and keeps the copy on disk, and the link is still known.
     await page.getByTestId('start-source-link').click(); await page.getByTestId('start-link').fill(LINK);
     await expect(page.getByTestId('start-link-hint')).toContainText('copied into'); await page.getByTestId('start-scan').click();
-    await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 30_000 });
     await page.reload(); await expect.poll(async () => names(await navItems(page, 'source-recent'))).toContain('shop');
     answers.push(true, false);
     await itemOf('shop').hover(); await itemOf('shop').getByTestId('source-forget').click();
@@ -63,7 +63,7 @@ test('H235 [SRC-1 SRC-4 SRC-5 HOME-2 #201] a scanned folder joins Recent, an ent
     await expect(page.getByTestId('start-link-hint')).toContainText('already on this computer');
 
     // Scan it again (the copy is used), forget it with yes and yes: the copy is gone and the same link would be copied anew.
-    await page.getByTestId('start-scan').click(); await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 90_000 });
+    await page.getByTestId('start-scan').click(); await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 30_000 });
     await page.reload(); await expect.poll(async () => names(await navItems(page, 'source-recent'))).toContain('shop');
     answers.push(true, true);
     await itemOf('shop').hover(); await itemOf('shop').getByTestId('source-forget').click();

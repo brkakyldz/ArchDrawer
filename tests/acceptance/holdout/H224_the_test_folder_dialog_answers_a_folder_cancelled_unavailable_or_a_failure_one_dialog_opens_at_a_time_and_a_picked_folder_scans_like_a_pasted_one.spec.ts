@@ -9,7 +9,7 @@ import { jobServer, tempDir, writePicker, scanOn, activityOf, sleep } from './he
 // answered as the folder check answers it, a cancelled or empty dialog changes nothing, `none` means no dialog, one dialog is open at a time
 // and a request that went away frees it. A pick writes and starts nothing; the folder it gives scans like a pasted one.
 test('H224 [SRC-3 START-4 #198] the test folder dialog answers a folder, cancelled, unavailable or a failure, one dialog opens at a time, a closed request frees it, and a picked folder is checked and scanned like a pasted one', async () => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const server = await jobServer({ picker: true, stepMs: 100 });
   try {
     const pick = (auth?: string | null) => server.post('/api/folders/pick', {}, auth);
@@ -25,6 +25,7 @@ test('H224 [SRC-3 START-4 #198] the test folder dialog answers a folder, cancell
 
     // ---- A folder: answered as the folder check answers it.
     const repo = await gitRepo('pick-repo'), sub = join(repo.dir, 'src');
+    await mkdir(sub); // `gitRepo` writes no `src` folder, and a folder that does not exist is a 400 (api contract, *Folders*)
     await writePicker(server, `${repo.dir}${sep}\n`); // a trailing separator and a line end are dropped
     const picked = await pick();
     expect(picked.status, JSON.stringify(picked.body)).toBe(200);
@@ -74,12 +75,15 @@ test('H224 [SRC-3 START-4 #198] the test folder dialog answers a folder, cancell
     expect(await pick(), 'the dialog is already open').toEqual({ status: 409, body: { error: 'The folder dialog is already open' } });
     const slowAnswer = await slow;
     expect(slowAnswer.body.status).toBe('picked'); expect(Date.now() - t0, 'the slow dialog answered after about 3 s').toBeGreaterThanOrEqual(2_500);
+    await writePicker(server, repo.dir); // the file is read at each request: only the picks that need the slow dialog wait 3 s
     expect((await pick()).status, 'the dialog is free again once it answered').toBe(200);
 
     // A request that went away closes its dialog: the next pick opens at once and is not refused.
+    await writePicker(server, repo.dir, 'slow');
     const controller = new AbortController();
     const gone = fetch(`${server.base}/api/folders/pick`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-archdraw-token': server.token }, body: '{}', signal: controller.signal }).catch(() => null);
     await sleep(500); controller.abort(); await gone; await sleep(500);
+    await writePicker(server, repo.dir);
     const next = await pick();
     expect(next.status, JSON.stringify(next.body)).toBe(200); expect(next.body.status).toBe('picked');
 

@@ -8,9 +8,9 @@ const ENGINE_LINES = ['Reading the drawing', 'Reading the code', 'Updating the d
 
 // START-6 (ADR 0010) with READ-2: the kept read answer is not trusted as it was. Its evidence is checked again against the folder
 // as it is now, so a file that is gone between the failure and `Try again` is dropped with the facts only it backed, and because
-// the facts changed the overview is drawn by a call. The scan is not repeated. A draw with another focus reads again.
-test('H151 [START-6, READ-2, READ-1, START-4, #181] a file the read cites that is deleted after a failed draw is checked again on Try again: the facts already read are reused, the overview is drawn by a call, the drawing no longer cites the file, and another focus reads again', async ({ request }) => {
-  test.setTimeout(300_000);
+// the facts changed the overview is drawn by a call. The scan is not repeated. (That another focus reads again is H154's.)
+test('H151 [START-6, READ-2, READ-1, START-4, #181] a file the read cites that is deleted after a failed draw is checked again on Try again: the facts already read are reused, the overview is drawn by a call and the drawing no longer cites the file', async ({ request }) => {
+  test.setTimeout(60_000);
   const auth = await token(request);
   const project = await gitRepo('retry-deleted-file');
   const docs = join(project.dir, 'docs');
@@ -22,7 +22,7 @@ test('H151 [START-6, READ-2, READ-1, START-4, #181] a file the read cites that i
 
   // The channel call fails once: the read and the overview were finished and kept, nothing is written.
   const failedRun = await startDraw(request, auth, scan.id, focus, 'linkedin');
-  const failed = await finishRun(request, failedRun, 'failed', 120_000);
+  const failed = await finishRun(request, failedRun, 'failed', 30_000);
   expect(failed.error).toContain('Fixture failure requested');
   expect(failed).toMatchObject({ diagramId: null, path: null });
   const failedEvents = await runEvents(failedRun);
@@ -36,7 +36,7 @@ test('H151 [START-6, READ-2, READ-1, START-4, #181] a file the read cites that i
   expect(await exists(join(project.dir, 'alpha.ts'))).toBe(false);
 
   const retryRun = await startDraw(request, auth, scan.id, focus, 'linkedin');
-  const retry = await finishRun(request, retryRun, 'succeeded', 120_000);
+  const retry = await finishRun(request, retryRun, 'succeeded', 30_000);
   expect(retry.error ?? null).toBeNull();
   const events = await runEvents(retryRun);
   const read = stageOf(events, 'read'), overview = stageOf(events, 'overview'), channel = stageOf(events, 'channel');
@@ -58,15 +58,4 @@ test('H151 [START-6, READ-2, READ-1, START-4, #181] a file the read cites that i
   expect(ids).toContain('agent');
   expect(ids).not.toContain('app'); expect(ids).not.toContain('store'); expect(ids).not.toContain('ghost');
   expect(doc.warnings!.some(w => w.includes('alpha.ts') && w.includes('not found')), 'the missing file is warned about').toBe(true);
-
-  // Another focus with the same scan has nothing kept: the code is read again.
-  const otherRun = await startDraw(request, auth, scan.id, { kind: 'typed', text: 'Explain the store' }, 'readme');
-  const other = await finishRun(request, otherRun, 'succeeded', 120_000);
-  const otherEvents = await runEvents(otherRun);
-  const otherRead = stageOf(otherEvents, 'read');
-  expect(otherRead).toContain('Reading the code');
-  expect(otherRead).not.toContain('Using the facts already read');
-  expect(stageOf(otherEvents, 'overview')).not.toContain('Using the overview already drawn');
-  expect(other.path).not.toBe(retry.path);
-  expect(await exists(join(docs, 'architecture-2.archdraw.json'))).toBe(true);
 });

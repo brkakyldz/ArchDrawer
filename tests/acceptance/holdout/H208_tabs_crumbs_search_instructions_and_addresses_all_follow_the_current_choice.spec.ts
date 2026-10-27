@@ -6,7 +6,7 @@ import { sendInPanel, runDone, acceptPreview, openAiPanel, saved } from './helpe
 // it (`?choice=&channel=&view=`) and an older link with only a view opens the choice and channel that hold it; the tabs, the crumbs, search
 // and an instruction all belong to the current choice; the other choices' channels, marks and views are not offered there.
 test('H208 [NAV-2 NAV-3 AI-1 FILE-3 #185 #182] the address, the tabs and their marks, the crumbs, search and an instruction all follow the current choice, and an older link with only a view opens the choice that holds it', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const doc = fourChoices('Choice four');
   doc.choices.find(c => c.id === 'server')!.channels.linkedin!.outdated = ['store'];
   const { file } = await workspace4('f4-follow', doc);

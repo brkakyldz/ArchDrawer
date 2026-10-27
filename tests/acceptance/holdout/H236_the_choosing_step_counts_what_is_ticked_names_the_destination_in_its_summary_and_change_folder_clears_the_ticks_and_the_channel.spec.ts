@@ -9,7 +9,7 @@ import { homeServer, stepper, squash } from './helpers-home';
 // `Draw all <n>` and stays off until the channel is chosen and a typed choice has words; Change folder goes back to the Folder
 // step with the folder kept and every tick and the channel cleared. Nothing is drawn.
 test('H236 [HOME-2 HOME-3 SCAN-3 STORY-1 #200] the choosing step shows the choices with file chips, counts what is ticked, writes the summary for each destination, and Change folder clears the ticks and the channel but keeps the folder', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const project = await gitRepo('home-choose');
   const server = await homeServer(page, request);
   try {

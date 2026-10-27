@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { channelNames, legacyWithPost, workspaceRaw, cli, openDrawing,
+import { channelNames, legacyWithPost, drawing, workspaceRaw, cli, openDrawing, token, baseURL,
   saved, drawn, partOf, factOf, relationOf, ownText, outdatedOf } from './helpers';
 // The stored file is format 4 (one choice, `system`): `readDocument`, `getDocument`, `persisted`, `persistedDoc` and `readDrawing` here read that choice
 // in the format 3 shape the rest of this scenario was written in; `readRaw` and `getRaw` give the stored document itself.
@@ -10,7 +10,7 @@ const CONVERTED = 'Converted from archdraw/diagram@2';
 
 // An `archdraw/diagram@2` file (a view per post, `postOf`, `from`, one list of views) is converted when read:
 // the command line and the editor see the same facts, the post becomes the LinkedIn channel, every id is kept.
-test('H88 [FILE-2, START-5, FILE-1, #182] an @2 file with a detail view and a LinkedIn post opens through the command and the editor and is read back as @4, one choice, with its ids kept', async ({ page, request }) => {
+test('H88 [FILE-2, START-5, FILE-1, NAV-2, #182, #185] an @2 file with a detail view and a LinkedIn post opens through the command and the editor and is read back as @4, one choice, with its ids kept, and an imported @2 document is stored as @4', async ({ page, request }) => {
   const viaCommand = await workspaceRaw('convert-cli', legacyWithPost('Old shop'));
   const bytes = await readFile(viaCommand.file, 'utf8');
   expect(JSON.parse(bytes).schema).toBe('archdraw/diagram@2');
@@ -84,6 +84,8 @@ test('H88 [FILE-2, START-5, FILE-1, #182] an @2 file with a detail view and a Li
   // The views panel lists the overview's two views (the post is not one), under the one choice.
   await expect(page.getByTestId('views-panel')).toBeVisible(); await expect(page.getByTestId('views-button')).toHaveCount(0);
   await expect(page.getByTestId('views-entry-overview')).toBeVisible(); await expect(page.getByTestId('views-entry-inside-api')).toBeVisible();
+  // The first entry shows the converted file's one choice by its title (ui contract, the views panel; moved from H35).
+  await expect(page.getByTestId('views-entry-overview')).toHaveText('The whole system');
   await expect(page.getByTestId('views-entry-overview-linkedin')).toHaveCount(0);
   await page.getByTestId('views-entry-overview').click();
   await expect(page.getByTestId('warnings')).toBeVisible(); await expect(page.getByTestId('warnings')).toContainText(CONVERTED);
@@ -105,4 +107,13 @@ test('H88 [FILE-2, START-5, FILE-1, #182] an @2 file with a detail view and a Li
   expect(editedRaw.schema).toBe('archdraw/diagram@4'); expect(editedRaw).not.toHaveProperty('views'); expect(editedRaw.choices).toHaveLength(1);
   expect(edited.channels.linkedin!.views).toEqual(postBefore);
   expect((await readDrawing(viaEditor.file)).post!.nodes.map(n => n.id)).toEqual(['web-linkedin', 'api-linkedin', 'db-linkedin']);
+
+  // Importing an `@2` document converts it too: the stored copy is `@4` (moved from H89).
+  const auth = await token(request);
+  const sent = drawing('Imported old shop');
+  const imported = await request.post(`${baseURL()}/api/diagrams`, { headers: { 'X-Archdraw-Token': auth }, data: sent });
+  expect(imported.status(), await imported.text()).toBe(201);
+  const importedId = (await imported.json()).id, stored = await getDocument(request, importedId), storedRaw = await getRaw(request, importedId);
+  expect(storedRaw.schema).toBe('archdraw/diagram@4'); expect(stored.facts.components.map(f => f.id)).toEqual(['web', 'api', 'db']);
+  expect(stored.warnings).toContain(CONVERTED); expect(storedRaw).not.toHaveProperty('views');
 });

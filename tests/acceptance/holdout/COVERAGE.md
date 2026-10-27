@@ -1,6 +1,6 @@
 # Held-out coverage
 
-The suite has 188 scenarios. A requirement id appears in a scenario title only
+The suite has 193 scenarios. A requirement id appears in a scenario title only
 when the scenario observes it; an id the spec marks *To build* appears only
 once a step has built something to observe (the 0.3 round: START-4, SCAN-1 to
 SCAN-4, READ-1 to READ-3, STORY-2 to STORY-5 and AI-5, with STORY-1 and
@@ -127,12 +127,146 @@ server, the API half after it. B's H247 is the same screen half on a server of i
 on purpose, the first proves the suite's own harness server is enough for a cancel, the second the rows with a server whose variables
 the scenario controls. Either may be dropped without losing a requirement id.
 
+## Review of 2026-10-27
+
+An independent review of the suite (size, waits, overlaps, bundles, tags, oracles) changed 89 existing scenarios, retired H131, H133 and added H248, H249, H250, H251, H252, H253, H254.
+The review is `REVIEW.md` (beside this folder when it was written; its findings, what was applied and what was left). The maps below are the
+current ones: where an older requirement or issue map in this file lists other scenarios, these win. A title still carries exactly the
+requirement ids its scenario observes and each not-yet-built issue (`#202`) whose elements it waits for. The per-test time cap (`test.setTimeout`) of 125 scenarios was lowered to four times the scenario's passing time, at least 60 s and never raised; helper waits for a draw's or a retry's response are bounded at 30 s.
+
+Retired (the id is never reused): H131 (every kind draws its own outline in the editor and in the exported image, as card, compact…); H133 (a LinkedIn post draws the same shapes in its denser post style, in the editor and in the p…).
+
+| Requirement | Scenarios now |
+|---|---|
+| START-1 | H29 |
+| START-2 | — |
+| START-3 | H248 |
+| START-4 | H41, H110, H111, H112, H113, H117, H118, H119, H120, H121, H122, H123, H150, H151, H154, H157, H220, H222, H223, H224, H225, H226, H227, H228, H231, H232, H233, H245 |
+| START-5 | H15, H16, H17, H25, H41, H44, H84, H88, H89, H90, H91, H134, H198, H199, H201, H204 |
+| START-6 | H149, H150, H151, H154, H157, H195, H196, H197, H214, H215, H221, H252 |
+| START-7 | H123, H149, H157, H192, H193, H194, H195, H196, H197, H209, H210, H211, H212, H213, H214, H215, H216, H218, H240, H241, H247, H250, H251, H252 |
+| SRC-1 | H122, H222, H223, H231, H235 |
+| SRC-2 | H223, H231 |
+| SRC-3 | H224, H232 |
+| SRC-4 | H225, H226, H227, H233, H234, H235 |
+| SRC-5 | H225, H227, H228, H233 |
+| SRC-6 | H225, H228, H233, H235 |
+| SCAN-1 | H110, H111, H112, H113, H121 |
+| SCAN-2 | H110, H121, H190, H191 |
+| SCAN-3 | H110, H120, H121, H122, H191, H192, H193, H194, H196, H236, H247, H250 |
+| SCAN-4 | H111, H112, H113, H122, H190 |
+| JOB-1 | H192, H209, H210, H211, H212, H237, H238 |
+| JOB-2 | H192, H197, H209, H213, H216, H237 |
+| JOB-3 | H123, H149, H157, H195, H196, H213, H214, H215, H218, H240, H252 |
+| JOB-4 | H218, H219, H241, H251 |
+| JOB-5 | H210, H220, H227, H238, H239 |
+| JOB-6 | H209, H217, H237, H244 |
+| JOB-7 | H217, H220, H221, H239, H242, H246 |
+| JOB-8 | H192, H237, H240 |
+| JOB-9 | H221, H243 |
+| JOB-10 | H197, H212, H215, H219, H227, H234, H247 |
+| READ-1 | H117, H119, H149, H151, H194, H195, H249 |
+| READ-2 | H106, H107, H117, H118, H151, H154, H157 |
+| READ-3 | H117 |
+| STORY-1 | H97, H102, H103, H116, H117, H119, H120, H121, H122, H124, H125, H126, H128, H148, H150, H156, H183, H192, H193, H194, H195, H202, H236, H237, H240, H241, H249, H250 |
+| STORY-2 | H114, H116, H145, H146, H147, H153, H155, H182 |
+| STORY-3 | H106, H109, H124, H125, H145 |
+| STORY-4 | H106, H107, H126, H127, H128, H158, H159, H160, H161, H162, H163, H164, H166 |
+| STORY-5 | H106, H107, H109, H114, H124 |
+| STORY-6 | H114, H115, H116, H119, H129, H130, H141 |
+| STORY-7 | H145, H146, H147, H148, H155, H156 |
+| STORY-8 | H202 |
+| LAYOUT-1 | H15, H17, H24, H28, H32, H34, H44, H63, H84, H86, H87, H178, H179, H182 |
+| LAYOUT-2 | H84, H86, H152, H153, H172, H177 |
+| LAYOUT-3 | H28, H38, H39, H63, H64, H84, H85, H86, H114, H115, H152, H153, H172, H174, H175, H176, H178 |
+| LAYOUT-4 | H97, H143, H144 |
+| LAYOUT-5 | H87, H170, H174, H175, H177 |
+| LAYOUT-6 | H178 |
+| LOOK-1 | H20, H36, H41, H158, H165, H179 |
+| LOOK-2 | H17, H132, H179, H182, H184 |
+| LOOK-3 | H17, H18, H28, H31, H33, H34, H39, H40, H63, H94, H95, H100, H108, H109, H124, H134, H179, H180, H181, H182 |
+| LOOK-4 | H28, H63, H100, H152, H167, H171, H172, H173, H176 |
+| FILE-1 | H15, H16, H18, H19, H20, H21, H22, H23, H24, H26, H27, H30, H35, H36, H40, H41, H88, H90, H94, H95, H97, H108, H118, H132, H134, H135, H136, H137, H139, H140, H142, H146, H147, H155, H161, H199, H253 |
+| FILE-2 | H15, H16, H27, H88, H89, H90, H91, H92, H93, H95, H96, H99, H100, H104, H105, H106, H107, H108, H109, H126, H137, H162, H194, H198, H199, H200, H201, H202, H205, H253, H254 |
+| FILE-3 | H92, H93, H94, H95, H101, H103, H104, H105, H108, H115, H124, H125, H127, H128, H129, H143, H181, H200, H208, H254 |
+| EDIT-1 | H18, H19, H20, H21, H22, H23, H30, H31, H32, H36, H40, H85, H87, H92, H93, H94, H96, H99, H101, H103, H125, H127, H128, H132, H138, H139, H160, H200, H203 |
+| EDIT-2 | H18, H22, H34, H36, H40, H176, H180 |
+| EDIT-3 | H26 |
+| EDIT-4 | H30, H138 |
+| EDIT-5 | H19, H167, H168, H169, H170 |
+| AI-1 | H24, H30, H31, H32, H33, H44, H86, H100, H102, H104, H105, H115, H116, H129, H130, H135, H136, H137, H138, H143, H183, H201, H208, H253, H254 |
+| AI-2 | H30, H31, H97, H130, H135, H136, H137, H140, H141, H142, H144 |
+| AI-3 | H24, H30, H31, H32, H102, H103, H124, H126, H138, H139, H140, H144 |
+| AI-4 | H97, H115, H141, H142 |
+| AI-5 | H129, H130, H141 |
+| NAV-1 | H20, H98, H184, H202, H203, H204, H205 |
+| NAV-2 | H88, H96, H97, H98, H99, H101, H102, H126, H127, H158, H163, H192, H198, H199, H200, H205, H206, H207, H208 |
+| NAV-3 | H35, H208 |
+| NAV-4 | — |
+| HOME-1 | H229 |
+| HOME-2 | H121, H122, H231, H232, H233, H235, H236, H245 |
+| HOME-3 | H121, H191, H236 |
+| HOME-4 | H123, H192, H196, H234, H237, H238, H240, H242, H247, H249 |
+| HOME-5 | H244 |
+| HOME-6 | H123, H157, H192, H196, H237, H239, H240, H242, H247, H249 |
+| HOME-7 | H238, H239, H242, H243, H246 |
+| HOME-8 | H241 |
+| HOME-9 | H27, H41, H230 |
+| HOME-10 | H122, H239, H245, H250 |
+| HOME-11 | H229 |
+| HOME-12 | H229 |
+| PRES-1 | H158, H159, H160, H161 |
+| PRES-2 | H162, H163 |
+| PRES-3 | H164, H165, H166 |
+| SHARE-1 | H15, H23, H28, H38, H63, H85, H87, H91, H100, H109, H152, H153, H159, H164, H165, H171, H172, H173, H175, H177, H179, H180, H181, H182, H184, H201, H204 |
+| SHARE-2 | H39, H100, H124, H125, H126, H166, H181, H183 |
+| SHARE-3 | H39, H64 |
+| SAFE-1 | H29, H137 |
+| SAFE-2 | — |
+| SAFE-3 | H29 |
+| SAFE-4 | H29 |
+| SAFE-5 | — |
+| QUAL-1 | — |
+| QUAL-2 | H64, H84, H85 |
+| QUAL-3 | — |
+
+| Issue | Scenarios now |
+|---|---|
+| #44 | H99, H183 |
+| #164 | H170, H174 |
+| #165 | H87, H170 |
+| #166 | H19, H167 |
+| #167 | H19, H168 |
+| #168 | H168, H169 |
+| #170 | H28, H63, H100, H152, H167, H171 |
+| #171 | H172 |
+| #172 | H173 |
+| #174 | H175 |
+| #175 | H178 |
+| #176 | H152, H177 |
+| #177 | H17, H18, H28, H31, H33, H34, H39, H40, H63, H87, H94, H95, H100, H109, H124, H132, H179, H180, H181, H182 |
+| #180 | H110, H121, H190, H191 |
+| #181 | H117, H118, H119, H120, H121, H122, H123, H148, H149, H150, H151, H154, H156, H157, H191, H192, H193, H194, H195, H196, H249 |
+| #182 | H15, H16, H27, H88, H89, H90, H106, H107, H117, H118, H137, H192, H194, H198, H199, H200, H201, H208, H253, H254 |
+| #183 | H202 |
+| #184 | H184, H202, H203, H204 |
+| #185 | H88, H96, H198, H199, H200, H202, H205, H206, H207, H208 |
+| #186 | H176 |
+| #195 | H217, H220, H221 |
+| #196 | H149, H194, H195, H197, H209, H210, H211, H212, H213, H214, H215, H216, H217, H252 |
+| #197 | H218, H219, H251 |
+| #198 | H222, H223, H224 |
+| #199 | H225, H226, H227, H228 |
+| #200 | H27, H41, H121, H122, H123, H191, H192, H196, H199, H229, H230, H236, H237, H241, H245, H247, H248, H250 |
+| #201 | H121, H122, H231, H232, H233, H234, H235, H245, H248 |
+| #202 | H123, H157, H192, H196, H237, H238, H239, H240, H241, H242, H243, H244, H246, H247, H249 |
+
 ## Scenarios
 
 | Id | Lands in | Journey |
 |---|---|---|
 | H15 | A (migrated) | validate a session file, reopen the same editor and export it; the file is `@3` with the defaults per channel |
-| H16 | A (migrated), D (0.3, changed), B-held (0.4, changed) | depth warnings permit a drawing but every broken field is reported, at its `@3` path, without repair; from 0.3 a tuning number outside LinkedIn is no warning and no size warning exists; from 0.4 six parts with no panel get no held items warning, so the three depth warnings remain |
+| H16 | A (migrated), D (0.3, changed), B-held (0.4, changed); review 2026-10-27 (changed) | every broken lane rule is refused by validate, open and the server, and a file that is not JSON by validate, without a write |
 | H17 | A (migrated) | a hinted system and nested loop render with matching export geometry and kept positions |
 | H18 | — | explain a component and edit every field and held item without losing its neighbours |
 | H19 | — | select and move connected parts, regroup them and undo a destructive edit |
@@ -140,10 +274,10 @@ the scenario controls. Either may be dropped without losing a requirement id.
 | H21 | — | choose kinds and forms at their destination, including a child in a group, and cancel safely |
 | H22 | — | connect two parts, merge the return direction and edit the whole connection |
 | H23 | — | type and resize free text, move a neighbouring part, share the text and undo its deletion |
-| H24 | A (migrated), H (0.3, changed), C-conversation (0.4, changed) | apply and repair an instruction, undo it, cancel and protect a concurrent session edit; the progress lines of the refine are asserted in order, not by count, since a refine starts with the routing question's engine lines, if any, then its route line (`Changing the facts`), and the fixture's answer adds no line of its own; from 0.4 the result is a preview, kept before the ordinary undo, and the single-line instruction is typed in the AI panel and shows `Nothing changed` with no preview |
-| H25 | A (migrated), C-conversation (0.4, changed) | a machine without engines saves a literal request, with its channel and view, for the next session and stops only its own server; from 0.4 it is typed in the AI panel and shows as a `saved` turn, which a reload empties |
+| H24 | A (migrated), H (0.3, changed), C-conversation (0.4, changed); review 2026-10-27 (changed) | apply and repair an instruction, undo it, refuse a second run while one runs and cancel it |
+| H25 | A (migrated), C-conversation (0.4, changed); review 2026-10-27 (changed) | a machine without engines gets a server of its own with its own token from the command and stops only its own server |
 | H26 | A (migrated) | save to the repository file, follow an outside edit and refuse a stale editor write with a reload offer |
-| H27 | A (migrated); B-home (0.6: `library-open` shows on hover or focus) | migrate an old drawing to `@3`, import both versions and forget them without deleting repository files |
+| H27 | A (migrated); B-home (0.6: `library-open` shows on hover or focus); review 2026-10-27 (changed) | register a copy under a new id, import an old and a current drawing and forget them without deleting repository files |
 | H28 | — | preview and download an image for every destination in both themes and keep the drawing untouched |
 | H29 | A (migrated) | use a local drawing while forged writes are refused, and find the plugin manifests and launcher in place |
 | H30 | H (0.3, changed), C-conversation (0.4, changed; title changed) | pick a test model in the AI panel, follow progress, keep the previewed change and undo it; progress lines asserted in order, as H24; the engine note names the canned second look; the changed part stays lit until Accept |
@@ -151,69 +285,67 @@ the scenario controls. Either may be dropped without losing a requirement id.
 | H32 | D-preview (0.4, changed) | move and align just one part and warn once for a move outside selected parts; each next run keeps the previous preview and the last result is kept before the undo |
 | H33 | — | record exact changes for add, rename, hold, move and remove and reject invalid scopes without edits |
 | H34 | — | fade detail at distance while keeping the open part lit and every shape and export unchanged |
-| H35 | — | reach a detail view from the views menu, the part that holds it, the breadcrumb and a link; search lights matches and dims the rest, steps with Enter, lists other views, ends with Escape, and never edits the file |
+| H35 | —; review 2026-10-27 (changed) | search: matches lit and the rest dimmed while typing, stepping with Enter, other views listed, Escape, and the drawing file never edited |
 | H36 | — | pin explanations beside the canvas and keep editing controls reachable in a narrow header |
 | H38 | — | warn about text the image shortens and count it in the layout report beside the readability check |
 | H39 | — | share the view as it is, keep keyboard focus inside sharing and call a drawing too wide to read too small in one plain sentence |
 | H40 | — | rename from the callout, choose pictured forms and follow tool hints without accidental edits |
-| H41 | E (0.3, changed) | open an example from an empty library (beside the folder start, no more empty-library help) and recover a registered file that became invalid |
+| H41 | E (0.3, changed); review 2026-10-27 (changed) | open an example from an empty library (beside the folder start, no more empty-library help) and recover a registered file that became invalid |
 | H44 | A (migrated) | accept lane hints in a session file, place what has no position by its place hint and leave positioned parts where they are |
-| H63 | — | share a full ordinary view for three destinations with a wrapped caption and explicit clipping warning |
-| H64 | A (migrated) | distinguish readable names from readable detail and report the level the measured sizes give |
+| H63 | —; review 2026-10-27 (changed) | share a full ordinary view for three destinations with a wrapped caption and explicit clipping warning |
+| H64 | A (migrated); review 2026-10-27 (changed) | distinguish readable names from readable detail and report the level the measured sizes give, in the contracted sentence, and never call a drawing with nothing to read good |
 | H84 | edges-behind (rewritten) | open a session file without positions: no overlap, every connection one `M … C …` cubic in the editor and the image, every label within 10 px of its curve, and the share dialog's connections-over-parts and crossings equal an independent measurement of the exported image (no part is required to be clear) |
 | H85 | — | a sub-line the image shortens is drawn, listed and counted; after the user shortens it nothing is cut |
-| H86 | edges-behind (rewritten) | ask for no change on a drawing with fixed positions: nothing moves, every connection is one cubic, a line through a part (`lr` through `wall`) is drawn under it and listed by the run's report and the share dialog exactly as an independent measurement of the image lists it, no group or end listed |
+| H86 | edges-behind (rewritten); review 2026-10-27 (changed) | ask for no change on a drawing with fixed positions: nothing moves, every connection is one cubic, a line through a part (`lr` through `wall`) is drawn under it and listed by the run's report and the share dialog exactly as an independent measurement of the image lists it, no group or end listed |
 | H87 | — | the editor and the exported image agree on every part size and connection path, also after the user moves a part |
-| H88 | A | an `@2` file with a detail view and a LinkedIn post opens through the command and the editor and is read back as `@3`: facts, overview views, the LinkedIn view, the conversion warning, every id kept |
-| H89 | A | `archdrawer migrate` takes an `@1` and an `@2` file to `@3`, leaves an `@3` file alone, refuses what is not a drawing, and an imported `@2` document is stored as `@3` |
-| H90 | A, A (0.3, changed) | `validate` refuses each broken `@3` rule with its path and message, lists every violation with the count, writes nothing, and a missing repository path only warns on `open`; a README with one view is valid from 0.3, with two it is not |
+| H88 | A; review 2026-10-27 (changed) | an @2 file with a detail view and a LinkedIn post opens through the command and the editor and is read back as @4, one choice, with its ids kept, and an imported @2 document is stored as @4 |
+| H89 | A; review 2026-10-27 (changed) | migrate rewrites an @1 and an @2 file as @4, leaves an @4 file alone and refuses what is not a drawing |
+| H90 | A, A (0.3, changed); review 2026-10-27 (changed) | `validate` refuses each broken `@3` rule with its path and message, lists every violation with the count, writes nothing, and a missing repository path only warns on `open`; a README with one view is valid from 0.3, with two it is not |
 | H91 | A | `svg --channel`, `export.svg?channel=`, `export.mmd?channel=` and a request with a channel: defaults, the named channel's own view, every refusal |
 | H92 | B | a rename in the overview shows through the fact in a LinkedIn part with no mark, and marks the LinkedIn channel where a part keeps its own name |
-| H93 | B | adding and deleting a part and a connection in the overview change the facts; LinkedIn is marked and keeps its drawing, apart from the part whose only fact is gone |
+| H93 | B; review 2026-10-27 (changed) | adding and deleting a part and a connection in the overview change the facts; LinkedIn is marked and keeps its drawing, apart from the part whose only fact is gone |
 | H94 | B | moving, a form and the steps switch mark nothing; content edits mark; undo, redo and a reload keep the marks with the edits |
 | H95 | B | a session that edits the facts in the file marks the channel it did not redraw, by the same rules, and the editor follows |
 | H96 | C | four tabs in order, the current one, the marks with their counts, Keep as it is emptying a mark as one undoable edit |
-| H97 | C, F (0.3, changed), C-conversation (0.4, changed) | a channel with no drawing shows its stage with tools and Share disabled; switching tabs edits nothing; from 0.3 the README stage says it is not drawn yet and offers Draw it; from 0.4 there is no ask box; on a stage with no drawing `ai-button` still opens the AI panel, but `ai-send` (with text typed), the channel's suggestions and `ai-look-again` are disabled and nothing is sent, and they are enabled on the overview |
-| H98 | C, F (0.3, changed) | the address names channel and view and survives a reload, an old `?view=` link opens the channel holding it, and the tabs live in the narrow header menu |
-| H99 | D | with no engine the LinkedIn tab prepares the simple version from the overview as one undoable edit, pointing at the same facts |
+| H97 | C, F (0.3, changed), C-conversation (0.4, changed); review 2026-10-27 (changed) | a channel with no drawing shows its stage with tools and Share disabled; switching tabs edits nothing; from 0.3 the README stage says it is not drawn yet and offers Draw it; from 0.4 there is no ask box; on a stage with no drawing `ai-button` still opens the AI panel, but `ai-send` (with text typed), the channel's suggestions and `ai-look-again` are disabled and nothing is sent, and they are enabled on the overview |
+| H98 | C, F (0.3, changed); review 2026-10-27 (changed) | the address names channel and view and survives a reload, an old `?view=` link opens the channel holding it, and the tabs live in the narrow header menu |
+| H99 | D; review 2026-10-27 (changed) | with no engine the LinkedIn tab offers no engine or model and prepares the simple version from the overview as one undoable edit, its parts pointing at the same facts |
 | H100 | D | Design the post draws the LinkedIn channel from the facts with the fixture engine; Share packages it for the LinkedIn feed |
 | H101 | D | a rename in the LinkedIn channel is its own name and leaves the overview alone, a description corrects the fact, deleting a part keeps the fact |
-| H102 | E, D-preview (0.4, changed) | an empty LinkedIn channel is drawn with Draw it, switching channel starts no run, the drawing arrives as a preview and, kept, one undo step takes it away |
-| H103 | E, D-preview (0.4, changed) | Redraw it draws an outdated LinkedIn channel again from the facts, empties its marks and, kept, is one undo step |
+| H102 | E, D-preview (0.4, changed); review 2026-10-27 (changed) | an empty LinkedIn channel is drawn with Draw it, switching channel starts no run, the drawing arrives as a preview and, kept, one undo step takes it away |
+| H103 | E, D-preview (0.4, changed); review 2026-10-27 (changed) | Redraw it draws an outdated LinkedIn channel again from the facts, empties its marks and, kept, is one undo step |
 | H104 | F | a fixture refine in the overview corrects the facts, reaches a LinkedIn part through the fact and marks only the part that keeps its own name |
-| H105 | F | a refine on the LinkedIn channel with a scope changes only that channel; simplify rearranges the overview without losing a fact and refuses another channel |
+| H105 | F; review 2026-10-27 (changed) | a refine on the LinkedIn channel with a scope changes only that channel, and a refine naming a channel with no drawing, an unknown channel or a view of another channel is refused and writes nothing |
 | H106 | A (0.3) | a file with mechanisms, limits, evidence, held rows, a README view and a presentation with steps is valid, opens unchanged and saves through the server |
 | H107 | A (0.3) | `validate` refuses each broken rule 20–24 and the changed rules 5, 6, 8 and 16 with the documented path, writes nothing, and the server refuses the same file and the same save |
-| H108 | A (0.3) | a drawing written before 0.3 stays valid, opens and converts without gaining a mechanism, limit, evidence or step, and an editor edit adds none |
+| H108 | A (0.3); review 2026-10-27 (changed) | a drawing written before 0.3 stays valid, opens and converts without gaining a mechanism, limit, evidence or step, and an editor edit adds none |
 | H109 | A (0.3) | the README and presentation images draw the held mechanisms and the limit as rows, count them in the panel's height, and never draw a mechanism as a part |
 | H110 | B (0.3) | a scan answers the card and the focus options backed by the folder's files, leaves out the option whose file is missing, and writes nothing into the project |
 | H111 | B (0.3) | a second scan of the same commit answers at once from the cache, refresh scans again, a new commit is scanned again |
 | H112 | B (0.3) | a folder outside git or a repository with no commit is never cached; the folder check names git and an existing drawing |
 | H113 | B (0.3) | every folder sentence, the order of the scan checks, a failed scan, a cancelled slow scan and the 409 leave nothing cached |
-| H114 | D (0.3) | a tuning number is warned about on the LinkedIn view only, and the layout report carries count targets on LinkedIn and none elsewhere |
-| H115 | D (0.3), E-suggestions (0.4, changed) | a 24-part overview gets no size warning, no overview suggestion and no count targets, and the fold (from 0.4 the `Simpler` suggestion) still folds it without losing a fact |
+| H114 | D (0.3); review 2026-10-27 (changed) | a tuning number is warned about on the LinkedIn view only, and the layout report carries count targets on LinkedIn and none elsewhere |
+| H115 | D (0.3), E-suggestions (0.4, changed); review 2026-10-27 (changed) | a 24-part overview gets no size warning, no overview suggestion and no count targets, and the fold (from 0.4 the `Simpler` suggestion) still folds it without losing a fact |
 | H116 | D (0.3), F-second-look (0.4, changed) | a story run redraws the LinkedIn channel from the facts like a post run, empties its marks, touches nothing else, and a wrong story request is refused; the unknown-kind sentence names `revise` |
 | H117 | C (0.3) | a draw run reads facts with checked evidence, drops what the files do not back (the four warnings), draws every fact in the overview and each of the three channels, and writes one new file |
 | H118 | C (0.3) | a draw takes the next free file name up to 99 and replaces nothing, one kept scan serves several draws, a subfolder is drawn under its own docs folder with paths from the root, and a folder outside git (also a subfolder of one) is its own root |
 | H119 | C (0.3) | a draw that fails at the read, overview or channel, is cancelled, or cannot write its file (`docs` is a file, every name taken) writes and registers nothing; a left-out fact is added with one warning; the 409 |
-| H120 | C (0.3), F-second-look (0.4, changed) | a draw request is refused in the contracted order: scan, the scan's folder checked again, focus, option, text, channel, model, engine; `draw` stays a known run kind and the sentence for a wrong kind lists `revise` too |
-| H121 | E (0.3); B-home (0.6) | folder, card, focus, LinkedIn, draw and the editor on LinkedIn (opened by `draw-open`, never by itself since ADR 0016), offered the drawing the folder already holds first |
-| H122 | E (0.3); B-home (0.6) | wrong folders get one sentence and start nothing, a scanned commit shows its card at once and can be scanned again, a typed focus is drawn from the keyboard; the folder field is the combobox (`start-folder-list`) |
-| H123 | E (0.3); B-home (0.6) | a failed draw stays in its panel with every choice shown, `draw-error`, `draw-retry` (the retry endpoint, no body) and `draw-another`; with no engine the screen says what to install and offers the example |
+| H120 | C (0.3), F-second-look (0.4, changed); review 2026-10-27 (changed) | a draw request whose scan is no scan or has lost its folder, whose single focus is wrong or whose model is bad is refused with the first fault in the contracted order, a scan that failed, still runs or was cancelled is no scan to draw from, and nothing is started or written |
+| H121 | E (0.3); B-home (0.6); review 2026-10-27 (changed) | type a folder, be offered the drawing it already holds first, see its card and choices, tick a section and choose the LinkedIn post, and draw it into the next free name beside that drawing |
+| H122 | E (0.3); B-home (0.6); review 2026-10-27 (changed) | wrong folders get one sentence and start nothing, a scanned commit shows its card at once and can be scanned again, a typed focus is drawn from the keyboard; the folder field is the combobox (`start-folder-list`) |
+| H123 | E (0.3); B-home (0.6); review 2026-10-27 (changed) | a failed draw writes nothing and stays in the panel with its reason, Try again uses the retry endpoint and fails the same way, and a changed draw from the same folder opens from Ready |
 | H124 | F (0.3), D-preview (0.4, changed) | Draw it on the README tab (a preview, kept before the undo) is one undo step with the held rows drawn; a reworded limit it shows marks nothing, a new limit or a new fact marks it, Keep as it is and Redraw it each clear the mark in one undoable step; Share defaults to README |
 | H125 | F (0.3) | with no engine the README tab prepares the overview as the simple version, and editing the README splits between the facts and itself like any channel |
-| H126 | G (0.3), D-preview (0.4, changed) | Draw it on the Presentation tab (a preview, kept before the steps are looked at) keeps the fixture's three steps and drops the fourth with one warning; choosing, stepping and leaving a step light and dim parts, never resizing or editing; Share defaults to the slide |
+| H126 | G (0.3), D-preview (0.4, changed); review 2026-10-27 (changed) | Draw it on the Presentation tab (a preview, kept before the steps are looked at) keeps the fixture's three steps and drops the fourth with one warning; choosing, stepping and leaving a step light and dim parts, never resizing or editing; Share defaults to the slide |
 | H127 | G (0.3) | text, note, parts, order, adding and removing a step are each undoable and touch only the presentation; deleting a part a step names takes it out of the steps with a warning |
 | H128 | G (0.3) | with no engine the presentation is prepared with a step per numbered connection (or one step for the whole), and Redraw it makes it again as one undoable edit |
 | H129 | H (0.3) | an instruction goes to the facts or the channel story, in the record and the done event, marks other channels only on the facts route, a parts scope skips the question, and a story's format follows its channel (README `readme`, presentation `slide`, any other refused) |
-| H130 | H (0.3), E-suggestions (0.4, changed; renamed `H130_the_ai_panel_says_which_way_an_instruction_went.spec.ts`) | the AI panel says which way an instruction went (and the preview carries the sentence); a story on the overview may change only appearance (a move is observed; a renamed or new part is ignored with a warning); a selection of parts always changes the facts; `Simpler` names no route |
-| H131 | A-shapes | a card of each of the ten kinds and a compact of seven, a panel and a group: the five shaped kinds draw their `data-shape` in the editor and in the exported image, at the size of a plain part with the same text, light and dark, with no shape in the file |
+| H130 | H (0.3), E-suggestions (0.4, changed; renamed `H130_the_ai_panel_says_which_way_an_instruction_went.spec.ts`); review 2026-10-27 (changed) | the AI panel says whether an instruction changed the facts or redrew the channel from them, a story on the overview only moves things, and a selection of parts always changes the facts |
 | H132 | A-shapes | the picker's card and compact buttons are drawn in the chosen kind's shape; an added part wears it; changing the kind in the callout changes the outline and not the size or place; undo and redo; a panel is a card |
-| H133 | A-shapes | a LinkedIn post draws the same shapes in its post style, in the editor and in the portrait and wide images, every card 176 × 84; a card-form `llm` part on the overview is an `agent`, only a `panel` is `card`; viewing it writes nothing |
-| H134 | B-held | `validate` and `open` on six parts with no panel print no held items warning in any channel; Flat, No main path and Repeated label still show on the overview and the README at their paths, and LinkedIn is warned about none; a panel changes nothing |
+| H134 | B-held; review 2026-10-27 (changed) | `validate` and `open` on six parts with no panel print no held items warning in any channel; Flat, No main path and Repeated label still show on the overview and the README at their paths, and LinkedIn is warned about none; a panel changes nothing |
 | H135 | C-conversation | no ask box; the AI panel is closed on opening; Shift+Enter is a line break and Enter sends; a turn per run from `ai-send`, `channel-draw` and `explain-feed` with its text and where; summary, route and report on the latest turn only (the progress and Cancel are checked in H136, H141 and H144 on `[fixture:slow]` runs); an earlier turn keeps `ai-turn-result`; the thread is empty after a reload and nothing of it is in the file |
 | H136 | C-conversation | a failed and a cancelled run are turns that keep their error; Try again adds a turn with the same request; the text comes back to the input; nothing is written until a run succeeds |
-| H137 | C-conversation | with no engine the panel saves each instruction as a `saved` turn and a request with its channel and view, starts no run, takes shell-looking text as data, and the simple version of a channel is no turn; `ai-look-again` is off; a reload empties the thread |
+| H137 | C-conversation; review 2026-10-27 (changed) | with no engine the panel saves each instruction as a `saved` turn and a request with its channel and view, starts no run, takes shell-looking text as data, and the simple version of a channel is no turn; `ai-look-again` is off; a reload empties the thread |
 | H138 | D-preview | a result is a preview that stays past the old 3 s with its part lit; a drag and a delete are refused with the toast; `tool-undo` and `tool-redo` are disabled and their keys (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y) show the same toast; the share dialog and zoom still work; Accept keeps it as one undo step; redo; edits go through again |
 | H139 | D-preview | Undo on a preview returns to before the run and saves it (file and reload); redo brings the result back; a run that changes nothing shows no preview |
 | H140 | D-preview | a new instruction accepts the preview first (and the first run is its own undo step); an outside change to the file and a reload each end a preview as accepted, and no result is lost |
@@ -224,16 +356,16 @@ the scenario controls. Either may be dropped without losing a requirement id.
 | H145 | story-limits | a post and a README story whose first answer has an over-long description are repaired by the engine: saved with its own shorter text, `Fixing 1 problem in the answer` between the two check lines, no `Shortened` warning, the repair adding no warning |
 | H146 | story-limits | with `[fixture:stubborn]` the over-long description is saved at 240 characters ending in `…` with exactly one `Shortened the description to 240 characters` warning, after one repair turn only, for a post and a README story; the run succeeds |
 | H147 | story-limits | a post with a connection to `ghost` is saved without it after the repair turn; with `[fixture:stubborn]` too the run fails naming `The engine's LinkedIn post cannot be drawn:` and `ghost`, and the drawing file is byte for byte unchanged |
-| H148 | story-limits; B-home (0.6: `draw-ready`, then `draw-open`) | a draw from the home screen whose overview answer is over-long: one `Fixing 1 problem in the answer` with `stage: "overview"`, after the read and before the channel, a written drawing holding the engine's own overview description and no `Shortened` warning |
-| H149 | story-limits; B-home (0.6: the retry endpoint) | a draw failing at the channel stage writes nothing; `Try again` from the home screen makes no new scan or read (`Using the facts already read`, no engine lines in the read stage), reuses the overview, writes one drawing, and its warnings equal those of a draw of the same project that never failed |
+| H148 | story-limits; B-home (0.6: `draw-ready`, then `draw-open`); review 2026-10-27 (changed) | a draw whose overview answer is over-long gets one repair turn in the overview stage and ends in a written drawing with the engine\ |
+| H149 | story-limits; B-home (0.6: the retry endpoint); review 2026-10-27 (changed) | a draw that fails at the channel stage and then Try again makes no new read, reuses the overview, writes the drawing and carries the same warnings as a draw that never failed |
 | H150 | story-limits | a draw failing at the overview stage, then a draw with another channel: the read is reused, the overview is drawn by a call (engine lines, nothing reused), only that channel is drawn; after that success the next draw reads again |
-| H151 | story-limits | a draw failing at the channel stage, a file the read cites deleted from the folder with no new scan, the same draw again: `Using the facts already read` then `Checking the facts`, no engine line in the read stage, the overview drawn by a call (no `Using the overview already drawn`), a written drawing whose facts no longer cite the deleted file (nor hold the facts only it backed), with a warning naming it; another focus with the same scan reads again |
-| H152 | edges-behind | a connection level with a group's name, in the readme and the square image: the name is cut out of the line (no pixel differs from the same drawing without the line), the line is drawn left of the group, in it beyond the name and right of it, as one cubic with its label and badge, the report lists no part, and nothing moves |
+| H151 | story-limits; review 2026-10-27 (changed) | a file the read cites that is deleted after a failed draw is checked again on Try again: the facts already read are reused, the overview is drawn by a call and the drawing no longer cites the file |
+| H152 | edges-behind; review 2026-10-27 (changed) | a connection level with a group's name, in the readme and the square image: the name is cut out of the line (no pixel differs from the same drawing without the line), the line is drawn left of the group, in it beyond the name and right of it, as one cubic with its label and badge, the report lists no part, and nothing moves |
 | H153 | edges-behind | three stored parts in a column and a line from the first to the third: the overview draws it straight down behind the middle part, under it, and lists that part; the LinkedIn post turns it out on one side as one cubic clear of the part by 8 px with 24 px handles and lists nothing, its other two lines stay straight on facing sides, its label stays within 10 px, nothing moves |
-| H154 | story-limits-2 | six draws that all fail at the channel, one scan: another model and then another focus (and the other model again) each read the code again (`Reading the code`, `Checking the facts`, overview drawn by a call, no `Using …` line); the same trimmed focus and model with another channel, twice, reuses the read and the overview with no engine line; nothing is written and nothing is registered |
+| H154 | story-limits-2; review 2026-10-27 (changed) | six draws that all fail at the channel, one scan: another model and then another focus (and the other model again) each read the code again (`Reading the code`, `Checking the facts`, overview drawn by a call, no `Using …` line); the same trimmed focus and model with another channel, twice, reuses the read and the overview with no engine line; nothing is written and nothing is registered |
 | H155 | story-limits-2 | a post answer with two problems (`[fixture:invalid][fixture:overlong]`): one repair turn announced `Fixing 2 problems in the answer` right after the first check line, saved without `ghost` and with the engine's own description and no `Shortened` warning; with `[fixture:stubborn]` too, the same plural line once, the run fails naming the LinkedIn post and `ghost`, the file is as it was |
-| H156 | story-limits-2; B-home (0.6: `draw-ready`, then `draw-open`) | a draw from the home screen whose overview answer stays over 240 characters after its repair turn (`[fixture:overlong][fixture:stubborn]`): one `Fixing 1 problem in the answer` in the overview stage and no second, an editor and no `draw-error`, the file written and registered, the overview lede 240 characters ending in `…` with exactly one `Shortened the description to 240 characters`, the read's four warnings first, the post not cut |
-| H157 | story-limits-2; B-home (0.6: the retry endpoint, `draw-open`) | a draw failing at the overview call, then `draw-retry` on the home screen: the screen is recorded; the read stage shows `running` with `Using the facts already read`, `done` once the overview is `running`, no stage starts before the one before is done, the overview is drawn by a call, the drawing opens and is written once with the four read warnings |
+| H156 | story-limits-2; B-home (0.6: `draw-ready`, then `draw-open`); review 2026-10-27 (changed) | a draw whose overview answer stays over its limit after the repair turn is shortened to 240 characters with one warning and still writes and registers the drawing |
+| H157 | story-limits-2; B-home (0.6: the retry endpoint, `draw-open`); review 2026-10-27 (changed) | a draw failing at the overview call, then `draw-retry` on the home screen: the screen is recorded; the read stage shows `running` with `Using the facts already read`, `done` once the overview is `running`, no stage starts before the one before is done, the overview is drawn by a call, the drawing opens and is written once with the four read warnings |
 | H158 | A-present | `present-start` and `tour-start` exist on the presentation channel only, stay in the header at 820 px with their names and out of `header-menu`, are off with the title `Add a step first` with no drawing or no step; Present opens `present` in `present` mode on the opening slide in the drawing's theme (dark, then light after `tool-theme`) with focus on the layer and Tab held inside, asks for full screen and `data-fullscreen` agrees with `document.fullscreenElement`, the layer fills the window, the browser's own exit (when granted) or Escape leaves with focus on `present-start` and no step current; nothing saved and no run |
 | H159 | A-present | Right, Down, Space, PageDown, Left, Up, PageUp, Home, End and a click on `present-slide` walk the opening slide and three steps, never past either end; `present-status` `Step <i> of <n>: <text>` and the caption title on the opening slide; the band's text (whole) and `<i> / <n>`; the opening slide dims nothing and has no band, a step slide dims the parts outside the step (a group even with a part in it lit), every edge unless both ends are in the step, and the text, with `data-dim` and `opacity` 0.25; boxes keep their shape; the hint goes with the first change and stays gone |
 | H160 | A-present | `present-note-toggle` hidden on the opening slide and N doing nothing there, `aria-expanded` closed on entry, N or the button opens it, kept open or closed from step to step, the note with its newline or `No note for this step`; Space and Enter on the focused button toggle without moving; Escape, `Exit` and Enter on a focused `Exit` leave with focus on `present-start`, the step shown current and lit in the steps panel; Delete, Backspace, tool keys, `/`, Ctrl+K, Ctrl+Z and a click on another part's place reach nothing: selection, tool, search and file unchanged |
@@ -243,82 +375,89 @@ the scenario controls. Either may be dropped without losing a requirement id.
 | H164 | C-slides | the share dialog on the presentation channel downloads `<slug>-slides.pdf` (`%PDF-1.4`, `%%EOF`, `/Count` 4, four pages of `/MediaBox [0 0 960 540]`, four 3840 × 2160 `DCTDecode` images starting `FF D8`) and `<slug>-slides.zip` (four stored entries `-slide-00.png` … `-03.png`, 3840 × 2160, checksums right) whose slides are the PDF's pages in the same order (decoded by the browser and matched); one file per click; `download-png` still gives the slide at twice the size; the drawing is untouched |
 | H165 | C-slides | the dialog's theme reaches the zip and the PDF (light and dark differ slide by slide, a dark PDF is nearer the dark slides); the title off or the description on changes the opening slide and no other; texts off changes every slide; the square format keeps the entries and the 3840 × 2160 size and changes the slides through its toggles |
 | H166 | C-slides | no slide download in the dialog of the overview, README or LinkedIn channel; an accented title with `!` is `creme-brulee-cafe`; eleven steps are twelve pages and entries `-00` to `-11`; one step is two; the last step removed turns both buttons off with `Add a step first` and nothing downloads, undo turns them on |
-| H167 | D-drawing | dragging one part across a group keeps the other labels, badges and frames still, lifts the part and lights its own lines, and is saved once on release |
+| H167 | D-drawing; review 2026-10-27 (changed) | dragging one part across a group keeps the other labels, badges and frames still, lifts the part and lights its own lines, and is saved once on release |
 | H168 | D-drawing | a drop shows the group it would join while dragging, never covers another part, and stays exactly where it is released when it overlaps nothing |
 | H169 | D-drawing | alignment guides and equal-gap marks snap a dragged part within 6 screen pixels, Alt turns snapping off, release moves nothing, and no export draws a guide |
 | H170 | D-drawing | sides are held while a part is dragged, flip to the stateless choice on release, and the editor paths then equal the SVG export |
-| H171 | D-drawing | connections are neutral until a part or line is hovered or selected or the line is numbered, and every export draws the same neutral lines in light and dark |
+| H171 | D-drawing; review 2026-10-27 (changed) | connections are neutral until a part or line is hovered or selected or the line is numbered, and every export draws the same neutral lines in light and dark |
 | H172 | D-drawing | a line that passes behind a part leaves a faint trace of itself over that part in the editor and the image, and a line that passes behind nothing leaves none |
-| H173 | D-drawing | a label sits clear of every other line and on its own, in the editor and the image, and hovering a label lights its own connection without moving it |
+| H173 | D-drawing; review 2026-10-27 (changed) | a label sits clear of every other line and on its own, in the editor and the image, and hovering a label lights its own connection without moving it |
 | H174 | D-drawing | a connection leaves the next free side when its facing side is busy, close parts get handles that never leave the gap, ports in line give a straight line, and the arrowhead touches its part |
-| H175 | D-drawing | three lines into one side from one direction share a trunk that is drawn once, lines from opposite directions or in another style do not, and the editor and the image agree |
+| H175 | D-drawing; review 2026-10-27 (changed) | three lines into one side from one direction share a trunk that is drawn once, lines from opposite directions or in another style do not, and the editor and the image agree |
 | H176 | D-drawing | a part five parts use is marked used by 5 and its lines from them are not drawn but a step line is, the lines show on hover selection and drag, and the report counts only what is drawn |
-| H177 | D-drawing | a group name sits on a halo and nothing is cut out of a line that crosses its header, and lines that enter a member from above come in right of the name |
-| H178 | D-drawing | the layout orders the parts it places to cut crossings, closes empty columns, keeps place hints, step order and stored positions, and gives the same layout for the same file |
-| H179 | D-drawing | every kind of part draws its own outline at its contracted box, in the editor and in the exported image, in light and dark, and a panel is a card of its kind |
-| H180 | D-drawing | a panel draws no row in the editor or in any image, is as big as a card of its kind, and its callout lists and edits what it holds |
-| H181 | D-drawing | the sub-line switch shrinks the parts of one view only, is one undoable saved edit that leaves no field when on, and the share image follows it unless show-sub says otherwise |
-| H182 | D-drawing | a LinkedIn post sizes each card by its shape in the post style, a long label stops at three lines inside the box, and sub-lines off take 18 px from every card |
-| H183 | D-drawing | the empty LinkedIn stage chooses the engine and model that Draw it uses, shares the choice with the AI panel both ways, goes off while a run is going, and is absent with no engine |
+| H177 | D-drawing; review 2026-10-27 (changed) | lines that enter a member under a group\ |
+| H178 | D-drawing; review 2026-10-27 (changed) | the layout orders the parts it places to cut crossings, closes empty columns, keeps place hints, step order and stored positions, and gives the same layout for the same file |
+| H179 | D-drawing; review 2026-10-27 (changed) | every kind of part draws its own outline at its contracted box, in the editor and in the exported image, in light and dark, and a panel is a card of its kind that draws no row |
+| H180 | D-drawing; review 2026-10-27 (changed) | a panel draws no row in the editor or in any image, is as big as a card of its kind, and its callout lists and edits what it holds |
+| H181 | D-drawing; review 2026-10-27 (changed) | the sub-line switch shrinks the parts of one view only, is one undoable saved edit that leaves no field when on, and the share image follows it unless show-sub says otherwise |
+| H182 | D-drawing; review 2026-10-27 (changed) | a LinkedIn post sizes each card by its shape in the post style, a long label stops at three lines inside the box, sub-lines off take 18 px from every card, and a panel, a group and its member wear their outlines with no row |
+| H183 | D-drawing; review 2026-10-27 (changed) | the empty LinkedIn stage chooses the engine and model that Draw it uses, shares the choice with the AI panel both ways and shows it on the home screen, and goes off while a run is going |
 | H184 | D-drawing | a part with an inside draws the same open mark in the editor and in the exported image, on a card, a compact part, a panel and a group, and the mark changes no size |
-| H190 | S-selections | a scan offers the project\ |
+| H190 | S-selections; review 2026-10-27 (changed) | a scan offers the project\ |
 | H191 | S-selections; B-home (0.6: the files of an option are chips) | after a scan the home screen lists the whole system, the sections, the flows and something else as checkboxes, none ticked, each option with its title, sentence and files, and says so when the scan found no option |
-| H192 | S-selections; B-home (0.6) | tick the whole system, a section, a flow and your own words from the keyboard, choose the LinkedIn post, draw all four in one run (three side by side, the fourth waiting), see `Ready`, press `Open` and land on the first choice with one file that holds them all |
+| H192 | S-selections; B-home (0.6); review 2026-10-27 (changed) | tick the whole system, a section, a flow and your own words, choose the LinkedIn post, draw all four in one run side by side in three slots, and open from Ready the first choice of one file that holds them all |
 | H193 | S-selections | a draw of several choices is refused with the first fault in the contracted order, a single focus still works as a list of one, and nothing is started or written |
-| H194 | S-selections; A-jobs-sources (0.6) | one draw run of three choices lists them from the start, reads each with events that name their choice (a choice's lines name it and its stage, the two lines of the write name none and come last), and writes one valid format 4 file with every choice, its overview and the README; ids are slugs |
-| H195 | S-selections; A-jobs-sources (0.6; renamed) | a failure in a later choice no longer stops the file: it is written with the finished choices and the failed one is marked, the same draw again reads anew, and `Try again` adds the failed choice to the same file; the control is the drawing of a draw that never failed |
-| H196 | S-selections; B-home (0.6) | a draw whose second choice fails is `Ready` with the first choice written and the second marked; `Try again` draws the failed choice into the same file; a choice that fails every time fails its retry with `draw-error` |
-| H197 | S-selections; Z-index (0.6; merged text) | cancelling a draw in its second choice shows the first done and the second cancelled, writes nothing, `Try again` draws every choice into a new file with the finished one from what was kept; over the API the third choice (started beside the slow one) is done too and the next draw reuses both |
-| H198 | S-selections | a format 3 file opens as one choice with every fact, view, request and mark as it was and no new warning, is written back as format 4 by migrate and by the server, draws exactly the same images, and an invalid one is not converted |
-| H199 | S-selections | a file of four choices validates, opens, imports, saves and reopens; each broken rule is refused with its choice in the path; twelve choices are valid and thirteen are not; a fact in a detail view is drawn |
+| H194 | S-selections; A-jobs-sources (0.6); review 2026-10-27 (changed) | one draw run of three choices lists them from the start, reads each with events that name their choice (a choice's lines name it and its stage, the two lines of the write name none and come last), and writes one valid format 4 file with every choice, its overview and the README; ids are slugs |
+| H195 | S-selections; A-jobs-sources (0.6; renamed); review 2026-10-27 (changed) | a failure in the second choice writes the finished choices and marks the failed one, and the same draw again reads every choice anew and draws what a draw that never failed draws |
+| H196 | S-selections; B-home (0.6); review 2026-10-27 (changed) | a draw of three choices whose third fails every time is Ready with the others written and the failed one shown, and Try again on it ends in draw-error with its reason, reads none of the finished ones again and leaves the file as it was |
+| H197 | S-selections; Z-index (0.6; merged text); review 2026-10-27 (changed) | cancelling a draw over the API while its slow second choice is read keeps the choices that finished beside it done and writes nothing, and the next draw without the cancelled choice draws the others from what was kept |
+| H198 | S-selections; review 2026-10-27 (changed) | a format 3 file opens as one choice with every fact, view, request and mark as it was and no new warning, is written back as format 4 by migrate and by the server, draws exactly the same images, and an invalid one is not converted |
+| H199 | S-selections; review 2026-10-27 (changed) | a file of four choices validates, opens, imports, saves and reopens; each broken rule is refused with its choice in the path; twelve choices are valid and thirteen are not; a fact in a detail view is drawn |
 | H200 | S-selections | a move, a rename, a new part and the steps switch in one choice change that choice alone, the other choices stay byte for byte and unmarked, and undo walks back through the edits of every choice |
 | H201 | S-selections | the image, the Mermaid text, the command, the share dialog, a saved request and a run each take the current choice: the default is the one that holds the view or else the first, and a wrong choice or a view of another choice is refused |
-| H202 | S-selections | the whole system of a draw is a map of a part and a card that holds its inside in a detail view, every fact is on the map or in a detail view, a flow stays in one view, the map has its own report target, and the editor goes from the map into the inside and back |
+| H202 | S-selections; review 2026-10-27 (changed) | the whole system of a draw is a map of a part and a card that holds its inside in a detail view, every fact is on the map or in a detail view, a flow stays in one view, the map has its own report target, and the editor goes from the map into the inside and back |
 | H203 | S-selections | a click without moving goes into a part with an inside and is no edit, a drag of the same part moves it and opens nothing, Shift+click selects it, and Enter on it opens it; a part with no inside still opens its callout |
 | H204 | S-selections | a part with an inside draws the same open mark in the editor, the image and the command: 20 px, 8 px inside a card\ |
 | H205 | S-selections | the views panel lists the whole system, the sections, the flows and the user\ |
 | H206 | S-selections | the keyboard reaches every entry of the views panel in order, Up and Down do not wrap, Home and End, Enter and Space go to the view; the panel is 240 px beside a stage that narrows, folds to a 40 px strip that is remembered for every drawing, and is absent for one choice with one view |
 | H207 | S-selections | below 900 px the views panel is in the header menu with the same entries, choosing one goes there and closes the menu, 900 px brings the panel back beside the stage, and the old views button exists at no width |
 | H208 | S-selections | the address, the tabs and their marks, the crumbs, search and an instruction all follow the current choice, and an older link with only a view opens the choice that holds it |
-| H209 | A-jobs-sources | a draw of four choices on three slots: three running at once, the fourth `waiting` with `Waiting for a free engine`, the contracted first eight events, one file in request order |
-| H210 | A-jobs-sources | one slot: choices, a scan of another folder and an instruction run go one after another in the order they asked; a cached scan takes no slot |
-| H211 | A-jobs-sources | time spent waiting for a slot counts toward no time limit, for a choice or a scan (a 10 s limit, a longer wait, still run) |
-| H212 | A-jobs-sources | cancel takes waiting choices and a waiting scan out of the queue, frees the slot for the next draw and writes nothing |
+| H209 | A-jobs-sources; review 2026-10-27 (changed) | a draw of four choices on three slots: three running at once, the fourth `waiting` with `Waiting for a free engine`, the contracted first eight events, one file in request order |
+| H210 | A-jobs-sources; review 2026-10-27 (changed) | one slot: choices, a scan of another folder and an instruction run go one after another in the order they asked; a cached scan takes no slot |
+| H211 | A-jobs-sources; review 2026-10-27 (changed) | time spent waiting for a slot counts toward no time limit, for a choice or a scan (a 10 s limit, a longer wait, still run) |
+| H212 | A-jobs-sources; review 2026-10-27 (changed) | cancel takes waiting choices and a waiting scan out of the queue, frees the slot for the next draw and writes nothing |
 | H213 | A-jobs-sources | a choice that fails ends alone, the others go on, the file holds the finished ones, the run `succeeded` and the failed choice carries its error; ids as without it |
-| H214 | A-jobs-sources | `Try again` after a draw that succeeded with a failed choice draws that choice into the same file and drawing, the other choices exactly as they were, `changed` fired, and its refusals |
-| H215 | A-jobs-sources | a draw in which every choice failed, or that was cancelled, writes nothing; `Try again` draws every choice into a new file from what was kept; refusals in order |
-| H216 | A-jobs-sources | the view ids of a draw do not depend on which choice finishes first (the first choice finishes last) |
-| H217 | A-jobs-sources | every progress line carries `at` and `source`; a choice reports `filesRead`, `parts` and `lastEngineEventAt`; the `choice` events and the record's fields |
-| H218 | A-jobs-sources | choices ticked while a draw runs join it, take its channel, wait for slots like its own, and land in its one file; a second draw is told which one to join |
-| H219 | A-jobs-sources | every refusal of a join in the contracted order (a duplicate, a second typed text, another scan, a draw that is writing or ended), a newer scan accepted, a cancel stops the joined choice |
-| H220 | A-jobs-sources | the Activity list shows running, waiting and finished scans and draws with their fields, in order, and replays their event streams; the 409 names `scanId` / `runId` |
-| H221 | A-jobs-sources | finished jobs are listed for the keep time only, a scan stays usable, what a failed draw kept expires, a restart empties the list and changes `instance` |
-| H222 | A-jobs-sources | Recent lists the folders scanned, cached, registered or drawn, newest first up to twenty, leaves a gone folder out, and an entry without drawings is forgotten with its checks in order |
+| H214 | A-jobs-sources; review 2026-10-27 (changed) | `Try again` after a draw that succeeded with a failed choice draws that choice into the same file and drawing, the other choices exactly as they were, `changed` fired, and its refusals |
+| H215 | A-jobs-sources; review 2026-10-27 (changed) | a draw in which every choice failed, or that was cancelled, writes nothing; `Try again` draws every choice into a new file from what was kept; refusals in order |
+| H216 | A-jobs-sources; review 2026-10-27 (changed) | the view ids of a draw do not depend on which choice finishes first (the first choice finishes last) |
+| H217 | A-jobs-sources; review 2026-10-27 (changed) | every progress line carries `at` and `source`; a choice reports `filesRead`, `parts` and `lastEngineEventAt`; the `choice` events and the record's fields |
+| H218 | A-jobs-sources; review 2026-10-27 (changed) | choices that join a running draw take its channel, are drawn beside its own and land in its one file in the order they joined, a second draw of the folder is told which draw to join, and an own choice that passes the time limit ends alone |
+| H219 | A-jobs-sources; review 2026-10-27 (changed) | a join is refused with the contracted answer, in the order of its checks, for a duplicate, a second text, another scan or a draw that has ended, a newer scan of the same commit is accepted, and cancelling the draw stops the choice that joined |
+| H220 | A-jobs-sources; review 2026-10-27 (changed) | the Activity list shows running, waiting and finished scans and draws with their fields, in order, and replays their event streams; the 409 names `scanId` / `runId` |
+| H221 | A-jobs-sources; review 2026-10-27 (changed) | finished jobs are listed for the keep time only, a scan stays usable, what a failed draw kept expires, a restart empties the list and changes `instance` |
+| H222 | A-jobs-sources; review 2026-10-27 (changed) | Recent lists the folders scanned, cached, registered or drawn, newest first up to twenty, leaves a gone folder out, and an entry without drawings is forgotten with its checks in order |
 | H223 | A-jobs-sources | Found lists the git repositories under the search home two levels deep, newest commit first up to fifty, kept five minutes, made again on request, Recent excluded |
-| H224 | A-jobs-sources | the test folder dialog answers a folder, cancelled, unavailable or a failure; one dialog opens at a time and a closed request frees it; a picked folder scans like a pasted one; the start-up line names the switch |
-| H225 | A-jobs-sources | a test link is checked without copying, copied (shallow), scanned and drawn into its copy; a second scan fetches the newest commit; a branch link switches the copy and back; the drawing stays byte for byte |
+| H224 | A-jobs-sources; review 2026-10-27 (changed) | the test folder dialog answers a folder, cancelled, unavailable or a failure; one dialog opens at a time and a closed request frees it; a picked folder scans like a pasted one; the start-up line names the switch |
+| H225 | A-jobs-sources; review 2026-10-27 (changed) | a test link is checked without copying, copied (shallow), scanned and drawn into its copy; a second scan fetches the newest commit; a branch link switches the copy and back; the drawing stays byte for byte |
 | H226 | A-jobs-sources | about ninety refused links (shell characters, a leading dash, credentials, other schemes, unknown hosts, device names, branch rules) are refused on check and on scan before anything is copied |
-| H227 | A-jobs-sources | a link that cannot be copied fails with one plain sentence and leaves no copy; a cancelled copy frees its lock while other copies go on; an update that cannot fetch scans the copy as it is |
-| H228 | A-jobs-sources | a copy is deleted with its last drawing or from Recent only when nothing else is in it and nothing runs on it; every refusal forgets nothing; a copy in use is not updated or switched |
-| H229 | B-home | the home screen: three columns that fold at 1240, 860 and 640 px, `activity-toggle`, the stepper, Activity idle, the theme kept in the browser, no hero or footer |
-| H230 | B-home | the drawings are cards with previews that step through the views on hover, search by title and path, `library-none`, a layout kept in the browser, Enter opens, the empty state |
+| H227 | A-jobs-sources; review 2026-10-27 (changed) | a link that cannot be copied fails with one plain sentence and leaves no copy; a cancelled copy frees its lock while other copies go on; an update that cannot fetch scans the copy as it is |
+| H228 | A-jobs-sources; review 2026-10-27 (changed) | a copy is deleted with its last drawing or from Recent only when nothing else is in it and nothing runs on it; every refusal forgets nothing; a copy in use is not updated or switched |
+| H229 | B-home; review 2026-10-27 (changed) | the home screen: three columns that fold at 1240, 860 and 640 px, `activity-toggle`, the stepper, Activity idle, the theme kept in the browser, no hero or footer |
+| H230 | B-home; review 2026-10-27 (changed) | the drawings are cards with previews that step through the views on hover, search by title and path, `library-none`, a layout kept in the browser, Enter opens, the empty state |
 | H231 | B-home | the folder combobox and the navigation list Recent and Found with branch and age; filtering, `start-folder-none`, a pasted path closes the list; taking an entry scans nothing; `Look again` |
 | H232 | B-home | `Choose folder…` with the test dialog: a slow pick (disabled, `Dialog open…`), a path outside ASCII, a folder with a drawing, cancelled, refused, failed and unavailable change nothing |
-| H233 | B-home | a pasted link is checked as typed, copied, scanned and drawn; the copy is named by its link in the card, the lists and the library; a newer commit is fetched |
-| H234 | B-home | a link that cannot be copied ends with the server's sentence; a cancelled copy leaves no half copy and frees the panel |
-| H235 | B-home | a scanned folder joins Recent and is forgotten on request; a copy is deleted only when the second question is accepted |
+| H233 | B-home; review 2026-10-27 (changed) | a pasted link is checked as typed, copied, scanned and drawn; the copy is named by its link in the card, the lists and the library; a newer commit is fetched |
+| H234 | B-home; review 2026-10-27 (changed) | a link that cannot be copied ends with the server's sentence; a cancelled copy leaves no half copy and frees the panel |
+| H235 | B-home; review 2026-10-27 (changed) | a scanned folder joins Recent and is forgotten on request; a copy is deleted only when the second question is accepted |
 | H236 | B-home | the choosing step counts what is ticked, names the destination in its summary and `Change folder` clears the ticks and the channel |
-| H237 | B-home | three choices run side by side with their own time, line, files and parts; the draw ends on `Ready` with a notice and no editor; Activity; one file; ids in request order |
-| H238 | B-home | one engine slot: choices wait and say so, a scan of another folder waits in the same queue, Activity and the panel say so, pressing a job moves the panel |
-| H239 | B-home | a draw runs on while another repository is scanned and drawn; Activity lists each job; the panel follows the one pressed and keeps the ended ones; each file in its own repository |
-| H240 | B-home | a choice that fails leaves the others in the file; `Ready` offers `Try again`, which draws it into the same file through the retry endpoint |
-| H241 | B-home | choosing more for a folder whose draw runs adds them to that draw with its channel locked and explained; rows are added; one file holds them all |
-| H242 | B-home | reloading the page in the middle of a three-choice draw finds the job again with the same rows going on, and a second page sees it too |
-| H243 | B-home | when the server restarts in the middle of a draw the page says `The server restarted; 1 job stopped` once, lists none and frees the panel |
-| H244 | B-home | a choice whose engine says nothing for 30 s shows `Quiet for <s> s — still running (limit <m> min)` with the server's limit while the others do not; it goes with the next line |
-| H245 | B-home | the home screen works from the keyboard in order: `Ctrl K` finds the folder search, Enter takes and scans, Enter on a destination draws |
+| H237 | B-home; review 2026-10-27 (changed) | three choices run side by side with their own time, line, files and parts; the draw ends on `Ready` with a notice and no editor; Activity; one file; ids in request order |
+| H238 | B-home; review 2026-10-27 (changed) | one engine slot: choices wait and say so, a scan of another folder waits in the same queue, Activity and the panel say so, pressing a job moves the panel |
+| H239 | B-home; review 2026-10-27 (changed) | a draw runs on while another repository is scanned and drawn; Activity lists each job; the panel follows the one pressed and keeps the ended ones; each file in its own repository |
+| H240 | B-home; review 2026-10-27 (changed) | a choice that fails leaves the others in the file; `Ready` offers `Try again`, which draws it into the same file through the retry endpoint |
+| H241 | B-home; review 2026-10-27 (changed) | choosing more for a folder whose draw runs adds them to that draw with its channel locked and explained; rows are added; one file holds them all |
+| H242 | B-home; review 2026-10-27 (changed) | reloading the page in the middle of a three-choice draw finds the job again with the same rows going on, and a second page sees it too |
+| H243 | B-home; review 2026-10-27 (changed) | when the server restarts in the middle of a draw the page says `The server restarted; 1 job stopped` once, lists none and frees the panel |
+| H244 | B-home; review 2026-10-27 (changed) | a choice whose engine says nothing for 30 s shows `Quiet for <s> s — still running (limit <m> min)` with the server's limit while the others do not; it goes with the next line |
+| H245 | B-home; review 2026-10-27 (changed) | the home screen works from the keyboard in order: `Ctrl K` finds the folder search, Enter takes and scans, Enter on a destination draws |
 | H246 | B-home | Activity keeps a finished scan with its choices across a reload until it expires; the panel stops following what is gone or left; `New drawing` |
-| H247 | B-home | cancelling a draw with a slow second choice keeps the first done, shows the second cancelled, writes nothing, and `Try again` draws both into a new file (the screen half of H197, on a server of its own) |
+| H247 | B-home; review 2026-10-27 (changed) | cancelling a draw with a slow second choice keeps the first done, shows the second cancelled, writes nothing, and `Try again` draws both into a new file (the screen half of H197, on a server of its own) |
+| H248 | review 2026-10-27 (new) | without an engine the home screen says what to install, keeps Scan off and sends nothing for a typed folder, and offers the example drawing, which opens |
+| H249 | review 2026-10-27 (new) | a section ticked on the home screen and drawn for LinkedIn is followed in its row and three stages, ends on Ready with Open, and opens in the editor on the LinkedIn channel of that section with its overview drawn |
+| H250 | review 2026-10-27 (new) | tick the whole system, a section, a flow and your own words from the keyboard, choose the LinkedIn post with Space, and Enter sends one draw of all four in the order of the list |
+| H251 | review 2026-10-27 (new) | a choice of the draw that failed still counts against a join, a join made once the draw is writing its file is refused as writing or ended, and the file holds only what the draw held |
+| H252 | review 2026-10-27 (new) | a choice that fails every time is tried again into the same file and fails again, drawing none of the finished choices and leaving the file as it was |
+| H253 | review 2026-10-27 (new) | a session that writes the drawing while an instruction runs makes the run fail, nothing of the run is written and the session edit stays |
+| H254 | review 2026-10-27 (new) | simplify rearranges the overview without losing a fact or touching another channel, fails and writes nothing when it would lose one, and is refused on another channel |
 
 ## Requirement map
 

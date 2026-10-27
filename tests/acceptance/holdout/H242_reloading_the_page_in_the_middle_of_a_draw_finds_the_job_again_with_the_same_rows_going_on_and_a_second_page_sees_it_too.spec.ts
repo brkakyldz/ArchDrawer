@@ -8,7 +8,7 @@ import { homeServer, drawOnHome, rowFacts, jobsOnScreen, jobIn, clock, activityN
 // were (their times not restarted, what had finished still finished, the rest still running), and a second page does the same;
 // the draw is never started twice and ends on Ready with its notice.
 test('H242 [JOB-7 HOME-7 HOME-4 HOME-6 #202] reloading in the middle of a draw of three choices shows the same three rows going on, with their times and states kept, and a second page finds the job too', async ({ page, request }) => {
-  test.setTimeout(360_000);
+  test.setTimeout(90_000);
   const project = await gitRepo('home-reload');
   const server = await homeServer(page, request, { stepMs: '700' });
   try {
@@ -48,7 +48,7 @@ test('H242 [JOB-7 HOME-7 HOME-4 HOME-6 #202] reloading in the middle of a draw o
     } finally { await other.close(); }
 
     // The draw ends once: the finished rows read as they would have, and the page that saw it running says it is ready.
-    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 240_000 });
+    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 30_000 });
     for (const r of await rowFacts(page)) expect(r).toMatchObject({ state: 'done', line: 'Drawn · 8 parts' });
     await expect(page.getByTestId('job-notice')).toBeVisible({ timeout: 15_000 }); await expect(page.getByTestId('editor')).toHaveCount(0);
     const jobs = (await activityNow(request, server.base)).jobs.filter(j => j.type === 'draw');

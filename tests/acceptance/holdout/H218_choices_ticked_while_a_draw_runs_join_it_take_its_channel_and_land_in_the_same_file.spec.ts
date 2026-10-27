@@ -12,7 +12,7 @@ const HOLD = 'Hold [fixture:slow]', HOLD_ID = 'hold-fixture-slow';
 // draw to join, and choices that join take the draw's channel, engine and model, are drawn side by side with its own and land in the one file
 // the draw writes, after its own choices, in the order they joined; the draw is not started twice.
 test('H218 [JOB-4 START-7 #197] choices that join a running draw take its channel, are drawn beside its own and land in its one file in the order they joined, and a second draw of the folder is told which draw to join', async () => {
-  test.setTimeout(300_000);
+  test.setTimeout(270_000);
   const server = await jobServer({ slots: 3, stepMs: 150 });
   try {
     const project = await gitRepo('join-lands');
@@ -21,7 +21,7 @@ test('H218 [JOB-4 START-7 #197] choices that join a running draw take its channe
     // A draw is running: one choice done, the slow one still reading.
     const runId = await drawOn(server, scan.id, [option('o2'), typed(HOLD)], 'readme');
     const stream = watch(server, `/api/runs/${runId}/events`);
-    await until(() => runRec(server, runId), r => r.choices[0].status === 'done' && r.choices[1].status === 'running', 'the first choice to be done', 60_000, 50);
+    await until(() => runRec(server, runId), r => r.choices[0].status === 'done' && r.choices[1].status === 'running', 'the first choice to be done', 15_000, 50);
 
     // A new draw of the folder is refused and names the draw to join.
     const again = await server.post('/api/runs', { kind: 'draw', scan: scan.id, choices: [{ kind: 'whole' }], channel: 'readme', engine: 'fixture', model: null });
@@ -46,13 +46,13 @@ test('H218 [JOB-4 START-7 #197] choices that join a running draw take its channe
     }
 
     // They are drawn while the slow choice still reads, and are done first.
-    const mid = await until(() => runRec(server, runId), r => r.choices[2].status === 'done' && r.choices[3].status === 'done', 'the joined choices to be done', 120_000, 100);
+    const mid = await until(() => runRec(server, runId), r => r.choices[2].status === 'done' && r.choices[3].status === 'done', 'the joined choices to be done', 30_000, 100);
     expect(mid.choices[1].status, 'the slow choice is still reading').toBe('running');
     expect(mid.status).toBe('running');
     expect(await exists(join(project.dir, 'docs')), 'nothing is written before the last choice ends').toBe(false);
 
     // The draw ends once, with one file of all four choices: its own two, then the joined two, all in the draw's channel.
-    const run = await awaitRun(server, runId, 'succeeded', 240_000);
+    const run = await awaitRun(server, runId, 'succeeded', 90_000);
     expect(states(run)).toEqual([`${SLUG.o2}:done`, `${HOLD_ID}:done`, `${SLUG.o3}:done`, `${SLUG.o1}:done`]);
     const file = join(project.dir, 'docs', 'architecture.archdraw.json');
     const doc = await readDoc(file);

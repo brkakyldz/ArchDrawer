@@ -14,8 +14,8 @@ const IN_USE = 'This repository is in use: try again when its scans and instruct
 // with `deleteCopy=true` removes the copy too, but only when it is a copy, no other drawing of the list is in it and nothing runs on it; every
 // check comes before anything is forgotten. The same through `Recent`. A copy in use is not updated, and a link asking for another branch of it
 // is refused with one plain sentence.
-test('H228 [SRC-6 SRC-5 JOB-1 START-4 #199] a copy is deleted with its drawing or from Recent only when it is a copy, no other drawing is in it and nothing runs on it, every refusal forgets nothing, and a copy in use is not updated', async () => {
-  test.setTimeout(300_000);
+test('H228 [SRC-6 SRC-5 START-4 #199] a copy is deleted with its drawing or from Recent only when it is a copy, no other drawing is in it and nothing runs on it, every refusal forgets nothing, and a copy in use is not updated', async () => {
+  test.setTimeout(60_000);
   const server = await jobServer({ remotes: true, slots: 3, stepMs: 100 });
   try {
     const shop = await makeRemote(server, LINK);
@@ -60,21 +60,21 @@ test('H228 [SRC-6 SRC-5 JOB-1 START-4 #199] a copy is deleted with its drawing o
     const headBefore = await headOf(copy);
     const holdScan = await scanOn(server, { link: `https://${LINK}` });
     const holdRun = await drawOn(server, holdScan.id, [typed('Hold [fixture:slow]')], 'readme');
-    await until(() => runRec(server, holdRun), r => r.status === 'running' && r.progress.length > 0, 'the slow draw to run', 30_000);
+    await until(() => runRec(server, holdRun), r => r.status === 'running' && r.progress.length > 0, 'the slow draw to run', 15_000);
     const newer = await shop.commit({ 'zz-newer.ts': '// newer\n' });
     await shop.branch('feature/x', { 'x.ts': '// x\n' });
     expect(await server.del(`/api/diagrams/${d1}?deleteCopy=true`), 'a draw runs on the copy').toEqual({ status: 409, body: { error: IN_USE } });
     await intact('the copy is in use');
-    const notUpdated = await awaitScan(server, await startScanOn(server, { link: `https://${LINK}` }), 'succeeded', 60_000);
+    const notUpdated = await awaitScan(server, await startScanOn(server, { link: `https://${LINK}` }), 'succeeded', 30_000);
     expect(notUpdated.progress.slice(0, 2)).toEqual([`Fetching the newest commit of ${LINK}`, `This repository is in use: scanning the copy at ${short(headBefore)} on main`]);
     expect(await headOf(copy), 'nothing was fetched while the copy was in use').toBe(headBefore); expect(notUpdated.commit).toBe(headBefore);
-    const otherBranch = await awaitScan(server, await startScanOn(server, { link: `https://${LINK}/tree/feature/x` }), 'failed', 60_000);
+    const otherBranch = await awaitScan(server, await startScanOn(server, { link: `https://${LINK}/tree/feature/x` }), 'failed', 30_000);
     expect(otherBranch.error).toBe('This repository is in use on the branch "main": try again when its drawings and instructions have ended');
     expect(await branchOf(copy)).toBe('main'); expect(await headOf(copy)).toBe(headBefore);
     expect((await server.post(`/api/runs/${holdRun}/cancel`)).body).toEqual({ ok: true });
-    await awaitRun(server, holdRun, 'cancelled', 60_000);
+    await awaitRun(server, holdRun, 'cancelled', 15_000);
     // Once nothing runs on it, the same link updates it.
-    const updated = await awaitScan(server, await startScanOn(server, { link: `https://${LINK}` }), 'succeeded', 60_000);
+    const updated = await awaitScan(server, await startScanOn(server, { link: `https://${LINK}` }), 'succeeded', 30_000);
     expect(updated.progress.slice(0, 2)).toEqual([`Fetching the newest commit of ${LINK}`, `Updated to ${short(newer)}`]);
     expect(await headOf(copy)).toBe(newer);
 
@@ -85,7 +85,7 @@ test('H228 [SRC-6 SRC-5 JOB-1 START-4 #199] a copy is deleted with its drawing o
     expect(await diagramIds(server)).not.toContain(d1);
     expect(await recentEntry(copy), 'its entry left Recent').toBeUndefined();
     expect((await server.post('/api/folders/check', { link: LINK })).body).toMatchObject({ copied: false, git: false, drawing: null });
-    const fresh = await awaitScan(server, await startScanOn(server, { link: `https://${LINK}` }), 'succeeded', 60_000);
+    const fresh = await awaitScan(server, await startScanOn(server, { link: `https://${LINK}` }), 'succeeded', 30_000);
     expect(fresh.progress[0], 'the link makes a new copy').toBe(`Copying ${LINK}`);
 
     // ---- Through Recent: a copy with no drawing is deleted when asked, kept when not, and never while a scan runs on it.
@@ -107,7 +107,7 @@ test('H228 [SRC-6 SRC-5 JOB-1 START-4 #199] a copy is deleted with its drawing o
     expect(await server.post('/api/sources/forget', { path: third })).toEqual({ status: 200, body: { ok: true, deleted: false } });
     expect(await recentEntry(third), 'forgotten from Recent').toBeUndefined();
     expect(await exists(third), 'a copy stays unless it is asked to go').toBe(true);
-    const reused = await awaitScan(server, await startScanOn(server, { link: 'https://github.com/acme/third' }), 'succeeded', 60_000);
+    const reused = await awaitScan(server, await startScanOn(server, { link: 'https://github.com/acme/third' }), 'succeeded', 30_000);
     expect(reused.progress[0], 'pasting its link again uses the copy that is there').toBe(`Fetching the newest commit of github.com/acme/third`);
   } finally { await server.stop(); }
 });

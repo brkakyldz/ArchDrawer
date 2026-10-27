@@ -9,10 +9,10 @@ const CTRL_K = process.platform === 'darwin' ? 'Meta+k' : 'Control+k';
 // HOME-10, HOME-2 (ui contract, *The keyboard*, `start-folder`): every control is reached with Tab in the order of the screen (the top bar,
 // the navigation, the panel, the drawings, the side column); `Ctrl K` selects This computer and focuses the folder search from the
 // Link tab; ArrowDown and Enter take the entry (which scans nothing), the next Enter on Scan scans; on the choosing step Space ticks and
-// chooses and Enter on a focused destination presses the draw button once it is enabled (and does nothing before); `Ctrl K`
-// while a draw is followed frees the panel and focuses the field while the draw goes on.
+// chooses and Enter on a focused destination presses the draw button once it is enabled (and does nothing before). (`Ctrl K` while a
+// draw is followed, which frees the panel while the draw goes on in Activity, is H239.)
 test('H245 [HOME-10 HOME-2 START-4 #200 #201] the home screen works from the keyboard in the order of the screen, Ctrl K finds the folder search, Enter takes an entry and scans, and Enter on a destination draws once it can', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const server = await homeServer(page, request, { stepMs: '500' });
   try {
     const alpha = await makeRepo(join(server.home, 'code', 'alpha-app'));
@@ -57,10 +57,7 @@ test('H245 [HOME-10 HOME-2 START-4 #200 #201] the home screen works from the key
     const run = await startedRun(page, () => page.keyboard.press('Enter'));
     expect(run.body).toMatchObject({ kind: 'draw', channel: 'linkedin', choices: [{ kind: 'whole' }] }); await expect(page.getByTestId('draw-progress')).toBeVisible();
 
-    // Ctrl K while the draw is followed: the panel is free and the field focused; the draw goes on in Activity.
-    await page.keyboard.press(CTRL_K);
-    await expect(page.getByTestId('draw-progress')).toHaveCount(0); await expect(page.getByTestId('start-folder')).toBeFocused(); await expect(page.getByTestId('start-folder')).toBeEnabled(); await expect(page.getByTestId('start-folder')).toHaveValue('');
-    await expect(page.locator(`[data-testid="activity-job"][data-job="${run.runId}"]`)).toHaveCount(1);
+    // The draw is not followed further here (H239 holds Ctrl K while a draw is followed): it is cancelled over the API.
     expect((await postJSON(request, server.token, `/api/runs/${run.runId}/cancel`, {}, server.base)).status).toBe(200);
     expect(posts.filter(p => p.path === '/api/runs')).toHaveLength(1);
   } finally { await server.close(); }

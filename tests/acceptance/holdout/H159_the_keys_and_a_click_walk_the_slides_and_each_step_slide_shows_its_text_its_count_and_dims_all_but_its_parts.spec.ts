@@ -14,7 +14,7 @@ const STEP_SLIDES: Record<number, { nodes: { lit: string[]; dim: string[] }; edg
 };
 
 test('H159 [PRES-1, STORY-4, SHARE-1] the arrow, Space, Page, Home and End keys and a click walk the opening slide and three steps without passing either end, and every step slide shows its text and count, lights its parts and dims the rest as the slide image says', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('present-keys', slideShop('Keys shop'));
   await openDrawing(page, request, file); await toPresentation(page);
   const bytes = await readFile(file, 'utf8');

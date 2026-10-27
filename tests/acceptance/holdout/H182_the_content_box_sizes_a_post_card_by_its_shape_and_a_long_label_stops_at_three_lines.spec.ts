@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { workspaceRaw, openDrawing, part, svgInfo, svgShapes, editorShapes, type Part } from './helpers';
-import { ALL_KINDS, sketch, withPost, shapeForKind, cardSize, compactHeight, fullDetail, nodeSize, sizeIs, imageOf, countPuts, type SketchPart } from './helpers-drawing';
+import { workspaceRaw, openDrawing, register, part, svgInfo, svgShapes, editorShapes, type Part } from './helpers';
+import { ALL_KINDS, sketch, withPost, shapeForKind, cardSize, compactHeight, fullDetail, nodeSize, sizeIs, imageOf, countPuts, readChoice, type SketchPart } from './helpers-drawing';
 import { inDrawingFonts } from './helpers-svg-parity';
 
 // 47 characters (a label is 48 at most): wide capitals, so a compact part's row reaches its 320 px stop.
@@ -26,6 +26,18 @@ function postDoc(title: string, subLines: boolean) {
   if (!subLines) (doc.channels.linkedin!.views![0] as { subLines?: boolean }).subLines = false;
   return doc;
 }
+// A post of an AI agent panel holding two items, and a data group with a check inside, laid out by their lanes; every label is `Probe`.
+function panelGroupDoc(title: string) {
+  const doc = sketch(title, [
+    { id: 'f-panel', label: 'Probe', kind: 'llm', items: ['One', 'Two'], place: { row: 0, col: 0 } }, { id: 'f-inner', label: 'Probe', kind: 'gate', place: { row: 0, col: 1 } },
+  ]);
+  const spine = (n: number) => ({ lane: { spine: n } });
+  return withPost(doc, [
+    part('lp-panel', { facts: ['f-panel'], form: 'panel', ...spine(0) }),
+    part('lp-zone', { facts: [], form: 'group', label: 'Zone', kind: 'data', description: 'A group of parts.', ...spine(1) }),
+    part('lp-inner', { facts: ['f-inner'], form: 'compact', parent: 'lp-zone', ...spine(0) }),
+  ], []);
+}
 
 // Every text of every part lies inside the part's box in the image.
 async function textsInside(page: Page, svg: string) {
@@ -44,16 +56,14 @@ async function textsInside(page: Page, svg: string) {
 }
 
 // LOOK-2: a shape has a content box and the part is sized to it, in the post style too (numbers in parentheses of the contract). STORY-2: the post is denser.
-test('H182 [LOOK-2 LAYOUT-1 STORY-2 SHARE-1 #177] a LinkedIn post sizes each card by its shape in the post style, a long label stops at three lines inside the box, and sub-lines off take 18 px from every card', async ({ page, request }) => {
-  test.setTimeout(300_000);
+// LOOK-3: a panel in the post is drawn like a post card of its kind and draws no row.
+test('H182 [LOOK-2 LOOK-3 LAYOUT-1 STORY-2 SHARE-1 #177] a LinkedIn post sizes each card by its shape in the post style, a long label stops at three lines inside the box, sub-lines off take 18 px from every card, and a panel, a group and its member wear their outlines with no row', async ({ page, request }) => {
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('post-content-box', postDoc('Post content box', true)), opened = await openDrawing(page, request, file);
   const before = await readFile(file, 'utf8'), puts = countPuts(page);
   const query = (channel: string, format: string) => `channel=${channel}&view=${channel === 'linkedin' ? 'linkedin-post' : 'overview'}&format=${format}`;
-  const expectedShape: Record<string, string> = {}, postShape: Record<string, string> = {};
-  for (const kind of ALL_KINDS) {
-    expectedShape[`c-${kind}`] = shapeForKind(kind, 'card'); expectedShape[`k-${kind}`] = shapeForKind(kind, 'compact');
-    postShape[`lp-c-${kind}`] = shapeForKind(kind, 'card'); postShape[`lp-k-${kind}`] = shapeForKind(kind, 'compact');
-  }
+  const postShape: Record<string, string> = {};
+  for (const kind of ALL_KINDS) { postShape[`lp-c-${kind}`] = shapeForKind(kind, 'card'); postShape[`lp-k-${kind}`] = shapeForKind(kind, 'compact'); }
 
   // The post, in both post images and in the editor: card heights 84 / 86 / 92 / 94 / 96 / 98 by shape, widths 176 plus the extra width, compact heights.
   const postCard = (kind: string, subLine = true) => cardSize(shapeForKind(kind, 'card'), { post: true, subLine });
@@ -78,19 +88,10 @@ test('H182 [LOOK-2 LAYOUT-1 STORY-2 SHARE-1 #177] a LinkedIn post sizes each car
     expect((await nodeSize(page, `lp-k-${kind}`)).height).toBeCloseTo(compactHeight(shapeForKind(kind, 'compact')), 0);
   }
   sizeIs(await nodeSize(page, 'lp-wrap3'), { width: 176, height: cardSize('card', { post: true, labelLines: 3 }).height }, 'editor three-line post card');
+  // (The overview of the same facts in the plain sizes, the three-line plain card and the person card: H179.)
 
-  // The overview of the same facts is not a post: plain widths and heights, and the three-line card grows by 18 a line.
-  const overview = await svgInfo(page, await imageOf(request, opened.id, query('overview', 'readme')));
-  expect(await svgShapes(page, await imageOf(request, opened.id, query('overview', 'readme'))), 'overview shapes').toMatchObject(expectedShape);
-  for (const kind of ALL_KINDS) expect({ width: overview.nodes.find(n => n.id === `c-${kind}`)!.width, height: overview.nodes.find(n => n.id === `c-${kind}`)!.height }, `overview ${kind}`).toEqual(cardSize(shapeForKind(kind, 'card')));
-  expect(overview.nodes.find(n => n.id === 'wrap3')!.height).toBe(cardSize('card', { labelLines: 3 }).height);
-  expect(cardSize('card', { labelLines: 3 }).height - cardSize('card').height, 'the plain style adds 18 a line').toBe(36);
-  expect(cardSize('card', { post: true, labelLines: 3 }).height - cardSize('card', { post: true }).height, 'the post style adds 20 a line').toBe(40);
-  // The person card holds no icon above its label: 48 + 24 insets, a label line and the sub-line row.
-  expect(overview.nodes.find(n => n.id === 'c-actor')!.height).toBe(48 + 24 + 18 + 18);
-
-  // Sub-lines off in the post view: every post card is 18 px shorter, in the image and in the editor.
-  const off = await workspaceRaw('post-content-box-off', postDoc('Post without sub-lines', false)), offOpened = await openDrawing(page, request, off.file);
+  // Sub-lines off in the post view: every post card is 18 px shorter in the image.
+  const off = await workspaceRaw('post-content-box-off', postDoc('Post without sub-lines', false)), offOpened = await register(request, off.file);
   const offSvg = await imageOf(request, offOpened.id, query('linkedin', 'feed')), offImage = await svgInfo(page, offSvg);
   for (const kind of ALL_KINDS) expect(offImage.nodes.find(n => n.id === `lp-c-${kind}`)!.height, `${kind} without sub-lines`).toBe(postCard(kind, false).height);
   expect(offImage.nodes.flatMap(n => n.text).join(' | ')).not.toContain('short');
@@ -98,4 +99,27 @@ test('H182 [LOOK-2 LAYOUT-1 STORY-2 SHARE-1 #177] a LinkedIn post sizes each car
   // Must not happen: looking at the post writes anything, or a shape changes the size of a text.
   expect(await readFile(file, 'utf8'), 'viewing wrote nothing').toBe(before);
   expect(puts.count, 'no save').toBe(0);
+
+  // A panel, a group and a compact part inside it in a post: the panel is a post card of its kind that draws no row, the group is a group and its member
+  // wears its own kind's outline, in both post images (each at its format's size) and in the editor; no part of the post holds anything.
+  const more = await workspaceRaw('post-panel-group', panelGroupDoc('Post panel and group')), moreOpened = await openDrawing(page, request, more.file);
+  const moreBefore = await readFile(more.file, 'utf8');
+  const moreShape = { 'lp-panel': 'agent', 'lp-zone': 'group', 'lp-inner': 'check' };
+  for (const [format, width, height] of [['feed', 1080, 1350], ['linkedin', 1620, 1080]] as const) {
+    const svg = await imageOf(request, moreOpened.id, query('linkedin', format)), image = await svgInfo(page, svg);
+    expect(image, `${format}: the image's own size and format`).toMatchObject({ error: false, width, height, format });
+    expect(await svgShapes(page, svg), `the ${format} image`).toEqual(moreShape);
+    const panel = image.nodes.find(n => n.id === 'lp-panel')!;
+    expect({ width: panel.width, height: panel.height }, `${format}: the panel`).toEqual({ width: 176, height: 84 });
+    expect(panel.text.join(' '), `${format}: no row of the panel is drawn`).not.toMatch(/One|Two/);
+  }
+  await page.getByTestId('channel-tab-linkedin').click();
+  await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin'); await expect(page.getByTestId('node-lp-zone')).toBeVisible();
+  expect(await editorShapes(page, Object.keys(moreShape)), 'the editor, LinkedIn').toEqual(moreShape);
+  await fullDetail(page);
+  sizeIs(await nodeSize(page, 'lp-panel'), cardSize('agent', { post: true }), 'editor: the agent panel is a post card of its kind');
+  const panelText = (await page.getByTestId('node-lp-panel').textContent()) ?? '';
+  expect(panelText, 'the panel draws its label').toContain('Probe'); expect(panelText, 'the panel draws no row on the canvas').not.toMatch(/One|Two/);
+  expect(await readFile(more.file, 'utf8'), 'viewing wrote nothing').toBe(moreBefore); expect(moreBefore).not.toMatch(/"shape"\s*:/);
+  for (const p of (await readChoice(more.file)).channels.linkedin!.views![0].nodes) expect(p.held ?? [], `${p.id} holds nothing`).toEqual([]);
 });

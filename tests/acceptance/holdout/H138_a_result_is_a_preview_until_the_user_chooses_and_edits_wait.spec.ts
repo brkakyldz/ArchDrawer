@@ -6,7 +6,7 @@ import { drawing, workspace, openDrawing, readDocument, readDrawing, persistedDo
 // two choices stay until the user makes one; meanwhile every edit, undo and redo is refused with a toast, and the undo and redo buttons are disabled (EDIT-4 goes on after
 // the run). Looking around still works. Accept keeps the result as one undo step.
 test('H138 [AI-3, AI-1, EDIT-1, EDIT-4] a result arrives as a preview that stays until Accept or Undo, edits and undo are refused meanwhile, and Accept keeps it as one undo step', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(90_000);
   const { file } = await workspace('preview', drawing('Preview shop')); await openDrawing(page, request, file);
   const baseline = await readDocument(file), baselineDrawing = await readDrawing(file);
   const refused = async (action: () => Promise<unknown>) => {

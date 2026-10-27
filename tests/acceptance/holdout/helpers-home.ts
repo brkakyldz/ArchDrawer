@@ -118,12 +118,12 @@ export function answerDialogs(page: Page, answers: boolean[]) {
   return messages;
 }
 export async function startedRetry(page: Page, trigger: () => Promise<unknown>) {
-  const waiting = page.waitForResponse(r => r.request().method() === 'POST' && /^\/api\/runs\/[^/]+\/retry$/.test(new URL(r.url()).pathname));
+  const waiting = page.waitForResponse(r => r.request().method() === 'POST' && /^\/api\/runs\/[^/]+\/retry$/.test(new URL(r.url()).pathname), { timeout: 30_000 });
   await trigger(); const response = await waiting; expect(response.status(), await response.text()).toBe(202);
   return { runId: (await response.json()).runId as string, from: new URL(response.url()).pathname.split('/')[3], body: response.request().postData() };
 }
 export async function startedJoin(page: Page, trigger: () => Promise<unknown>) {
-  const waiting = page.waitForResponse(r => r.request().method() === 'POST' && /^\/api\/runs\/[^/]+\/choices$/.test(new URL(r.url()).pathname));
+  const waiting = page.waitForResponse(r => r.request().method() === 'POST' && /^\/api\/runs\/[^/]+\/choices$/.test(new URL(r.url()).pathname), { timeout: 30_000 });
   await trigger(); const response = await waiting; expect(response.status(), await response.text()).toBe(200);
   const answer = await response.json() as { runId: string; choices: string[] };
   return { runId: answer.runId, choices: answer.choices, to: new URL(response.url()).pathname.split('/')[3], body: response.request().postDataJSON() as Record<string, any> };

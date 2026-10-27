@@ -8,7 +8,7 @@ const factIn = (doc: Doc3, id: string) => factOf(doc, id);
 // part is drawn in it, and changing the kind in the callout changes the outline and, with it, the size the shape needs (diagram contract, Shapes) while the
 // part keeps its place and its text (EDIT-1); undo and redo bring the old outline and size and the new ones back.
 test('H132 [LOOK-2 EDIT-1 FILE-1 #177] the picker draws its form buttons in the shape of the chosen kind, an added part wears it, and changing the kind in the callout changes the outline and the size the shape needs, not the place', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('kind-shapes', shop3('Kind shape shop')); await openDrawing(page, request, file);
   await fullDetail(page);
   const shapeIs = async (id: string, shape: string) => await expect.poll(() => editorShape(page, id), { message: `shape of ${id}` }).toBe(shape);

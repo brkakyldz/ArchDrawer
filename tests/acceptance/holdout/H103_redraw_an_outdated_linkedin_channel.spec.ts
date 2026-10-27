@@ -15,8 +15,8 @@ test('H103 [STORY-1, FILE-3, EDIT-1, AI-3] Redraw it draws an outdated LinkedIn 
   await expect(page.getByTestId('node-ledger').getByTestId('node-label')).toHaveText('Orders ledger'); // the drawing as it was
 
   await page.getByTestId('channel-redraw').click();
-  await persistedDoc(file, d => !!partOf(d, 'linkedin', 'zone-runtime'), 30_000);
-  await expect(page.getByTestId('channel-outdated')).toHaveCount(0, { timeout: 15_000 }); await expect(tab).not.toHaveAttribute('data-outdated', /.*/);
+  await persistedDoc(file, d => !!partOf(d, 'linkedin', 'zone-runtime'));
+  await expect(page.getByTestId('channel-outdated')).toHaveCount(0); await expect(tab).not.toHaveAttribute('data-outdated', /.*/);
   await expect(page.getByTestId('node-intake')).toBeVisible(); await expect(page.getByTestId('node-ledger')).toHaveCount(0);
   // From 0.4 the redrawn channel arrives as a preview; keeping it is what makes it one undo step.
   await expect(page.getByTestId('ai-preview')).toBeVisible(); await page.getByTestId('ai-accept').click(); await expect(page.getByTestId('ai-preview')).toHaveCount(0);

@@ -5,12 +5,14 @@ import { SLUG, where, readChoices } from './helpers-selections';
 import { homeServer, drawOnHome, tickOnHome, rowFacts, jobsOnScreen, jobIn, activityNow, openHome, stepper } from './helpers-home';
 import { startedRun } from './helpers';
 
-// JOB-5, JOB-7, HOME-7 (ui contract, *Activity*, `draw-another`): scans and draws of different repositories run at the same time and
-// each has its row in Activity (running ones first, newest first; ended ones under `Done`, newest end first); `Draw another project`
-// frees the panel while the draw goes on; pressing a job makes the panel follow it; each draw writes into its own repository; a
-// notice leaves by itself after about 8 s.
-test('H239 [JOB-5 JOB-7 HOME-7 HOME-6 #202] a draw runs on while another repository is scanned and drawn, Activity lists each job and follows the one pressed, keeps the ended ones in order, and each drawing lands in its own repository', async ({ page, request }) => {
-  test.setTimeout(360_000);
+const CTRL_K = process.platform === 'darwin' ? 'Meta+k' : 'Control+k';
+
+// JOB-5, JOB-7, HOME-7, HOME-10 (ui contract, *Activity*, `draw-another`, *The keyboard*): scans and draws of different repositories run at the
+// same time and each has its row in Activity (running ones first, newest first; ended ones under `Done`, newest end first); `Draw another
+// project`, and `Ctrl K` while a draw is followed, free the panel while the draw goes on; pressing a job makes the panel follow it; each
+// draw writes into its own repository; a notice leaves by itself after about 8 s.
+test('H239 [JOB-5 JOB-7 HOME-7 HOME-6 HOME-10 #202] a draw runs on while another repository is scanned and drawn, Activity lists each job and follows the one pressed, keeps the ended ones in order, and each drawing lands in its own repository', async ({ page, request }) => {
+  test.setTimeout(120_000);
   const one = await gitRepo('home-two-a'), two = await gitRepo('home-two-b');
   const server = await homeServer(page, request, { stepMs: '1000' });
   try {
@@ -22,11 +24,17 @@ test('H239 [JOB-5 JOB-7 HOME-7 HOME-6 #202] a draw runs on while another reposit
     expect(await stepper(page)).toMatchObject({ now: expect.stringContaining('Folder') });
     expect((await jobsOnScreen(page)).find(j => j.id === first.runId)).toMatchObject({ type: 'draw', state: 'running', current: false });
 
+    // Ctrl K while a draw is followed: pressing the job follows it again; Ctrl K frees the panel and focuses the empty field; the draw goes on in Activity.
+    await jobIn(page, first.runId).getByTestId('activity-job-name').click(); await expect(page.getByTestId('draw-progress')).toBeVisible();
+    await page.keyboard.press(CTRL_K);
+    await expect(page.getByTestId('draw-progress')).toHaveCount(0); await expect(page.getByTestId('start-folder')).toBeFocused(); await expect(page.getByTestId('start-folder')).toBeEnabled(); await expect(page.getByTestId('start-folder')).toHaveValue('');
+    await expect(jobIn(page, first.runId)).toHaveCount(1);
+
     // The second repository is scanned while the first is drawn: both are running, newest first.
     await page.getByTestId('start-folder').fill(two.dir); await page.getByTestId('start-scan').click();
     await expect.poll(async () => { const jobs = await jobsOnScreen(page); return `${jobs.find(j => j.type === 'scan' && j.name !== '' && j.state === 'running') ? 'scan' : ''}+${jobs.find(j => j.id === first.runId)?.state}`; }, { timeout: 30_000 }).toBe('scan+running');
     await expect(page.getByTestId('activity-count')).toHaveText('2 running');
-    await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 45_000 });
     await expect(page.getByTestId('scan-card-name')).toHaveText(basename(two.dir));
     await expect(jobIn(page, first.runId)).toHaveAttribute('data-state', 'running'); // the first draw never waited for the scan
 
@@ -50,8 +58,8 @@ test('H239 [JOB-5 JOB-7 HOME-7 HOME-6 #202] a draw runs on while another reposit
     await expect.poll(async () => (await rowFacts(page)).map(r => r.choice)).toEqual(['system']); await expect(page.getByTestId('draw-stage').nth(2)).toContainText('Drawing the README drawing');
 
     // Both end: Ready on each, the ended ones under Done, newest end first; the notices go by themselves.
-    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 240_000 });
-    await expect.poll(async () => (await jobsOnScreen(page)).filter(j => j.type === 'draw' && j.state === 'succeeded').length, { timeout: 120_000 }).toBe(2);
+    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 60_000 });
+    await expect.poll(async () => (await jobsOnScreen(page)).filter(j => j.type === 'draw' && j.state === 'succeeded').length, { timeout: 60_000 }).toBe(2);
     await expect(page.getByTestId('activity-count')).toHaveCount(0); await expect(page.getByTestId('activity')).toContainText('Done');
     const api = await activityNow(request, server.base);
     const byEnd = api.jobs.filter(j => j.endedAt).sort((a, b) => Date.parse(b.endedAt) - Date.parse(a.endedAt)).map(j => j.id);

@@ -23,7 +23,7 @@ test('H86 [LAYOUT-1, LAYOUT-2, LAYOUT-3, AI-1] ask for no change on a drawing wi
   const run = await finishRun(request, await startKind(request, opened.token, {
     diagramId: opened.id, view: 'overview', kind: 'refine', instruction: 'Observe the existing drawing',
     format: 'readme', engine: 'fixture', model: null, scope: { kind: 'view' },
-  }), 'succeeded', 60_000);
+  }), 'succeeded', 15_000);
 
   // Must not happen: a part moving to clear a line, or anything being added or removed, because nothing was asked.
   const after = await readDrawing(file);

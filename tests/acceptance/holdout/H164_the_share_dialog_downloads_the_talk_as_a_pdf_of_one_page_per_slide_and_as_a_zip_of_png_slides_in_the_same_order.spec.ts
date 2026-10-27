@@ -11,7 +11,7 @@ const SLUG = 'slides-shop';
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 test('H164 [PRES-3, SHARE-1, STORY-4] on the presentation channel the share dialog downloads the talk as a PDF of a page per slide and as a zip of PNG slides, named from the title, in the same order, with the other downloads and the drawing untouched', async ({ page, request }) => {
-  test.setTimeout(360_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('slides-files', slideShop('Slides Shop'));
   await openDrawing(page, request, file); await toPresentation(page);
   const bytes = await readFile(file, 'utf8');

@@ -14,7 +14,7 @@ const HOLD = 'Hold [fixture:slow]', HOLD_ID = 'hold-fixture-slow';
 // failed draw kept goes too, but the scan stays what a draw can follow. After a restart the list is empty, the instance is another, and every
 // old id answers 404.
 test('H221 [JOB-7 JOB-9 START-6 #195] finished jobs are listed for the keep time and then forgotten with what a failed draw kept while the scan stays usable, and after a restart the list is empty, the instance changes and old ids answer 404', async () => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const server = await jobServer({ slots: 3, stepMs: 100, keepMs: 3000 });
   try {
     const a = await gitRepo('keep-a'), b = await gitRepo('keep-b');
@@ -34,7 +34,7 @@ test('H221 [JOB-7 JOB-9 START-6 #195] finished jobs are listed for the keep time
     expect(jobOf(await activityOf(server), failedId)).toMatchObject({ type: 'draw', status: 'failed', error: failed.error });
 
     // ---- Gone after the keep time: not listed, the run's id answers 404, the read the failed draw kept goes with it.
-    await until(() => activityOf(server), x => [scan.id, runId, failedId].every(id => !jobOf(x, id)), 'the finished jobs to leave the list', 40_000, 250);
+    await until(() => activityOf(server), x => [scan.id, runId, failedId].every(id => !jobOf(x, id)), 'the finished jobs to leave the list', 30_000, 250);
     expect(await server.get(`/api/runs/${runId}`)).toEqual({ status: 404, body: { error: 'Run not found' } });
     expect((await server.get(`/api/runs/${failedId}`)).status).toBe(404);
     expect((await server.get(`/api/runs/${failedId}/events`)).status).toBe(404);
@@ -51,7 +51,7 @@ test('H221 [JOB-7 JOB-9 START-6 #195] finished jobs are listed for the keep time
     // ---- A restart: jobs live in memory only.
     const scanB = await scanOn(server, { folder: b.dir });
     const holdId = await drawOn(server, scanB.id, [typed(HOLD)], 'readme');
-    await until(() => runRec(server, holdId), r => r.choices[0].status === 'running' && r.progress.length > 0, 'the slow draw to run', 30_000);
+    await until(() => runRec(server, holdId), r => r.choices[0].status === 'running' && r.progress.length > 0, 'the slow draw to run', 15_000);
     const before = await activityOf(server);
     expect(before.instance).toMatch(HEX16);
     expect(jobOf(before, holdId)).toMatchObject({ status: 'running' });

@@ -21,7 +21,7 @@ async function zipOf(page: Page) {
 }
 
 test('H165 [PRES-3, SHARE-1, LOOK-1] the share dialogs theme and toggles reach the slides, the title and description only the opening one, and the format chosen never changes a slides size or the entries', async ({ page, request }) => {
-  test.setTimeout(480_000);
+  test.setTimeout(90_000);
   const { file } = await workspaceRaw('slides-theme', slideShop('Theme Shop', { theme: 'light' }));
   await openDrawing(page, request, file); await toPresentation(page);
   const bytes = await readFile(file, 'utf8');

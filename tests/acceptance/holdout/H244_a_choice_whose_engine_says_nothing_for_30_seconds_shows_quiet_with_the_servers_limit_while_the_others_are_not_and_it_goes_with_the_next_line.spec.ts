@@ -13,7 +13,7 @@ const QUIET_ID = 'quiet-one-fixture-quiet';
 // and Activity says `quiet for <s> s`; the other choice, which is finished, is not called quiet; the sentence goes when the engine
 // speaks again and the draw ends well. Nothing fails or times out.
 test('H244 [HOME-5 JOB-6 #202] a choice whose engine says nothing for 30 seconds shows Quiet for with the limit of the server, counting up, Activity says so too, and it goes with the next line without any failure', async ({ page, request }) => {
-  test.setTimeout(360_000);
+  test.setTimeout(180_000);
   const project = await gitRepo('home-quiet');
   const server = await homeServer(page, request, { stepMs: '400', timeoutMs: 600_000 });
   try {
@@ -26,7 +26,7 @@ test('H244 [HOME-5 JOB-6 #202] a choice whose engine says nothing for 30 seconds
 
     // Thirty seconds of silence: the sentence, with the limit from the server's time limit; the finished choice is not quiet.
     const quiet = row.getByTestId('draw-choice-quiet');
-    await expect(quiet).toBeVisible({ timeout: 90_000 });
+    await expect(quiet).toBeVisible({ timeout: 45_000 });
     const sentence = /^Quiet for (\d+) s — still running \(limit 10 min\)$/;
     const text1 = (await quiet.textContent())!.replace(/\s+/g, ' ').trim(); expect(text1).toMatch(sentence);
     const s1 = Number(sentence.exec(text1)![1]); expect(s1).toBeGreaterThanOrEqual(30); expect(s1).toBeLessThan(46);
@@ -36,8 +36,8 @@ test('H244 [HOME-5 JOB-6 #202] a choice whose engine says nothing for 30 seconds
     const rows = await rowFacts(page); expect(rows.find(r => r.choice === 'system')!.quiet, 'a choice that is done is not quiet').toBeNull();
 
     // The engine speaks again: the sentence goes, the row is not failed, and the draw ends with both choices drawn.
-    await expect(quiet).toHaveCount(0, { timeout: 60_000 });
-    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 240_000 });
+    await expect(quiet).toHaveCount(0, { timeout: 30_000 });
+    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 30_000 });
     expect((await rowFacts(page)).map(r => [r.choice, r.state])).toEqual([['system', 'done'], [QUIET_ID, 'done']]);
     await expect(page.getByTestId('draw-ready')).toContainText('2 drawings for a LinkedIn post'); await expect(page.getByTestId('draw-error')).toHaveCount(0);
     expect((await jobsOnScreen(page)).find(j => j.id === run.runId)!.status).toBe('LinkedIn post · Ready');

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { exists, samePath } from './helpers';
 import { watchPosts, readChoices } from './helpers-selections';
 import { homeServer, openHome, makeRemote, copyDir, git, comboOptions, navItems, tickOnHome, runRecordAt } from './helpers-home';
-import { startedRun } from './helpers';
+import { startedRun, finishRun } from './helpers';
 
 const LINK = 'github.com/acme/shop';
 
@@ -13,7 +13,7 @@ const LINK = 'github.com/acme/shop';
 // link, a newer commit of the remote is fetched by the next scan, the drawing is written into the copy and the library, the
 // lists and the card all show the link instead of the copy's folder. Only the test link (a local repository) is ever copied.
 test('H233 [SRC-4 SRC-5 SRC-6 HOME-2 START-4 #201] a pasted link is checked as it is typed, copied, scanned and drawn, a newer commit is fetched by the next scan, and the card, the lists and the library name the copy by its link', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const server = await homeServer(page, request);
   try {
     const remote = await makeRemote(server, LINK);
@@ -41,7 +41,7 @@ test('H233 [SRC-4 SRC-5 SRC-6 HOME-2 START-4 #201] a pasted link is checked as i
 
     // Scan: the copy is made and scanned; the card names the link; the field shows the link and is off while it is followed.
     await scan.click();
-    await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 30_000 });
     const body = posts.find(p => p.path === '/api/scans')!.body;
     expect(body.link).toContain(LINK); expect(body.folder ?? null).toBeNull();
     await expect(page.getByTestId('scan-card-link')).toHaveText(LINK); await expect(page.getByTestId('scan-card-name')).toHaveText('shop');
@@ -54,21 +54,20 @@ test('H233 [SRC-4 SRC-5 SRC-6 HOME-2 START-4 #201] a pasted link is checked as i
     await link.fill(LINK); await expect(hint).toHaveText(/^github\.com\/acme\/shop · already on this computer$/);
     const second = await remote.commit({ 'later.ts': '// a later commit\n' });
     await scan.click();
-    await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 30_000 });
     await expect.poll(async () => second.startsWith(((await page.getByTestId('scan-card-commit').textContent()) ?? 'x').trim()), { timeout: 30_000 }).toBe(true);
     await expect(page.getByTestId('scan-cached')).toHaveCount(0);
     expect((await git(copyDir(server, LINK), ['rev-parse', 'HEAD'])).trim(), 'the copy was brought to the newer commit').toBe(second);
     expect(posts.filter(p => p.path === '/api/scans')).toHaveLength(2);
 
-    // Draw into the copy: the drawing is written under the copy and the editor opens only from Ready.
+    // Draw into the copy: the run ends on the server and the drawing is written under the copy (`Ready` and `Open` are H237's and H249's).
     await tickOnHome(page, { whole: true }, 'linkedin');
     const run = await startedRun(page, () => page.getByTestId('draw-start').click());
-    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 240_000 });
+    await finishRun(request, run.runId, 'succeeded', 30_000, server.base);
     const record = await runRecordAt(request, server.base, run.runId);
     expect(record).toMatchObject({ status: 'succeeded', link: LINK });
     expect(samePath(record.path, join(copyDir(server, LINK), 'docs', 'architecture.archdraw.json'))).toBe(true);
     expect((await readChoices(record.path)).choices.map(c => c.id)).toEqual(['system']);
-    await expect(page.getByTestId('editor')).toHaveCount(0);
 
     // The library names the drawing by the link; the lists name the copy by it too (its folder is the entry's path).
     await page.goto(`${server.base}/`); await expect(page.getByTestId('library')).toBeVisible();

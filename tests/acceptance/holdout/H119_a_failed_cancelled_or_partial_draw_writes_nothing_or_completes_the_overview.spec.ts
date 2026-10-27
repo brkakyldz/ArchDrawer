@@ -13,7 +13,7 @@ const FOUR_WARNINGS = [
 // and registered. Markers in the typed focus reach the fixture's three calls (the folder name does too, but a Windows
 // folder cannot carry ":").
 test('H119 [START-4, READ-1, STORY-1, STORY-6, #181] a draw that fails at the read, the overview or the channel, or is cancelled, or cannot write its file, writes and registers nothing, and a draw whose overview leaves a fact out is completed by code with one warning', async ({ request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const auth = await token(request);
   const project = await gitRepo('draw-failures');
   const docs = join(project.dir, 'docs');

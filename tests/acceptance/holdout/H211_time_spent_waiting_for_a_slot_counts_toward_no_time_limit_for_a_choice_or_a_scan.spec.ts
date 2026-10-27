@@ -8,7 +8,7 @@ import { jobServer, scanOn, startScanOn, awaitScan, drawOn, sampleRun, activityO
 // start when it takes its slot, and so does a scan's engine deadline. With the shortest limit the server takes (10 s) and one slot, a fourth
 // choice waits more than the limit and a scan that asked after it waits longer still; each is drawn without a timeout.
 test('H211 [JOB-1 START-7 #196] time spent waiting for a slot counts toward no time limit: a choice and a scan that wait longer than the limit still run and do not time out', async () => {
-  test.setTimeout(240_000);
+  test.setTimeout(90_000);
   const server = await jobServer({ slots: 1, stepMs: 350, timeoutMs: 10_000 });
   try {
     const a = await gitRepo('wait-no-deadline-a'), c = await gitRepo('wait-no-deadline-c');
@@ -31,7 +31,7 @@ test('H211 [JOB-1 START-7 #196] time spent waiting for a slot counts toward no t
     expect(run.progress.some((line: string) => /^Timed out/.test(line) || line.includes('Timed out after'))).toBe(false);
     expect(samples.some(s => s.choices[3].status === 'waiting' && s.waiting === false), 'the draw was not itself "waiting" while others ran').toBe(true);
 
-    const scan = await awaitScan(server, scanId, 'succeeded', 60_000);
+    const scan = await awaitScan(server, scanId, 'succeeded', 30_000);
     const scanWaited = ms(scan.startedAt) - ms(scan.createdAt);
     expect(scanWaited, `the scan waited ${scanWaited} ms`).toBeGreaterThan(10_000);
     expect(scan.progress).toContain(WAITING);

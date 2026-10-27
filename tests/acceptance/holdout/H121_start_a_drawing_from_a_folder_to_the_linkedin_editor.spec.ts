@@ -1,20 +1,20 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { gitRepo, workspaceRaw, shop3, isolatedDrawing, writeExistingDrawing, samePath, exists } from './helpers';
-import { optionBox, SLUG } from './helpers-selections';
+import { gitRepo, workspaceRaw, shop3, isolatedDrawing, writeExistingDrawing, samePath, exists, startedRun, finishRun } from './helpers';
+import { optionBox } from './helpers-selections';
 
 // START-4: the home screen starts a drawing from a local folder through four steps (folder, what to draw, channel, draw), each
-// kept while the user goes on. The user's own drawing in the folder is offered first and never replaced. Journeys that
-// open the editor after a draw choose LinkedIn: the editor shows README and presentation from steps F and G on.
+// kept while the user goes on. The user's own drawing in the folder is offered first and never replaced.
 // From ADR 0015 the choices are checkboxes, sections first and flows after; H191 and H192 hold the list and several choices at once.
-// From ADR 0016 the screen stays where it is when the draw ends: `Ready` with `Open`, and the editor opens only when the user presses it.
-test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1, JOB-8, HOME-2, HOME-6, #180, #181, #200, #202] type a folder, see its card and choices, tick a section and choose the LinkedIn post, draw it, and land in the editor on the LinkedIn channel from Ready, offered the drawing the folder already holds first', async ({ page, request }) => {
-  test.setTimeout(240_000);
+// The draw's outcome is read from the server here; H249 follows the same kind of draw on the screen (its rows, `Ready`, `Open`, the
+// editor on the LinkedIn channel), and H237 holds that nothing opens the editor by itself (ADR 0016).
+test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, HOME-2, HOME-3, #180, #181, #200, #201] type a folder, be offered the drawing it already holds first, see its card and choices, tick a section and choose the LinkedIn post, and draw it into the next free name beside that drawing', async ({ page, request }) => {
+  test.setTimeout(60_000);
   const project = await gitRepo('start-flow');
   const first = await writeExistingDrawing(project.dir, 'architecture.archdraw.json', 'Earlier drawing');
   const other = await workspaceRaw('start-home', shop3('Home shop'));
-  const server = await isolatedDrawing(page, request, other.file, '600'); // slow enough to watch the stages of a draw
+  const server = await isolatedDrawing(page, request, other.file, '600'); // the step of the server before the split (H249 watches the stages at it)
   try {
     const posts: { path: string; body: any }[] = [];
     page.on('request', req => {
@@ -28,10 +28,10 @@ test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1, JOB-8, HOME-2, HOM
     await page.getByTestId('start-folder').fill(project.dir); await page.getByTestId('start-scan').click();
     await expect(page.getByTestId('start-existing')).toContainText('This folder already has a drawing.');
     await expect(page.getByTestId('start-open-existing')).toBeVisible(); await expect(page.getByTestId('start-again')).toBeVisible();
-    await page.waitForTimeout(800);
-    expect(posts.filter(p => p.path === '/api/scans'), 'the offer scans nothing').toEqual([]); await expect(page.getByTestId('scan-card')).toHaveCount(0);
+    await expect(page.getByTestId('scan-card')).toHaveCount(0);
     await page.getByTestId('start-open-existing').click();
     await expect(page.getByTestId('editor')).toBeVisible(); await expect(page.getByTestId('repo-name')).toHaveText('Earlier drawing');
+    expect(posts.filter(p => p.path === '/api/scans'), 'neither the offer nor Open it scans').toEqual([]); // the whole window from the offer to the open editor
     expect(posts.some(p => p.path === '/api/files' && samePath(p.body.path, first))).toBe(true);
     const openedBytes = await readFile(first, 'utf8'); // opening registers the file in normal form (api.md POST /api/files): this is the content the draw must leave alone
 
@@ -39,7 +39,7 @@ test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1, JOB-8, HOME-2, HOM
     await startFlow();
     await page.getByTestId('start-folder').fill(project.dir); await page.getByTestId('start-scan').click();
     await page.getByTestId('start-again').click();
-    await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 15_000 });
     expect(posts.filter(p => p.path === '/api/scans')).toHaveLength(1);
     expect(samePath(posts.find(p => p.path === '/api/scans')!.body.folder, project.dir)).toBe(true);
     await expect(page.getByTestId('scan-card-name')).toHaveText(basename(project.dir));
@@ -64,33 +64,11 @@ test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1, JOB-8, HOME-2, HOM
     for (const c of ['linkedin', 'readme', 'presentation']) { await expect(page.getByTestId(`channel-choice-${c}`)).toBeVisible(); await expect(page.getByTestId(`channel-choice-${c}`)).not.toBeChecked(); }
     await expect(page.getByTestId('draw-start')).toBeDisabled();
     await page.getByTestId('channel-choice-linkedin').click(); await expect(page.getByTestId('channel-choice-linkedin')).toBeChecked(); await expect(page.getByTestId('draw-start')).toBeEnabled();
-    await page.getByTestId('draw-start').click();
 
-    // The draw: its three stages in order, the panel following it (the choosing step is not shown), then Ready, and the editor only from Open.
-    await expect(page.getByTestId('draw-progress')).toBeVisible();
-    await expect(page.getByTestId('draw-stage')).toHaveCount(3);
-    await expect(page.getByTestId('draw-stage').evaluateAll(els => els.map(el => el.getAttribute('data-stage')))).resolves.toEqual(['read', 'overview', 'channel']);
-    await expect(page.getByTestId('draw-stage').nth(0)).toContainText('Reading the code'); await expect(page.getByTestId('draw-stage').nth(1)).toContainText('Drawing the overview');
-    await expect(page.getByTestId('draw-stage').nth(2)).toContainText('Drawing the LinkedIn post');
-    await expect(page.getByTestId('draw-choice')).toHaveCount(1); await expect(page.getByTestId('draw-choice')).toHaveAttribute('data-choice', SLUG.o2); await expect(page.getByTestId('draw-choice-title')).toHaveText('The agent loop');
-    await expect(page.getByTestId('draw-line')).toBeVisible(); await expect(page.getByTestId('draw-cancel')).toBeVisible();
-    await expect(page.getByTestId('start-folder')).toBeDisabled(); await expect(page.getByTestId('channel-choice-readme')).toHaveCount(0); await expect(page.getByTestId('focus-list')).toHaveCount(0);
-    await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 120_000 });
-    await expect(page.getByTestId('draw-ready')).toContainText('1 drawing for a LinkedIn post'); await expect(page.getByTestId('draw-open')).toBeVisible();
-    await page.waitForTimeout(1200); await expect(page.getByTestId('editor'), 'nothing opens the editor by itself').toHaveCount(0);
-    await page.getByTestId('draw-open').click();
-    await expect(page.getByTestId('editor')).toBeVisible({ timeout: 30_000 });
-    const run = posts.find(p => p.path === '/api/runs')!;
-    expect(run.body).toMatchObject({ kind: 'draw', choices: [{ kind: 'option', option: 'o2' }], channel: 'linkedin' }); expect(run.body).not.toHaveProperty('focus');
-    expect(posts.filter(p => p.path === '/api/runs')).toHaveLength(1);
-    await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin'); await expect(page.getByTestId('editor')).toHaveAttribute('data-choice', SLUG.o2);
-    await expect(page).toHaveURL(new RegExp(`/d/[^/?]+\\?choice=${SLUG.o2}&channel=linkedin`));
-    await expect(page.getByTestId('views-panel')).toHaveCount(0); // one choice whose overview holds one view: nothing to choose between
-    await expect(page.getByTestId('channel-tab-linkedin')).toHaveAttribute('aria-current', 'true');
-    await expect(page.getByTestId('repo-name')).toHaveText(basename(project.dir));
-    await expect(page.getByTestId('node-intake')).toBeVisible(); await expect(page.getByTestId('channel-empty')).toHaveCount(0);
-    // The overview is drawn with it: the agent and the runtime that holds it.
-    await page.getByTestId('channel-tab-overview').click(); await expect(page.getByTestId('node-agent')).toBeVisible(); await expect(page.getByTestId('node-zone-runtime')).toBeVisible();
+    // Draw it: one draw request with the ticked section and the channel, and the run ends on the server (H249 follows it on the screen).
+    const started = await startedRun(page, () => page.getByTestId('draw-start').click());
+    expect(started.body).toMatchObject({ kind: 'draw', choices: [{ kind: 'option', option: 'o2' }], channel: 'linkedin' }); expect(started.body).not.toHaveProperty('focus');
+    await finishRun(request, started.runId, 'succeeded', 30_000, server.base);
 
     // The new drawing took the next free name; the user's own file is as it was; the library lists both.
     const written = join(project.dir, 'docs', 'architecture-2.archdraw.json');
@@ -99,7 +77,8 @@ test('H121 [START-4, SCAN-1, SCAN-2, SCAN-3, STORY-1, READ-1, JOB-8, HOME-2, HOM
     const rows = page.getByTestId('library-item');
     await expect(rows.filter({ has: page.getByTestId('library-item-title').filter({ hasText: basename(project.dir) }) }).getByTestId('library-item-path')).toHaveText(written);
     await expect(rows.filter({ has: page.getByTestId('library-item-title').filter({ hasText: 'Earlier drawing' }) })).toHaveCount(1);
-    // Must not happen: the old file replaced, or the project changed beyond the one new file.
+    // Must not happen: the old file replaced, the project changed beyond the one new file, or a second draw request.
     expect((await project.git(['status', '--porcelain'])).trim()).toBe('?? docs/');
+    expect(posts.filter(p => p.path === '/api/runs')).toHaveLength(1);
   } finally { await server.close(); }
 });

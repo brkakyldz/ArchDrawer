@@ -8,7 +8,7 @@ const NOTE = 'Test engine (no AI): it understands only add, remove, rename, hold
 // it, with the instruction (or the control's name) and where it ran; the latest turn holds the progress and the result, an
 // earlier one keeps its result; the conversation lives in the browser only.
 test('H135 [AI-2, AI-1, FILE-1] the AI panel is the one place to type, a line break is Shift+Enter, every run from the panel or from a channel control makes one turn with its text and where, and a reload starts the thread empty', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('thread', withLinkedIn(shop3('Thread shop')));
   const posts: Record<string, any>[] = [];
   page.on('request', req => { if (req.method() === 'POST' && new URL(req.url()).pathname === '/api/runs') posts.push(req.postDataJSON()); });

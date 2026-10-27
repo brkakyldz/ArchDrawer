@@ -4,10 +4,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Starting a drawing from a folder. The journeys (folder, card, focus, channel, draw, retry, no engine,
-// the keyboard path) are held-out H121–H123 and H41. What stays here needs a faked server: the server
-// going away during a scan or a draw, which must end the wait with a sentence, never a screen stuck busy; and a
-// scan of a git folder on Windows, which the held-out H121 and H191 reach only past steps of later milestones.
+// Starting a drawing from a folder on the home screen. The journeys (folder, card, focus, channel, draw, retry, no
+// engine, the keyboard path, the choosing step) are held-out H121–H123, H191, H236, H245 and H41. What stays here needs
+// a faked server: the server going away during a scan or a draw, which must end the wait with a sentence, never a
+// screen stuck busy; and a scan of a git folder on Windows, which the held-out H121 and H191 reach only past steps of
+// later milestones.
 
 function project(): string {
   const dir = mkdtempSync(join(tmpdir(), "archdraw-e2e-start-"));

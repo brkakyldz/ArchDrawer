@@ -191,6 +191,8 @@ export function useStart({ engine: eng, activity, onJob, onSources, onDrawn }: {
   /** Follow a scan until it ends: a succeeded one shows its choosing step, a failed or cancelled one ends the following. */
   const followScan = async (id: string, target: ScanTarget, at: number) => {
     const end = await follow(`/api/scans/${id}/events`, () => api.scan(id), (p) => setScanning((s) => (s ? { ...s, line: p.message } : s)), live.current);
+    // Its row in Activity ends with it, not at Activity's next answer.
+    onJob();
     if (!still(at)) return;
     setScanning(null);
     if (end.status !== "succeeded") { setError(end.status === "cancelled" ? "Cancelled" : end.error ?? "The scan failed"); return; }

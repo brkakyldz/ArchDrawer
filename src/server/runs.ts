@@ -19,7 +19,8 @@ import { isInside } from "./remote";
 import { nowIso, type Store } from "./store";
 import { EngineError, type Engine } from "./engines/types";
 import { ReadAnswerError } from "../core/read";
-import { choiceKey, DrawError, drawChoices, keptKey, runDraw, type DrawChoice, type DrawRequest, type KeptChoice } from "./draw";
+import { choiceKey, DrawError, drawChoices, keptKey, runDraw, type DrawChoice, type DrawJoin, type DrawRequest, type KeptChoice } from "./draw";
+import type { DrawFocus } from "./engines/prompt";
 import { EngineSlots, WAITING } from "./slots";
 import { storyAnswer } from "./story-turn";
 
@@ -88,6 +89,8 @@ interface Run extends RunRecord {
   target: string;
   /** A draw's request, for `Try again`. */
   draw: DrawRequest | null;
+  /** A running draw's join, once it takes choices (api contract, Joining a running draw). */
+  join: DrawJoin | null;
 }
 
 /** Which way a refine went (api contract, Routing). */
@@ -204,6 +207,11 @@ export class RunManager {
     return true;
   }
 
+  /** Whether a cancel was asked of the run (a draw that is writing goes on, still `running`). */
+  cancelAsked(id: string): boolean {
+    return this.runs.get(id)?.abort.signal.aborted ?? false;
+  }
+
   /** Cancels every running run; resolves once they have all ended, their engines gone and their images removed. */
   async cancelAll(): Promise<void> {
     const running = [...this.runs.values()].filter((r) => r.status === "running");
@@ -259,7 +267,8 @@ export class RunManager {
     // A choice of a `Try again` that the file already holds gets `-2`, `-3`, … (api contract, Trying again).
     const held = req.into ? this.store.get(req.into)?.choices.map((c) => c.id) ?? [] : [];
     const choices = drawChoices(req.focuses, req.ids, held);
-    const keyOf = new Map(choices.map((c, i) => [c.id, choiceKey(req.focuses[i])]));
+    // Choices that join are added to `req.focuses` and `choices` alike, so each choice's key is read at the end.
+    const keysOf = (status: DrawChoice["status"]) => choices.flatMap((c, i) => (c.status === status ? [choiceKey(req.focuses[i])] : []));
     return this.launch(
       {
         kind: "draw", choice: choices[0].id, channel: req.channel, view: req.channel, engine: req.engine.id, model: req.model, target: `folder:${req.folderKey}`, choices,
@@ -268,12 +277,29 @@ export class RunManager {
       },
       ({ signal, line, run, choice }) => runDraw(req, {
         store: this.store, slots: this.slots, timeoutMs: this.opts.timeoutMs, signal, line, choices, kept, done,
-        changed: choice, writing: () => (run.writing = true), wrote: (path) => (run.path = path),
+        changed: choice, writing: () => (run.writing = true), wrote: (path) => (run.path = path), joins: (join) => (run.join = join),
       }).then(
-        (r) => { this.keep(req.folderKey, key, done, choices.filter((c) => c.status === "failed").map((c) => keyOf.get(c.id)!), choices.filter((c) => c.status === "done").map((c) => keyOf.get(c.id)!)); return r; },
+        (r) => { this.keep(req.folderKey, key, done, keysOf("failed"), keysOf("done")); return r; },
         (err: unknown) => { this.keep(req.folderKey, key, done, [...done.keys()], []); throw err; },
       ),
     );
+  }
+
+  /**
+   * Adds choices to a running draw (api contract, Joining a running draw), once the route has checked them: ids made
+   * as a draw's, free among the draw's choices and, for a draw that adds to a file, the file's as stored now. Null for
+   * a run that is no draw; `ended` or `writing` when the draw takes no more choices.
+   */
+  joinDraw(id: string, focuses: DrawFocus[]): { choices: string[] } | { refused: "ended" | "writing" } | null {
+    const r = this.runs.get(id);
+    if (!r || !r.draw || !r.choices) return null;
+    if (r.status !== "running" || r.abort.signal.aborted) return { refused: "ended" };
+    if (r.writing) return { refused: "writing" };
+    const held = r.into ? this.store.get(r.into)?.choices.map((c) => c.id) ?? [] : [];
+    const added = drawChoices(focuses, undefined, [...r.choices.map((c) => c.id), ...held]);
+    if (!r.join?.(focuses, added)) return { refused: r.writing ? "writing" : "ended" };
+    r.draw.ids = r.choices.map((c) => c.id);
+    return { choices: added.map((c) => c.id) };
   }
 
   /** One entry per folder: what its draws that ended without drawing a choice had finished, per choice as requested. */
@@ -321,7 +347,7 @@ export class RunManager {
       changes: null, layoutReport: null, route: null, path: null, target: init.target, choices: init.choices ?? null,
       createdAt, startedAt: null, endedAt: null, waiting: false, lastEngineEventAt: null,
       folder: init.folder ?? null, root: init.root ?? null, link: init.link ?? null, name: init.name ?? null, scan: init.scan ?? null,
-      writing: false, into: init.into ?? null, retryOf: init.retryOf ?? null, draw: init.draw ?? null,
+      writing: false, into: init.into ?? null, retryOf: init.retryOf ?? null, draw: init.draw ?? null, join: null,
       events: [], listeners: new Set(), abort: new AbortController(),
       finished: new Promise((r) => (resolveFinished = r)), timedOut: false,
     };

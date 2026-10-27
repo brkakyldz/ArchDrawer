@@ -24,6 +24,7 @@ import { FolderPicker } from "./picker";
 import { Sources } from "./sources";
 import { copyOfPath, isInside, linkOfPath, NEEDS_GIT, readLink, Remotes, type Link } from "./remote";
 import type { DrawFocus } from "./engines/prompt";
+import type { FocusOption } from "../core/scan";
 import { decodeImage, writeReviseImage } from "./engines/revise";
 import type { Engine, EngineInfo } from "./engines/types";
 
@@ -422,6 +423,41 @@ export function createApp(deps: AppDeps): Hono {
     return engine ? { engine, model } : "No engine is available: install and log in to Claude Code or Codex";
   };
 
+  /**
+   * The choices of a draw or of a join (api contract, The draw run, checks 4 and 5): 1 to 10, each in order, options
+   * looked up in `options`, then the duplicates within them. The focuses, or the refusal (400).
+   */
+  const readChoices = (asked: unknown, options: readonly FocusOption[]): DrawFocus[] | string => {
+    if (!Array.isArray(asked) || asked.length < 1 || asked.length > 10) return "Choose what to draw: give 1 to 10 choices";
+    const focuses: DrawFocus[] = [];
+    for (const raw of asked) {
+      const focus = raw as Record<string, unknown> | undefined;
+      const fk = focus && typeof focus === "object" && !Array.isArray(focus) ? focus.kind : undefined;
+      if (fk !== "option" && fk !== "whole" && fk !== "typed") return 'Unknown focus: use {"kind": "option" | "whole" | "typed"}';
+      if (fk === "option") {
+        const option = options.find((o) => o.id === focus!.option);
+        if (!option) return `Unknown focus option "${String(focus!.option)}"`;
+        focuses.push({ kind: "option", option });
+      } else if (fk === "typed") {
+        const text = typeof focus!.text === "string" ? focus!.text.trim() : "";
+        if (!text) return "Say what to focus on: the focus is empty";
+        if (text.length > 300) return "The focus is too long (300 characters at most)";
+        focuses.push({ kind: "typed", text });
+      } else focuses.push({ kind: "whole" });
+    }
+    if (focuses.filter((x) => x.kind === "whole").length > 1) return "The whole system is chosen twice";
+    const twice = focuses.find((x, i) => x.kind === "option" && focuses.findIndex((y) => y.kind === "option" && y.option.id === x.option.id) !== i);
+    if (twice && twice.kind === "option") return `The option "${twice.option.id}" is chosen twice`;
+    if (focuses.filter((x) => x.kind === "typed").length > 1) return "Only one choice can be in your own words";
+    return focuses;
+  };
+
+  /** A running draw holds its scan until it ends, so choices can join from it (api contract, Joining a running draw). */
+  const holdScan = (runId: string, scanId: string) => {
+    const unpin = scans.pin(scanId);
+    void runs.wait(runId).then(unpin);
+  };
+
   /** A `draw` run (api contract, The draw run): its checks in their order, then one draw per folder. */
   const startDraw = async (c: Context, b: Record<string, unknown>) => {
     const scan = typeof b.scan === "string" ? scans.succeeded(b.scan) : null;
@@ -432,36 +468,58 @@ export function createApp(deps: AppDeps): Hono {
     // `focus` is the same request as `choices` of that one choice (api contract, The draw run).
     if (b.choices !== undefined && b.focus !== undefined) return err(c, 400, "Give choices or focus, not both");
     const asked = b.choices !== undefined ? b.choices : b.focus !== undefined ? [b.focus] : undefined;
-    if (!Array.isArray(asked) || asked.length < 1 || asked.length > 10) return err(c, 400, "Choose what to draw: give 1 to 10 choices");
-    const focuses: DrawFocus[] = [];
-    for (const raw of asked) {
-      const focus = raw as Record<string, unknown> | undefined;
-      const fk = focus && typeof focus === "object" && !Array.isArray(focus) ? focus.kind : undefined;
-      if (fk !== "option" && fk !== "whole" && fk !== "typed") return err(c, 400, 'Unknown focus: use {"kind": "option" | "whole" | "typed"}');
-      if (fk === "option") {
-        const option = (scan.options ?? []).find((o) => o.id === focus!.option);
-        if (!option) return err(c, 400, `Unknown focus option "${String(focus!.option)}"`);
-        focuses.push({ kind: "option", option });
-      } else if (fk === "typed") {
-        const text = typeof focus!.text === "string" ? focus!.text.trim() : "";
-        if (!text) return err(c, 400, "Say what to focus on: the focus is empty");
-        if (text.length > 300) return err(c, 400, "The focus is too long (300 characters at most)");
-        focuses.push({ kind: "typed", text });
-      } else focuses.push({ kind: "whole" });
-    }
-    if (focuses.filter((x) => x.kind === "whole").length > 1) return err(c, 400, "The whole system is chosen twice");
-    const twice = focuses.find((x, i) => x.kind === "option" && focuses.findIndex((y) => y.kind === "option" && y.option.id === x.option.id) !== i);
-    if (twice && twice.kind === "option") return err(c, 400, `The option "${twice.option.id}" is chosen twice`);
-    if (focuses.filter((x) => x.kind === "typed").length > 1) return err(c, 400, "Only one choice can be in your own words");
+    const focuses = readChoices(asked, scan.options ?? []);
+    if (typeof focuses === "string") return err(c, 400, focuses);
     if (b.channel !== "linkedin" && b.channel !== "readme" && b.channel !== "presentation") return err(c, 400, "Choose the channel: linkedin, readme or presentation");
     const picked = await pickEngine(b);
     if (typeof picked === "string") return err(c, 400, picked);
     const folderKey = `${f.root}\0${f.rel}`;
     const running = runs.drawingOn(folderKey);
     if (running) return err(c, 409, "A drawing of this folder is already being made", { runId: running });
-    const runId = runs.startDraw({ engine: picked.engine, model: picked.model, scan: b.scan as string, folder: f, folderKey, card: scan.card!, options: scan.options ?? [], link: scan.link ?? null, focuses, channel: b.channel });
+    const runId = runs.startDraw({ engine: picked.engine, model: picked.model, scan: b.scan as string, folder: f, folderKey, card: scan.card!, options: scan.options ?? [], link: scan.link ?? null, commit: scan.commit, focuses, channel: b.channel });
+    holdScan(runId, scan.id);
     return c.json({ runId }, 202);
   };
+
+  /**
+   * Joining a running draw (api contract, Joining a running draw): its checks in their order; the choices take the
+   * draw's channel, engine and model, whatever the body says. A refused join changes nothing.
+   */
+  app.post("/api/runs/:id/choices", async (c) => {
+    const body = await readJson(c);
+    const b = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>;
+    const id = c.req.param("id");
+    const run = runs.get(id);
+    if (!run) return err(c, 404, "Run not found");
+    const draw = runs.drawOf(id);
+    if (run.kind !== "draw" || !draw) return err(c, 400, "Only a draw takes more choices");
+    const ENDED = "This draw has ended: start a new one", WRITING = "The draw is writing its file: start a new one once it has finished";
+    if (run.status !== "running" || runs.cancelAsked(id)) return err(c, 409, ENDED);
+    if (run.writing) return err(c, 409, WRITING);
+    if (typeof b.scan !== "string") return err(c, 400, "Give the scan the choices come from");
+    // The draw's own scan, or a succeeded scan of its folder at its commit with its options.
+    const options = (draw.options ?? []) as FocusOption[];
+    if (b.scan !== draw.scan) {
+      const scan = scans.succeeded(b.scan);
+      if (!scan) return err(c, 400, "Scan the folder first: that scan is unknown or did not succeed");
+      const same = `${scan.root}\0${scan.rel}` === draw.folderKey && scan.commit !== null && scan.commit === (draw.commit ?? null) && sameOptions(scan.options ?? [], options);
+      if (!same) return err(c, 409, "The draw was started from another scan of this folder");
+    }
+    // The options the draw keeps from its own scan: a scan accepted above has the same.
+    const focuses = readChoices(b.choices, options);
+    if (typeof focuses === "string") return err(c, 400, focuses);
+    // Against the draw, whose choices count whatever their status, a failed one included.
+    if (focuses.some((x) => x.kind === "whole") && draw.focuses.some((x) => x.kind === "whole")) return err(c, 400, "The whole system is already in this draw");
+    const again = focuses.find((x) => x.kind === "option" && draw.focuses.some((y) => y.kind === "option" && y.option.id === x.option.id));
+    if (again && again.kind === "option") return err(c, 400, `The option "${again.option.id}" is already in this draw`);
+    if (focuses.some((x) => x.kind === "typed") && draw.focuses.some((x) => x.kind === "typed")) return err(c, 400, "This draw already has a choice in your own words");
+    const n = draw.focuses.length;
+    if (n + focuses.length > 10) return err(c, 400, `A draw holds at most 10 choices; this one has ${n}`);
+    const joined = runs.joinDraw(id, focuses);
+    if (!joined) return err(c, 400, "Only a draw takes more choices");
+    if ("refused" in joined) return err(c, 409, joined.refused === "writing" ? WRITING : ENDED);
+    return c.json({ runId: id, choices: joined.choices });
+  });
 
   /**
    * `Try again` (api contract, Trying again): a new draw of a draw that has ended, with its scan, channel, engine and
@@ -490,6 +548,7 @@ export function createApp(deps: AppDeps): Hono {
       ...draw, folder: f, folderKey, focuses: again.map((i) => draw.focuses[i]), ids: again.map((i) => choices[i].id), places: again.map((i) => draw.places?.[i] ?? i),
       into: run.status === "succeeded" ? run.diagramId : null, retryOf: id,
     });
+    holdScan(runId, draw.scan);
     return c.json({ runId }, 202);
   });
 
@@ -669,4 +728,10 @@ export function parseScope(raw: unknown, inView: string[]): RunScope | string {
   const missing = (s.ids as string[]).find((id) => !inView.includes(id));
   if (missing) return `The component "${missing}" is not in this view`;
   return { kind: "parts", ids: [...new Set(s.ids as string[])] };
+}
+
+/** The same options (api contract, Joining a running draw): the same ids, kinds, titles, sentences and files, in the same order. */
+export function sameOptions(a: readonly FocusOption[], b: readonly FocusOption[]): boolean {
+  const key = (o: FocusOption) => JSON.stringify([o.id, o.kind, o.title, o.sentence, o.files]);
+  return a.length === b.length && a.every((o, i) => key(o) === key(b[i]));
 }

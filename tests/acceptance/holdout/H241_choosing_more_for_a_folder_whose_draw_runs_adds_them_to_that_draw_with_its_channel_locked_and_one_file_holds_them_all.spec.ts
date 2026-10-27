@@ -38,10 +38,10 @@ test('H241 [JOB-4 HOME-8 START-7 STORY-1 #200 #202] choosing more for a folder w
     // Add two: the button says so and needs no channel; only the new choices are sent, to the running draw, in the list's order.
     await optionBox(page, 'o3').click(); await expect(page.getByTestId('draw-start')).toHaveText('Add it to the draw'); await expect(page.getByTestId('draw-start')).toBeEnabled();
     await optionBox(page, 'o1').click(); await expect(page.getByTestId('draw-start')).toHaveText('Add all 2 to the draw');
-    const join = await startedJoin(page, () => page.getByTestId('draw-start').click());
-    expect(join.to).toBe(draw.runId); expect(join.runId).toBe(draw.runId); expect(join.choices).toEqual([SLUG.o3, SLUG.o1]);
-    expect(join.body.choices).toEqual([{ kind: 'option', option: 'o3' }, { kind: 'option', option: 'o1' }]); expect(typeof join.body.scan).toBe('string');
-    expect(join.body).not.toHaveProperty('channel');
+    const joined = await startedJoin(page, () => page.getByTestId('draw-start').click());
+    expect(joined.to).toBe(draw.runId); expect(joined.runId).toBe(draw.runId); expect(joined.choices).toEqual([SLUG.o3, SLUG.o1]);
+    expect(joined.body.choices).toEqual([{ kind: 'option', option: 'o3' }, { kind: 'option', option: 'o1' }]); expect(typeof joined.body.scan).toBe('string');
+    expect(joined.body).not.toHaveProperty('channel');
     expect(posts.filter(p => p.path === '/api/runs'), 'joining is not a second draw').toHaveLength(1);
 
     // The panel follows that draw: the new rows are added at the end and run beside the slow one.

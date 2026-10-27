@@ -31,7 +31,7 @@ const library = (list: DiagramSummary[] = []): Library & { list: () => DiagramSu
   return lib;
 };
 const drawing = (id: string, root: string, updatedAt: string): DiagramSummary =>
-  ({ id, title: id, path: join(root, "docs", "architecture.archdraw.json"), root, updatedAt });
+  ({ id, title: id, path: join(root, "docs", "architecture.archdraw.json"), root, updatedAt, link: null });
 
 afterEach(() => { vi.useRealTimers(); });
 

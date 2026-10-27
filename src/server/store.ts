@@ -5,8 +5,10 @@ import { readAnyFile } from "../core/convert";
 import { markOutside4, normalizeFile4, validateDocument4, type Document4, type File4 } from "../core/file4";
 import { DOC_ID_RE, newDocumentId } from "../core/model";
 import { checkFile, docText, hashOf, normaliseFile, repoFileChecker, repoRootOf, writeAtomic } from "./files";
+import { linkOfPath } from "./remote";
 
-export interface DiagramSummary { id: string; title: string; path: string | null; root: string | null; updatedAt: string }
+/** `link`: the link of the copy the file lies in (api contract, *A repository from a link*), else null. */
+export interface DiagramSummary { id: string; title: string; path: string | null; root: string | null; link: string | null; updatedAt: string }
 export type ReadResult = { ok: true; doc: Document4 } | { ok: false; error: string; errors: string[] };
 export type PutResult = { ok: true; updatedAt: string } | { ok: false; conflict: true; updatedAt: string | null } | { ok: false; conflict: false; error: string; errors: string[] };
 
@@ -282,14 +284,15 @@ export class Store extends EventEmitter {
     const add = (id: string, path: string | null) => {
       const r = this.read(id);
       const root = path ? repoRootOf(path) : null;
-      if (r?.ok) out.push({ id, title: r.doc.title, path, root, updatedAt: r.doc.updatedAt });
-      else if (r && path) out.push({ id, title: basename(path), path, root, updatedAt: new Date(statSync(path).mtimeMs).toISOString() });
+      const link = path ? linkOfPath(this.dataDir, path) : null;
+      if (r?.ok) out.push({ id, title: r.doc.title, path, root, link, updatedAt: r.doc.updatedAt });
+      else if (r && path) out.push({ id, title: basename(path), path, root, link, updatedAt: new Date(statSync(path).mtimeMs).toISOString() });
     };
     // A drawing that cannot be read is listed by its file name, or left out; the others still are.
     const each = (id: string, path: string | null) => {
       try { add(id, path); } catch (e) {
         console.error(`Could not list ${path ?? id}:`, (e as Error).message);
-        try { if (path) out.push({ id, title: basename(path), path, root: repoRootOf(path), updatedAt: new Date(statSync(path).mtimeMs).toISOString() }); } catch { /* gone */ }
+        try { if (path) out.push({ id, title: basename(path), path, root: repoRootOf(path), link: linkOfPath(this.dataDir, path), updatedAt: new Date(statSync(path).mtimeMs).toISOString() }); } catch { /* gone */ }
       }
     };
     for (const [id, path] of this.files) if (existsSync(path)) each(id, path);

@@ -8,6 +8,7 @@ import { writeAtomic } from "./files";
 import { headCommit, listFolder, readPart, repoFile, type Folder } from "./folders";
 import { EngineSlots, WAITING } from "./slots";
 import { nowIso } from "./store";
+import { RemoteError } from "./remote";
 
 /**
  * Scans (api contract, *Scans*; ADR 0007): a repository card and focus options for a folder, from
@@ -40,6 +41,15 @@ export interface ScanRecord {
   link: string | null;
 }
 
+/** Where a scan's folder comes from: a copy of a link is made or updated before the scan (*A scan with a link*). */
+export interface ScanSource {
+  link: string | null;
+  /** The copy the folder lies in: one scan at a time in it. */
+  copy: string | null;
+  /** Makes or updates the copy; its lines come first, and it holds no engine. */
+  prepare?: (signal: AbortSignal, progress: (m: string) => void) => Promise<void>;
+}
+
 interface Scan extends ScanRecord {
   events: ScanEvent[];
   listeners: Set<(e: ScanEvent) => void>;
@@ -48,6 +58,8 @@ interface Scan extends ScanRecord {
   key: string;
   /** The folder's root-relative path, for the draw run that follows. */
   rel: string;
+  /** The copy's lock key, or null outside a copy. */
+  copyKey: string | null;
 }
 
 interface Cached { card: RepoCard; options: FocusOption[]; warnings: string[] }
@@ -72,7 +84,7 @@ export class ScanManager {
   get(id: string): ScanRecord | null {
     const s = this.scans.get(id);
     if (!s) return null;
-    const { events: _e, listeners: _l, abort: _a, finished: _f, key: _k, rel: _r, ...record } = s;
+    const { events: _e, listeners: _l, abort: _a, finished: _f, key: _k, rel: _r, copyKey: _c, ...record } = s;
     return { ...record, progress: [...s.progress], warnings: [...s.warnings] };
   }
 
@@ -96,6 +108,13 @@ export class ScanManager {
   runningOn(f: Folder): string | null {
     const key = `${f.root}\0${f.rel}`;
     for (const s of this.scans.values()) if (s.key === key && s.status === "running") return s.id;
+    return null;
+  }
+
+  /** The running scan of any folder in a copy, if any (one scan at a time per copy). */
+  runningInCopy(copy: string): string | null {
+    const key = copyKey(copy);
+    for (const s of this.scans.values()) if (s.copyKey === key && s.status === "running") return s.id;
     return null;
   }
 
@@ -136,25 +155,26 @@ export class ScanManager {
    * the folder is already running, its id: the record exists before anything is awaited, so two
    * requests at once never start two scans.
    */
-  async start(f: Folder, engine: Engine, model: string | null, refresh: boolean): Promise<{ scanId: string } | { running: string }> {
-    const running = this.runningOn(f);
+  async start(f: Folder, engine: Engine, model: string | null, refresh: boolean, source: ScanSource = { link: null, copy: null }): Promise<{ scanId: string } | { running: string }> {
+    const running = this.runningOn(f) ?? (source.copy ? this.runningInCopy(source.copy) : null);
     if (running) return { running };
+    const lock = source.copy ? copyKey(source.copy) : null;
     const id = `s_${randomBytes(6).toString("hex")}`;
     let resolveFinished!: () => void;
     const createdAt = nowIso();
     const scan: Scan = {
       id, status: "running", progress: [], message: null, folder: f.folder, root: f.root, name: basename(f.folder), commit: null, cached: false,
       card: null, options: null, warnings: [], error: null, engine: engine.id, model,
-      createdAt, startedAt: null, endedAt: null, waiting: false, lastEngineEventAt: null, link: null,
+      createdAt, startedAt: null, endedAt: null, waiting: false, lastEngineEventAt: null, link: source.link,
       events: [], listeners: new Set(), abort: new AbortController(),
-      finished: new Promise((r) => (resolveFinished = r)), key: `${f.root}\0${f.rel}`, rel: f.rel,
+      finished: new Promise((r) => (resolveFinished = r)), key: `${f.root}\0${f.rel}`, rel: f.rel, copyKey: lock,
     };
     this.scans.set(id, scan);
-    await this.begin(scan, f, engine, model, refresh, resolveFinished);
+    await this.begin(scan, f, engine, model, refresh, source, resolveFinished);
     return { scanId: id };
   }
 
-  private async begin(scan: Scan, f: Folder, engine: Engine, model: string | null, refresh: boolean, resolveFinished: () => void): Promise<void> {
+  private async begin(scan: Scan, f: Folder, engine: Engine, model: string | null, refresh: boolean, source: ScanSource, resolveFinished: () => void): Promise<void> {
     const id = scan.id;
     // The latest finished scan of a folder is kept for a draw; an earlier one goes (api contract, Lifecycle).
     void scan.finished.then(() => {
@@ -183,35 +203,56 @@ export class ScanManager {
       resolveFinished();
     };
     let timedOut = false;
-
-    const commit = await headCommit(f.root).catch(() => null);
-    scan.commit = commit;
-    // A cancel while the commit was read.
-    if (scan.abort.signal.aborted) return end(timedOut ? "failed" : "cancelled", timedOut ? `Timed out after ${Math.round(this.opts.timeoutMs / 60_000) || 1} min` : "Cancelled");
-    const cacheFile = commit ? this.entry(f, commit) : null;
-    if (cacheFile && !refresh && existsSync(cacheFile)) {
-      try {
-        const hit = JSON.parse(readFileSync(cacheFile, "utf8")) as Cached & { version?: unknown };
-        // An entry of another shape (a corrupted file, an older format) is scanned again.
-        if (!hit || typeof hit !== "object" || hit.version !== CACHE_VERSION || !hit.card || typeof hit.card.name !== "string" || !Array.isArray(hit.options) || !Array.isArray(hit.warnings)) throw new Error("not a scan");
-        scan.cached = true;
-        scan.startedAt = scan.createdAt;
-        progress(`Scanned before at ${commit!.slice(0, 7)}`);
-        end("succeeded", null, hit);
-        return;
-      } catch { /* an unreadable entry is scanned again */ }
-    }
-
-    // A scan that starts an engine holds a slot, or waits for one; its deadline starts once it has it (api contract, Engine slots).
-    const go = async () => {
-      const ticket = await this.slots.take(scan.abort.signal, () => { scan.waiting = true; progress(WAITING); });
-      scan.waiting = false;
-      scan.startedAt = nowIso();
+    const startDeadline = () => {
+      clearTimeout(deadline);
       deadline = setTimeout(() => { timedOut = true; scan.abort.abort(); }, this.opts.timeoutMs);
       deadline.unref?.();
+    };
+
+    // A copy's commit is known once it is made or updated.
+    let commit: string | null = null;
+    if (!source.prepare) {
+      commit = await headCommit(f.root).catch(() => null);
+      scan.commit = commit;
+      // A cancel while the commit was read.
+      if (scan.abort.signal.aborted) return end("cancelled", "Cancelled");
+    }
+    let cacheFile = commit ? this.entry(f, commit) : null;
+    const hit = !source.prepare && cacheFile && !refresh ? this.readCache(cacheFile) : null;
+    if (hit) {
+      scan.cached = true;
+      scan.startedAt = scan.createdAt;
+      progress(`Scanned before at ${commit!.slice(0, 7)}`);
+      end("succeeded", null, hit);
+      return;
+    }
+
+    const work = async (): Promise<Cached> => {
+      if (source.prepare) {
+        // The copy or its update comes first and holds no slot; its deadline starts at the scan's start (*A scan with a link*).
+        scan.startedAt = nowIso();
+        startDeadline();
+        await source.prepare(scan.abort.signal, progress);
+        if (scan.abort.signal.aborted) throw new EngineError("Cancelled");
+        clearTimeout(deadline);
+        scan.commit = await headCommit(f.root);
+        cacheFile = scan.commit ? this.entry(f, scan.commit) : null;
+        const cached = cacheFile && !refresh ? this.readCache(cacheFile) : null;
+        if (cached) {
+          scan.cached = true;
+          cacheFile = null;
+          progress(`Scanned before at ${scan.commit!.slice(0, 7)}`);
+          return cached;
+        }
+      }
+      // A scan that starts an engine holds a slot, or waits for one; its deadline starts once it has it (api contract, Engine slots).
+      const ticket = await this.slots.take(scan.abort.signal, () => { scan.waiting = true; progress(WAITING); });
+      scan.waiting = false;
+      scan.startedAt ??= nowIso();
+      startDeadline();
       try { return await this.execute(f, engine, model, scan.abort.signal, progress); } finally { ticket.release(); }
     };
-    void go().then(
+    void work().then(
       (r) => {
         if (cacheFile) {
           try { mkdirSync(this.dir, { recursive: true }); writeAtomic(cacheFile, JSON.stringify({ version: CACHE_VERSION, ...r })); } catch (e) { console.error("Could not cache a scan:", e); }
@@ -221,11 +262,21 @@ export class ScanManager {
       (err: unknown) => {
         if (timedOut) return end("failed", `Timed out after ${Math.round(this.opts.timeoutMs / 60_000) || 1} min`);
         if (scan.abort.signal.aborted) return end("cancelled", "Cancelled");
-        const known = err instanceof EngineError || err instanceof ScanAnswerError;
+        const known = err instanceof EngineError || err instanceof ScanAnswerError || err instanceof RemoteError;
         if (!known) console.error(`Scan ${id} failed unexpectedly:`, err);
         end("failed", known ? (err as Error).message : `Unexpected error: ${(err as Error)?.message ?? String(err)}`);
       },
     );
+  }
+
+  /** A cache entry, or null when it is missing, unreadable or of another shape (an older format): scanned again. */
+  private readCache(file: string): Cached | null {
+    if (!existsSync(file)) return null;
+    try {
+      const hit = JSON.parse(readFileSync(file, "utf8")) as Cached & { version?: unknown };
+      if (!hit || typeof hit !== "object" || hit.version !== CACHE_VERSION || !hit.card || typeof hit.card.name !== "string" || !Array.isArray(hit.options) || !Array.isArray(hit.warnings)) return null;
+      return hit;
+    } catch { return null; }
   }
 
   private async execute(f: Folder, engine: Engine, model: string | null, signal: AbortSignal, progress: (m: string, source?: "engine" | "server") => void): Promise<Cached> {
@@ -257,3 +308,6 @@ export class ScanManager {
     return r;
   }
 }
+
+/** One key per copy folder, whatever the letter case where the disk ignores it. */
+const copyKey = (copy: string) => `copy:${process.platform === "win32" || process.platform === "darwin" ? copy.toLowerCase() : copy}`;

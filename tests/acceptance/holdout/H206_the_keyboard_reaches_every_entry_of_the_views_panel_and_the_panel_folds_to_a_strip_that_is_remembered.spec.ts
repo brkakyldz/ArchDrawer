@@ -9,7 +9,7 @@ const focusedId = (page: import('@playwright/test').Page) => page.evaluate(() =>
 // view. At 900 px and over the panel is 240 px wide beside the stage, which narrows so nothing is covered; `views-collapse` folds it to a
 // 40 px strip holding only that button, and the browser remembers that for every drawing. A drawing of one choice with one view has none.
 test('H206 [NAV-2 #185] the keyboard reaches every entry of the views panel in order, Up and Down do not wrap, Home and End, Enter and Space go to the view; the panel is 240 px beside a stage that narrows, folds to a 40 px strip that is remembered for every drawing, and is absent for one choice with one view', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const { file } = await workspace4('f4-keys', fourChoices('Keys four'));
   const opened = await openFourChoices(page, request, file);
   const entries = FOUR_PANEL.map(e => `views-entry-${e.view}`);

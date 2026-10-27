@@ -8,8 +8,8 @@ const ENGINE_LINES = ['Reading the drawing', 'Reading the code', 'Updating the d
 // engine and the same model. Another focus or another model reads the code again, then shows `Checking the facts`. The channel is free.
 // Every draw here fails at the channel call (`[fixture:fail:channel]` fails it every time), so the kept entry is never removed by a
 // success: each step shows whether it was used or not, and nothing is ever written.
-test('H154 [START-6, READ-2, START-4] after a failed draw a draw of the same scan with another focus or another model reads the code again and checks the facts, while the same trimmed focus, engine and model with another channel reuses the read, and nothing is ever written', async ({ request }) => {
-  test.setTimeout(420_000);
+test('H154 [START-6, READ-2, START-4, #181] after a failed draw a draw of the same scan with another focus or another model reads the code again and checks the facts, while the same trimmed focus, engine and model with another channel reuses the read, and nothing is ever written', async ({ request }) => {
+  test.setTimeout(60_000);
   const auth = await token(request);
   const project = await gitRepo('retry-other-choice');
   const docs = join(project.dir, 'docs');
@@ -22,7 +22,7 @@ test('H154 [START-6, READ-2, START-4] after a failed draw a draw of the same sca
   const focusB = { kind: 'typed', text: 'Explain the store [fixture:fail:channel]' };
   const failing = async (focus: unknown, channel: string, model: string | null) => {
     const runId = await startDraw(request, auth, scan.id, focus, channel, { model });
-    const run = await finishRun(request, runId, 'failed', 120_000);
+    const run = await finishRun(request, runId, 'failed', 30_000);
     expect(run).toMatchObject({ status: 'failed', diagramId: null, path: null });
     expect(run.error, 'the channel call failed').toBeTruthy();
     const events = await runEvents(runId);

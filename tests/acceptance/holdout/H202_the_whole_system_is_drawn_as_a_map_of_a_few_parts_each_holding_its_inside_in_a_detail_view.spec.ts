@@ -10,8 +10,8 @@ const view = (c: Choice4, id: string) => c.channels.overview.views!.find(v => v.
 // holding its inside in a detail view written at once; the map and its detail views together show or hold every component fact. With
 // the fixture engine the map is `app` and one card `zone-runtime` ("Agent runtime", no fact) whose inside is `zone-runtime-inside`
 // (`agent` and `store`). A section, a flow or a typed choice keeps its overview complete in one view.
-test('H202 [STORY-8 FILE-2 NAV-1 STORY-1 #183] the whole system of a draw is a map of a part and a card that holds its inside in a detail view, every fact is on the map or in a detail view, a flow stays in one view, the map has its own report target, and the editor goes from the map into the inside and back', async ({ page, request }) => {
-  test.setTimeout(420_000);
+test('H202 [STORY-8 FILE-2 NAV-1 STORY-1 #183 #184 #185] the whole system of a draw is a map of a part and a card that holds its inside in a detail view, every fact is on the map or in a detail view, a flow stays in one view, the map has its own report target, and the editor goes from the map into the inside and back', async ({ page, request }) => {
+  test.setTimeout(60_000);
   const auth = await token(request);
   const project = await gitRepo('map-draw');
 
@@ -62,7 +62,7 @@ test('H202 [STORY-8 FILE-2 NAV-1 STORY-1 #183] the whole system of a draw is a m
   expect(sorted(flow.channels.presentation!.views![0].edges.map(e => `${e.from}>${e.to}`))).toEqual(['agent>store', 'app>agent']);
 
   // The layout report: the map is the one view with a target of nine parts; its detail view and a flow's overview have none.
-  const report = async (data: Record<string, unknown>) => (await finishRun(request, await startKind(request, auth, { diagramId: run.diagramId, instruction: 'Keep it as it is', engine: 'fixture', model: null, ...data }), 'succeeded', 120_000)).layoutReport;
+  const report = async (data: Record<string, unknown>) => (await finishRun(request, await startKind(request, auth, { diagramId: run.diagramId, instruction: 'Keep it as it is', engine: 'fixture', model: null, ...data }), 'succeeded', 15_000)).layoutReport;
   const mapReport = await report({ choice: 'system', view: 'overview' });
   expect(mapReport).toMatchObject({ choice: 'system', view: 'overview', counts: { parts: 2, zones: 0, connections: 1 }, targets: { parts: 9, zones: null, connections: null } });
   expect((await report({ choice: 'system', view: 'zone-runtime-inside' })).targets).toEqual({ parts: null, zones: null, connections: null });

@@ -15,7 +15,7 @@ const filesOf = async (part: Locator) => (await part.getByTestId('tour-file').ev
 }))).map(value => text(value).replace(/([^,\s])\s+:/g, '$1:'));
 
 test('H162 [PRES-2, STORY-4, FILE-2] the tour opens on the first step and never in full screen, lists one part per lit part in the order of the view with its files and cited line ranges in the contracted order or No files recorded, and copies a path alone', async ({ page, request, context }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const { file } = await workspaceRaw('tour-files', tourShop('Tour shop'));
   await openDrawing(page, request, file); await toPresentation(page);

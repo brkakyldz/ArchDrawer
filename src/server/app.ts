@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, resolve, sep } from "node:path";
 import { Hono, type Context } from "hono";
@@ -17,8 +18,13 @@ import type { Config } from "./config";
 import { FileError, nowIso, type Store } from "./store";
 import type { RunManager } from "./runs";
 import type { ScanManager } from "./scans";
-import { checkFolder, headCommit } from "./folders";
+import { checkFolder, headCommit, type Folder } from "./folders";
+import { repoRootOf } from "./files";
+import { FolderPicker } from "./picker";
+import { Sources } from "./sources";
+import { copyOfPath, isInside, linkOfPath, NEEDS_GIT, readLink, Remotes, type Link } from "./remote";
 import type { DrawFocus } from "./engines/prompt";
+import type { FocusOption } from "../core/scan";
 import { decodeImage, writeReviseImage } from "./engines/revise";
 import type { Engine, EngineInfo } from "./engines/types";
 
@@ -28,10 +34,23 @@ export interface AppDeps {
   runs: RunManager;
   scans: ScanManager;
   engines: Map<string, Engine>;
+  /** Copies of repositories from links (api contract, *A repository from a link*); made from `config` when absent. */
+  remotes?: Remotes;
   token: string;
+  /** The engine slots now (api contract, Activity `slots`); the runs' `EngineSlots` when absent. */
+  slots?: () => SlotCounts;
+  /** This server process (api contract, Activity `instance`): 16 hex characters; random when not given. */
+  instance?: string;
+  /** The system's folder dialog; made from the config when absent. */
+  picker?: FolderPicker;
+  /** Recent and found folders; made from the config when absent. */
+  sources?: Sources;
   /** Called after `POST /api/shutdown` has answered. */
   onShutdown?: () => void;
 }
+
+/** The engine slots as the activity lists them (api contract, Activity). */
+export interface SlotCounts { total: number; busy: number; waiting: number }
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -50,7 +69,12 @@ export function envelopeError(port: number, host: string | undefined, origin: st
 /** The HTTP surface of docs/contracts/api.md, as a Hono app (testable with app.request). */
 export function createApp(deps: AppDeps): Hono {
   const { config, store, runs, scans, engines, token } = deps;
+  const remotes = deps.remotes ?? new Remotes(config.dataDir, config.testRemotes);
   const app = new Hono();
+  const picker = deps.picker ?? new FolderPicker({ testFile: config.testPicker });
+  const sources = deps.sources ?? new Sources({ dataDir: config.dataDir, library: store, searchHome: config.searchHome, copyInUse: (dir) => copyBusy(dir) });
+  // A drawing file registered in a folder makes its repository a recent folder (api contract, Recent and found).
+  store.on("registered", (file: string) => sources.use(repoRootOf(file)));
   type Status = 400 | 403 | 404 | 409 | 413 | 500;
   const err = (c: Context, status: Status, message: string, extra: Record<string, unknown> = {}) => c.json({ error: message, ...extra }, status);
 
@@ -146,7 +170,21 @@ export function createApp(deps: AppDeps): Hono {
     return err(c, 400, r.error, { errors: r.errors });
   });
 
-  app.delete("/api/diagrams/:id", (c) => (store.delete(c.req.param("id")) ? c.body(null, 204) : err(c, 404, "Diagram not found")));
+  app.delete("/api/diagrams/:id", (c) => {
+    const id = c.req.param("id");
+    if (c.req.query("deleteCopy") !== "true") return store.delete(id) ? c.body(null, 204) : err(c, 404, "Diagram not found");
+    // Deleting a copy (api contract): every check before anything is forgotten.
+    if (!store.exists(id)) return err(c, 404, "Diagram not found");
+    const path = store.isRegistered(id) ? store.pathOf(id) : null;
+    const copy = path ? copyOfPath(config.dataDir, path) : null;
+    const link = path ? linkOfPath(config.dataDir, path) : null;
+    if (!copy || !link) return err(c, 400, "This drawing is not in a copy made from a link");
+    if (store.list().some((d) => d.id !== id && d.path && isInside(copy, d.path))) return err(c, 409, "Other drawings in the list are in this copy");
+    if (copyBusy(copy)) return err(c, 409, IN_USE);
+    store.delete(id);
+    const gone = remotes.deleteCopy(link);
+    return "error" in gone ? err(c, 500, gone.error) : c.body(null, 204);
+  });
 
   app.get("/api/diagrams/:id/events", (c) => {
     const id = c.req.param("id");
@@ -249,25 +287,98 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   // Folders and scans (api contract, Folders, Scans).
-  app.post("/api/folders/check", async (c) => {
-    const b = (await readJson(c)) as Record<string, unknown> | null;
-    const f = checkFolder(b && typeof b === "object" ? b.folder : undefined);
-    if ("error" in f) return err(c, 400, f.error);
+  const IN_USE = "This repository is in use: try again when its scans and instructions have ended";
+  /** A scan of a folder in the copy runs, or a run has its drawing or repository in it (*In use*). */
+  const copyBusy = (copy: string) => scans.runningInCopy(copy) !== null || runs.usesFolder(copy);
+
+  /**
+   * A body's `folder` or `link` (api contract, *Folders*): the folder checked as typed, or the link read
+   * and its copy's folder, which need not exist yet. `link` is the link given, or the copy's the folder lies in.
+   */
+  const target = async (b: Record<string, unknown> | null): Promise<{ f: Folder; given: Link | null; link: string | null; copy: string | null } | { error: string }> => {
+    const body = b && typeof b === "object" ? b : {};
+    const hasFolder = body.folder !== undefined && body.folder !== null;
+    const hasLink = body.link !== undefined && body.link !== null;
+    if (hasFolder && hasLink) return { error: "Give a folder or a link, not both" };
+    if (hasLink) {
+      const l = readLink(body.link);
+      if ("error" in l) return l;
+      if (await remotes.gitMissing()) return { error: NEEDS_GIT };
+      const copy = remotes.copyDir(l);
+      return { f: { folder: copy, root: copy, rel: "" }, given: l, link: l.link, copy };
+    }
+    const f = checkFolder(body.folder);
+    if ("error" in f) return f;
+    return { f, given: null, link: linkOfPath(config.dataDir, f.folder), copy: copyOfPath(config.dataDir, f.folder) };
+  };
+
+  /** A checked folder or link as `POST /api/folders/check` answers it; a folder in a copy names the copy's link. */
+  const folderAnswer = async (t: { f: Folder; given: Link | null; link: string | null; copy: string | null }) => {
+    const { f } = t;
     const drawing = join(f.folder, "docs", "architecture.archdraw.json");
-    return c.json({ folder: f.folder, root: f.root, git: (await headCommit(f.root)) !== null, drawing: existsSync(drawing) ? drawing : null });
+    const copied = t.copy !== null && existsSync(t.copy);
+    return {
+      folder: f.folder, root: f.root, git: copied || !t.given ? (await headCommit(f.root)) !== null : false, drawing: existsSync(drawing) ? drawing : null,
+      link: t.link, branch: t.given?.branch ?? null, copied,
+    };
+  };
+
+  app.post("/api/folders/check", async (c) => {
+    const t = await target((await readJson(c)) as Record<string, unknown> | null);
+    if ("error" in t) return err(c, 400, t.error);
+    return c.json(await folderAnswer(t));
+  });
+
+  // The system's folder dialog (api contract, The folder dialog): the folder it gives is checked as a pasted one.
+  app.post("/api/folders/pick", async (c) => {
+    const r = await picker.pick(c.req.raw.signal);
+    switch (r.status) {
+      case "busy": return err(c, 409, "The folder dialog is already open");
+      case "failed": return err(c, 500, `The folder dialog failed: ${r.reason}`);
+      case "picked": {
+        const t = await target({ folder: r.folder });
+        if ("error" in t) return err(c, 400, t.error);
+        return c.json({ status: "picked", ...(await folderAnswer(t)) });
+      }
+      // A request that went away gets no answer; this one is never read.
+      case "closed": return c.json({ status: "cancelled" });
+      default: return c.json({ status: r.status });
+    }
+  });
+
+  // Recent and found (api contract, Recent and found).
+  app.get("/api/sources", async (c) => c.json(await sources.answer(picker.available())));
+  app.post("/api/sources/refresh", async (c) => c.json(await sources.answer(picker.available(), true)));
+  app.post("/api/sources/forget", async (c) => {
+    const r = await sources.forget(await readJson(c));
+    return c.json(r.body, r.status);
   });
 
   app.post("/api/scans", async (c) => {
     const b = (await readJson(c)) as Record<string, unknown> | null;
-    const f = checkFolder(b && typeof b === "object" ? b.folder : undefined);
-    if ("error" in f) return err(c, 400, f.error);
+    const t = await target(b);
+    if ("error" in t) return err(c, 400, t.error);
+    const { f } = t;
     const body = b!;
     if (body.refresh !== undefined && typeof body.refresh !== "boolean") return err(c, 400, "refresh must be true or false");
     const picked = await pickEngine(body);
     if (typeof picked === "string") return err(c, 400, picked);
-    const scanId = await scans.start(f, picked.engine, picked.model, body.refresh === true);
-    if (!scanId) return err(c, 409, "A scan of this folder is already running");
-    return c.json({ scanId }, 202);
+    // A link, or a folder in a copy, makes or updates the copy first (*A scan with a link*).
+    const l = t.given ?? (t.link ? readLink(`https://${t.link}`) : null);
+    const copy = t.copy;
+    const source = l && copy && !("error" in l) ? {
+      link: l.link, copy,
+      prepare: (signal: AbortSignal, progress: (m: string) => void) => remotes.prepare(l, t.given ? { branch: l.branch } : "own", {
+        signal, progress, inUse: () => runs.usesFolder(copy),
+        drawings: () => store.list().flatMap((d) => (d.path && isInside(copy, d.path) ? [d.path] : [])),
+      }),
+    } : undefined;
+    const started = await scans.start(f, picked.engine, picked.model, body.refresh === true, source);
+    // The running scan's id, so a page can follow it (api contract, Scans); one scan at a time in a copy.
+    if ("running" in started) return err(c, 409, copy ? "A scan of this repository is already running" : "A scan of this folder is already running", { scanId: started.running });
+    // A scan that succeeds, a cached one too, makes the folder a recent one.
+    scans.subscribe(started.scanId, (e) => { if (e.type === "done" && e.status === "succeeded") sources.use(f.folder); });
+    return c.json({ scanId: started.scanId }, 202);
   });
 
   app.get("/api/scans/:id", (c) => {
@@ -312,6 +423,41 @@ export function createApp(deps: AppDeps): Hono {
     return engine ? { engine, model } : "No engine is available: install and log in to Claude Code or Codex";
   };
 
+  /**
+   * The choices of a draw or of a join (api contract, The draw run, checks 4 and 5): 1 to 10, each in order, options
+   * looked up in `options`, then the duplicates within them. The focuses, or the refusal (400).
+   */
+  const readChoices = (asked: unknown, options: readonly FocusOption[]): DrawFocus[] | string => {
+    if (!Array.isArray(asked) || asked.length < 1 || asked.length > 10) return "Choose what to draw: give 1 to 10 choices";
+    const focuses: DrawFocus[] = [];
+    for (const raw of asked) {
+      const focus = raw as Record<string, unknown> | undefined;
+      const fk = focus && typeof focus === "object" && !Array.isArray(focus) ? focus.kind : undefined;
+      if (fk !== "option" && fk !== "whole" && fk !== "typed") return 'Unknown focus: use {"kind": "option" | "whole" | "typed"}';
+      if (fk === "option") {
+        const option = options.find((o) => o.id === focus!.option);
+        if (!option) return `Unknown focus option "${String(focus!.option)}"`;
+        focuses.push({ kind: "option", option });
+      } else if (fk === "typed") {
+        const text = typeof focus!.text === "string" ? focus!.text.trim() : "";
+        if (!text) return "Say what to focus on: the focus is empty";
+        if (text.length > 300) return "The focus is too long (300 characters at most)";
+        focuses.push({ kind: "typed", text });
+      } else focuses.push({ kind: "whole" });
+    }
+    if (focuses.filter((x) => x.kind === "whole").length > 1) return "The whole system is chosen twice";
+    const twice = focuses.find((x, i) => x.kind === "option" && focuses.findIndex((y) => y.kind === "option" && y.option.id === x.option.id) !== i);
+    if (twice && twice.kind === "option") return `The option "${twice.option.id}" is chosen twice`;
+    if (focuses.filter((x) => x.kind === "typed").length > 1) return "Only one choice can be in your own words";
+    return focuses;
+  };
+
+  /** A running draw holds its scan until it ends, so choices can join from it (api contract, Joining a running draw). */
+  const holdScan = (runId: string, scanId: string) => {
+    const unpin = scans.pin(scanId);
+    void runs.wait(runId).then(unpin);
+  };
+
   /** A `draw` run (api contract, The draw run): its checks in their order, then one draw per folder. */
   const startDraw = async (c: Context, b: Record<string, unknown>) => {
     const scan = typeof b.scan === "string" ? scans.succeeded(b.scan) : null;
@@ -322,35 +468,89 @@ export function createApp(deps: AppDeps): Hono {
     // `focus` is the same request as `choices` of that one choice (api contract, The draw run).
     if (b.choices !== undefined && b.focus !== undefined) return err(c, 400, "Give choices or focus, not both");
     const asked = b.choices !== undefined ? b.choices : b.focus !== undefined ? [b.focus] : undefined;
-    if (!Array.isArray(asked) || asked.length < 1 || asked.length > 10) return err(c, 400, "Choose what to draw: give 1 to 10 choices");
-    const focuses: DrawFocus[] = [];
-    for (const raw of asked) {
-      const focus = raw as Record<string, unknown> | undefined;
-      const fk = focus && typeof focus === "object" && !Array.isArray(focus) ? focus.kind : undefined;
-      if (fk !== "option" && fk !== "whole" && fk !== "typed") return err(c, 400, 'Unknown focus: use {"kind": "option" | "whole" | "typed"}');
-      if (fk === "option") {
-        const option = (scan.options ?? []).find((o) => o.id === focus!.option);
-        if (!option) return err(c, 400, `Unknown focus option "${String(focus!.option)}"`);
-        focuses.push({ kind: "option", option });
-      } else if (fk === "typed") {
-        const text = typeof focus!.text === "string" ? focus!.text.trim() : "";
-        if (!text) return err(c, 400, "Say what to focus on: the focus is empty");
-        if (text.length > 300) return err(c, 400, "The focus is too long (300 characters at most)");
-        focuses.push({ kind: "typed", text });
-      } else focuses.push({ kind: "whole" });
-    }
-    if (focuses.filter((x) => x.kind === "whole").length > 1) return err(c, 400, "The whole system is chosen twice");
-    const twice = focuses.find((x, i) => x.kind === "option" && focuses.findIndex((y) => y.kind === "option" && y.option.id === x.option.id) !== i);
-    if (twice && twice.kind === "option") return err(c, 400, `The option "${twice.option.id}" is chosen twice`);
-    if (focuses.filter((x) => x.kind === "typed").length > 1) return err(c, 400, "Only one choice can be in your own words");
+    const focuses = readChoices(asked, scan.options ?? []);
+    if (typeof focuses === "string") return err(c, 400, focuses);
     if (b.channel !== "linkedin" && b.channel !== "readme" && b.channel !== "presentation") return err(c, 400, "Choose the channel: linkedin, readme or presentation");
     const picked = await pickEngine(b);
     if (typeof picked === "string") return err(c, 400, picked);
     const folderKey = `${f.root}\0${f.rel}`;
-    if (runs.drawingOn(folderKey)) return err(c, 409, "A drawing of this folder is already being made");
-    const runId = runs.startDraw({ engine: picked.engine, model: picked.model, scan: b.scan as string, folder: f, folderKey, card: scan.card!, focuses, channel: b.channel });
+    const running = runs.drawingOn(folderKey);
+    if (running) return err(c, 409, "A drawing of this folder is already being made", { runId: running });
+    const runId = runs.startDraw({ engine: picked.engine, model: picked.model, scan: b.scan as string, folder: f, folderKey, card: scan.card!, options: scan.options ?? [], link: scan.link ?? null, commit: scan.commit, focuses, channel: b.channel });
+    holdScan(runId, scan.id);
     return c.json({ runId }, 202);
   };
+
+  /**
+   * Joining a running draw (api contract, Joining a running draw): its checks in their order; the choices take the
+   * draw's channel, engine and model, whatever the body says. A refused join changes nothing.
+   */
+  app.post("/api/runs/:id/choices", async (c) => {
+    const body = await readJson(c);
+    const b = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>;
+    const id = c.req.param("id");
+    const run = runs.get(id);
+    if (!run) return err(c, 404, "Run not found");
+    const draw = runs.drawOf(id);
+    if (run.kind !== "draw" || !draw) return err(c, 400, "Only a draw takes more choices");
+    const ENDED = "This draw has ended: start a new one", WRITING = "The draw is writing its file: start a new one once it has finished";
+    if (run.status !== "running" || runs.cancelAsked(id)) return err(c, 409, ENDED);
+    if (run.writing) return err(c, 409, WRITING);
+    if (typeof b.scan !== "string") return err(c, 400, "Give the scan the choices come from");
+    // The draw's own scan, or a succeeded scan of its folder at its commit with its options.
+    const options = (draw.options ?? []) as FocusOption[];
+    if (b.scan !== draw.scan) {
+      const scan = scans.succeeded(b.scan);
+      if (!scan) return err(c, 400, "Scan the folder first: that scan is unknown or did not succeed");
+      const same = `${scan.root}\0${scan.rel}` === draw.folderKey && scan.commit !== null && scan.commit === (draw.commit ?? null) && sameOptions(scan.options ?? [], options);
+      if (!same) return err(c, 409, "The draw was started from another scan of this folder");
+    }
+    // The options the draw keeps from its own scan: a scan accepted above has the same.
+    const focuses = readChoices(b.choices, options);
+    if (typeof focuses === "string") return err(c, 400, focuses);
+    // Against the draw, whose choices count whatever their status, a failed one included.
+    if (focuses.some((x) => x.kind === "whole") && draw.focuses.some((x) => x.kind === "whole")) return err(c, 400, "The whole system is already in this draw");
+    const again = focuses.find((x) => x.kind === "option" && draw.focuses.some((y) => y.kind === "option" && y.option.id === x.option.id));
+    if (again && again.kind === "option") return err(c, 400, `The option "${again.option.id}" is already in this draw`);
+    if (focuses.some((x) => x.kind === "typed") && draw.focuses.some((x) => x.kind === "typed")) return err(c, 400, "This draw already has a choice in your own words");
+    const n = draw.focuses.length;
+    if (n + focuses.length > 10) return err(c, 400, `A draw holds at most 10 choices; this one has ${n}`);
+    const joined = runs.joinDraw(id, focuses);
+    if (!joined) return err(c, 400, "Only a draw takes more choices");
+    if ("refused" in joined) return err(c, 409, joined.refused === "writing" ? WRITING : ENDED);
+    return c.json({ runId: id, choices: joined.choices });
+  });
+
+  /**
+   * `Try again` (api contract, Trying again): a new draw of a draw that has ended, with its scan, channel, engine and
+   * model — after a draw that succeeded, its failed choices added to the file it wrote; after one that failed or was
+   * cancelled, every choice into a new file. The choices that finished come from what was kept.
+   */
+  app.post("/api/runs/:id/retry", async (c) => {
+    const id = c.req.param("id");
+    const run = runs.get(id);
+    if (!run) return err(c, 404, "Run not found");
+    const draw = runs.drawOf(id);
+    if (run.kind !== "draw" || !draw) return err(c, 400, "Only a draw can be tried again");
+    if (run.status === "running") return err(c, 409, "The draw is still running");
+    const choices = run.choices ?? [];
+    const again = run.status === "succeeded" ? choices.flatMap((ch, i) => (ch.status === "failed" ? [i] : [])) : choices.map((_, i) => i);
+    if (!again.length) return err(c, 400, "Every choice of this draw was drawn");
+    const f = checkFolder(draw.folder.folder);
+    if ("error" in f) return err(c, 400, f.error);
+    const info = await detect(draw.engine);
+    if (!info.available) return err(c, 400, `${info.label} is not available: ${info.detail}`);
+    if (run.status === "succeeded" && (!run.diagramId || !store.isRegistered(run.diagramId) || !store.get(run.diagramId))) return err(c, 409, "The drawing this draw wrote is gone: start a new draw");
+    const folderKey = `${f.root}\0${f.rel}`;
+    const running = runs.drawingOn(folderKey);
+    if (running) return err(c, 409, "A drawing of this folder is already being made", { runId: running });
+    const runId = runs.startDraw({
+      ...draw, folder: f, folderKey, focuses: again.map((i) => draw.focuses[i]), ids: again.map((i) => choices[i].id), places: again.map((i) => draw.places?.[i] ?? i),
+      into: run.status === "succeeded" ? run.diagramId : null, retryOf: id,
+    });
+    holdScan(runId, draw.scan);
+    return c.json({ runId }, 202);
+  });
 
   app.post("/api/runs", async (c) => {
     const body = await readJson(c);
@@ -459,8 +659,9 @@ export function createApp(deps: AppDeps): Hono {
         let chain = Promise.resolve();
         let unsub: (() => void) | null = null;
         unsub = runs.subscribe(id, (e) => {
-          const data = e.type === "progress" ? { message: e.message, stage: e.stage, choice: e.choice } : { status: e.status, diagramId: e.diagramId, error: e.error, changes: e.changes, choice: e.choice, channel: e.channel, view: e.view, layoutReport: e.layoutReport, route: e.route, path: e.path, choices: e.choices };
-          chain = chain.then(() => stream.writeSSE({ event: e.type, data: JSON.stringify(data) })).catch(() => {});
+          // Every field of the event but its type: a progress line, a draw's choice record, or the end (api contract, Runs).
+          const { type, ...data } = e;
+          chain = chain.then(() => stream.writeSSE({ event: type, data: JSON.stringify(data) })).catch(() => {});
           if (e.type === "done") void chain.then(() => { unsub?.(); done(); });
         });
         stream.onAbort(() => { unsub?.(); done(); });
@@ -469,6 +670,19 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   app.post("/api/runs/:id/cancel", (c) => (runs.cancel(c.req.param("id")) ? c.json({ ok: true }) : err(c, 404, "Run not found")));
+
+  // The jobs (api contract, Activity; ADR 0016 decision 6): every scan and draw running or ended within the keep time.
+  const instance = deps.instance ?? randomBytes(8).toString("hex");
+  app.get("/api/activity", (c) => {
+    const now = Date.now();
+    const jobs = [
+      ...scans.list(now).map((s) => ({ type: "scan" as const, events: `/api/scans/${s.id}/events`, ...s })),
+      ...runs.list(now).map((r) => ({ type: "draw" as const, events: `/api/runs/${r.id}/events`, ...r })),
+    ].sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.createdAt < b.createdAt ? 1 : -1));
+    // Until the slot queue counts them, each running scan and run holds one engine and nothing waits.
+    const slots = deps.slots?.() ?? runs.slots.stats();
+    return c.json({ instance, now: new Date(now).toISOString(), timeoutMs: config.runTimeoutMs, slots, jobs });
+  });
 
   app.post("/api/shutdown", (c) => {
     setTimeout(() => deps.onShutdown?.(), 50).unref?.();
@@ -514,4 +728,10 @@ export function parseScope(raw: unknown, inView: string[]): RunScope | string {
   const missing = (s.ids as string[]).find((id) => !inView.includes(id));
   if (missing) return `The component "${missing}" is not in this view`;
   return { kind: "parts", ids: [...new Set(s.ids as string[])] };
+}
+
+/** The same options (api contract, Joining a running draw): the same ids, kinds, titles, sentences and files, in the same order. */
+export function sameOptions(a: readonly FocusOption[], b: readonly FocusOption[]): boolean {
+  const key = (o: FocusOption) => JSON.stringify([o.id, o.kind, o.title, o.sentence, o.files]);
+  return a.length === b.length && a.every((o, i) => key(o) === key(b[i]));
 }

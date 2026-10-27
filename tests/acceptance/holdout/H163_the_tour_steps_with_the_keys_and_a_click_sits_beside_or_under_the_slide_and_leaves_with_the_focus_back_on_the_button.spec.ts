@@ -7,7 +7,7 @@ import { tourShop, workspaceRaw, openDrawing, toPresentation, openLayer, litPart
 // slide in a window of 900 px or more and under it below that; the buttons stay in the header at that width. Escape and `Exit` leave,
 // the focus goes back to `Tour` and the step shown is the current one in the steps panel. Nothing is saved.
 test('H163 [PRES-2, NAV-2, STORY-4] the tour steps with the keys and a click and never past either end, N does nothing, the panel is beside the slide when the window is wide and under it when narrow, and Escape and Exit leave with the focus back on Tour and the step shown current', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('tour-keys', tourShop('Tour keys'));
   await openDrawing(page, request, file); await toPresentation(page);
   const bytes = await readFile(file, 'utf8');

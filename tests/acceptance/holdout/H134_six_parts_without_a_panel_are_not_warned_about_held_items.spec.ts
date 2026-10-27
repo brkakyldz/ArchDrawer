@@ -37,6 +37,8 @@ test('H134 [LOOK-3, START-5, FILE-1] a drawing of six parts with no panel is not
   // Must not happen: a warning that asks for held items, or any warning but the three depth rules.
   expect(lines.filter(line => /held items|no panel/i.test(line)), 'no held items warning').toEqual([]);
   for (const line of lines) expect(line, 'only the three depth warnings remain').toMatch(/flat|pipeline|main path|step|repeat/i);
+  // Each warning is printed as `WARN  <json path>: <message>`, with two spaces (cli contract, validate; moved from H16).
+  for (const line of lines) expect(line, 'two spaces after WARN, then the path').toMatch(/^WARN  \S/);
   expect(await readFile(plain.file, 'utf8'), 'validate writes nothing').toBe(bytes);
 
   // The same six parts with a panel give exactly the same warnings: a panel is no longer what the drawing is measured by.

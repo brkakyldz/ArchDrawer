@@ -6,7 +6,7 @@ import { fourChoices, workspace4, openFourChoices, panelEntries, panelStructure,
 // same test ids, and choosing an entry closes the menu; at 900 px and over it is beside the stage again. `views-button`, `views-menu` and
 // `view-item-*` exist at no width.
 test('H207 [NAV-2 #185] below 900 px the views panel is in the header menu with the same entries, choosing one goes there and closes the menu, 900 px brings the panel back beside the stage, and the old views button exists at no width', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspace4('f4-narrow', fourChoices('Narrow four'));
   await page.setViewportSize({ width: 820, height: 900 });
   await openFourChoices(page, request, file);

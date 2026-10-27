@@ -226,6 +226,24 @@ export function fixtureOverview(title: string, partial: boolean) {
   };
 }
 
+/**
+ * The markers of a copy's repository name in their dashed form (testing contract, *Fixture markers in
+ * a copy*): `shop-fixture-fail-overview` is `[fixture:fail:overview]`. Empty outside a copy.
+ */
+export function copyMarkers(cwd: string): string[] {
+  const repo = /[\\/]repos[\\/](?:github\.com|gitlab\.com|bitbucket\.org)[\\/][^\\/]+[\\/]([^\\/]+)[\\/]?$/i.exec(cwd)?.[1];
+  const words = repo ? /(?:^|-)fixture-(.*)$/.exec(repo)?.[1] : undefined;
+  return words ? words.split("-fixture-").filter(Boolean).map((w) => `[fixture:${w.replace(/-/g, ":")}]`) : [];
+}
+
+/** A call in a copy reads its markers from the copy's name too: added to the folder's name (and a scan's instruction, which is that name). */
+function withCopyMarkers(req: EngineRunRequest): EngineRunRequest {
+  const marks = copyMarkers(req.cwd);
+  if (!marks.length) return req;
+  const folderName = `${req.folderName} ${marks.join(" ")}`;
+  return { ...req, folderName, instruction: req.instruction === req.folderName ? folderName : req.instruction };
+}
+
 /** The deterministic stand-in engine of docs/contracts/testing.md. */
 export class FixtureEngine implements Engine {
   readonly id = "fixture";
@@ -237,6 +255,7 @@ export class FixtureEngine implements Engine {
   }
 
   async run(req: EngineRunRequest): Promise<unknown> {
+    req = withCopyMarkers(req);
     // A draw's markers come from the folder's name and the typed focus (testing contract, Draw).
     // The routing question (testing contract, Routing): answered at once, from the marker alone.
     if (req.task?.kind === "route") return { route: fixtureRoute(req.instruction) };
@@ -289,9 +308,14 @@ export class FixtureEngine implements Engine {
       }
     }
     if (req.model) req.progress(`Using model ${req.model}`);
+    // The read reports reading A, then B when it differs, with its `Reading the code` line (testing contract, File reads).
+    const listing = req.task?.data?.listing ?? [];
+    const reads = stage === "read" ? [...new Set([listing[0] ?? "fixture/empty.ts", listing[1] ?? listing[0] ?? "fixture/empty.ts"])] : undefined;
     for (const step of FIXTURE_STEPS) {
       await sleep(this.stepMs, req.signal);
-      req.progress(step);
+      req.progress(step, step === "Reading the code" ? reads : undefined);
+      // `[fixture:quiet]`: the read says nothing for 45 s after its `Reading the code` line (testing contract, Draw).
+      if (stage === "read" && step === "Reading the code" && marked("[fixture:quiet]")) await sleep(45_000, req.signal);
     }
     await sleep(this.stepMs, req.signal);
     if (marked(stage === "read" ? "[fixture:fail]" : `[fixture:fail:${stage}]`)) throw new EngineError("Fixture failure requested");

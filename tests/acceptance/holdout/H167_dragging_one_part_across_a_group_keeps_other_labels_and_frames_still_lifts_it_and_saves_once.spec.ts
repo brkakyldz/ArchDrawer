@@ -6,7 +6,7 @@ import { sketch, pickUp, dragMarks, edgeSnaps, nodeSnaps, sameBox, nodeSize, siz
 // loose part e with two lines (to d inside the group, and to f). e is dragged across the group while a, b, c, d, f and the lines
 // that do not touch e stay as they are.
 test('H167 [EDIT-5 LOOK-4 #166 #170] dragging one part across a group keeps the other labels, badges and frames still, lifts the part and lights its own lines, and is saved once on release', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const doc = sketch('Calm drag', [
     { id: 'a', label: 'Intake', sub: 'takes it', x: 0, y: 0 }, { id: 'b', label: 'Review', sub: 'checks it', x: 400, y: 0 },
     { id: 'zone', form: 'group', label: 'Processing zone' },
@@ -59,7 +59,7 @@ test('H167 [EDIT-5 LOOK-4 #166 #170] dragging one part across a group keeps the 
   await held.release(); await park();
   await expect.poll(() => puts.count).toBe(1);
   await saved(page);
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1200); // a negative proof: no second save comes (the editor saves 350 ms after an edit)
   expect(puts.count, 'one PUT for the whole drag').toBe(1);
   await expect.poll(async () => { const m = await dragMarks(page); return [m.lifted, m.dimmedParts, m.dimmedEdges, m.dropTargets].map(x => x.length).join(','); }).toBe('0,0,0,0');
   sizeIs(await nodeSize(page, 'e'), before.size, 'e after release');

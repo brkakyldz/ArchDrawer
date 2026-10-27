@@ -12,7 +12,7 @@ const partX = (doc: Doc4, choiceId: string, view: string, id: string) => choice(
 // undo history is one history over every choice. Two choices hold a fact with the same id `api` and the same label to show the edit
 // does not leak: renaming it in the section leaves the whole system's.
 test('H200 [FILE-2 FILE-3 EDIT-1 NAV-2 #182 #185] a move, a rename, a new part and the steps switch in one choice change that choice alone, the other choices stay byte for byte and unmarked, and undo walks back through the edits of every choice', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const { file } = await workspace4('f4-edit', fourChoices('Edit four'));
   await openFourChoices(page, request, file);
   const initial = await readRaw(file) as Doc4; // as the server normalised it on opening

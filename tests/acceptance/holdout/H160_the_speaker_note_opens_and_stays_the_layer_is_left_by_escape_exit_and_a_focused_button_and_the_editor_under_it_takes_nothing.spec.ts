@@ -8,7 +8,7 @@ import { slideShop, workspaceRaw, openDrawing, toPresentation, openLayer, litPar
 // opening slide) and lights its parts on the canvas. While the layer is open the editor under it takes no key and no click: a
 // selected part is not deleted, no tool changes, search does not open, nothing is selected by a click, and nothing is saved.
 test('H160 [PRES-1, STORY-4, EDIT-1] the speaker note is closed on entry and kept open from step to step with its newlines, Escape Exit and Enter on Exit each leave with the focus back and the step shown current, and no key or click reaches the editor under the layer', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('present-note', slideShop('Note shop'));
   await openDrawing(page, request, file); await toPresentation(page);
   const start = page.getByTestId('present-start'), layer = page.getByTestId('present'), toggle = page.getByTestId('present-note-toggle'), note = page.getByTestId('present-note');

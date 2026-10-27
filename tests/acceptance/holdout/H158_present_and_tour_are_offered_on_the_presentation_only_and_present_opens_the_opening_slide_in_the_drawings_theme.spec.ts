@@ -8,7 +8,7 @@ import { shop3, withPresentation, workspaceRaw, openDrawing, slideShop, toPresen
 // drawing's theme, with focus on the layer, and asks for full screen without depending on getting it. Leaving by the browser's own
 // full-screen exit leaves the layer too. Opening, looking and leaving writes nothing and starts no run.
 test('H158 [PRES-1, STORY-4, NAV-2, LOOK-1] Present and Tour are in the header of the presentation channel only, off with a reason when there is no drawing or no step, and Present opens the opening slide in the drawings theme with focus held in the layer and full screen asked for, not assumed', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const runs: string[] = [];
   page.on('request', req => { if (req.method() === 'POST' && new URL(req.url()).pathname === '/api/runs') runs.push(req.url()); });
   const editor = page.getByTestId('editor'), start = page.getByTestId('present-start'), tour = page.getByTestId('tour-start'), layer = page.getByTestId('present');

@@ -6,7 +6,7 @@ const SAVED = 'Saved in the file for your next archdrawer session';
 // AI-4 without an engine: the suggestions are still there, and each one saves its instruction as a request for the next
 // session (FILE-1), as a typed instruction would, and shows as a saved turn (AI-2). Nothing is run and the drawing is left alone.
 test('H142 [AI-4, AI-2, FILE-1] with no engine a suggestion saves its instruction as a request for its channel and view, shows as a saved turn, starts no run and leaves the input and the drawing alone', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('suggest-saved', withLinkedIn(shop3('Saved suggestions shop')));
   const server = await isolatedDrawing(page, request, file, '100', '');
   const posts: string[] = [];

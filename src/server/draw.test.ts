@@ -163,7 +163,7 @@ describe("the draw run", () => {
     const again = await start("The agent [fixture:flaky:channel]", "presentation");
     expect(again.status).toBe("succeeded");
     const lines = linesOf(t, again.id);
-    expect(lines.filter((e) => e.stage !== "channel")).toEqual([
+    expect(lines.filter((e) => e.stage === "read" || e.stage === "overview")).toEqual([
       { message: 'Drawing "The agent [fixture:flaky:channel]" (1 of 1)', stage: "read" },
       { message: "Using the facts already read", stage: "read" }, { message: "Checking the facts", stage: "read" },
       { message: "Drawing the overview", stage: "overview" }, { message: "Using the overview already drawn", stage: "overview" },
@@ -305,7 +305,9 @@ describe("a draw of several choices", () => {
     t.runs.subscribe(run.id, (e) => { if (e.type === "progress") events.push({ message: e.message, stage: e.stage, choice: e.choice }); });
     expect([run.status, run.error, run.choice, run.view]).toEqual(["succeeded", null, "system", "readme"]);
     expect(run.choices!.map((c) => [c.id, c.status, c.stage])).toEqual([["system", "done", "channel"], ["how-a-tool-runs", "done", "channel"]]);
-    expect(events.every((e) => e.choice === "system" || e.choice === "how-a-tool-runs")).toBe(true);
+    // Every line names its choice, but the two of the write (api contract, The draw run).
+    expect(events.filter((e) => e.choice === null).map((e) => [e.message, e.stage])).toEqual([["Writing the drawing", null], [expect.stringMatching(/^Saved/), null]]);
+    expect(events.every((e) => e.choice === null || e.choice === "system" || e.choice === "how-a-tool-runs")).toBe(true);
     expect(events.filter((e) => e.message.startsWith("Drawing \"")).map((e) => [e.message, e.choice])).toEqual([
       ['Drawing "The whole system" (1 of 2)', "system"], ['Drawing "How a tool runs" (2 of 2)', "how-a-tool-runs"],
     ]);
@@ -321,33 +323,46 @@ describe("a draw of several choices", () => {
     expect(file.warnings.every((w) => w.startsWith("The whole system: ") || w.startsWith("How a tool runs: "))).toBe(true);
   });
 
-  it("a failure in the second choice writes nothing and keeps the first, which the same draw then goes through without a call", async () => {
+  it("a failure in the second choice ends it alone: the file holds the first, and Try again draws the second into that file", async () => {
     const dir = real(repo());
     const t = makeApp();
     const scan = await scanOf(t, dir);
     const choices = [{ kind: "whole" }, { kind: "typed", text: "Notes [fixture:flaky:second]" }];
-    const failed = (await t.runs.wait((await start(t, scan, choices, "linkedin")).body.runId))!;
-    expect([failed.status, failed.error, failed.path]).toEqual(["failed", "Fixture failure requested", null]);
-    expect(failed.choices!.map((c) => [c.status, c.stage])).toEqual([["done", "channel"], ["failed", "read"]]);
-    expect(existsSync(join(dir, "docs"))).toBe(false);
-    const again = (await t.runs.wait((await start(t, scan, choices, "linkedin")).body.runId))!;
-    expect(again.status).toBe("succeeded");
-    const lines: { message: string; choice: string | null }[] = [];
-    t.runs.subscribe(again.id, (e) => { if (e.type === "progress") lines.push({ message: e.message, choice: e.choice }); });
-    const first = lines.filter((l) => l.choice === "system").map((l) => l.message);
-    expect(first).toEqual(expect.arrayContaining(["Using the facts already read", "Using the overview already drawn", "Using the LinkedIn post already drawn"]));
-    expect(first).not.toContain("Reading the code");
-    expect(lines.filter((l) => l.choice !== "system").map((l) => l.message)).toContain("Reading the code");
-    // Kept in another place: a draw that puts the kept choice second names its views as the second choice's.
-    const other = real(repo());
-    const scan2 = await scanOf(t, other);
-    const stubborn = (await t.runs.wait((await start(t, scan2, [{ kind: "whole" }, { kind: "typed", text: "Notes [fixture:fail:second]" }], "linkedin")).body.runId))!;
-    expect(stubborn.choices!.map((c) => c.status)).toEqual(["done", "failed"]);
-    const moved = (await t.runs.wait((await start(t, scan2, [{ kind: "typed", text: "Plain" }, { kind: "whole" }], "linkedin")).body.runId))!;
+    const first = (await t.runs.wait((await start(t, scan, choices, "linkedin")).body.runId))!;
+    expect([first.status, first.error, first.path]).toEqual(["succeeded", null, join(dir, "docs", "architecture.archdraw.json")]);
+    expect(first.choices!.map((c) => [c.status, c.stage, c.error])).toEqual([["done", "channel", null], ["failed", "read", "Fixture failure requested"]]);
+    const lines: { message: string; choice: string | null; stage: string | null }[] = [];
+    t.runs.subscribe(first.id, (e) => { if (e.type === "progress") lines.push({ message: e.message, choice: e.choice, stage: e.stage }); });
+    expect(lines).toContainEqual({ message: 'Could not draw "Notes [fixture:flaky:second]": Fixture failure requested', choice: "notes-fixture-flaky-second", stage: "read" });
+    expect((JSON.parse(readFileSync(first.path!, "utf8")) as Document4).choices.map((c) => c.id)).toEqual(["system"]);
+    // Try again: the failed choice only, into the file the draw wrote (the second read answers this time).
+    const retried = await json(await t.req(`/api/runs/${first.id}/retry`, { method: "POST" }));
+    expect(retried.status, JSON.stringify(retried.body)).toBe(202);
+    const again = (await t.runs.wait(retried.body.runId))!;
+    expect([again.status, again.diagramId, again.path, again.into, again.retryOf, again.choice]).toEqual(["succeeded", first.diagramId, first.path, first.diagramId, first.id, "notes-fixture-flaky-second"]);
+    const file = JSON.parse(readFileSync(first.path!, "utf8")) as Document4;
+    expect(file.choices.map((c) => c.id)).toEqual(["system", "notes-fixture-flaky-second"]);
+    expect(file.choices[1].channels.linkedin.views.map((v) => v.id)).toEqual(["notes-fixture-flaky-second-linkedin"]);
+    expect(readdirSync(join(dir, "docs"))).toEqual(["architecture.archdraw.json"]);
+    // Nothing is left to try.
+    expect(await json(await t.req(`/api/runs/${again.id}/retry`, { method: "POST" }))).toEqual({ status: 400, body: { error: "Every choice of this draw was drawn" } });
+  });
+
+  it("a choice kept by a draw that wrote nothing is put where a later draw places it: its views take that place's ids", async () => {
+    const dir = real(repo());
+    const t = makeApp();
+    const scan = await scanOf(t, dir);
+    const notes = { kind: "typed", text: "Notes [fixture:flaky:channel]" };
+    const alone = (await t.runs.wait((await start(t, scan, [notes], "linkedin")).body.runId))!;
+    expect([alone.status, alone.error]).toEqual(["failed", "Fixture failure requested"]);
+    const moved = (await t.runs.wait((await start(t, scan, [{ kind: "whole" }, notes], "linkedin")).body.runId))!;
     expect(moved.status).toBe("succeeded");
+    const lines: { message: string; choice: string | null }[] = [];
+    t.runs.subscribe(moved.id, (e) => { if (e.type === "progress") lines.push({ message: e.message, choice: e.choice }); });
+    expect(lines.filter((l) => l.choice === "notes-fixture-flaky-channel").map((l) => l.message)).toEqual(expect.arrayContaining(["Using the facts already read", "Using the overview already drawn"]));
     const file = JSON.parse(readFileSync(moved.path!, "utf8")) as Document4;
-    expect(file.choices[1].channels.overview.views.map((v) => v.id)).toEqual(["system-overview", "zone-runtime-inside"]);
-    expect(file.choices[1].channels.linkedin.views.map((v) => v.id)).toEqual(["system-linkedin"]);
+    expect(file.choices[1].channels.overview.views.map((v) => v.id)).toEqual(["notes-fixture-flaky-channel-overview"]);
+    expect(file.choices[1].channels.linkedin.views.map((v) => v.id)).toEqual(["notes-fixture-flaky-channel-linkedin"]);
   });
 
   it("cancel in the second choice stops its engine's whole process tree, keeps the first done and writes nothing", async () => {
@@ -363,6 +378,8 @@ describe("a draw of several choices", () => {
     expect(r.status, JSON.stringify(r.body)).toBe(202);
     for (let i = 0; i < 200 && !existsSync(fake.log + ".child"); i++) await new Promise((res) => setTimeout(res, 50));
     const child = Number(readFileSync(fake.log + ".child", "utf8"));
+    // Side by side: the first finishes while the second's engine hangs.
+    for (let i = 0; i < 200 && t.runs.get(r.body.runId)!.choices![0].status !== "done"; i++) await new Promise((res) => setTimeout(res, 50));
     expect(t.runs.get(r.body.runId)!.choices!.map((c) => c.status)).toEqual(["done", "running"]);
     t.runs.cancel(r.body.runId);
     const run = (await t.runs.wait(r.body.runId))!;
@@ -372,10 +389,11 @@ describe("a draw of several choices", () => {
     for (let i = 0; i < 20 && alive(child); i++) await new Promise((res) => setTimeout(res, 50));
     expect(alive(child)).toBe(false);
     expect(existsSync(join(dir, "docs"))).toBe(false);
+    expect(t.slots.stats()).toEqual({ total: 3, busy: 0, waiting: 0 });
   });
 
-  it("each choice has its own deadline from its first line (review ce82b86-1)", async () => {
-    // Every call of a choice waits; two choices together outlast the deadline, each alone does not.
+  it("each choice has its own deadline from taking its slot: waiting counts toward none, and a choice past its own ends alone", async () => {
+    // Every call of a choice waits; two choices one after another outlast the deadline, each alone does not.
     const waits = (byChoice: number[]) => new (class extends FixtureEngine {
       override async run(req: Parameters<FixtureEngine["run"]>[0]) {
         const i = req.task?.data?.choiceIndex;
@@ -383,19 +401,21 @@ describe("a draw of several choices", () => {
         return super.run(req);
       }
     })(1);
-    const draw2 = async (engine: FixtureEngine) => {
-      const t = makeApp({ engines: [engine], timeoutMs: 1500 });
+    const draw2 = async (engine: FixtureEngine, slots: number) => {
+      const t = makeApp({ engines: [engine], timeoutMs: 4000, slots });
       const scan = await scanOf(t, real(repo()));
       return (await t.runs.wait((await start(t, scan, [{ kind: "whole" }, { kind: "typed", text: "Second" }])).body.runId))!;
     };
-    const both = await draw2(waits([300, 300]));
-    expect([both.status, both.error]).toEqual(["succeeded", null]);
-    // A choice that outlasts its own deadline ends the run as timed out; the first stays done.
-    const late = await draw2(waits([300, 700]));
-    expect(late.status).toBe("failed");
-    expect(late.error).toMatch(/^Timed out after/);
-    expect(late.choices!.map((c) => c.status)).toEqual(["done", "failed"]);
-  });
+    // One slot: the second waits for the first (about 2.4 s each, 4.8 s in all) and does not time out.
+    const both = await draw2(waits([800, 800]), 1);
+    expect([both.status, both.error, both.choices!.map((c) => c.error)]).toEqual(["succeeded", null, [null, null]]);
+    expect(Date.parse(both.choices![1].endedAt!) - Date.parse(both.createdAt)).toBeGreaterThan(4000);
+    // A choice that outlasts its own deadline fails alone; the file holds the other.
+    const late = await draw2(waits([300, 1800]), 3);
+    expect(late.status).toBe("succeeded");
+    expect(late.choices!.map((c) => [c.status, c.error])).toEqual([["done", null], ["failed", "Timed out after 1 min — try a narrower instruction"]]);
+    expect((JSON.parse(readFileSync(late.path!, "utf8")) as Document4).choices.map((c) => c.id)).toEqual(["system"]);
+  }, 30_000);
 
   it("refuses a list of choices in the contracted order", async () => {
     const dir = real(repo());

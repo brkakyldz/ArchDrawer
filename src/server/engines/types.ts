@@ -32,7 +32,11 @@ export interface EngineRunRequest {
   base: unknown;
   signal: AbortSignal;
   timeoutMs: number;
-  progress: (message: string) => void;
+  /**
+   * A progress line of the engine's (api contract, Progress lines). `files` names the files it reports
+   * reading with that line (a file read: Claude Code's `Read`, a Codex command that reads a file it names).
+   */
+  progress: (message: string, files?: string[]) => void;
   /**
    * Another kind of answer than a refine draft (a post's story intent): its schema and its whole
    * prompt. The engine runs with the same read-only flags, or with no tools at all where it can when

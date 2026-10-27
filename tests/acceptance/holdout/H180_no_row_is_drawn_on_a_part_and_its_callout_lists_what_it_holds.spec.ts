@@ -7,9 +7,9 @@ import { sketch, fullDetail, nodeSize, sizeIs, cardSize, imageOf, nodeSnaps, ope
 const ROWS = ['Model call', 'Tool check', 'Shown item', 'Stops after 12 turns'];
 
 // LOOK-3: no part draws a held mechanism, an item or a limit, on the canvas or in an export; the callout lists them (EDIT-2) and is where they are edited.
-// STORY-3: a story still holds a mechanism where it is about it - as a row in the callout, never as a part of its own.
-test('H180 [LOOK-3 EDIT-2 STORY-3 SHARE-1 #177] a panel draws no row in the editor or in any image, is as big as a card of its kind, and its callout lists and edits what it holds', async ({ page, request }) => {
-  test.setTimeout(300_000);
+// A mechanism is held as a row in the callout, never drawn as a part of its own (the README story's held items: H109).
+test('H180 [LOOK-3 EDIT-2 SHARE-1 #177] a panel draws no row in the editor or in any image, is as big as a card of its kind, and its callout lists and edits what it holds', async ({ page, request }) => {
+  test.setTimeout(60_000);
   const doc = sketch('Rows in the callout', [
     { id: 'agent', kind: 'llm', form: 'panel', label: 'Agent', sub: 'runs the loop', held: ['Model call', 'Tool check'], items: ['Shown item'], limits: ['Stops after 12 turns'], x: 0, y: 0 },
     { id: 'plain', kind: 'llm', label: 'Plain agent', sub: 'runs the loop', x: 400, y: 0 },

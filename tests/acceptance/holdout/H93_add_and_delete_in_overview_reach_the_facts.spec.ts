@@ -72,7 +72,7 @@ test('H93 [FILE-3, FILE-2, EDIT-1] adding and deleting a part and a connection i
   expect(viewOf(gone, 'linkedin')!.nodes.map(n => n.id)).toEqual(['visitor', 'intake']);
   expect(viewOf(gone, 'linkedin')!.edges.map(e => e.id)).toEqual(['visitor-intake']);
   const marks = outdatedOf(gone, 'linkedin');
-  for (const id of ['db', 'new-component', 'r4']) expect(marks, `${id} is listed`).toContain(id);
+  for (const id of ['db', 'new-component', 'r2', 'r4']) expect(marks, `${id} is listed`).toContain(id); // r2: a deleted relation intake-ledger showed (diagram.md, Edits)
   expect(new Set(marks).size).toBe(marks.length);
   for (const id of ['web', 'api', 'r1', 'r3']) expect(marks, `${id} was not what changed`).not.toContain(id);
 

@@ -20,7 +20,7 @@ const CHANNELS = [
 // the overview from the facts so that every fact is shown or held, and the chosen channel on top. STORY-1: the three
 // channels are drawn from the same facts. The fixture answer (testing contract, Draw) is what each assertion repeats.
 test('H117 [START-4, READ-1, READ-2, READ-3, STORY-1, #181, #182] a draw run reads the agent project into facts with checked evidence, drops what the files do not back, draws every fact in the overview and the chosen channel, and writes one new file', async ({ request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const auth = await token(request);
 
   for (const chosen of CHANNELS) {

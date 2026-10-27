@@ -23,7 +23,7 @@ function gainedNothing(doc: Doc3, where: string) {
 }
 const core = (doc: Doc3) => doc.facts.components.map(({ id, label, kind, sub, description, files, items }) => ({ id, label, kind, sub, description, files, items }));
 
-test('H108 [FILE-1, FILE-2, FILE-3] a drawing written before 0.3 stays valid, opens and converts without gaining a mechanism, limit, evidence or step, and an edit in the editor adds none', async ({ page, request }) => {
+test('H108 [FILE-1, FILE-2, FILE-3, LOOK-3] a drawing written before 0.3 stays valid, opens and converts without gaining a mechanism, limit, evidence or step, and an edit in the editor adds none', async ({ page, request }) => {
   // A 0.2 file: facts, a detail view, a LinkedIn channel, and README and presentation written as empty channels.
   const old = withLinkedIn(withDetail(shop3('Old shop')), { outdated: ['db'] });
   old.channels.readme = {}; old.channels.presentation = {};

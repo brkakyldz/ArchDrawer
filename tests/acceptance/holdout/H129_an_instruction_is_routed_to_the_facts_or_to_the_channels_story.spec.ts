@@ -10,7 +10,7 @@ const FACTS = 'Changing the facts', STORY = 'Redrawing this channel from the fac
 // differently; `story` redraws the current channel from the facts and marks nothing. A `parts` scope never asks. The fixture
 // answers `story` when the instruction holds `[fixture:story]`.
 test('H129 [AI-5, AI-1, FILE-3, STORY-6] a refine goes to the facts or to the channel story, says which in its record and its done event, marks other channels only on the facts route, and a parts scope takes the facts route without being asked', async ({ request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('routing', withPresentation(withReadme(withLinkedIn(shop3('Routing shop')))));
   const opened = await register(request, file);
   const run = async (channel: Channel, view: string, instruction: string, extra: Record<string, unknown> = {}) => {

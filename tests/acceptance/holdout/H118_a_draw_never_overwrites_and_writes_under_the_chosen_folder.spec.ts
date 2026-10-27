@@ -10,7 +10,7 @@ const sixLines = (name: string) => Array.from({ length: 6 }, (_, i) => `// ${nam
 // the app never overwrites a file, whatever it holds. The folder is the one chosen, so a subfolder of a repository gets its own
 // docs folder while its facts' paths stay relative to the repository root, and a folder outside git is its own root.
 test('H118 [START-4, READ-2, FILE-1, #181, #182] a draw takes the next free file name up to 99 and never replaces a file, a subfolder is drawn under its own docs folder with paths from the repository root, and a folder outside git is its own root', async ({ request }) => {
-  test.setTimeout(420_000);
+  test.setTimeout(90_000);
   const auth = await token(request);
   const project = await gitRepo('draw-names', { ...projectFiles, 'pkg/alpha.ts': sixLines('pa'), 'pkg/beta.ts': sixLines('pb'), 'pkg/gamma.ts': sixLines('pg') });
   const first = await writeExistingDrawing(project.dir); // the user's own drawing, never opened by the app

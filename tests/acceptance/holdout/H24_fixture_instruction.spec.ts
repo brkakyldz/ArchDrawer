@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { drawing, workspace, openDrawing, readDocument, readDrawing, persisted, saved, finishRun, startRun, baseURL, outsideWrite, svgInfo, overlaps } from './helpers';
+import { drawing, workspace, openDrawing, readDrawing, persisted, saved, finishRun, baseURL, svgInfo, overlaps } from './helpers';
 
-test('H24 [AI-1, AI-3, FILE-1, LAYOUT-1] apply and repair an instruction, undo it, cancel and protect a concurrent session edit', async ({ page, request }) => {
+test('H24 [AI-1, AI-3, FILE-1, LAYOUT-1] apply and repair an instruction, undo it, refuse a second run while one runs and cancel it', async ({ page, request }) => {
   const { file } = await workspace('fixture', drawing('Fixture shop')); const opened = await openDrawing(page, request, file);
   const baseline = await readDrawing(file);
   const responsePromise = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/runs');
@@ -50,13 +50,5 @@ test('H24 [AI-1, AI-3, FILE-1, LAYOUT-1] apply and repair an instruction, undo i
   const second = await request.post(`${baseURL()}/api/runs`, { headers: { 'X-Archdraw-Token': opened.token }, data: { diagramId: opened.id, view: 'overview', instruction: 'add Other', engine: 'fixture', model: null } });
   expect(second.status()).toBe(409); await page.getByTestId('ai-cancel').click(); await finishRun(request, cancelId, 'cancelled');
   expect((await readDrawing(file)).views).toEqual(baseline.views); await expect(page.getByTestId('node-cancelled-part')).toHaveCount(0);
-  // Slow is the contracted stand-in for an in-flight paid model, not a timing sleep.
-  const raced = await startRun(request, opened.id, opened.token, 'add Stale part\n[fixture:slow]');
-  await expect.poll(async () => (await (await request.get(`${baseURL()}/api/runs/${raced}`)).json()).progress.some((p: string) => /^Working /.test(p))).toBe(true);
-  // The session writes the stored file itself (read as it is stored, written back as it is stored).
-  const external = await readDocument(file); external.title = 'Session owned title'; external.updatedAt = '2099-10-13T10:00:00.000Z';
-  await outsideWrite(file, external);
-  const raceResult = await finishRun(request, raced, 'failed'); expect(raceResult.error).toBe('The drawing changed while the instruction ran.');
-  changed = await readDrawing(file); expect(changed.title).toBe('Session owned title'); expect(changed.views).toEqual(baseline.views);
-  expect(changed.views[0].nodes.some(n => n.label === 'Stale part')).toBe(false);
+  // A session that writes the file while an instruction runs is H253's.
 });

@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { drawing, workspace, writeJSON, cli, openDrawing, register, baseURL } from './helpers';
+import { drawing, workspace, writeJSON, openDrawing, register, baseURL } from './helpers';
 import { readRaw, readDrawing } from './helpers-selections'; // a file the server wrote is format 4: `readRaw` is the stored document, `readDrawing` its first choice drawn
 
-test('H27 [START-5, FILE-1, FILE-2, #182] migrate an old drawing, import both versions and forget them without deleting repository files', async ({ page, request }) => {
+test('H27 [FILE-1, FILE-2, HOME-9, #182, #200] register a copy under a new id, import an old and a current drawing and forget them without deleting repository files', async ({ page, request }) => {
   const { dir, file } = await workspace('library', drawing('Library source'));
   const first = await openDrawing(page, request, file); const normal = await readRaw(file);
   // This legacy example uses only fields named in the v2 migration contract.
@@ -12,22 +12,9 @@ test('H27 [START-5, FILE-1, FILE-2, #182] migrate an old drawing, import both ve
     source: null, engine: null, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     nodes: [{ id: 'legacy-web', label: 'Old web app', kind: 'ui', tech: 'React', description: 'The original storefront.', files: ['src/web.ts'], x: 80, y: 96 }],
     edges: [], groups: [], notes: [], warnings: [] };
-  const legacyFile = join(dir, 'legacy.json'); const legacyImport = join(dir, 'legacy-import.json');
-  await writeJSON(legacyFile, legacy); await writeJSON(legacyImport, legacy);
-  const before = await readFile(legacyFile, 'utf8'); const refused = await cli(['validate', legacyFile]);
-  expect(refused.code).toBe(1); expect(`${refused.stdout}${refused.stderr}`).toContain('archdraw/diagram@1'); expect(`${refused.stdout}${refused.stderr}`).toMatch(/migrate/);
-  expect(await readFile(legacyFile, 'utf8')).toBe(before);
-  const migration = await cli(['migrate', legacyFile]); expect(migration.code, migration.stderr).toBe(0); expect(migration.stdout).toMatch(/migrated/);
-  // An `@1` file converts through `@2` and `@3` and lands as `@4`, one choice: the old kind `ui` is now `client`, which is a change and is reported.
-  const migratedDoc = await readRaw(legacyFile); expect(migratedDoc.schema).toBe('archdraw/diagram@4'); expect(migratedDoc.choices.map((c: { id: string; kind: string }) => [c.id, c.kind])).toEqual([['system', 'system']]);
-  const migrated = await readDrawing(legacyFile); expect(migrated.views).toHaveLength(1);
-  expect(migrated.views[0]).toMatchObject({ id: 'overview', title: 'Overview', caption: { title: 'Legacy shop', lede: 'Before the editor upgrade' } });
-  expect(migrated.views[0].nodes[0]).toMatchObject({ id: 'legacy-web', label: 'Old web app', kind: 'client', form: 'card', sub: 'React', description: 'The original storefront.', files: ['src/web.ts'], x: 80, y: 96 });
-  expect(migratedDoc.choices[0].facts.components.map((f: { id: string }) => f.id)).toEqual(['legacy-web']);
-  expect(migrated.warnings!.length).toBeGreaterThanOrEqual(1);
-  for (const warning of migrated.warnings!) expect(migration.stdout).toContain(warning);
-  expect((await cli(['validate', legacyFile])).code).toBe(0);
-  const once = await readFile(legacyFile, 'utf8'); const already = await cli(['migrate', legacyFile]); expect(already.code).toBe(0); expect(already.stdout).toContain('already archdraw/diagram@4'); expect(await readFile(legacyFile, 'utf8')).toBe(once);
+  // `archdrawer migrate` of an `@1` file is H89's; here the same document is imported (below).
+  const legacyImport = join(dir, 'legacy-import.json');
+  await writeJSON(legacyImport, legacy); const before = await readFile(legacyImport, 'utf8');
   // A second registered file cannot steal the first file's document id.
   const duplicateFile = join(dir, 'second.json'); normal.title = 'Second repository drawing'; await writeJSON(duplicateFile, normal);
   const second = await register(request, duplicateFile); expect(second.id).not.toBe(first.id); expect((await readDrawing(duplicateFile)).id).toBe(second.id);
@@ -35,7 +22,7 @@ test('H27 [START-5, FILE-1, FILE-2, #182] migrate an old drawing, import both ve
   await page.goto('/'); await expect(page.getByTestId('library')).toBeVisible();
   const ownRow = page.getByTestId('library-item').filter({ has: page.getByTestId('library-item-title').filter({ hasText: 'Library source' }) });
   await expect(ownRow).toHaveAttribute('data-diagram-id', first.id); await expect(ownRow.getByTestId('library-item-path')).toHaveText(file);
-  await ownRow.getByTestId('library-open').click(); await expect(page.getByTestId('repo-name')).toHaveText('Library source'); await page.goto('/');
+  await ownRow.hover(); await ownRow.getByTestId('library-open').click(); await expect(page.getByTestId('repo-name')).toHaveText('Library source'); await page.goto('/');
   await page.getByTestId('import-input').setInputFiles(legacyImport); await expect(page.getByTestId('editor')).toBeVisible();
   await expect(page.getByTestId('node-legacy-web')).toHaveAttribute('data-kind', 'client'); await expect(page.getByTestId('warnings')).toBeVisible();
   const importedV1 = new URL(page.url()).pathname.split('/').at(-1)!; expect(importedV1).not.toBe(first.id);

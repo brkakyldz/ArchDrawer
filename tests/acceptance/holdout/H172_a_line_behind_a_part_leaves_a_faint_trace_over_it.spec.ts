@@ -28,7 +28,7 @@ const dashOf = (value: string) => value.replace(/px/g, '').replace(/\s+/g, '');
 // LOOK-4: a line behind a part leaves a faint trace over it (1 px, opacity 0.25, its own dash, its own colour, under the text). LAYOUT-2 and LAYOUT-3: the line still
 // passes behind the part and the layout report still lists it; a line that passes behind nothing has no trace.
 test('H172 [LOOK-4 LAYOUT-2 LAYOUT-3 SHARE-1 #171] a line that passes behind a part leaves a faint trace of itself over that part in the editor and the image, and a line that passes behind nothing leaves none', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('trace-neutral', traceDoc('Trace neutral', null));
   const opened = await openDrawing(page, request, file);
   const before = await positionsOf(file);

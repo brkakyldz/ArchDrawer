@@ -2,8 +2,9 @@ import { test, expect } from '@playwright/test';
 import { shop3, workspaceRaw, isolatedDrawing, readDocument, persistedDoc, saved, viewOf, partOf, ownText, outdatedOf } from './helpers';
 
 // With no engine on the machine, the LinkedIn tab offers the simple version: drawn by code from the overview, the
-// parts pointing at the same facts, as one undoable edit. No fact and no overview part changes.
-test('H99 [FILE-2, NAV-2, EDIT-1] with no engine the LinkedIn tab prepares the simple version from the overview as one undoable edit, its parts pointing at the same facts', async ({ page, request }) => {
+// parts pointing at the same facts, as one undoable edit. No fact and no overview part changes. #44: with no engine the stage has no
+// engine or model to choose (`stage-engine` and `stage-model` are absent without an engine; ui contract, The LinkedIn flow).
+test('H99 [FILE-2, NAV-2, EDIT-1, #44] with no engine the LinkedIn tab offers no engine or model and prepares the simple version from the overview as one undoable edit, its parts pointing at the same facts', async ({ page, request }) => {
   const { file } = await workspaceRaw('prepare', shop3('Prepare shop'));
   const server = await isolatedDrawing(page, request, file, '750', ''); // ARCHDRAW_ENGINES empty: no engine at all
   try {
@@ -14,6 +15,7 @@ test('H99 [FILE-2, NAV-2, EDIT-1] with no engine the LinkedIn tab prepares the s
     await expect(page.getByTestId('share-button')).toBeDisabled(); // nothing to package yet
     await expect(page.getByTestId('linkedin-prepare')).toContainText('Prepare the simple version');
     await expect(page.getByTestId('post-engine-note')).toContainText('No engine available — prepared without AI');
+    await expect(page.getByTestId('stage-engine')).toHaveCount(0); await expect(page.getByTestId('stage-model')).toHaveCount(0); // no engine, no choice to make
     await expect(page.getByTestId('design-post')).toHaveCount(0); // there is no engine to design with
 
     await page.getByTestId('linkedin-prepare').click();

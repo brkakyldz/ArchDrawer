@@ -6,7 +6,7 @@ import { slideShop, SLIDE_STEPS, workspaceRaw, openDrawing, toPresentation, open
 // removed, the opening slide stays the opening slide, and when no step is left the layer closes with its own toast. Once the
 // layer is closed an outside change shows the usual toast again.
 test('H161 [PRES-1, FILE-1, STORY-4] an outside change to the file while presenting redraws the slide shown with no Updated from the file toast, follows the step by its id, shows the last step when it was removed, and closes the layer with its own toast when no step is left', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('present-outside', slideShop('Outside shop'));
   await openDrawing(page, request, file); await toPresentation(page);
   await watchToasts(page);

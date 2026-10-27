@@ -3,11 +3,14 @@ import { readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { getRequestListener } from "@hono/node-server";
 import { createApp, envelopeError } from "./app";
-import { loadConfig } from "./config";
+import { loadConfig, startupLine } from "./config";
 import { writeAtomic } from "./files";
+import { FolderPicker } from "./picker";
 import { RunManager } from "./runs";
+import { Remotes } from "./remote";
 import { ScanManager } from "./scans";
 import { serverFile } from "./serverfile";
+import { EngineSlots } from "./slots";
 import { Store } from "./store";
 import { ClaudeEngine } from "./engines/claude";
 import { CodexEngine } from "./engines/codex";
@@ -17,8 +20,11 @@ import type { Engine } from "./engines/types";
 
 const config = loadConfig();
 const store = new Store(config.dataDir);
-const runs = new RunManager(store, { timeoutMs: config.runTimeoutMs });
-const scans = new ScanManager(config.dataDir, { timeoutMs: config.runTimeoutMs });
+// One set of engine slots for every scan, draw choice and run of the server (api contract, Engine slots).
+const slots = new EngineSlots(config.engineSlots);
+const runs = new RunManager(store, { timeoutMs: config.runTimeoutMs, keepMs: config.jobKeepMs, slots });
+const scans = new ScanManager(config.dataDir, { timeoutMs: config.runTimeoutMs, keepMs: config.jobKeepMs, slots });
+const remotes = new Remotes(config.dataDir, config.testRemotes);
 const factories: Record<string, () => Engine> = {
   claude: () => new ClaudeEngine(),
   codex: () => new CodexEngine(),
@@ -29,6 +35,7 @@ for (const id of config.engines) {
   if (factories[id]) engines.set(id, factories[id]());
   else console.warn(`Ignoring unknown engine "${id}" in ARCHDRAW_ENGINES`);
 }
+const picker = new FolderPicker({ testFile: config.testPicker });
 const token = randomBytes(24).toString("hex");
 const infoFile = serverFile(config.dataDir);
 
@@ -42,6 +49,8 @@ const shutdown = async () => {
   // No new request or run once stopping: `archdrawer stop` sees the server gone while it settles.
   server.close();
   server.closeIdleConnections();
+  // An open folder dialog goes with the server (api contract, The folder dialog).
+  picker.close();
   // A cancelled run removes its image (and Codex its temporary folder) once its engine has exited, so
   // the process waits for that, briefly. Whatever is left of this server's images then goes here
   // (api contract, The second look: removed however the run ends).
@@ -60,7 +69,7 @@ const shutdown = async () => {
   process.exit(0);
 };
 
-const app = createApp({ config, store, runs, scans, engines, token, onShutdown: () => void shutdown() });
+const app = createApp({ config, store, runs, scans, engines, remotes, token, slots: () => slots.stats(), picker, onShutdown: () => void shutdown() });
 
 // The envelope's Host/Origin check runs before the adapter: a Host such as "127.0.0.1:4317.evil.example"
 // is not a valid URL authority, and the adapter would answer 400 instead of the contract's 403.
@@ -79,8 +88,10 @@ server.listen(config.port, "127.0.0.1", () => {
   store.watch();
   // Once the port is ours: the images a killed server's second looks left behind go; a live server's stay.
   sweepReviseFolders(config.dataDir);
+  // And the half-made copies of a server that is no longer running (api contract, *A scan with a link*).
+  remotes.sweepPartial();
   console.log(`archdrawer listening on ${url}`);
-  console.log(`Data: ${config.dataDir} · engines: ${[...engines.keys()].join(", ") || "none"}`);
+  console.log(startupLine(config, [...engines.keys()]));
 });
 server.on("error", (e: NodeJS.ErrnoException) => {
   console.error(e.code === "EADDRINUSE" ? `Port ${config.port} is in use. Set PORT to another port.` : e.message);

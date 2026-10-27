@@ -71,7 +71,7 @@ test('H97 [NAV-2, FILE-1, STORY-1, AI-2, AI-4, LAYOUT-4] a channel with no drawi
   await expect(editor).toHaveAttribute('data-channel', 'linkedin'); await expect(empty).toContainText('The LinkedIn post is not drawn yet');
 
   // Must not happen: any of this being an edit. Nothing to undo, nothing written, the file untouched.
-  await page.waitForTimeout(1200); // longer than the 350 ms save delay: a hidden edit would have been written by now
+  await page.waitForTimeout(600); // longer than the 350 ms save delay: a hidden edit would have been written by now
   await expect(page.getByTestId('save-status')).toHaveText('Saved'); await expect(page.getByTestId('tool-undo')).toBeDisabled();
   expect(await readFile(file, 'utf8')).toBe(bytes); expect((await stat(file)).mtimeMs).toBe(modified);
 });

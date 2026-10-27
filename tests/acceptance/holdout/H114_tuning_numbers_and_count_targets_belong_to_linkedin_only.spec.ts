@@ -28,7 +28,7 @@ test('H114 [STORY-2, STORY-5, STORY-6, LAYOUT-3] a tuning number is warned about
   const report = async (channel: string, view: string) => {
     const runId = await startKind(request, opened.token, { diagramId: opened.id, channel, view, kind: 'refine', instruction: 'Observe the existing drawing',
       engine: 'fixture', model: null, scope: { kind: 'view' } });
-    return (await finishRun(request, runId, 'succeeded', 90_000)).layoutReport;
+    return (await finishRun(request, runId, 'succeeded', 30_000)).layoutReport;
   };
   const linkedin = await report('linkedin', 'linkedin-post');
   expect(linkedin).toMatchObject({ channel: 'linkedin', view: 'linkedin-post', counts: { parts: 3, connections: 2 } });

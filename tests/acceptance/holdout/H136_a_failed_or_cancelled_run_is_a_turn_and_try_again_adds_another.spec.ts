@@ -4,7 +4,7 @@ import { shop3, workspaceRaw, openDrawing, readDocument, factOf, persistedDoc, s
 // AI-2: a run that fails or is cancelled is still a turn of the conversation. It keeps its error, `ai-retry` sends the same
 // request again as a new turn, the typed text comes back into the input, and nothing was written (FILE-1) until a run succeeds.
 test('H136 [AI-2, AI-1, FILE-1] a failed or cancelled run is a turn that keeps its error, Try again adds a turn with the same request, the text comes back to the input, and nothing is written until a run succeeds', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('turns', shop3('Turns shop')); await openDrawing(page, request, file);
   const baseline = await readDocument(file);
   const unchanged = async (what: string) => expect(await readDocument(file), what).toEqual(baseline);

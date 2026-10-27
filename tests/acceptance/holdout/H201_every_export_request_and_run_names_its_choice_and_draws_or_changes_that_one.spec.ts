@@ -9,7 +9,7 @@ import { fourChoices, workspace4, openFourChoices, getRaw, readRaw, exportText, 
 // request and a run name their choice the same way and change that choice alone. An unknown choice, and a view of another choice,
 // are refused with the contracted sentences.
 test('H201 [FILE-2 SHARE-1 START-5 AI-1 #182] the image, the Mermaid text, the command, the share dialog, a saved request and a run each take the current choice: the default is the one that holds the view or else the first, and a wrong choice or a view of another choice is refused', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const auth = await token(request);
   const made = await workspace4('f4-exports', fourChoices('Export four'));
   const registered = await request.post(`${baseURL()}/api/files`, { headers: { 'X-Archdraw-Token': auth }, data: { path: made.file } });

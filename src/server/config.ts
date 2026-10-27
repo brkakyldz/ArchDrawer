@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildId } from "../../scripts/build-id.mjs";
+import { slotCount } from "./slots";
 
 /** The repository (or installed plugin) root: two levels above this file. */
 export const APP_ROOT = resolve(fileURLToPath(new URL(".", import.meta.url)), "..", "..");
@@ -24,10 +25,26 @@ export interface Config {
   fixtureStepMs: number;
   noOpen: boolean;
   runTimeoutMs: number;
+  /** How long a finished job is kept and listed (`ARCHDRAW_JOB_KEEP_MS`; api contract, Activity). */
+  jobKeepMs: number;
+  /** Engine processes at a time for the whole server (api contract, Engine slots). */
+  engineSlots: number;
   version: string;
   build: string;
   /** Directory with the built web client (index.html). */
   webDir: string;
+  /** The home folder *Found on this computer* searches (`ARCHDRAW_SEARCH_HOME`). */
+  searchHome: string;
+  /** `ARCHDRAW_TEST_PICKER`: the file the test folder dialog answers from; null for the real dialog. */
+  testPicker: string | null;
+  /** `ARCHDRAW_TEST_REMOTES`: links are copied from the local repositories in it (testing contract, *Test links*); null when unset. */
+  testRemotes: string | null;
+}
+
+/** The start-up line after the listening one: the data folder, the engines and every test switch that is on. */
+export function startupLine(config: Config, engines: string[]): string {
+  const switches = (config.testPicker !== null ? " · test folder dialog" : "") + (config.testRemotes !== null ? " · test links" : "");
+  return `Data: ${config.dataDir} · engines: ${engines.join(", ") || "none"}${switches}`;
 }
 
 /** The environment of docs/contracts/testing.md, shared by the server and the CLI. */
@@ -46,8 +63,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     fixtureStepMs: Math.max(0, Number.parseInt(env.ARCHDRAW_FIXTURE_STEP_MS ?? "", 10) || 250),
     noOpen: Boolean(env.ARCHDRAW_NO_OPEN),
     runTimeoutMs: Math.max(10_000, Number.parseInt(env.ARCHDRAW_RUN_TIMEOUT_MS ?? "", 10) || 20 * 60_000),
+    jobKeepMs: Math.max(1000, Number.parseInt(env.ARCHDRAW_JOB_KEEP_MS ?? "", 10) || 3_600_000),
+    engineSlots: slotCount(env.ARCHDRAW_ENGINE_SLOTS),
     version: VERSION,
     build: BUILD,
     webDir: join(APP_ROOT, "dist"),
+    searchHome: resolve(env.ARCHDRAW_SEARCH_HOME?.trim() || homedir()),
+    testPicker: env.ARCHDRAW_TEST_PICKER?.trim() ? resolve(env.ARCHDRAW_TEST_PICKER.trim()) : null,
+    testRemotes: env.ARCHDRAW_TEST_REMOTES?.trim() && isAbsolute(env.ARCHDRAW_TEST_REMOTES.trim()) ? resolve(env.ARCHDRAW_TEST_REMOTES.trim()) : null,
   };
 }

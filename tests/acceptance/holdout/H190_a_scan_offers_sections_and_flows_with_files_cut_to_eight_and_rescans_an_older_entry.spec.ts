@@ -11,8 +11,8 @@ const entries = async () => { try { return (await readdir(join(dataDir(), 'scans
 // back it, and nothing else: no part count, no start → end line. An option whose files do not exist is left out with one
 // warning; more than eight are cut to the first eight with one warning each; an unknown kind (an older `mechanism`) becomes a
 // flow with one warning; a cache entry written before sections and flows is not used and is replaced.
-test('H190 [SCAN-2 SCAN-3 SCAN-4 #180] a scan offers the project\'s sections and flows, each with a title, one sentence and its files, leaves out the option whose file is missing, cuts a long answer to eight with one warning each, and scans again where the cache entry is older than sections and flows', async ({ request }) => {
-  test.setTimeout(240_000);
+test('H190 [SCAN-2 SCAN-4 #180] a scan offers the project\'s sections and flows, each with a title, one sentence and its files, leaves out the option whose file is missing, cuts a long answer to eight with one warning each, and scans again where the cache entry is older than sections and flows', async ({ request }) => {
+  test.setTimeout(60_000);
   const auth = await token(request);
   const project = await gitRepo('scan-kinds');
   const before = await entries();

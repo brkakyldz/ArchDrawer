@@ -13,7 +13,7 @@ async function sessionDoc(file: string): Promise<Doc3> { return { ...(await read
 // holds the mechanisms and the limit is a panel drawn like a card, and its rows are listed in its callout, not drawn (ADR 0014).
 // When a fact it does not draw yet appears, the tab is marked and the stage offers Redraw it or Keep as it is, each one undoable step.
 test('H124 [STORY-1 STORY-3 STORY-5 FILE-3 SHARE-2 AI-3 LOOK-3 #177] Draw it on the README tab draws the README from the facts as one undo step, with the held mechanisms and the limit listed in the callout and drawn nowhere; a reworded limit it shows marks nothing, a new limit or a new fact marks it, and Redraw it or Keep as it is clears the mark in one undoable step', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('readme-draw', agent3('Readme agent'));
   const posts: any[] = [];
   page.on('request', req => { if (req.method() === 'POST' && new URL(req.url()).pathname === '/api/runs') { try { posts.push(JSON.parse(req.postData() ?? 'null')); } catch { /* not json */ } } });

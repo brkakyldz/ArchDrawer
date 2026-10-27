@@ -36,7 +36,7 @@ async function editorBox(page: Page, id: string): Promise<Box> {
 // `node-head-<id>`) and in the image's `g[data-node-id]` (a group's in `<g data-group-head>`), which carries `data-open="true"`.
 // The image and the command draw it as the editor does.
 test('H204 [NAV-1 SHARE-1 START-5 #184] a part with an inside draws the same open mark in the editor, the image and the command: 20 px, 8 px inside a card\'s top-right corner, 12 px inside a compact part, in a group\'s header, and a part with no inside draws none', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const made = await workspace4('f4-marks', marksDoc());
   const opened = await openFourChoices(page, request, made.file);
   await expect(page.getByTestId('editor')).toHaveAttribute('data-view', 'marks-overview');

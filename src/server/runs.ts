@@ -15,10 +15,13 @@ import { CoverageError, keepUnrelatedViews, missingFacts, SIMPLIFY_INSTRUCTION }
 import { answerToDocument, documentToDraft, DRAFT_JSON_SCHEMA, EmptyDiagramError, type RunScope } from "../core/repair";
 import { removeReviseFolder, reviseOverviewPrompt, reviseStoryPrompt, type ReviseImage } from "./engines/revise";
 import { repoFile } from "./folders";
+import { isInside } from "./remote";
 import { nowIso, type Store } from "./store";
 import { EngineError, type Engine } from "./engines/types";
 import { ReadAnswerError } from "../core/read";
-import { DrawError, drawChoices, keptKey, runDraw, type DrawChoice, type DrawRequest, type KeptChoice } from "./draw";
+import { choiceKey, DrawError, drawChoices, keptKey, runDraw, type DrawChoice, type DrawJoin, type DrawRequest, type KeptChoice } from "./draw";
+import type { DrawFocus } from "./engines/prompt";
+import { EngineSlots, WAITING } from "./slots";
 import { storyAnswer } from "./story-turn";
 
 export type RunStatus = "running" | "succeeded" | "failed" | "cancelled";
@@ -28,20 +31,28 @@ export type DrawStage = "read" | "overview" | "channel";
 /** The channels a story is drawn in (a post is a story on LinkedIn). */
 export type StoryChannel = Exclude<ChannelId, "overview">;
 export type RunEvent =
-  | { type: "progress"; message: string; stage: DrawStage | null; choice: string | null }
+  | { type: "progress"; message: string; stage: DrawStage | null; choice: string | null; at: string; source: LineSource }
+  /** A draw's choice record after a change (api contract, Choice events). */
+  | ({ type: "choice" } & DrawChoice)
   | { type: "done"; status: Exclude<RunStatus, "running">; diagramId: string | null; error: string | null; changes: Changes | null; choice: string; channel: ChannelId; view: string; layoutReport: LayoutReport | null; route: Route | null; path: string | null; choices: DrawChoice[] | null };
+/** Who wrote a progress line (api contract, Progress lines). */
+export type LineSource = "engine" | "server";
+/** A run's progress line; it answers the line's `at`. */
+type Line = (message: string, stage?: DrawStage | null, choice?: string | null, source?: LineSource) => string;
 
 export interface RunRecord {
   id: string;
   /** What the run does (api contract, Run kinds). */
   kind: RunKind;
-  /** The choice the run changes (api contract, Run record); a draw's first choice. */
+  /** The choice the run changes (api contract, Run record); a draw's first choice, then the one its result shows. */
   choice: string;
   /** The channel and view the run worked on; on success, the resulting ones. */
   channel: ChannelId;
   view: string;
   status: RunStatus;
   progress: string[];
+  /** The latest progress line, null before the first. */
+  message: string | null;
   diagramId: string | null;
   error: string | null;
   /** The engine and model the run used. */
@@ -55,8 +66,17 @@ export interface RunRecord {
   route: Route | null;
   /** The drawing file a `draw` run wrote, once it has succeeded. */
   path: string | null;
-  /** A `draw`'s choices in request order with their state (api contract, Run record); null on other kinds. */
+  /** A `draw`'s choices in the draw's order with their state (api contract, Run record); null on other kinds. */
   choices: DrawChoice[] | null;
+  /** When it was accepted, took its slot (a draw: its earliest choice's), ended. */
+  createdAt: string; startedAt: string | null; endedAt: string | null;
+  /** While it waits for a slot (a draw: no choice running, one waiting, not writing). */
+  waiting: boolean;
+  /** The `at` of its latest engine line. */
+  lastEngineEventAt: string | null;
+  /** A draw's own fields (api contract, Run record), null on other kinds (`writing` false). */
+  folder: string | null; root: string | null; link: string | null; name: string | null; scan: string | null;
+  writing: boolean; into: string | null; retryOf: string | null;
 }
 
 interface Run extends RunRecord {
@@ -67,6 +87,10 @@ interface Run extends RunRecord {
   timedOut: boolean;
   /** The drawing this run works on. */
   target: string;
+  /** A draw's request, for `Try again`. */
+  draw: DrawRequest | null;
+  /** A running draw's join, once it takes choices (api contract, Joining a running draw). */
+  join: DrawJoin | null;
 }
 
 /** Which way a refine went (api contract, Routing). */
@@ -109,25 +133,54 @@ interface Look { image: ReviseImage; report: LayoutReport }
 const storyChannelOf = (req: StartRun): StoryChannel | null =>
   req.kind === "post" ? "linkedin" : req.kind === "story" ? ((req.channel as StoryChannel | undefined) ?? "linkedin") : null;
 
-/** How long what a failed draw kept stays (api contract, What a failed draw keeps). */
-const KEPT_MS = 3_600_000;
+type Result = { diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string; choice?: string };
 
-/** Runs one instruction-box call end to end and keeps its event log for replay over SSE. */
+/** Runs one instruction-box call or one draw end to end and keeps its event log for replay over SSE. */
 export class RunManager {
   private readonly runs = new Map<string, Run>();
+  /** The server's engine slots, shared with the scans (api contract, Engine slots). */
+  readonly slots: EngineSlots;
+  /**
+   * How long a finished run is kept, a finished draw listed and what a failed draw kept stays
+   * (api contract, Activity: `ARCHDRAW_JOB_KEEP_MS`).
+   */
+  private readonly keepMs: number;
 
   constructor(
     private readonly store: Store,
-    private readonly opts: { timeoutMs: number },
-  ) {}
+    private readonly opts: { timeoutMs: number; keepMs?: number; slots?: EngineSlots },
+  ) {
+    this.slots = opts.slots ?? new EngineSlots(3);
+    this.keepMs = opts.keepMs ?? 3_600_000;
+  }
 
   get(id: string): RunRecord | null {
     const r = this.runs.get(id);
-    return r ? {
-      id: r.id, kind: r.kind, choice: r.choice, channel: r.channel, view: r.view, status: r.status, progress: [...r.progress], diagramId: r.diagramId, error: r.error,
-      engine: r.engine, model: r.model, changes: r.changes, layoutReport: r.layoutReport, route: r.route, path: r.path,
-      choices: r.choices ? r.choices.map((c) => ({ ...c })) : null,
-    } : null;
+    if (!r) return null;
+    const choices = r.choices ? r.choices.map((c) => ({ ...c })) : null;
+    // A draw has started with its first choice, and waits while nothing of it runs and a choice is queued.
+    const starts = (choices ?? []).map((c) => c.startedAt).filter((t): t is string => !!t).sort();
+    const waiting = choices
+      ? r.status === "running" && !r.writing && !choices.some((c) => c.status === "running") && choices.some((c) => c.status === "waiting")
+      : r.waiting;
+    return {
+      id: r.id, kind: r.kind, choice: r.choice, channel: r.channel, view: r.view, status: r.status, progress: [...r.progress], message: r.message,
+      diagramId: r.diagramId, error: r.error, engine: r.engine, model: r.model, changes: r.changes, layoutReport: r.layoutReport, route: r.route, path: r.path,
+      choices, createdAt: r.createdAt, startedAt: choices ? starts[0] ?? null : r.startedAt, endedAt: r.endedAt, waiting, lastEngineEventAt: r.lastEngineEventAt,
+      folder: r.folder, root: r.root, link: r.link, name: r.name, scan: r.scan, writing: r.writing, into: r.into, retryOf: r.retryOf,
+    };
+  }
+
+  /** A draw's request, for `Try again` (api contract, Trying again); null for an unknown run or another kind. */
+  drawOf(id: string): DrawRequest | null {
+    return this.runs.get(id)?.draw ?? null;
+  }
+
+  /** The draws the activity lists (api contract, Activity): running, or ended less than the keep time ago. Other kinds are no job. */
+  list(now = Date.now()): RunRecord[] {
+    return [...this.runs.values()]
+      .filter((r) => r.kind === "draw" && (r.endedAt === null || Date.parse(r.endedAt) + this.keepMs > now))
+      .map((r) => this.get(r.id)!);
   }
 
   /** The running run on a drawing, if any (one at a time per drawing). */
@@ -146,11 +199,17 @@ export class RunManager {
     return () => r.listeners.delete(fn);
   }
 
+  /** Cancel: a waiting run leaves the queue; a running one's engines are killed. A draw that is writing goes on. */
   cancel(id: string): boolean {
     const r = this.runs.get(id);
     if (!r) return false;
     if (r.status === "running") r.abort.abort();
     return true;
+  }
+
+  /** Whether a cancel was asked of the run (a draw that is writing goes on, still `running`). */
+  cancelAsked(id: string): boolean {
+    return this.runs.get(id)?.abort.signal.aborted ?? false;
   }
 
   /** Cancels every running run; resolves once they have all ended, their engines gone and their images removed. */
@@ -170,10 +229,10 @@ export class RunManager {
     const story = storyChannelOf(req);
     return this.launch(
       { kind: req.kind ?? "refine", choice: req.choice, channel: story ?? channelOfView(req.stored, req.view) ?? "overview", view: story ? channelViewId(req.stored, story) : req.view, engine: req.engine.id, model: req.model, target: req.base.id },
-      // A revise's image goes once the run has ended — succeeded, failed, cancelled or timed out — and,
-      // since every engine call settles only after its process tree has exited, after the engine is gone.
-      (signal, progress, run) => this.execute(req, signal, (m) => progress(m), (route) => (run.route = route))
-        .finally(() => { if (req.image) removeReviseFolder(req.image.dir); }),
+      ({ signal, line, run }) => this.execute(req, signal, (m, source) => void line(m, null, null, source), (route) => (run.route = route)),
+      // A revise's image goes once the run has ended — succeeded, failed, cancelled (a waiting one too) or timed
+      // out — and, since every engine call settles only after its process tree has exited, after the engine is gone.
+      () => { if (req.image) removeReviseFolder(req.image.dir); },
     );
   }
 
@@ -182,102 +241,183 @@ export class RunManager {
     return this.runningOn(`folder:${folderKey}`);
   }
 
-  /** Start a `draw` run (api contract, The draw run): a new drawing file from a scanned folder. */
+  /**
+   * Whether a run of any kind, running or waiting, has its drawing file or its repository root in
+   * `dir` (api contract, *In use*): a copy in use is not updated, switched or deleted.
+   */
+  usesFolder(dir: string): boolean {
+    for (const r of this.runs.values()) {
+      if (r.status !== "running") continue;
+      const path = r.target.startsWith("folder:") ? r.target.slice(7).split("\0")[0] : this.store.pathOf(r.target);
+      if (path && isInside(dir, path)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Start a `draw` run (api contract, The draw run): its choices side by side in the engine slots, then one file
+   * holding every choice that finished — a new one, or the one a `Try again` adds to (`into`).
+   */
   startDraw(req: DrawRequest): string {
     // What the folder's last failed draw kept, if this draw asks the same (api contract, What a failed draw keeps).
     const key = keptKey(req);
     const last = this.kept.get(req.folderKey);
     const kept = last && last.key === key ? last.records : null;
     const done = new Map<string, KeptChoice>();
-    const choices = drawChoices(req.focuses);
+    // A choice of a `Try again` that the file already holds gets `-2`, `-3`, … (api contract, Trying again).
+    const held = req.into ? this.store.get(req.into)?.choices.map((c) => c.id) ?? [] : [];
+    const choices = drawChoices(req.focuses, req.ids, held);
+    // Choices that join are added to `req.focuses` and `choices` alike, so each choice's key is read at the end.
+    const keysOf = (status: DrawChoice["status"]) => choices.flatMap((c, i) => (c.status === status ? [choiceKey(req.focuses[i])] : []));
     return this.launch(
-      { kind: "draw", choice: choices[0].id, channel: req.channel, view: req.channel, engine: req.engine.id, model: req.model, target: `folder:${req.folderKey}`, choices },
-      (signal, progress, run, restartDeadline) => runDraw(req, { store: this.store, timeoutMs: this.opts.timeoutMs, signal, progress, wrote: (path) => (run.path = path), choices, kept, done, restartDeadline }).then(
-        (r) => { this.kept.delete(req.folderKey); return r; },
-        (err: unknown) => {
-          // The choice it ended in: failed (a timeout too), or cancelled; the later ones still wait.
-          const at = choices.find((c) => c.status === "running");
-          if (at) at.status = signal.aborted && !run.timedOut ? "cancelled" : "failed";
-          // What was finished is kept: added to the folder's entry when it is for the same scan, engine and model
-          // (a choice's newer record replaces its older one), else replacing it (api contract, What a failed draw keeps).
-          const same = last && last.key === key && this.kept.get(req.folderKey) === last;
-          const records = new Map(same ? last.records : []);
-          for (const [k, v] of done) if (v.read !== undefined) records.set(k, v);
-          if (!records.size) this.kept.delete(req.folderKey);
-          else {
-            const entry = { key, at: Date.now(), records };
-            this.kept.set(req.folderKey, entry);
-            // It goes an hour after the last draw that added to it, unless a newer draw of the folder replaced it first.
-            setTimeout(() => { if (this.kept.get(req.folderKey) === entry) this.kept.delete(req.folderKey); }, KEPT_MS).unref();
-          }
-          throw err;
-        },
+      {
+        kind: "draw", choice: choices[0].id, channel: req.channel, view: req.channel, engine: req.engine.id, model: req.model, target: `folder:${req.folderKey}`, choices,
+        draw: { ...req, ids: choices.map((c) => c.id) }, folder: req.folder.folder, root: req.folder.root, link: req.link ?? null, name: req.card.name, scan: req.scan,
+        into: req.into ?? null, retryOf: req.retryOf ?? null,
+      },
+      ({ signal, line, run, choice }) => runDraw(req, {
+        store: this.store, slots: this.slots, timeoutMs: this.opts.timeoutMs, signal, line, choices, kept, done,
+        changed: choice, writing: () => (run.writing = true), wrote: (path) => (run.path = path), joins: (join) => (run.join = join),
+      }).then(
+        (r) => { this.keep(req.folderKey, key, done, keysOf("failed"), keysOf("done")); return r; },
+        (err: unknown) => { this.keep(req.folderKey, key, done, [...done.keys()], []); throw err; },
       ),
     );
   }
 
-  /** One entry per folder: what its draws that ended without a drawing had finished, per choice as requested. */
-  private readonly kept = new Map<string, { key: string; at: number; records: Map<string, KeptChoice> }>();
+  /**
+   * Adds choices to a running draw (api contract, Joining a running draw), once the route has checked them: ids made
+   * as a draw's, free among the draw's choices and, for a draw that adds to a file, the file's as stored now. Null for
+   * a run that is no draw; `ended` or `writing` when the draw takes no more choices.
+   */
+  joinDraw(id: string, focuses: DrawFocus[]): { choices: string[] } | { refused: "ended" | "writing" } | null {
+    const r = this.runs.get(id);
+    if (!r || !r.draw || !r.choices) return null;
+    if (r.status !== "running" || r.abort.signal.aborted) return { refused: "ended" };
+    if (r.writing) return { refused: "writing" };
+    const held = r.into ? this.store.get(r.into)?.choices.map((c) => c.id) ?? [] : [];
+    const added = drawChoices(focuses, undefined, [...r.choices.map((c) => c.id), ...held]);
+    if (!r.join?.(focuses, added)) return { refused: r.writing ? "writing" : "ended" };
+    r.draw.ids = r.choices.map((c) => c.id);
+    return { choices: added.map((c) => c.id) };
+  }
 
+  /** One entry per folder: what its draws that ended without drawing a choice had finished, per choice as requested. */
+  private readonly kept = new Map<string, { key: string; records: Map<string, KeptChoice> }>();
+
+  /**
+   * After a draw (api contract, What a failed draw keeps): the records of the choices `keeping` names that got past
+   * their read are added to the folder's entry when it is for the same scan, engine and model (a choice's newer record
+   * replaces its older one), else they replace it; the records of the choices the draw wrote leave the entry. An
+   * entry left with none goes, and an entry goes an hour after the last draw that added to it.
+   */
+  private keep(folderKey: string, key: string, done: Map<string, KeptChoice>, keeping: string[], written: string[]) {
+    const fresh = [...done].filter(([k, v]) => keeping.includes(k) && v.read !== undefined);
+    const last = this.kept.get(folderKey);
+    let entry = last && last.key === key ? last : null;
+    if (fresh.length) {
+      entry = { key, records: new Map(entry ? entry.records : []) };
+      for (const [k, v] of fresh) entry.records.set(k, v);
+      this.kept.set(folderKey, entry);
+      const added = entry;
+      setTimeout(() => { if (this.kept.get(folderKey) === added) this.kept.delete(folderKey); }, this.keepMs).unref();
+    }
+    if (!entry) return;
+    for (const k of written) entry.records.delete(k);
+    if (!entry.records.size && this.kept.get(folderKey) === entry) this.kept.delete(folderKey);
+  }
+
+  /**
+   * A run's life. A draw's choices take their slots themselves; any other run takes one first, saying `Waiting for a
+   * free engine` when it has to wait, and its deadline starts once it has it (api contract, Engine slots). Cancel takes
+   * a waiting run out of the queue. `cleanup` runs once the run is over, its engines gone.
+   */
   private launch(
-    init: Pick<RunRecord, "kind" | "choice" | "channel" | "view" | "engine" | "model"> & { target: string; choices?: DrawChoice[] },
-    exec: (signal: AbortSignal, progress: (m: string, stage?: DrawStage | null, choice?: string | null) => void, run: Run, restartDeadline: () => void) => Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string }>,
+    init: Pick<RunRecord, "kind" | "choice" | "channel" | "view" | "engine" | "model"> & { target: string; choices?: DrawChoice[]; draw?: DrawRequest }
+      & Partial<Pick<RunRecord, "folder" | "root" | "link" | "name" | "scan" | "into" | "retryOf">>,
+    exec: (tools: { signal: AbortSignal; line: Line; run: Run; choice: (c: DrawChoice) => void }) => Promise<Result>,
+    cleanup: () => void = () => {},
   ): string {
     const id = `r_${randomBytes(6).toString("hex")}`;
+    const createdAt = nowIso();
     let resolveFinished!: () => void;
     const run: Run = {
       id, kind: init.kind, choice: init.choice, channel: init.channel, view: init.view,
-      status: "running", progress: [], diagramId: null, error: null, engine: init.engine, model: init.model,
+      status: "running", progress: [], message: null, diagramId: null, error: null, engine: init.engine, model: init.model,
       changes: null, layoutReport: null, route: null, path: null, target: init.target, choices: init.choices ?? null,
+      createdAt, startedAt: null, endedAt: null, waiting: false, lastEngineEventAt: null,
+      folder: init.folder ?? null, root: init.root ?? null, link: init.link ?? null, name: init.name ?? null, scan: init.scan ?? null,
+      writing: false, into: init.into ?? null, retryOf: init.retryOf ?? null, draw: init.draw ?? null, join: null,
       events: [], listeners: new Set(), abort: new AbortController(),
       finished: new Promise((r) => (resolveFinished = r)), timedOut: false,
     };
-    const expire = () => { run.timedOut = true; run.abort.abort(); };
-    let deadline = setTimeout(expire, this.opts.timeoutMs);
-    deadline.unref?.();
-    // A draw's choice has its own deadline from its first line (api contract, Deadlines and cancel).
-    const restartDeadline = () => { if (run.status !== "running") return; clearTimeout(deadline); deadline = setTimeout(expire, this.opts.timeoutMs); deadline.unref?.(); };
+    let deadline: NodeJS.Timeout | undefined;
     this.runs.set(id, run);
     const emit = (e: RunEvent) => {
       run.events.push(e);
       for (const l of run.listeners) l(e);
     };
-    const progress = (message: string, stage: DrawStage | null = null, choice: string | null = null) => {
-      if (run.status !== "running") return;
+    const line: Line = (message, stage = null, choice = null, source = "server") => {
+      const at = nowIso();
+      if (run.status !== "running") return at;
       run.progress.push(message);
-      emit({ type: "progress", message, stage, choice });
+      run.message = message;
+      if (source === "engine") run.lastEngineEventAt = at;
+      emit({ type: "progress", message, stage, choice, at, source });
+      return at;
     };
+    const choiceEvent = (c: DrawChoice) => { if (run.status === "running") emit({ type: "choice", ...c }); };
     const end = (status: Exclude<RunStatus, "running">, diagramId: string | null, error: string | null, changes: Changes | null = null, report: LayoutReport | null = null) => {
       clearTimeout(deadline);
       // A path is the file a run wrote: only a succeeded draw has one (api contract, Run record).
       if (status !== "succeeded") run.path = null;
       run.status = status;
+      // `writing` lasts until the run ends (api contract, Run record).
+      run.waiting = false;
+      run.writing = false;
+      run.endedAt = nowIso();
       run.diagramId = diagramId;
       run.error = error;
       run.changes = changes;
       run.layoutReport = report;
+      run.endedAt = nowIso();
       emit({ type: "done", status, diagramId, error, changes, choice: run.choice, channel: run.channel, view: run.view, layoutReport: report, route: run.route, path: run.path, choices: run.choices ? run.choices.map((c) => ({ ...c })) : null });
       run.listeners.clear();
       resolveFinished();
     };
-    void exec(run.abort.signal, progress, run, restartDeadline).then(
-      // The report names the channel it measured (api contract, Layout report).
-      (r) => { run.channel = r.channel; run.view = r.view; end("succeeded", r.diagramId, null, r.changes, { ...r.layoutReport, choice: run.choice, channel: r.channel }); },
+    const tools = { signal: run.abort.signal, line, run, choice: choiceEvent };
+    const go = async (): Promise<Result> => {
+      if (run.choices) return exec(tools);
+      const ticket = await this.slots.take(run.abort.signal, () => { run.waiting = true; line(WAITING); });
+      run.waiting = false;
+      run.startedAt = nowIso();
+      deadline = setTimeout(() => { run.timedOut = true; run.abort.abort(); }, this.opts.timeoutMs);
+      deadline.unref?.();
+      try { return await exec(tools); } finally { ticket.release(); }
+    };
+    void go().finally(cleanup).then(
+      // The report names the choice and channel it measured (api contract, Layout report).
+      (r) => {
+        if (r.choice) run.choice = r.choice;
+        run.channel = r.channel; run.view = r.view;
+        end("succeeded", r.diagramId, null, r.changes, { ...r.layoutReport, choice: run.choice, channel: r.channel });
+      },
       (err: unknown) => {
         if (run.timedOut) return end("failed", null, `Timed out after ${Math.round(this.opts.timeoutMs / 60_000) || 1} min — try a narrower instruction`);
-        if (run.abort.signal.aborted) return end("cancelled", null, null);
+        // A cancel asked while a draw writes its file changes nothing (api contract, The draw run).
+        if (run.abort.signal.aborted && !run.writing) return end("cancelled", null, null);
         const known = err instanceof EngineError || err instanceof EmptyDiagramError || err instanceof StoryError || err instanceof CoverageError || err instanceof ReadAnswerError || err instanceof DrawError;
         // A product bug: its stack goes to the server log (server.log of a detached server).
         if (!known) console.error(`Run ${id} failed unexpectedly:`, err);
         end("failed", null, known ? (err as Error).message : `Unexpected error: ${(err as Error)?.message ?? String(err)}`);
       },
     );
-    // Forget finished runs after an hour so a long-lived server does not grow without bound.
-    void run.finished.then(() => setTimeout(() => this.runs.delete(id), 3_600_000).unref());
+    // Forget finished runs after the keep time so a long-lived server does not grow without bound.
+    void run.finished.then(() => setTimeout(() => this.runs.delete(id), this.keepMs).unref());
     return id;
   }
 
-  private async execute(req: StartRun, signal: AbortSignal, progress: (m: string) => void, routed: (route: Route) => void): Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string }> {
+  private async execute(req: StartRun, signal: AbortSignal, progress: (m: string, source?: LineSource) => void, routed: (route: Route) => void): Promise<{ diagramId: string; changes: Changes; layoutReport: LayoutReport; channel: ChannelId; view: string }> {
     // The root the store checks this drawing's files against, so a repair and a save never disagree.
     const root = this.store.rootOf(req.base.id);
     if (!root) throw new EngineError("This drawing has no repository folder to read");
@@ -322,7 +462,7 @@ export class RunManager {
     const base = documentToDraft(req.base);
     const answer = await req.engine.run({
       cwd: root, folderName: basename(root), instruction, view: req.view, model: req.model, scope, parts,
-      base, signal, timeoutMs: this.opts.timeoutMs, progress, simplify, appearance,
+      base, signal, timeoutMs: this.opts.timeoutMs, progress: (m) => progress(m, "engine"), simplify, appearance,
       ...(look ? {
         image: look.image,
         task: {
@@ -373,10 +513,10 @@ export class RunManager {
   }
 
   /** The routing question (api contract, Routing): asked with no tools; anything but "story" is the facts. */
-  private async route(req: StartRun, root: string, signal: AbortSignal, progress: (m: string) => void): Promise<Route> {
+  private async route(req: StartRun, root: string, signal: AbortSignal, progress: (m: string, source?: LineSource) => void): Promise<Route> {
     const answer = await req.engine.run({
       cwd: root, folderName: basename(root), instruction: req.instruction, view: req.view, model: req.model, scope: { kind: "view" }, parts: [],
-      base: null, signal, timeoutMs: this.opts.timeoutMs, progress,
+      base: null, signal, timeoutMs: this.opts.timeoutMs, progress: (m) => progress(m, "engine"),
       task: { kind: "route", schema: ROUTE_SCHEMA, tools: "none", prompt: routePrompt({ channel: req.channel ?? "overview", instruction: req.instruction }) },
     });
     return (answer as { route?: unknown } | null)?.route === "story" ? "story" : "facts";
@@ -386,7 +526,7 @@ export class RunManager {
    * A story run (a post is one on LinkedIn): the engine tells the channel's story from the facts,
    * code converts, places and measures it. It changes no fact (diagram contract, Story answers).
    */
-  private async story(req: StartRun, channel: StoryChannel, root: string, signal: AbortSignal, progress: (m: string) => void, look: Look | null = null) {
+  private async story(req: StartRun, channel: StoryChannel, root: string, signal: AbortSignal, progress: (m: string, source?: LineSource) => void, look: Look | null = null) {
     const format: FormatId = channel === "linkedin" ? (req.format === "linkedin" ? "linkedin" : "feed") : channel === "readme" ? "readme" : "slide";
     // A post may read the code unless told not to; any other story reads none unless told to.
     const readCode = req.readCode ?? req.kind === "post";
@@ -399,14 +539,14 @@ export class RunManager {
       : channel === "linkedin"
       ? postPrompt({ folderName: basename(root), view: source, base: draft, facts: req.stored.facts, format: format as "feed" | "linkedin", instruction: req.instruction, readCode })
       : storyPrompt({ channel, folderName: basename(root), view: source, base: current ? { overview: draft, current } : draft, facts: req.stored.facts, instruction: req.instruction, readCode });
-    const call = { cwd: root, folderName: basename(root), instruction: req.instruction, view: source, model: req.model, scope: { kind: "view" } as const, parts: [], base: draft, signal, timeoutMs: this.opts.timeoutMs, progress };
+    const call = { cwd: root, folderName: basename(root), instruction: req.instruction, view: source, model: req.model, scope: { kind: "view" } as const, parts: [], base: draft, signal, timeoutMs: this.opts.timeoutMs, progress: (m: string) => progress(m, "engine") };
     const task = { kind: look ? "revise" as const : channel === "linkedin" ? "post" as const : "story" as const, schema: STORY_SCHEMA, data: { channel, overview: req.base.views[0] } };
     const answer = await req.engine.run({ ...call, ...(look ? { image: look.image } : {}), task: { ...task, tools: look ? "image" : readCode ? "read" : "none", prompt } });
     if (signal.aborted) throw new EngineError("Cancelled");
     progress("Checking the post");
     // One repair turn for an answer with problems: no tools, no image, the same schema (diagram contract).
     const intent = await storyAnswer(answer, {
-      channel, progress, check: "Checking the post", signal,
+      channel, progress: (m) => progress(m), check: "Checking the post", signal,
       repair: (prompt) => req.engine.run({ ...call, task: { ...task, tools: "none", prompt, data: { ...task.data, repair: true } } }),
     });
     const { doc, view, warnings } = intentToChannel(req.stored, intent, { portrait: format === "feed", channel });

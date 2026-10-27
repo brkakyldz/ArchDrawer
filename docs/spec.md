@@ -28,7 +28,7 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **START-3** (Today) Before a run, the app tells whether `claude` and/or
   `codex` is installed, signed in and recent enough, and says what to do when
   it is not.
-- **START-4** (To change) The home screen starts a drawing from a repository
+- **START-4** (Today) The home screen starts a drawing from a repository
   chosen by a click: an entry of *Recent* or *Found on this computer*, a
   folder picked in the operating system's own folder dialog (`Choose
   folder…`), a pasted path, or a pasted link (SRC-1 … SRC-6, ADR 0017).
@@ -37,7 +37,7 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **START-6** (Today) A draw that fails after its read keeps what it read,
   and `Try again` starts from the stage that did not finish, with no new
   read (ADR 0010).
-- **START-7** (To change) A draw of several choices draws them side by side,
+- **START-7** (Today) A draw of several choices draws them side by side,
   one read each, as many at a time as the server has free engine slots
   (JOB-1). A choice that fails or times out does not stop the others: the
   file is written with every choice that finished, and `Try again` draws the
@@ -51,25 +51,25 @@ A repository comes from one of two sources: *This computer* (a local folder)
 or *Link* (a repository copied from a link). Exact shapes and texts are in
 the api contract, *Sources* (ADR 0017).
 
-- **SRC-1** (To build) *Recent* lists the folders scanned or drawn before,
+- **SRC-1** (Today) *Recent* lists the folders scanned or drawn before,
   most recently used first, at most 20; a folder that no longer exists is
   left out. Each entry has its name, its path, its branch, the time of its
   last commit and, for a copy, its link (`github.com/owner/repo`). An entry
   without a drawing in the library can be removed from the list.
-- **SRC-2** (To build) *Found on this computer* lists the git repositories
+- **SRC-2** (Today) *Found on this computer* lists the git repositories
   found below the home folder, below `code`, `src`, `projects`, `repos`,
   `dev` and `Documents/GitHub` under it, and below the parent folder of each
   drawing's repository in the library: at most two levels deep, at most 50,
   newest last commit first, none already in *Recent*, with the same fields as
   SRC-1. The list is made again at most every five minutes, or at once on
   request.
-- **SRC-3** (To build) `Choose folder…` opens the operating system's own
+- **SRC-3** (Today) `Choose folder…` opens the operating system's own
   folder dialog in front of the browser: the modern Explorer folder picker on
   Windows, Finder's `choose folder` on macOS, `zenity` or `kdialog` on Linux.
   The folder picked is checked as a pasted one; closing the dialog changes
   nothing. Where no dialog is available, `Choose folder…` is not shown and
   pasting a path stays.
-- **SRC-4** (To build) A pasted `https` link of a repository on github.com,
+- **SRC-4** (Today) A pasted `https` link of a repository on github.com,
   gitlab.com or bitbucket.org, optionally naming a branch, is copied (its
   newest commit only) into archdrawer's own data folder and scanned and drawn
   like a folder; its drawing file is written into the copy. A private
@@ -77,7 +77,7 @@ the api contract, *Sources* (ADR 0017).
   archdrawer never asks for or keeps a password. A link it cannot take, a
   host it cannot reach and a repository it cannot see each fail with one
   plain sentence.
-- **SRC-5** (To build) A later scan of a copy fetches the newest commit
+- **SRC-5** (Today) A later scan of a copy fetches the newest commit
   first: of the branch a link names, of the repository's default branch when
   a link names none, or of the copy's own branch when the copy is chosen as
   a folder. When the fetch fails, the scan goes on with the copy it has and
@@ -85,7 +85,7 @@ the api contract, *Sources* (ADR 0017).
   copy, it is not updated, and a link asking for another branch fails with
   one plain sentence. The drawing files in the copy are never removed or
   overwritten by an update.
-- **SRC-6** (To build) The library names a copy's drawing by its link instead
+- **SRC-6** (Today) The library names a copy's drawing by its link instead
   of its path. `Remove from list` on that drawing, or on a copy's entry in
   *Recent*, offers to delete the copy too; the copy is deleted only when no
   other drawing in the library is in it and nothing runs on it.
@@ -110,22 +110,22 @@ the api contract, *Sources* (ADR 0017).
 A **job** is a scan or a draw. A **slot** is one engine process (ADR 0016;
 api contract, *Engine slots*, *The draw run*, *Activity*).
 
-- **JOB-1** (To build) At most 3 engine processes run at a time for the
+- **JOB-1** (Today) At most 3 engine processes run at a time for the
   whole server by default (`ARCHDRAW_ENGINE_SLOTS`). A scan that starts an engine, each choice of a draw and each
   instruction run of the editor holds one slot until its engine has exited;
   what finds none free waits, first come first served, and says
   `Waiting for a free engine`. Waiting counts toward no time limit.
-- **JOB-2** (To build) A draw starts its choices in request order, each as
+- **JOB-2** (Today) A draw starts its choices in request order, each as
   soon as it has a slot, each with its own read, overview, channel and time
   limit. The ids in the written file are the same whichever choice finishes
   first: those of the same choices drawn one after another in request order.
-- **JOB-3** (To build) A choice that fails or times out ends alone and the
+- **JOB-3** (Today) A choice that fails or times out ends alone and the
   others carry on. Once every choice has ended, the file is written with
   every choice that finished and the draw succeeds, its record marking the
   failed choice with its error; `Try again` on that draw draws the failed
   choices into the same file, reusing what they had read. When every choice
   fails, the draw fails and writes nothing.
-- **JOB-4** (To build) Choices started for a folder whose draw is running
+- **JOB-4** (Today) Choices started for a folder whose draw is running
   join that draw: they take its channel, engine and model, wait for slots
   like its own choices, and go into its file. A choice the draw already
   holds is refused, and so is a second choice in the user's own words, and
@@ -133,28 +133,28 @@ api contract, *Engine slots*, *The draw run*, *Activity*).
   options than the draw's. Once
   the draw has started writing its file, a join is refused with
   `The draw is writing its file: start a new one once it has finished`.
-- **JOB-5** (To build) Scans and draws of different folders run at the same
+- **JOB-5** (Today) Scans and draws of different folders run at the same
   time, sharing the slots; a job never waits for another job to end, only
   for a slot.
-- **JOB-6** (To build) While a draw runs, each of its choices reports its
+- **JOB-6** (Today) While a draw runs, each of its choices reports its
   state (`waiting`, `running`, `done`, `failed`, `cancelled`), its stage,
   when it started, the time of the engine's last line, the number of files
   the engine has read for it, and, once its read is checked, the number of
   parts the read found. Every progress line carries its time and whether the
   engine or the server wrote it.
-- **JOB-7** (To build) The server lists every scan and draw that is running
+- **JOB-7** (Today) The server lists every scan and draw that is running
   or ended within the last hour (`GET /api/activity`). A reloaded page, or a
   second page, shows them all again and follows the running ones from where
   they are. A finished scan keeps its card and options there for that hour,
   so the user can go back to choosing.
-- **JOB-8** (To build) When a draw finishes, the screen stays where it is:
+- **JOB-8** (Today) When a draw finishes, the screen stays where it is:
   the Activity rail shows the job as `Ready` with `Open`, and a notice
   appears. Nothing opens the editor but the user.
-- **JOB-9** (To build) Jobs live in the server's memory only. A page that
+- **JOB-9** (Today) Jobs live in the server's memory only. A page that
   listed running or waiting jobs when the server restarted says once
   `The server restarted; <n> jobs stopped` (`1 job stopped` for one), and
   lists them no more.
-- **JOB-10** (To build) Cancelling a job stops every engine it started,
+- **JOB-10** (Today) Cancelling a job stops every engine it started,
   frees their slots and takes its waiting choices out of the queue. A
   cancelled draw writes nothing.
 
@@ -307,59 +307,59 @@ api contract, *Engine slots*, *The draw run*, *Activity*).
 The screen at `/` (ui contract, *Home*; DESIGN.md, *Home screen*). It uses
 the sources of SRC and the jobs of JOB.
 
-- **HOME-1** (To build) Three columns: a navigation column (the drawings,
+- **HOME-1** (Today) Three columns: a navigation column (the drawings,
   `New drawing`, *Recent* and *Found on this computer*), a work column (the
   `Draw a project` panel, then the drawings) and a side column (Activity,
   then the newest drawing or the scanned repository's card, then the engine
   and model). Narrower windows move the side column under the work column,
   then put the navigation in one row, then show one column.
-- **HOME-2** (To build) The `Draw a project` panel goes through four steps
+- **HOME-2** (Today) The `Draw a project` panel goes through four steps
   shown as a stepper, Folder, Focus, Destination and Draw. The repository is
   chosen on *This computer* by searching the recent and found repositories,
   pasting a path or `Choose folder…`, or on *Link* by pasting a link, which
   is checked as it is typed. Choosing one never scans by itself; `Scan`
   does.
-- **HOME-3** (To build) After a scan the choices are cards in two columns,
+- **HOME-3** (Today) After a scan the choices are cards in two columns,
   the whole system first and widest, then the sections, the flows and
   *Something else*; each shows its title, sentence and first files, the rest
   on demand. Three destination cards show the shape of each channel. A bar
   says how many drawings for what, and holds `Change folder` and the draw
   button.
-- **HOME-4** (To build) While a scan or a draw of the folder chosen runs,
+- **HOME-4** (Today) While a scan or a draw of the folder chosen runs,
   the panel follows it. Each choice of a draw shows its three stages, the
   time since it started, ticking every second, the engine's latest line with
   a pulse on each new one, the files read so far and, once its read is
   checked, the parts found. A choice waiting for a slot says `Waiting for a
   free engine`.
-- **HOME-5** (To build) A running choice with no engine line for 30 s says
+- **HOME-5** (Today) A running choice with no engine line for 30 s says
   `Quiet for <s> s — still running (limit <m> min)` until the next one, so
   working and frozen are told apart.
-- **HOME-6** (To build) A finished draw shows `Ready` with `Open` in the
+- **HOME-6** (Today) A finished draw shows `Ready` with `Open` in the
   panel and in Activity, and a notice `<name> is ready`; nothing opens the
   editor by itself. A failed or cancelled draw, or one with a failed choice,
   offers `Try again`.
-- **HOME-7** (To build) Activity, in every state, lists every scan and draw
+- **HOME-7** (Today) Activity, in every state, lists every scan and draw
   running or ended within the hour, with a one-line status each and `Open`
   or `Choose` on finished ones; pressing a job makes the panel follow it.
   `Draw another project` frees the panel while the job goes on. A reload
   shows the same.
-- **HOME-8** (To build) Choosing what to draw for a folder whose draw is
+- **HOME-8** (Today) Choosing what to draw for a folder whose draw is
   running adds the new choices to that draw: the choices it holds show as
   in it, and the destination is its channel, locked, with one line saying
   why.
-- **HOME-9** (To build) The drawings are cards with a preview of the
+- **HOME-9** (Today) The drawings are cards with a preview of the
   drawing's first view, a `<n> views` mark that steps through the views on
   hover, the title, the file path (the link for a copied repository), the
   kinds of its parts and when it changed. A search narrows them; a grid or
   list layout is kept in the browser. The newest drawing waits in a
   `Continue` panel.
-- **HOME-10** (To build) The keyboard reaches every control in order;
+- **HOME-10** (Today) The keyboard reaches every control in order;
   `Ctrl K` (`⌘ K`) goes to the folder search, Enter scans or draws, Space
   ticks.
-- **HOME-11** (To build) The home screen keeps the app's light and dark
+- **HOME-11** (Today) The home screen keeps the app's light and dark
   themes, Geist and Geist Mono, and the one blue for state and the primary
   action.
-- **HOME-12** (To build) No hero, slogan, process guide or footer line: every
+- **HOME-12** (Today) No hero, slogan, process guide or footer line: every
   text names a thing or a state.
 
 ### Presentation and tour (PRES)

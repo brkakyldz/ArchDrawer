@@ -16,8 +16,13 @@ const here = new URL('.', import.meta.url);
 // LAYOUT-6, LOOK-2, LOOK-3, LOOK-4 and EDIT-5 To build and changes START-1, SCAN-2, SCAN-3, STORY-1, LAYOUT-2, FILE-2, NAV-1 and
 // NAV-2: the ones To build are 'round' (a title may carry them, they are being landed by the issues of the round and each needs a
 // scenario, as PRES-1–3 did), the others 'change'. LOOK-2 and LOOK-3 carry 'today' from 0.4; the spec now calls them To build.
+// The ADR 0016–0017 round (jobs side by side in shared engine slots, sources, the home screen) rewrites START-4 and START-7 (both
+// To change now) and adds JOB-1–10, SRC-1–6 and HOME-1–12, all To build: 'round', each needs a scenario (JOB-8 and HOME-1–12 are
+// observed on the screen, the others over the API).
 const requirements = {
-  'START-1': 'change', 'START-2': 'build', 'START-3': 'today', 'START-4': 'today', 'START-5': 'today', 'START-6': 'today', 'START-7': 'round',
+  'START-1': 'change', 'START-2': 'build', 'START-3': 'today', 'START-4': 'change', 'START-5': 'today', 'START-6': 'today', 'START-7': 'change',
+  ...Object.fromEntries([...Array.from({ length: 10 }, (_, i) => `JOB-${i + 1}`), ...Array.from({ length: 6 }, (_, i) => `SRC-${i + 1}`),
+    ...Array.from({ length: 12 }, (_, i) => `HOME-${i + 1}`)].map(id => [id, 'round'])),
   'SCAN-1': 'today', 'SCAN-2': 'change', 'SCAN-3': 'change', 'SCAN-4': 'today',
   'READ-1': 'today', 'READ-2': 'today', 'READ-3': 'today',
   'STORY-1': 'change', 'STORY-2': 'today', 'STORY-3': 'today', 'STORY-4': 'today', 'STORY-5': 'today', 'STORY-6': 'today', 'STORY-7': 'today', 'STORY-8': 'round',
@@ -34,9 +39,11 @@ const requirements = {
 };
 const builtins = ['@playwright/test', 'node:fs/promises', 'node:fs', 'node:path', 'node:os', 'node:url', 'node:net', 'node:child_process', 'node:crypto'];
 // Scenarios and files that left the suite; none of them may come back.
-const retiredScenarios = ['H37', 'H42', 'H43', 'H45', 'H49', 'H50', 'H51', 'H52', 'H53', 'H54', 'H55', 'H56', 'H60', 'H61', 'H62',
+const retiredScenarios = ['H131', 'H133', 'H37', 'H42', 'H43', 'H45', 'H49', 'H50', 'H51', 'H52', 'H53', 'H54', 'H55', 'H56', 'H60', 'H61', 'H62',
   ...Array.from({ length: 19 }, (_, i) => `H${65 + i}`)];
-const retiredFiles = [/^helpers-v\d+\.ts$/, /^border-cases\.ts$/, /^review.*baseline\.json$/, /^retired-v1$/];
+// H195 was renamed by the ADR 0016 round (a later failure no longer stops the file); its old name must not come back beside the new one.
+const retiredFiles = [/^helpers-v\d+\.ts$/, /^border-cases\.ts$/, /^review.*baseline\.json$/, /^retired-v1$/,
+  /^H195_a_failure_in_a_later_choice_keeps_the_finished_ones_and_the_next_draw_starts_from_the_first_unfinished\.spec\.ts$/];
 
 const entries = await readdir(here, { withFileTypes: true });
 const names = entries.map(entry => entry.name);
@@ -176,8 +183,8 @@ for (const id of ['PRES-1', 'PRES-2', 'PRES-3']) assert.ok(used.has(id), `no sce
 // The ADR 0013–0015 round: every requirement it marks To build or To change has a scenario, and so has every build issue it makes
 // (ISSUES-drawing.md and ISSUES-selections.md); a title may name no other issue number.
 for (const id of Object.keys(requirements).filter(id => requirements[id] === 'round')) assert.ok(used.has(id), `no scenario observes ${id}`);
-for (const id of ['START-1', 'SCAN-2', 'SCAN-3', 'STORY-1', 'LAYOUT-2', 'FILE-2', 'NAV-1', 'NAV-2']) assert.ok(used.has(id), `no scenario observes ${id}`);
-const roundIssues = [44, 164, 165, 166, 167, 168, 170, 171, 172, 174, 175, 176, 177, 180, 181, 182, 183, 184, 185, 186].map(n => `#${n}`);
+for (const id of ['START-1', 'SCAN-2', 'SCAN-3', 'STORY-1', 'LAYOUT-2', 'FILE-2', 'NAV-1', 'NAV-2', 'START-4', 'START-7']) assert.ok(used.has(id), `no scenario observes ${id}`);
+const roundIssues = [44, 164, 165, 166, 167, 168, 170, 171, 172, 174, 175, 176, 177, 180, 181, 182, 183, 184, 185, 186, 195, 196, 197, 198, 199, 200, 201, 202].map(n => `#${n}`);
 const named = new Set([...issuesOf.values()].flat());
 for (const issue of named) assert.ok(roundIssues.includes(issue), `a title names ${issue}, which is not a build issue of the round`);
 for (const issue of roundIssues) assert.ok(named.has(issue), `no scenario accepts ${issue}`);
@@ -194,5 +201,41 @@ for (const [file, exported] of Object.entries({
 // A reader of helpers.ts hands back one choice of a `@4` document in the `@3` shape, whichever format is on disk.
 for (const name of ['readDocument', 'getDocument', 'sessionWrite'])
   assert.ok(new RegExp(`export async function ${name}\\b[\\s\\S]{0,900}?(flattenChoice|readStoredRaw|getStoredRaw)`).test(helpers), `helpers.ts: ${name} does not read a format 4 document as a choice`);
+
+// The ADR 0016–0017 round (jobs, sources, the home screen). The shared harness server sets none of the variables these scenarios need
+// (slots, time limits, keep time, search home, test dialog, test links), so H209–H247 each start a server of their own through one
+// helper: H209–H228 `jobServer` (helpers-jobs.ts), H229–H247 `homeServer` (helpers-home.ts). Whichever file starts one stops it in a
+// `finally` (a server left running keeps its port, its engines and its temp folder for the next scenario).
+for (const [name, source] of sources) {
+  if (!/^H\d+_/.test(name)) continue;
+  const number = Number(name.match(/^H(\d+)_/)[1]);
+  const own = [...source.matchAll(/\b(?:const|let)\s+(\w+)\s*=\s*await\s+(jobServer|homeServer)\(/g)];
+  if (number >= 209 && number <= 228) assert.ok(own.some(match => match[2] === 'jobServer'), `${name}: a scenario of the jobs and sources batch starts its own server with jobServer(`);
+  if (number >= 229 && number <= 247) assert.ok(own.some(match => match[2] === 'homeServer'), `${name}: a scenario of the home batch starts its own server with homeServer(`);
+  for (const match of own)
+    assert.ok(new RegExp(`\\bfinally\\s*\\{\\s*await\\s+${match[1]}\\.(stop|close)\\(\\)`).test(source), `${name}: the server started as ${match[1]} is not stopped in a finally`);
+  if (number >= 209 && number <= 247) assert.ok(!/ARCHDRAW_HOLDOUT|playwright\.config/.test(source), `${name}: a round scenario must not depend on the shared harness server's settings`);
+  // A scenario that asserts a duration is allowed only where the contract names one; the rest assert states and orders.
+  if (number >= 209 && number <= 247) assert.ok(!/(waitForTimeout|sleep)\(\s*[1-9][\d_]{4,}\s*\)/.test(source), `${name}: a fixed wait of ten seconds or more; poll for the state instead`);
+}
+// The helper files of the round keep exporting what their scenarios import.
+for (const [file, exported] of Object.entries({
+  'helpers-jobs.ts': ['jobServer', 'watch', 'eventsOf', 'runEventsOf', 'scanEventsOf', 'until', 'sleep', 'ms', 'lines', 'ofChoice', 'scanRec', 'runRec', 'activityOf', 'jobOf',
+    'startScanOn', 'awaitScan', 'scanOn', 'drawOn', 'awaitRun', 'states', 'runningOf', 'sampleRun', 'refineOn', 'registerDrawing', 'diagramIds', 'viewsByChoice', 'readDoc',
+    'tempDir', 'gitIn', 'quickRepo', 'makeRemote', 'copyOf', 'branchOf', 'headOf', 'short', 'reposListing', 'writePicker', 'ISO_MS', 'HEX16', 'WAITING'],
+  'helpers-home.ts': ['homeServer', 'openHome', 'makeRepo', 'makeRemote', 'copyDir', 'comboOptions', 'navItems', 'stepper', 'jobsOnScreen', 'jobIn', 'rowFacts', 'recordRowFacts',
+    'recordedFacts', 'maxRunning', 'startedRetry', 'startedJoin', 'answerDialogs', 'tickOnHome', 'drawOnHome', 'activityNow'],
+})) {
+  assert.ok(sources.has(file), `${file} is missing`);
+  for (const name of exported) assert.ok(new RegExp(`export (async )?(function|const) ${name}\\b`).test(sources.get(file)), `${file} no longer exports ${name}`);
+}
+// The fixture's markers travel in a typed text or in a link's repository name; `makeRepo` of the home batch has no win32 guard.
+for (const [name, source] of sources) {
+  if (!/^H\d+_/.test(name)) continue;
+  for (const [i, line] of source.split(/\r?\n/).entries()) {
+    if (/^\s*\/\//.test(line)) continue;
+    assert.ok(!/\bmakeRepo\(\s*[^)]*\[fixture:/.test(line), `${name}:${i + 1}: a fixture marker in a folder name needs the win32 guard of markerRepo`);
+  }
+}
 
 console.log(`author-check: ${scenarios.length} scenarios, ${used.size} requirement ids observed, ${sources.size} typed files parse, imports stay inside the suite: ok`);

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { join } from 'node:path';
-import { gitRepo, startedRun, runEvents, listedDiagrams, exists, samePath, viewOf, baseURL } from './helpers';
-import { getDocument } from './helpers-selections'; // a draw writes format 4: this gives the drawn choice in the shape the scenario was written in
+import { gitRepo, token, scanFolder, finishRun, runEvents, listedDiagrams, exists, samePath, viewOf, baseURL } from './helpers';
+import { getDocument, startDrawChoices, typed } from './helpers-selections'; // a draw writes format 4: getDocument gives the drawn choice in the shape the scenario was written in
 
 const OVERLONG_START = 'Drawn by the test engine, with a description written far past the limit a story answer may hold.';
 const SHORTENED = 'Shortened the description to 240 characters';
@@ -10,29 +10,23 @@ const FOUR_WARNINGS = [
   'Dropped "r8": its component "ghost" was dropped', 'Dropped "ghost-limit": its component "ghost" was dropped',
 ];
 
-// STORY-7 (ADR 0009) inside START-4: the overview answer of a draw stays over the lede's limit after its one repair turn. A length
+// STORY-7 (ADR 0009) in a draw: the overview answer of a draw stays over the lede's limit after its one repair turn. A length
 // never fails a run: the text is shortened to 240 characters with `…`, one warning, and the draw goes on to the channel, writes the
-// file and registers it. The user sees an editor, not an error.
-test('H156 [STORY-7, START-4, STORY-1, #181] a draw from the home screen whose overview answer stays over its limit after the repair turn is shortened to 240 characters with one warning and still writes and registers the drawing', async ({ page, request }) => {
-  test.setTimeout(240_000);
+// file and registers it. The draw is started over the API; the same draw from the home screen (`Ready`, `Open`) is H121, H249 and H237.
+test('H156 [STORY-7, STORY-1, #181] a draw whose overview answer stays over its limit after the repair turn is shortened to 240 characters with one warning and still writes and registers the drawing', async ({ request }) => {
+  test.setTimeout(60_000);
+  const auth = await token(request);
   const project = await gitRepo('story-home-stubborn');
   const listedBefore = (await listedDiagrams(request)).length;
   const focus = 'The tool loop [fixture:overlong][fixture:stubborn]';
 
-  await page.goto('/'); await expect(page.getByTestId('start')).toBeVisible();
-  await page.getByTestId('start-folder').fill(project.dir); await page.getByTestId('start-scan').click();
-  await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 60_000 });
-  await page.getByTestId('focus-typed').click(); await page.getByTestId('focus-text').fill(focus);
-  await page.getByTestId('channel-choice-linkedin').click();
-  const started = await startedRun(page, () => page.getByTestId('draw-start').click());
-  expect(started.body).toMatchObject({ kind: 'draw', channel: 'linkedin', choices: [{ kind: 'typed', text: focus }] }); expect(started.body).not.toHaveProperty('focus');
-
-  await expect(page.getByTestId('editor')).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'linkedin');
-  await expect(page.getByTestId('draw-error')).toHaveCount(0);
+  const scan = await scanFolder(request, auth, project.dir);
+  const runId = await startDrawChoices(request, auth, scan.id, [typed(focus)], 'linkedin');
+  const finished = await finishRun(request, runId, 'succeeded');
+  expect(finished.choices.map((c: { status: string }) => c.status), 'no choice could not be drawn').toEqual(['done']);
 
   // The events: one repair turn in the overview stage, never a second, one overview call, and the run went on to the channel.
-  const events = (await runEvents(started.runId)).filter(e => e.event === 'progress');
+  const events = (await runEvents(runId)).filter(e => e.event === 'progress');
   const messages = events.map(e => e.data.message as string);
   const fixing = events.filter(e => String(e.data.message).startsWith('Fixing'));
   expect(fixing, 'one repair turn and no second').toHaveLength(1);
@@ -44,7 +38,7 @@ test('H156 [STORY-7, START-4, STORY-1, #181] a draw from the home screen whose o
   expect(events.filter(e => e.data.stage === 'channel').some(e => String(e.data.message).startsWith('Fixing')), 'the channel call needed none').toBe(false);
 
   // The run: succeeded, written under docs, registered once.
-  const run = await (await request.get(`${baseURL()}/api/runs/${started.runId}`)).json();
+  const run = await (await request.get(`${baseURL()}/api/runs/${runId}`)).json();
   expect(run).toMatchObject({ status: 'succeeded', kind: 'draw', channel: 'linkedin', error: null });
   expect(run.path && await exists(run.path)).toBe(true);
   expect(samePath(run.path, join(project.dir, 'docs', 'architecture.archdraw.json'))).toBe(true);

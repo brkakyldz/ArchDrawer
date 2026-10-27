@@ -13,7 +13,7 @@ const valid = () => withLinkedIn(shop3('Rules shop'));
 // Each case breaks one rule of the drawing contract, on its own, so another error cannot mask it. The pattern is what
 // `archdrawer validate` must print (a documented path where the contract gives one, else the place to fix); the
 // server's refusal carries the same `<path>: <message>` lines in `errors`.
-const cases: { name: string; pattern: RegExp; break: (d: Doc3) => void }[] = [
+const cases: { name: string; pattern: RegExp; break: (d: Doc3) => void; serverLines?: false }[] = [
   { name: 'form-not-a-form',
     pattern: new RegExp(`^ERROR ${escape(OVERVIEW)}\\.nodes\\[1\\]\\.form: "box" is not a form; use one of card, compact, panel, group$`, 'm'),
     break: d => { d.channels.overview.views![0].nodes[1].form = 'box'; } },
@@ -56,6 +56,17 @@ const cases: { name: string; pattern: RegExp; break: (d: Doc3) => void }[] = [
     break: d => { d.requests = [{ id: 'q1', text: 'Add a cache', channel: 'board', view: 'overview', at: '2026-10-13T12:00:00.000Z' }]; } },
   { name: 'schema-not-this-format', pattern: /^ERROR schema/m,
     break: d => { d.schema = 'archdraw/diagram@9'; } },
+  // Moved from H16 (which only ran validate on them): the server must refuse them with a 400 and leave the file alone; which of several
+  // violations it lists first is not contracted for these, so their lines are not matched on the server. A parent that is no group of the view, a connection to a part that is not there, a relation style that is not one
+  // (the message lists the allowed ones), and a panel that shows no item (reported at the part or at the fact whose items it shows).
+  { name: 'parent-is-not-a-group-of-the-view', serverLines: false as const, pattern: new RegExp(`^ERROR ${escape(OVERVIEW)}\\.nodes\\[2\\]\\.parent`, 'm'),
+    break: d => { d.channels.overview.views![0].nodes[2].parent = 'missing-group'; } },
+  { name: 'connection-to-a-part-that-is-not-there', serverLines: false as const, pattern: new RegExp(`^ERROR ${escape(OVERVIEW)}\\.edges\\[0\\]\\.to`, 'm'),
+    break: d => { d.channels.overview.views![0].edges[0].to = 'ghost'; } },
+  { name: 'relation-style-not-a-style', serverLines: false as const, pattern: new RegExp(`^ERROR ${escape(CHOICE)}\\.facts\\.relations\\[1\\]\\.style.*call.*async.*dep`, 'm'),
+    break: d => { d.facts.relations![1].style = 'wire'; } },
+  { name: 'panel-shows-no-item', serverLines: false as const, pattern: new RegExp(`^ERROR (${escape(CHOICE)}\\.facts\\.components\\[1\\]\\.items|${escape(OVERVIEW)}\\.nodes\\[1\\]\\.(form|items))`, 'm'),
+    break: d => { d.facts.components[1].items = []; } },
 ];
 
 test('H90 [FILE-2, START-5, FILE-1, #182] validate refuses every broken rule of an @3 file, read as its one choice, with its path and leaves the file alone, while a path missing from the repository only warns', async ({ request }) => {
@@ -86,7 +97,7 @@ test('H90 [FILE-2, START-5, FILE-1, #182] validate refuses every broken rule of 
     const response = await request.post(`${baseURL()}/api/files`, { headers: { 'X-Archdraw-Token': auth }, data: { path } });
     expect(response.status(), rule.name).toBe(400);
     const served = ((await response.json()).errors as string[]).join('\n');
-    expect(served, rule.name).toMatch(new RegExp(rule.pattern.source.replace(/^\^ERROR /, '^'), 'm'));
+    if (rule.serverLines !== false) expect(served, rule.name).toMatch(new RegExp(rule.pattern.source.replace(/^\^ERROR /, '^'), 'm'));
     expect(await readFile(path, 'utf8'), rule.name).toBe(original);
   }
 

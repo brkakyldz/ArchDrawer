@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Editor } from "./editor/Editor";
 import { EditorBoundary } from "./editor/LoadError";
-import { Library } from "./library/Library";
+import { Home } from "./home/Home";
 
 export function navigate(path: string, replace = false) {
   if (path === location.pathname + location.search) return;
@@ -28,7 +28,7 @@ function decodeId(raw: string): string {
 export function App() {
   const { path, search } = useLocation();
   const m = /^\/d\/([^/]+)\/?$/.exec(path);
-  if (!m) return <Library />;
+  if (!m) return <Home />;
   const q = new URLSearchParams(search);
   return <EditorBoundary key={m[1]}><Editor id={decodeId(m[1])} choice={q.get("choice")} channel={q.get("channel")} view={q.get("view")} /></EditorBoundary>;
 }

@@ -57,6 +57,6 @@ test('H98 [NAV-2, NAV-1] the address names the channel and view and survives a r
   await expect(page.getByTestId('header-menu-button')).not.toBeVisible(); await expect(page.getByTestId('channel-tabs')).toBeVisible();
   await expect(tab('readme')).toHaveAttribute('aria-current', 'true');
   // Must not happen: following addresses, links and tabs being an edit of the drawing.
-  await page.waitForTimeout(1200); // longer than the 350 ms save delay: a hidden edit would have been written by now
+  await page.waitForTimeout(600); // longer than the 350 ms save delay: a hidden edit would have been written by now
   await expect(page.getByTestId('tool-undo')).toBeDisabled(); expect(await readFile(file, 'utf8')).toBe(bytes);
 });

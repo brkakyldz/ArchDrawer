@@ -56,7 +56,7 @@ function sameBoxes(now: Record<Id, Rect>, before: Record<Id, Rect>) {
   for (const id of ids) { expect(near(now[id].x, before[id].x), `${id} x`).toBe(true); expect(near(now[id].y, before[id].y), `${id} y`).toBe(true); }
 }
 
-test('H35 [NAV-1, NAV-2, NAV-3, FILE-1, #184, #185] reach a detail view from the views panel, the part that holds it, the breadcrumb and a link, then search: matches lit and the rest dimmed while typing, stepping with Enter, other views listed, Escape, and the drawing file never edited', async ({ page, request }) => {
+test('H35 [NAV-3, FILE-1] search: matches lit and the rest dimmed while typing, stepping with Enter, other views listed, Escape, and the drawing file never edited', async ({ page, request }) => {
   const doc = drawing('Views shop'), view = doc.views[0];
   view.nodes = [
     component('orders-db', { label: 'Orders DB', kind: 'data', sub: 'Postgres', x: -2400, y: 0 }),
@@ -73,30 +73,13 @@ test('H35 [NAV-1, NAV-2, NAV-3, FILE-1, #184, #185] reach a detail view from the
   ];
   doc.views.push({ id: 'inside-api', title: 'Inside API', caption: { title: 'Checking an order', lede: '' }, edges: [{ id: 'i1', from: 'audit-worker', to: 'order-check', label: '', style: 'call', both: false, step: null }], texts: [],
     nodes: [component('audit-worker', { label: 'Audit worker', kind: 'worker' }), component('order-check', { label: 'Order check', kind: 'service' })] });
-  const { file } = await workspace('views', doc), opened = await openDrawing(page, request, file);
+  const { file } = await workspace('views', doc); await openDrawing(page, request, file);
   const baseline = await readDrawing(file), baselineText = await readFile(file, 'utf8'), baselineTime = (await stat(file)).mtimeMs;
   const editor = page.getByTestId('editor'), search = page.getByTestId('search'), input = page.getByTestId('search-input'), count = page.getByTestId('search-count');
   const results = page.getByTestId('search-result'), zoom = page.getByTestId('zoom-level');
-
-  await test.step('reach the detail view from the views panel, the part that holds it, the breadcrumb and a link', async () => {
-    // One choice (the file was `@2`) whose overview holds two views: the panel lists the choice's first view under its title and the detail view under the title of the view.
-    await expect(page.getByTestId('views-panel')).toBeVisible();
-    await expect(page.getByTestId('views-entry-overview')).toHaveText('The whole system'); await expect(page.getByTestId('views-entry-inside-api')).toHaveText('Inside API');
-    await expect(page.getByTestId('views-entry-overview')).toHaveAttribute('aria-current', 'true'); await expect(page.getByTestId('views-entry-inside-api')).not.toHaveAttribute('aria-current', 'true');
-    for (const id of ['views-button', 'views-menu']) await expect(page.getByTestId(id)).toHaveCount(0);
-    await page.getByTestId('views-entry-inside-api').click(); await expect(editor).toHaveAttribute('data-view', 'inside-api');
-    await expect(page.getByTestId('node-audit-worker')).toBeVisible();
-    await expect(page.getByTestId('node-web')).toHaveCount(0); await expect(page.getByTestId('crumbs')).toContainText('Inside API');
-    await page.getByTestId('crumb-overview').click(); await expect(editor).toHaveAttribute('data-view', 'overview');
-    await expect(page.getByTestId('views-entry-overview')).toHaveAttribute('aria-current', 'true'); await page.getByTestId('views-entry-overview').click();
-    await zoomIn(page);
-    await page.getByTestId('node-api').getByTestId('node-inside').click(); await expect(editor).toHaveAttribute('data-view', 'inside-api');
-    await expect(page.getByTestId('crumb-overview')).toBeVisible(); await page.getByTestId('crumb-overview').click();
-    await page.goto(`/d/${opened.id}?view=inside-api`); await expect(editor).toHaveAttribute('data-view', 'inside-api');
-    await page.reload(); await expect(page.getByTestId('node-audit-worker')).toBeVisible();
-    await expect(page.getByTestId('views-entry-inside-api')).toHaveAttribute('aria-current', 'true');
-    await page.getByTestId('views-entry-overview').click(); await expect(editor).toHaveAttribute('data-view', 'overview');
-  });
+  // Reaching the detail view from the views panel, the part that holds it, the breadcrumb and a link is H205's, H203's and H98's
+  // (the first entry's text of a converted file, H88's); this scenario is search.
+  await expect(editor).toHaveAttribute('data-view', 'overview');
 
   await zoomIn(page);
   const before = await steady(page), zoomBefore = await zoom.innerText();
@@ -218,7 +201,7 @@ test('H35 [NAV-1, NAV-2, NAV-3, FILE-1, #184, #185] reach a detail view from the
   });
 
   await test.step('searching and moving between views never edited the drawing file', async () => {
-    await page.waitForTimeout(1200); // Longer than the 350 ms save delay: a hidden edit would have been written by now.
+    await page.waitForTimeout(600); // Longer than the 350 ms save delay: a hidden edit would have been written by now.
     await expect(page.getByTestId('save-status')).toHaveText('Saved');
     await expect(page.getByTestId('tool-undo')).toBeDisabled(); // No edit to undo.
     expect(await readFile(file, 'utf8')).toBe(baselineText);

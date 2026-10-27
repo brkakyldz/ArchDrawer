@@ -16,7 +16,7 @@ async function textLeft(page: import('@playwright/test').Page, view: string) {
 // (then the choices in the user's own words) with their detail views under them, marks the current view and goes to any in one click.
 // `views-button`, `views-menu` and `view-item-*` are gone. Going to a view is not an edit and works while a run goes.
 test('H205 [NAV-2 NAV-1 FILE-2 #185] the views panel lists the whole system, the sections, the flows and the user\'s own choices with their detail views under them, marks the current view, goes to any view in one click, and the old views button is gone', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const { file } = await workspace4('f4-panel', fourChoices('Panel four'));
   await openFourChoices(page, request, file);
   const editor = page.getByTestId('editor'), bytes = await readFile(file, 'utf8');

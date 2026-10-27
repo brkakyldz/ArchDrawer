@@ -30,7 +30,7 @@ async function nameBox(surface: Locator, groupId: string): Promise<Box> {
 // The line level with the name but above its letters (inside the old 28 px cut band) is drawn right across the name's width, in the readme and the square
 // image; it is still one cubic with its label and badge, it is drawn left of the group, in it beyond the name and right of it, and a group is not a part the report lists.
 test('H152 [LAYOUT-2 LAYOUT-3 SHARE-1 LOOK-4 #176 #170] a connection level with the name of a group is drawn over the header with the name on a halo and nothing cut out of the line, in the readme and the square image and the editor, as one cubic with its label and badge, and the report lists no part', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   // Phase 1: draw the group once to learn where its name is, then put the two outer parts 11 px above the name's middle: above the letters and their halo,
   // inside the band the old clip cut. Stored positions are the author's; nothing is moved by the product.
   const first = await workspaceRaw('group-name-probe', groupDoc('Group name probe', 0, 0, true));
@@ -85,6 +85,12 @@ test('H152 [LAYOUT-2 LAYOUT-3 SHARE-1 LOOK-4 #176 #170] a connection level with 
     const nameText = head.names.find(n => n.text.includes('Processing'))!;
     expect(nameText.strokeWidth, `${format}: the halo is 4 px`).toBe('4px'); expect(nameText.linejoin).toBe('round'); expect(nameText.paintOrder).toMatch(/^stroke/);
     expect(nameText.stroke, `${format}: the halo has a colour`).not.toBe('none');
+    // Every text of the head carries the halo, a solid colour (diagram contract, A group's name: the header's colour "made solid").
+    for (const n of head.names) {
+      expect(n.stroke, `${format}: the halo is a solid colour (${n.text})`).toMatch(/^rgb\(/);
+      expect(parseFloat(n.strokeWidth), `${format}: the halo is 4 px (${n.text})`).toBeCloseTo(4, 2);
+      expect(n.linejoin).toBe('round'); expect(n.paintOrder.startsWith('stroke'), `${format}: stroke is painted first (${n.paintOrder})`).toBe(true);
+    }
     expect(info.clippedEdges, `${format}: nothing is cut out of a line`).toEqual([]);
     expect(info.order, `${format}: frame, then connections, then head, then parts`).toEqual({ framesBeforeEdges: true, headsAfterEdges: true, headsBeforeParts: true });
 
@@ -115,8 +121,10 @@ test('H152 [LAYOUT-2 LAYOUT-3 SHARE-1 LOOK-4 #176 #170] a connection level with 
   const opened = await openDrawing(page, request, withLine.file);
   const editor = await edgeLine(page.getByTestId('canvas'), 'e1');
   expect(editor.length).toBeGreaterThan(0); expect(isSingleCubic(editor[0].d), `the editor: ${editor[0].d}`).toBe(true);
+  expect(await page.getByTestId('edge-e1').evaluate(el => el.hasAttribute('clip-path') || el.hasAttribute('mask') || !!el.querySelector('[clip-path], [mask]')), 'no clip on the line in the editor').toBe(false);
   const halo = await page.getByTestId('node-head-zone').getByTestId('node-label').evaluate(el => { const s = getComputedStyle(el); return { width: s.strokeWidth, join: s.strokeLinejoin, order: s.paintOrder, stroke: s.stroke }; });
   expect(halo.width).toBe('4px'); expect(halo.join).toBe('round'); expect(halo.order).toMatch(/^stroke/); expect(halo.stroke).not.toBe('none');
+  expect(halo.stroke, 'the editor halo is a solid colour').toMatch(/^rgb\(/);
   const editorRoutes = await drawnRoutes(page.getByTestId('canvas'), 'src');
   await inDrawingFonts(page, await imageOf(request, opened.id), async surface => { expectSameRoutes(editorRoutes, await drawnRoutes(surface, 'src'), 'editor against image'); });
   await openShare(page, 'format-readme');

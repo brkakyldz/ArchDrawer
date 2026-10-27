@@ -9,7 +9,7 @@ interface Offsets { width: number; height: number; right: number; top: number; c
 // NAV-1 (#184): a part whose `detail` is set draws the open mark - a 20 px circle 8 px inside the top-right corner of a card or panel, 12 px inside the right
 // end of a compact part and centred on its height, at the right end of a group header - the same in the editor and in every export. Navigating is not asserted here.
 test('H184 [NAV-1 SHARE-1 LOOK-2 #184] a part with an inside draws the same open mark in the editor and in the exported image, on a card, a compact part, a panel and a group, and the mark changes no size', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const doc = sketch('Open marks', [
     { id: 'svc', kind: 'service', label: 'Service part', sub: 'sub line', detail: 'svc-inside', x: 0, y: 0 },
     { id: 'cmp', kind: 'service', form: 'compact', label: 'Compact part', sub: 'sub line', detail: 'cmp-inside', x: 320, y: 0 },

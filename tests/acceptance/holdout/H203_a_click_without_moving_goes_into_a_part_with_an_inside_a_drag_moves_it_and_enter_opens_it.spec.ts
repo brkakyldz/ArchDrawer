@@ -12,7 +12,7 @@ const xOf = (d: Doc4, id: string) => checkout(d).nodes.find(n => n.id === id)!.x
 // `callout-open-inside` goes in; it is a button in the tab order and Enter goes in. A part with no inside keeps selecting and opening
 // its callout.
 test('H203 [NAV-1 EDIT-1 #184] a click without moving goes into a part with an inside and is no edit, a drag of the same part moves it and opens nothing, Shift+click selects it, and Enter on it opens it; a part with no inside still opens its callout', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const { file } = await workspace4('f4-open', fourChoices('Open four'));
   await openFourChoices(page, request, file);
   const editor = page.getByTestId('editor'), bytes = await readFile(file, 'utf8');

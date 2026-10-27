@@ -58,7 +58,7 @@ async function labelBorder(page: Page, id: string) {
 
 // LOOK-4: a label takes a spot off every other line and belongs to its own; hovering it lights its connection. SHARE-1: the image places its labels the same way.
 test('H173 [LOOK-4 SHARE-1 #172] a label sits clear of every other line and on its own, in the editor and the image, and hovering a label lights its own connection without moving it', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const { file } = await workspaceRaw('label-spots', doc());
   const opened = await openDrawing(page, request, file);
   await settleEdges(page);
@@ -97,6 +97,8 @@ test('H173 [LOOK-4 SHARE-1 #172] a label sits clear of every other line and on i
   await expect(page.getByTestId(`edge-${hovered.id}`)).toHaveAttribute('data-tone', 'kind');
   await expect(page.getByTestId(`edge-${other.id}`)).toHaveAttribute('data-tone', 'neutral');
   await expect(page.getByTestId(`edge-${other.id}`)).not.toHaveAttribute('data-focus', 'true');
+  const focused = Object.entries(await edgeSnaps(page)).filter(([, s]) => s.focus).map(([id]) => id).sort();
+  expect(focused, 'exactly the hovered label\'s line is in focus, of every line').toEqual([hovered.id]);
   expect(await labelBorder(page, hovered.id), 'the border takes the line colour').not.toBe(borderBefore);
   const boxHover = await box(labelBox);
   expect(Math.abs(boxHover.x - boxBefore.x) + Math.abs(boxHover.y - boxBefore.y) + Math.abs(boxHover.width - boxBefore.width) + Math.abs(boxHover.height - boxBefore.height), 'the label does not move or grow').toBeLessThanOrEqual(0.5);

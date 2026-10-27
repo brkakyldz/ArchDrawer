@@ -11,7 +11,7 @@ async function shareOpen(page: Page) { await page.getByTestId('share-button').cl
 async function shareClose(page: Page) { await page.getByTestId('share-close').click(); await expect(page.getByTestId('share-dialog')).toHaveCount(0); }
 
 test('H166 [PRES-3, SHARE-2, STORY-4] the slide downloads are in the presentation channels share dialog and no other, are named from an accented title with two-digit slide numbers for eleven steps, and go off with the reason when the last step is removed', async ({ page, request }) => {
-  test.setTimeout(600_000);
+  test.setTimeout(60_000);
   const TITLE = 'Crème Brûlée Café!', SLUG = 'creme-brulee-cafe';
   expect(slugOf(TITLE)).toBe(SLUG);
   const eleven: Step[] = Array.from({ length: 11 }, (_, i) => ({ id: `s${i + 1}`, parts: [['web', 'api', 'cache', 'db', 'zone'][i % 5]], text: `Slide text ${i + 1}`, note: '' }));

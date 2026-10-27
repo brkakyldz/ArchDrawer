@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { drawing, component, workspace, openDrawing, previewSVG, svgInfo, svgBoxes, overlaps, download, settledReport } from './helpers';
+import { drawing, component, workspace, openDrawing, previewSVG, svgInfo, svgBoxes, overlaps, download } from './helpers';
 import { checkReadability } from './helpers';
 import { visibleTextContent } from './helpers-svg-parity';
 import { readDrawn, drawnRoutes, expectSameRoutes, expectSameBoxes, inspectImage, SHARE_TOGGLES } from './helpers-drawing';
@@ -111,11 +111,5 @@ test('H63 [SHARE-1 LAYOUT-1 LAYOUT-3 LOOK-3 LOOK-4 #177 #170] share a full ordin
   await page.getByTestId('share-close').click(); await expect(page.getByTestId('share-button')).toBeFocused();
   // Must not happen: the dialog's toggles (sub-lines included) writing the drawing.
   expect(await readFile(file, 'utf8')).toBe(bytes); expect(await readDrawn(file)).toEqual(baseline);
-  // A cleared drawing with its caption hidden has no visible text; the meter must never call it good.
-  const empty = drawing('Cleared draft'); empty.views[0].nodes = []; empty.views[0].edges = [];
-  const blank = await workspace('h63-empty-image', empty); await openDrawing(page, request, blank.file);
-  await page.getByTestId('share-button').click();
-  await setToggles(page, []);
-  await expect.poll(() => settledReport(page)).toMatchObject({ opened: 0, inPlace: 0, level: 'warn', parts: 0, zones: 0, connections: 0, longest: 0, cut: 0 });
-  await expect(page.getByTestId('readability')).toHaveAttribute('data-level', 'warn');
+  // A cleared drawing is never called good: H64's.
 });

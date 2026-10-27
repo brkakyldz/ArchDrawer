@@ -5,7 +5,7 @@ import { agent3, workspaceRaw, isolatedDrawing, openDrawing, readDocument, persi
 // Without an engine the presentation is prepared in code: the README's simple version (the overview's first view as it is)
 // plus one step per numbered connection, in step order. It is one undoable edit, and Redraw it replaces it, steps included.
 test('H128 [STORY-4, STORY-1, FILE-3, EDIT-1] with no engine the Presentation tab prepares the overview as the drawing with one step per numbered connection, and Redraw it makes the same again after a change, each as one undoable edit', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const doc = agent3('Simple talk');
   doc.facts.relations![1].label = ''; // the second connection has no label of its own: its step is named by its two parts
   const { file } = await workspaceRaw('simple-presentation', doc);

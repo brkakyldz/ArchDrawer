@@ -7,7 +7,7 @@ import { sketch, pickUp, drawnRoutes, expectSameRoutes, nearestSide, settleEdges
 // change where the centre-to-centre angle passes 45 degrees; while the pointer is down the pair is kept until the cheapest pair
 // costs less than 0.8 times the kept one (about 42.3 degrees going back, 47.5 degrees going down). 320 px down is 46.8 degrees.
 test('H170 [LAYOUT-5 EDIT-5 #165 #164] sides are held while a part is dragged, flip to the stateless choice on release, and the editor paths then equal the SVG export', async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(60_000);
   const doc = sketch('Held sides', [
     { id: 'A', label: 'Source', sub: 'starts', x: 0, y: 0 }, { id: 'B', label: 'Target', sub: 'ends', x: 300, y: 0 },
   ], [{ id: 'ab', from: 'A', to: 'B', label: '' }]);

@@ -442,7 +442,7 @@ export async function startRun(request: APIRequestContext, id: string, auth: str
   });
   expect(response.status(), await response.text()).toBe(202); return (await response.json()).runId as string;
 }
-export async function finishRun(request: APIRequestContext, runId: string, status: string, timeout = 90_000, base = baseURL()) {
+export async function finishRun(request: APIRequestContext, runId: string, status: string, timeout = 30_000, base = baseURL()) {
   await expect.poll(async () => (await (await request.get(`${base}/api/runs/${runId}`)).json()).status, { timeout }).toBe(status);
   return await (await request.get(`${base}/api/runs/${runId}`)).json();
 }
@@ -961,7 +961,7 @@ export async function turnTexts(page: Page) {
 }
 // Runs `trigger` (a click on any control that starts a run) and returns the accepted run's id and request body.
 export async function startedRun(page: Page, trigger: () => Promise<unknown>) {
-  const waiting = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/runs');
+  const waiting = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/runs', { timeout: 30_000 });
   await trigger();
   const response = await waiting; expect(response.status(), await response.text()).toBe(202);
   return { runId: (await response.json()).runId as string, body: response.request().postDataJSON() as Record<string, any> };

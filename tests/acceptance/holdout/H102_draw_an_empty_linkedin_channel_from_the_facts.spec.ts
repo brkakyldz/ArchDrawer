@@ -21,8 +21,8 @@ test('H102 [STORY-1, NAV-2, AI-1, AI-3] an empty LinkedIn channel is drawn from 
   // Draw it: the LinkedIn channel is drawn from the facts the drawing already holds.
   await expect(page.getByTestId('channel-draw')).toContainText('Draw it');
   await page.getByTestId('channel-draw').click();
-  await persistedDoc(file, d => (d.channels.linkedin?.views ?? []).length === 1, 30_000);
-  await expect(page.getByTestId('node-intake')).toBeVisible({ timeout: 15_000}); await expect(empty).toHaveCount(0);
+  await persistedDoc(file, d => (d.channels.linkedin?.views ?? []).length === 1);
+  await expect(page.getByTestId('node-intake')).toBeVisible(); await expect(empty).toHaveCount(0);
   // From 0.4 the drawn channel arrives as a preview: the file already holds it; keeping it brings edits and undo back.
   await expect(page.getByTestId('ai-preview')).toBeVisible(); await page.getByTestId('ai-accept').click(); await expect(page.getByTestId('ai-preview')).toHaveCount(0);
   await expect(page.getByTestId('tool-undo')).toBeEnabled(); // the run is over: edits and undo are back

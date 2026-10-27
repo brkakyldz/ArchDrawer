@@ -4,10 +4,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Starting a drawing from a folder. The journeys (folder, card, focus, channel, draw, retry, no engine,
-// the keyboard path) are held-out H121–H123 and H41. What stays here needs a faked server: the server
-// going away during a scan or a draw, which must end the wait with a sentence, never a screen stuck busy; and a
-// scan of a git folder on Windows, which the held-out H121 and H191 reach only past steps of later milestones.
+// Starting a drawing from a folder on the home screen. The journeys (folder, card, focus, channel, draw, retry, no
+// engine, the keyboard path, the choosing step) are held-out H121–H123, H191, H236, H245 and H41. What stays here needs
+// a faked server: the server going away during a scan, which must end the wait with a sentence, never a screen stuck
+// busy, or during a draw, which says so and goes on once it answers (H243 holds a restart); and a scan of a git folder
+// on Windows, which the held-out H121 and H191 reach only past steps of later milestones.
 
 function project(): string {
   const dir = mkdtempSync(join(tmpdir(), "archdraw-e2e-start-"));
@@ -52,7 +53,7 @@ test("a scan the server no longer knows (it restarted) ends at once with its own
   await expect(page.getByTestId("start-scan")).toBeEnabled();
 });
 
-test("a draw whose server goes away ends in draw-error with Try again, and keeps every choice", async ({ page }) => {
+test("a draw whose server cannot be reached says so in draw-error, and the rows go on once it answers again", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("start-folder").fill(project());
   await page.getByTestId("start-scan").click();
@@ -64,6 +65,11 @@ test("a draw whose server goes away ends in draw-error with Try again, and keeps
   await page.getByTestId("draw-start").click();
   await expect(page.getByTestId("draw-error")).toContainText("Could not reach the archdrawer server", { timeout: 15_000 });
   await expect(page.getByTestId("draw-retry")).toBeVisible();
-  await expect(page.getByTestId("focus-whole")).toBeChecked();
-  await expect(page.getByTestId("channel-choice-readme")).toBeChecked();
+  await expect(page.getByTestId("draw-another")).toBeVisible();
+  await expect(page.getByTestId("focus-list")).toHaveCount(0); // a followed draw's choices are not edited again
+  // The panel keeps asking: once the server answers, the draw is followed again to its end.
+  await page.unrouteAll();
+  await expect(page.getByTestId("draw-ready")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("draw-error")).toHaveCount(0);
+  await expect(page.getByTestId("draw-choice")).toHaveAttribute("data-state", "done");
 });

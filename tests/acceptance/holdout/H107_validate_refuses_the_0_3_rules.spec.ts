@@ -72,7 +72,7 @@ const cases: { name: string; pattern: RegExp; break: (d: Doc3) => void }[] = [
 ];
 
 test('H107 [FILE-2, READ-2, STORY-4, STORY-5, #182] validate refuses each broken 0.3 rule with its path, writes nothing, and the server refuses the same file and the same save', async ({ request }) => {
-  test.setTimeout(300_000); // every case runs the command twice and the server twice
+  test.setTimeout(60_000); // every case runs the command twice and the server twice
   const folder = await repo('rules03');
   const fine = join(folder.dir, 'fine.json'); await writeJSON(fine, valid());
   const accepted = await cli(['validate', fine]); expect(accepted.code, accepted.stdout + accepted.stderr).toBe(0);

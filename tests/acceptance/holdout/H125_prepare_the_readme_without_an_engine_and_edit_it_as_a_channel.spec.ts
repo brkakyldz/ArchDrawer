@@ -14,7 +14,7 @@ const marks = (doc: Doc3) => Object.fromEntries(channelNames.map(c => [c, outdat
 // a README. Then it is edited like any channel: a name there is its own, a description corrects the fact, deleting a part
 // leaves it out of the README only.
 test('H125 [STORY-1, STORY-3, FILE-3, EDIT-1, SHARE-2] with no engine the README tab prepares the simple version from the overview as one undoable edit, and editing the README changes the facts or only itself by the same rules as any channel', async ({ page, request }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(60_000);
   const doc = withLinkedIn(shop3('Readme edit shop'));
   partOf(doc, 'linkedin', 'intake')!.description = 'Where an order is checked.'; // LinkedIn tells the API its own way
   const { file } = await workspaceRaw('readme-prepare', doc);

@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test';
-import { readFile, writeFile } from 'node:fs/promises';
 import { workspaceRaw, openDrawing, cli, settledReport, type Doc3 } from './helpers';
 import { inDrawingFonts, crossingWitness } from './helpers-svg-parity';
 import { sketch, positionsOf, nodeOf, readView, drawnRoutes, sampleCubic, imageOf, openShare, closeShare, type Drawn, type SketchEdge, type SketchPart } from './helpers-drawing';
@@ -30,10 +29,10 @@ async function laidOut(id: string, doc: Doc3) {
   return made;
 }
 
-// LAYOUT-6 (#175): barycentre sweeps reorder the parts the layout places, empty rows and columns close, the report's crossings never go up.
-// LAYOUT-2: stored positions never move. LAYOUT-1: the same file is always laid out the same way.
-test('H178 [LAYOUT-6 LAYOUT-2 LAYOUT-1 #175] the layout orders the parts it places to cut crossings, closes empty columns, keeps place hints, step order and stored positions, and gives the same layout for the same file', async ({ page, request }) => {
-  test.setTimeout(300_000);
+// LAYOUT-6 (#175): barycentre sweeps reorder the parts the layout places, empty rows and columns close, the report's crossings never go up, and only
+// parts without a stored position move. LAYOUT-3: the report counts the crossings the image draws. LAYOUT-1: the same file is always laid out the same way.
+test('H178 [LAYOUT-6 LAYOUT-3 LAYOUT-1 #175] the layout orders the parts it places to cut crossings, closes empty columns, keeps place hints, step order and stored positions, and gives the same layout for the same file', async ({ page, request }) => {
+  test.setTimeout(60_000);
 
   // (a) Determinism: two files with identical content are laid out identically.
   const one = await laidOut('layout-one', ladder('Ladder', true)), two = await laidOut('layout-two', ladder('Ladder', true));
@@ -56,20 +55,7 @@ test('H178 [LAYOUT-6 LAYOUT-2 LAYOUT-1 #175] the layout orders the parts it plac
   const b = Object.fromEntries((await positionsOf(block.file)).map(([id, x, y]) => [id, { x: x!, y: y! }]));
   expect(b.p00.x).toBeLessThan(b.p01.x); expect(b.p10.x).toBeLessThan(b.p11.x); expect(b.p00.y).toBeLessThan(b.p10.y); expect(b.p01.y).toBeLessThan(b.p11.y);
   for (const i of [1, 2, 3]) expect(b[`q${i}`].x, `the main path keeps its step order: q${i} before q${i + 1}`).toBeLessThan(b[`q${i + 1}`].x);
-
-  // A stored position never moves, also when a part is added to the file later.
-  const kept = await laidOut('layout-kept', sketch('Kept', [{ id: 'fixed', x: 400, y: 240 }, { id: 'near' }, { id: 'far' }], [{ id: 'n1', from: 'near', to: 'fixed' }, { id: 'n2', from: 'far', to: 'near' }]));
-  const placed = await positionsOf(kept.file);
-  expect(placed.find(p => p[0] === 'fixed')!.slice(1), 'a stored position stays').toEqual([400, 240]);
-  const raw = JSON.parse(await readFile(kept.file, 'utf8')), target = raw.choices ? raw.choices[0] : raw, v = target.channels.overview.views[0];
-  target.facts.components.push({ id: 'late', label: 'late', kind: 'service', sub: '', description: 'Handles late.', files: [], items: [] });
-  v.nodes.push({ id: 'late', facts: ['late'], form: 'card', icon: null, parent: null, detail: null, place: null });
-  v.edges.push({ id: 'late-1', from: 'late', to: 'fixed', relations: [], step: null, label: '', style: 'call', both: false });
-  await writeFile(kept.file, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
-  const again = await cli(['open', kept.file, '--no-browser']); expect(again.code, again.stderr).toBe(0);
-  const later = await positionsOf(kept.file);
-  for (const [id, x, y] of placed) expect(later.find(p => p[0] === id)!.slice(1), `${id} did not move when a part was added`).toEqual([x, y]);
-  const late = later.find(p => p[0] === 'late')!; expect(Number.isFinite(late[1]) && Number.isFinite(late[2]), 'the new part was placed').toBe(true);
+  // (A stored position kept through the layout: H44; laid-out positions kept when a part is added later: H17.)
 
   // (c) Compaction: empty columns and rows close, and the hints themselves are not rewritten.
   const wide = await laidOut('layout-wide', sketch('Gap', [{ id: 'a', place: { row: 0, col: 0 } }, { id: 'b', place: { row: 0, col: 6 } }]));

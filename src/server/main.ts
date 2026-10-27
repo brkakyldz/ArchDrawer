@@ -8,6 +8,7 @@ import { writeAtomic } from "./files";
 import { RunManager } from "./runs";
 import { ScanManager } from "./scans";
 import { serverFile } from "./serverfile";
+import { EngineSlots } from "./slots";
 import { Store } from "./store";
 import { ClaudeEngine } from "./engines/claude";
 import { CodexEngine } from "./engines/codex";
@@ -17,8 +18,10 @@ import type { Engine } from "./engines/types";
 
 const config = loadConfig();
 const store = new Store(config.dataDir);
-const runs = new RunManager(store, { timeoutMs: config.runTimeoutMs, keepMs: config.jobKeepMs });
-const scans = new ScanManager(config.dataDir, { timeoutMs: config.runTimeoutMs, keepMs: config.jobKeepMs });
+// One set of engine slots for every scan, draw choice and run of the server (api contract, Engine slots).
+const slots = new EngineSlots(config.engineSlots);
+const runs = new RunManager(store, { timeoutMs: config.runTimeoutMs, keepMs: config.jobKeepMs, slots });
+const scans = new ScanManager(config.dataDir, { timeoutMs: config.runTimeoutMs, keepMs: config.jobKeepMs, slots });
 const factories: Record<string, () => Engine> = {
   claude: () => new ClaudeEngine(),
   codex: () => new CodexEngine(),
@@ -60,7 +63,7 @@ const shutdown = async () => {
   process.exit(0);
 };
 
-const app = createApp({ config, store, runs, scans, engines, token, onShutdown: () => void shutdown() });
+const app = createApp({ config, store, runs, scans, engines, token, slots: () => slots.stats(), onShutdown: () => void shutdown() });
 
 // The envelope's Host/Origin check runs before the adapter: a Host such as "127.0.0.1:4317.evil.example"
 // is not a valid URL authority, and the adapter would answer 400 instead of the contract's 403.

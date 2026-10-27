@@ -30,8 +30,8 @@ export interface AppDeps {
   scans: ScanManager;
   engines: Map<string, Engine>;
   token: string;
-  /** The engine slots now (api contract, Activity `slots`); without a slot queue, a stand-in counted from the running jobs. */
-  slots?: () => SlotCounts;
+  /** The engine slots now (api contract, Activity `slots`): the server's `EngineSlots.stats()`. */
+  slots: () => SlotCounts;
   /** This server process (api contract, Activity `instance`): 16 hex characters; random when not given. */
   instance?: string;
   /** Called after `POST /api/shutdown` has answered. */
@@ -356,11 +356,41 @@ export function createApp(deps: AppDeps): Hono {
     const picked = await pickEngine(b);
     if (typeof picked === "string") return err(c, 400, picked);
     const folderKey = `${f.root}\0${f.rel}`;
-    const drawing = runs.drawingOn(folderKey);
-    if (drawing) return err(c, 409, "A drawing of this folder is already being made", { runId: drawing });
-    const runId = runs.startDraw({ engine: picked.engine, model: picked.model, scan: b.scan as string, folder: f, folderKey, card: scan.card!, focuses, channel: b.channel });
+    const running = runs.drawingOn(folderKey);
+    if (running) return err(c, 409, "A drawing of this folder is already being made", { runId: running });
+    const runId = runs.startDraw({ engine: picked.engine, model: picked.model, scan: b.scan as string, folder: f, folderKey, card: scan.card!, options: scan.options ?? [], link: scan.link ?? null, focuses, channel: b.channel });
     return c.json({ runId }, 202);
   };
+
+  /**
+   * `Try again` (api contract, Trying again): a new draw of a draw that has ended, with its scan, channel, engine and
+   * model — after a draw that succeeded, its failed choices added to the file it wrote; after one that failed or was
+   * cancelled, every choice into a new file. The choices that finished come from what was kept.
+   */
+  app.post("/api/runs/:id/retry", async (c) => {
+    const id = c.req.param("id");
+    const run = runs.get(id);
+    if (!run) return err(c, 404, "Run not found");
+    const draw = runs.drawOf(id);
+    if (run.kind !== "draw" || !draw) return err(c, 400, "Only a draw can be tried again");
+    if (run.status === "running") return err(c, 409, "The draw is still running");
+    const choices = run.choices ?? [];
+    const again = run.status === "succeeded" ? choices.flatMap((ch, i) => (ch.status === "failed" ? [i] : [])) : choices.map((_, i) => i);
+    if (!again.length) return err(c, 400, "Every choice of this draw was drawn");
+    const f = checkFolder(draw.folder.folder);
+    if ("error" in f) return err(c, 400, f.error);
+    const info = await detect(draw.engine);
+    if (!info.available) return err(c, 400, `${info.label} is not available: ${info.detail}`);
+    if (run.status === "succeeded" && (!run.diagramId || !store.isRegistered(run.diagramId) || !store.get(run.diagramId))) return err(c, 409, "The drawing this draw wrote is gone: start a new draw");
+    const folderKey = `${f.root}\0${f.rel}`;
+    const running = runs.drawingOn(folderKey);
+    if (running) return err(c, 409, "A drawing of this folder is already being made", { runId: running });
+    const runId = runs.startDraw({
+      ...draw, folder: f, folderKey, focuses: again.map((i) => draw.focuses[i]), ids: again.map((i) => choices[i].id), places: again.map((i) => draw.places?.[i] ?? i),
+      into: run.status === "succeeded" ? run.diagramId : null, retryOf: id,
+    });
+    return c.json({ runId }, 202);
+  });
 
   app.post("/api/runs", async (c) => {
     const body = await readJson(c);
@@ -469,8 +499,9 @@ export function createApp(deps: AppDeps): Hono {
         let chain = Promise.resolve();
         let unsub: (() => void) | null = null;
         unsub = runs.subscribe(id, (e) => {
-          const data = e.type === "progress" ? { message: e.message, stage: e.stage, choice: e.choice } : { status: e.status, diagramId: e.diagramId, error: e.error, changes: e.changes, choice: e.choice, channel: e.channel, view: e.view, layoutReport: e.layoutReport, route: e.route, path: e.path, choices: e.choices };
-          chain = chain.then(() => stream.writeSSE({ event: e.type, data: JSON.stringify(data) })).catch(() => {});
+          // Every field of the event but its type: a progress line, a draw's choice record, or the end (api contract, Runs).
+          const { type, ...data } = e;
+          chain = chain.then(() => stream.writeSSE({ event: type, data: JSON.stringify(data) })).catch(() => {});
           if (e.type === "done") void chain.then(() => { unsub?.(); done(); });
         });
         stream.onAbort(() => { unsub?.(); done(); });
@@ -489,7 +520,7 @@ export function createApp(deps: AppDeps): Hono {
       ...runs.list(now).map((r) => ({ type: "draw" as const, events: `/api/runs/${r.id}/events`, ...r })),
     ].sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.createdAt < b.createdAt ? 1 : -1));
     // Until the slot queue counts them, each running scan and run holds one engine and nothing waits.
-    const slots = deps.slots?.() ?? { total: 3, busy: scans.list(now).filter((s) => s.status === "running").length + runs.runningCount(), waiting: 0 };
+    const slots = deps.slots();
     return c.json({ instance, now: new Date(now).toISOString(), timeoutMs: config.runTimeoutMs, slots, jobs });
   });
 

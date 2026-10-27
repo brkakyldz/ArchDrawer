@@ -113,7 +113,7 @@ export function claudeModels(help: string): EngineModel[] {
 /** Turns `--output-format stream-json` lines into progress messages and the final structured answer. */
 export class ClaudeStreamParser {
   private result: Record<string, unknown> | null = null;
-  constructor(private readonly cwd: string, private readonly progress: (m: string) => void, private readonly writing = "Writing the diagram") {}
+  constructor(private readonly cwd: string, private readonly progress: (m: string, files?: string[]) => void, private readonly writing = "Writing the diagram") {}
 
   line(raw: string): void {
     let ev: Record<string, unknown>;
@@ -133,7 +133,7 @@ export class ClaudeStreamParser {
   }
 
   private toolUse(name: string, input: Record<string, unknown>) {
-    if (name === "Read") this.progress(`Reading ${this.rel(input.file_path)}`);
+    if (name === "Read") { const file = this.rel(input.file_path); this.progress(`Reading ${file}`, [file]); }
     else if (name === "Grep") this.progress(`Searching for “${String(input.pattern ?? "").slice(0, 60)}”`);
     else if (name === "Glob") this.progress(`Listing ${String(input.pattern ?? "")}`);
     else if (name === "StructuredOutput") this.progress(this.writing);

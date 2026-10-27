@@ -6,6 +6,7 @@ import { scanPrompt } from "./engines/prompt";
 import { EngineError, type Engine } from "./engines/types";
 import { writeAtomic } from "./files";
 import { headCommit, listFolder, readPart, repoFile, type Folder } from "./folders";
+import { EngineSlots, WAITING } from "./slots";
 import { nowIso } from "./store";
 
 /**
@@ -16,8 +17,8 @@ import { nowIso } from "./store";
 
 export type ScanStatus = "running" | "succeeded" | "failed" | "cancelled";
 export type ScanEvent =
-  | { type: "progress"; message: string }
-  | { type: "done"; status: Exclude<ScanStatus, "running">; error: string | null; card: RepoCard | null; options: FocusOption[] | null; cached: boolean; warnings: string[] };
+  | { type: "progress"; message: string; at: string; source: "engine" | "server" }
+  | { type: "done"; status: Exclude<ScanStatus, "running">; error: string | null; card: RepoCard | null; options: FocusOption[] | null; cached: boolean; warnings: string[]; link: string | null };
 
 export interface ScanRecord {
   id: string; status: ScanStatus; progress: string[];
@@ -29,9 +30,13 @@ export interface ScanRecord {
   commit: string | null; cached: boolean;
   card: RepoCard | null; options: FocusOption[] | null; warnings: string[];
   error: string | null; engine: string; model: string | null;
-  /** When the scan was accepted, its first step began and it ended (api contract, Scan record). */
+  /** When it was accepted, took its slot (a cached scan: when it was accepted), ended (api contract, Scan record). */
   createdAt: string; startedAt: string | null; endedAt: string | null;
-  /** The link of the copy the folder lies in, else null (api contract, A repository from a link). */
+  /** While it waits for a slot (api contract, Engine slots). */
+  waiting: boolean;
+  /** The `at` of its latest engine line. */
+  lastEngineEventAt: string | null;
+  /** The link of the copy the folder lies in, else null. */
   link: string | null;
 }
 
@@ -55,9 +60,13 @@ export class ScanManager {
   /** How long a finished scan is listed (api contract, Activity: `ARCHDRAW_JOB_KEEP_MS`). */
   private readonly keepMs: number;
 
-  constructor(dataDir: string, private readonly opts: { timeoutMs: number; keepMs?: number }) {
+  /** The server's engine slots, shared with the runs (api contract, Engine slots). */
+  private readonly slots: EngineSlots;
+
+  constructor(dataDir: string, private readonly opts: { timeoutMs: number; keepMs?: number; slots?: EngineSlots }) {
     this.dir = join(dataDir, "scans");
     this.keepMs = opts.keepMs ?? 3_600_000;
+    this.slots = opts.slots ?? new EngineSlots(3);
   }
 
   get(id: string): ScanRecord | null {
@@ -136,7 +145,7 @@ export class ScanManager {
     const scan: Scan = {
       id, status: "running", progress: [], message: null, folder: f.folder, root: f.root, name: basename(f.folder), commit: null, cached: false,
       card: null, options: null, warnings: [], error: null, engine: engine.id, model,
-      createdAt, startedAt: null, endedAt: null, link: null,
+      createdAt, startedAt: null, endedAt: null, waiting: false, lastEngineEventAt: null, link: null,
       events: [], listeners: new Set(), abort: new AbortController(),
       finished: new Promise((r) => (resolveFinished = r)), key: `${f.root}\0${f.rel}`, rel: f.rel,
     };
@@ -156,18 +165,24 @@ export class ScanManager {
       }
     });
     const emit = (e: ScanEvent) => { scan.events.push(e); for (const l of scan.listeners) l(e); };
-    const progress = (message: string) => { if (scan.status !== "running") return; scan.progress.push(message); scan.message = message; emit({ type: "progress", message }); };
+    const progress = (message: string, source: "engine" | "server" = "server") => {
+      if (scan.status !== "running") return;
+      const at = nowIso();
+      scan.progress.push(message);
+      scan.message = message;
+      if (source === "engine") scan.lastEngineEventAt = at;
+      emit({ type: "progress", message, at, source });
+    };
+    let deadline: NodeJS.Timeout | undefined;
     const end = (status: Exclude<ScanStatus, "running">, error: string | null, r: Cached | null = null) => {
       clearTimeout(deadline);
-      Object.assign(scan, { status, error, card: r?.card ?? null, options: r?.options ?? null, warnings: r?.warnings ?? [], endedAt: nowIso() });
+      Object.assign(scan, { status, error, card: r?.card ?? null, options: r?.options ?? null, warnings: r?.warnings ?? [], waiting: false, endedAt: nowIso() });
       if (r) scan.name = r.card.name;
-      emit({ type: "done", status, error, card: scan.card, options: scan.options, cached: scan.cached, warnings: [...scan.warnings] });
+      emit({ type: "done", status, error, card: scan.card, options: scan.options, cached: scan.cached, warnings: [...scan.warnings], link: scan.link });
       scan.listeners.clear();
       resolveFinished();
     };
     let timedOut = false;
-    const deadline = setTimeout(() => { timedOut = true; scan.abort.abort(); }, this.opts.timeoutMs);
-    deadline.unref?.();
 
     const commit = await headCommit(f.root).catch(() => null);
     scan.commit = commit;
@@ -187,8 +202,16 @@ export class ScanManager {
       } catch { /* an unreadable entry is scanned again */ }
     }
 
-    scan.startedAt = nowIso();
-    void this.execute(f, engine, model, scan.abort.signal, progress).then(
+    // A scan that starts an engine holds a slot, or waits for one; its deadline starts once it has it (api contract, Engine slots).
+    const go = async () => {
+      const ticket = await this.slots.take(scan.abort.signal, () => { scan.waiting = true; progress(WAITING); });
+      scan.waiting = false;
+      scan.startedAt = nowIso();
+      deadline = setTimeout(() => { timedOut = true; scan.abort.abort(); }, this.opts.timeoutMs);
+      deadline.unref?.();
+      try { return await this.execute(f, engine, model, scan.abort.signal, progress); } finally { ticket.release(); }
+    };
+    void go().then(
       (r) => {
         if (cacheFile) {
           try { mkdirSync(this.dir, { recursive: true }); writeAtomic(cacheFile, JSON.stringify({ version: CACHE_VERSION, ...r })); } catch (e) { console.error("Could not cache a scan:", e); }
@@ -205,7 +228,7 @@ export class ScanManager {
     );
   }
 
-  private async execute(f: Folder, engine: Engine, model: string | null, signal: AbortSignal, progress: (m: string) => void): Promise<Cached> {
+  private async execute(f: Folder, engine: Engine, model: string | null, signal: AbortSignal, progress: (m: string, source?: "engine" | "server") => void): Promise<Cached> {
     progress("Gathering the repository");
     const commit = await headCommit(f.root);
     const { listing, more } = await listFolder(f, commit !== null);
@@ -224,7 +247,7 @@ export class ScanManager {
     if (signal.aborted) throw new EngineError("Cancelled");
     const answer = await engine.run({
       cwd: f.root, folderName, instruction: folderName, view: "", model, scope: { kind: "view" }, parts: [], base: null,
-      signal, timeoutMs: this.opts.timeoutMs, progress,
+      signal, timeoutMs: this.opts.timeoutMs, progress: (m) => progress(m, "engine"),
       task: { kind: "scan", schema: SCAN_SCHEMA, tools: "none", prompt: scanPrompt({ folderName, rel: f.rel, material: scanText(material) }), data: { listing, entries } },
     });
     if (signal.aborted) throw new EngineError("Cancelled");

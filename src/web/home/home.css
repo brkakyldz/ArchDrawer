@@ -38,13 +38,21 @@ html:has(.home) { overflow-x: clip; }
 .hm-nav-a.on { background: var(--accent-soft); color: var(--accent); }
 .hm-nav-a .n { margin-left: auto; font: 500 11.5px "Geist Mono", monospace; color: var(--soft); }
 .hm-nav-a.on .n { color: var(--accent); }
-.hm-src h3 { margin: 18px 10px 6px; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); }
-.hm-src-item { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 34px; padding: 5px 10px; border: 0; border-radius: 8px; background: none; text-align: left; cursor: pointer; color: var(--muted); }
-.hm-src-item:hover { background: var(--surface-2); color: var(--ink); }
+.hm-src h3 { display: flex; align-items: center; justify-content: space-between; min-height: 22px; margin: 18px 4px 6px 10px; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); }
+.hm-look { display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 6px; background: none; color: var(--soft); cursor: pointer; }
+.hm-look:hover { background: var(--surface-2); color: var(--ink); }
+.hm-look:disabled { cursor: progress; }
+.hm-look:disabled svg { animation: hm-spin .9s linear infinite; }
+.hm-src-item { position: relative; display: flex; align-items: center; border-radius: 8px; color: var(--muted); }
+.hm-src-item:hover, .hm-src-item:focus-within { background: var(--surface-2); color: var(--ink); }
+.hm-src-item .take { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; min-height: 34px; padding: 5px 10px; border: 0; border-radius: 8px; background: none; color: inherit; text-align: left; cursor: pointer; }
 .hm-src-item .sw { width: 8px; height: 8px; border-radius: 3px; flex: none; }
 .hm-src-item .t { display: flex; flex-direction: column; min-width: 0; }
 .hm-src-item .n { font: 12.5px "Geist Mono", monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hm-src-item .m { font: 11px "Geist Mono", monospace; color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hm-src-item .forget { display: grid; place-items: center; flex: none; width: 24px; height: 24px; margin-right: 6px; border: 0; border-radius: 6px; background: none; color: var(--soft); cursor: pointer; opacity: 0; }
+.hm-src-item:hover .forget, .hm-src-item:focus-within .forget { opacity: 1; }
+.hm-src-item .forget:hover { background: var(--surface); color: var(--k-llm); }
 .hm-server { margin-top: auto !important; padding: 12px 10px 2px; border-top: 1px solid var(--line); font: 11.5px "Geist Mono", monospace; color: var(--soft); display: flex; align-items: center; gap: 8px; }
 
 .hm-work { min-width: 0; padding: 28px 32px 96px; }
@@ -75,8 +83,27 @@ html:has(.home) { overflow-x: clip; }
 .hm-stepper li[data-state="done"] + li::before { background: var(--accent); }
 .hm-start-body { padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 18px; }
 
+.hm-src-tabs { display: inline-flex; align-self: flex-start; padding: 2px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface-2); margin-bottom: -6px; }
+.hm-src-tabs button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: none; font-size: 12.5px; font-weight: 500; color: var(--muted); cursor: pointer; }
+.hm-src-tabs button:hover:not(:disabled) { color: var(--ink); }
+.hm-src-tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line-2); }
+.hm-src-tabs button:disabled { cursor: default; opacity: .6; }
 .hm-folder-row { display: flex; gap: 10px; }
-.hm-folder-row > .btn { height: 46px; padding: 0 22px; border-radius: 10px; font-size: 14px; }
+.hm-folder-row > .btn { height: 46px; padding: 0 22px; border-radius: 10px; font-size: 14px; flex: none; }
+.hm-folder-row > .btn.hm-pick { padding: 0 16px; font-weight: 500; }
+.hm-combo { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 25; padding: 6px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface); box-shadow: var(--shadow-lift); max-height: 300px; overflow: auto; min-height: 14px; }
+.hm-combo .h { margin: 6px 8px 4px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); }
+.hm-combo [role="option"] { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+.hm-combo [role="option"].on { background: var(--surface-2); }
+.hm-combo .sw { width: 8px; height: 8px; border-radius: 3px; flex: none; }
+.hm-combo b { font-size: 13px; font-weight: 500; flex: none; }
+.hm-combo .p { flex: 1; min-width: 0; text-align: right; font: 11.5px "Geist Mono", monospace; color: var(--soft); overflow: hidden; text-overflow: ellipsis; }
+.hm-combo .m { flex: none; font: 11.5px "Geist Mono", monospace; color: var(--muted); }
+.hm-combo .none { padding: 8px; font-size: 12.5px; color: var(--soft); white-space: normal; }
+.hm-hint { margin-top: -8px !important; font-size: 12.5px; color: var(--soft); display: flex; align-items: center; gap: 6px; }
+.hm-hint.bad { color: var(--k-llm); }
+.hm-hint.ok b { color: var(--ink); font-weight: 600; }
+.hm-hint svg { flex: none; color: var(--k-service); }
 .hm-field { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; }
 .hm-field .i { position: absolute; left: 13px; color: var(--soft); pointer-events: none; }
 .hm-field input { width: 100%; height: 46px; padding: 0 14px 0 40px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); font: 14px "Geist Mono", monospace; transition: border-color .15s, box-shadow .15s; }
@@ -281,6 +308,8 @@ html:has(.home) { overflow-x: clip; }
   .hm-stepper { margin: 0; width: 100%; justify-content: space-between; }
   .hm-start-body { padding: 16px; }
   .hm-folder-row { flex-direction: column; }
+  .hm-src-tabs { align-self: stretch; }
+  .hm-src-tabs button { flex: 1; justify-content: center; }
   .hm-opts, .hm-grp, .hm-dests { grid-template-columns: minmax(0, 1fr); }
   .hm-dest { flex-direction: row; align-items: center; }
   .hm-dest .frame { width: 84px; height: 60px; flex: none; }

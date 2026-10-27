@@ -77,6 +77,21 @@ typography:
     fontSize: "13.5px"
     fontWeight: 600
     letterSpacing: "-0.012em"
+  home-title:
+    fontFamily: "Geist, Segoe UI, sans-serif"
+    fontSize: "20px"
+    fontWeight: 600
+    letterSpacing: "-0.02em"
+  home-heading:
+    fontFamily: "Geist, Segoe UI, sans-serif"
+    fontSize: "15px"
+    fontWeight: 600
+    letterSpacing: "-0.01em"
+  library-heading:
+    fontFamily: "Geist, Segoe UI, sans-serif"
+    fontSize: "17px"
+    fontWeight: 600
+    letterSpacing: "-0.015em"
   body:
     fontFamily: "Geist, Segoe UI, sans-serif"
     fontSize: "14px"
@@ -273,6 +288,66 @@ components:
   caption:
     textColor: "{colors.ink}"
     typography: "{typography.caption-title}"
+  start-panel:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    typography: "{typography.home-title}"
+    rounded: "{rounded.dialog}"
+    padding: "22px 24px 24px"
+  home-field:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    typography: "{typography.mono-path}"
+    rounded: "{rounded.lg}"
+    padding: "0 14px 0 40px"
+    height: "46px"
+  home-step:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.soft}"
+    rounded: "{rounded.pill}"
+    size: "22px"
+  home-step-now:
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.accent-ink}"
+  home-tabs:
+    backgroundColor: "{colors.surface-2}"
+    rounded: "9px"
+    padding: "2px"
+  home-tab-selected:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    height: "28px"
+  home-option:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    typography: "{typography.compact-title}"
+    rounded: "{rounded.xl}"
+    padding: "13px 14px"
+  home-destination:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.xl}"
+    padding: "14px"
+  home-draw-row:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.xl}"
+    padding: "14px 16px"
+  library-card:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    typography: "{typography.component-title}"
+    rounded: "14px"
+  side-panel:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "14px"
+    padding: "10px 14px 14px"
+  activity-row:
+    textColor: "{colors.ink}"
+    typography: "{typography.compact-title}"
+    rounded: "9px"
+    padding: "8px"
 ---
 
 # Design System: archdrawer
@@ -332,6 +407,7 @@ A cool-grey neutral scaffold, one saturated selection blue, ten kind hues that o
 
 ### Hierarchy
 - **Dialog title** (600, 18px): the share dialog's heading.
+- **Home title** (600, 20px, -0.02em): `Draw a project`. **Library heading** (600, 17px): `Drawings`. **Home heading** (600, 15px): `What should it draw?` and `Where will it go?`.
 - **Callout title** (600, 15px): the component name at the top of its explanation.
 - **Component title** (600, 14.5px; 13.5px in a compact): every component and group name on the canvas.
 - **Body** (400, 14px, 1.45): base text and the AI panel's input.
@@ -375,6 +451,7 @@ A hybrid. The chrome is nearly flat: hairline borders and a two-layer ambient sh
 - **Icon glow** (`drop-shadow(0 0 7px color-mix(in srgb, kind 65%, transparent))`): on the kind icon.
 - **Selection ring** (`0 0 0 3px accent-soft`): selected component, group, note, option, focused AI input.
 - **Callout** (`0 2px 4px rgba(16,24,40,.06), 0 24px 48px -24px rgba(16,24,40,.45)`).
+- **Lift** (`0 2px 4px rgba(16,24,40,.06), 0 22px 40px -22px rgba(16,24,40,.38)`; dark `0 2px 4px rgba(0,0,0,.45), 0 26px 50px -24px rgba(0,0,0,.9)`): a home card under the pointer, the folder list, the notice.
 - **Dialog** (`0 40px 90px -30px rgba(0,0,0,.55)`) over a 45% near-black backdrop with a 3px blur.
 
 ### Named Rules
@@ -397,7 +474,7 @@ Gently rounded rectangles throughout, radius rising with size: 6px for edge labe
 A segmented strip in a 10px-rounded surface box with a hairline border and 3px padding; 34 by 32 icon buttons, 1px separators between groups (select and pan / component, connect, note / undo and redo). Active tool takes accent-soft fill and accent icon; disabled icons fall to the firm hairline grey. Tooltips appear after 350ms below the button in an ink chip with the shortcut in mono.
 
 ### Top bar
-Surface white with a hairline bottom border, three-column grid. Left: the logo (the 22px brand-cyan mark and the lower-case wordmark `archdrawer` in 500 ink; below 900px the mark alone), which leads back to all drawings, a hairline divider, the repository name in mono, a slash-separated breadcrumb of views (current view in 600 ink), and a 7px saved dot. Centre: tools. Right: theme, Steps, Share. Below 560px the tools take a second row under the other two groups. The library page opens with the same logo and divider before its title.
+Surface white with a hairline bottom border, three-column grid. Left: the logo (the 22px brand-cyan mark and the lower-case wordmark `archdrawer` in 500 ink; below 900px the mark alone), which leads back to all drawings, a hairline divider, the repository name in mono, a slash-separated breadcrumb of views (current view in 600 ink), and a 7px saved dot. Centre: tools. Right: theme, Steps, Share. Below 560px the tools take a second row under the other two groups. The home screen's bar is sticky and 56px tall on a translucent surface (86%, blurred): the logo, the divider and `Drawings` in muted 500; on the right the engine chip (a pill: a 7px emerald dot with a soft ring, `Engine` in muted, the engine in ink), the 34px theme switch and Import.
 
 ### Components on the canvas
 - **Card** (196 by 108): centred 26px kind icon, title, sub-line. The shape a newly added component takes.
@@ -440,6 +517,25 @@ A 16px-rounded modal (up to 1180 by 720) split into a preview well (surface-2) a
 
 **Readability meter.** Reads the smallest text actually in the image (a held item at 12.5px, else a component name at 13.5px) at the size it is seen where it lands and at full size, and says the result in one plain sentence for the destination ("The text will be too small to read in the LinkedIn feed, even when the image is opened"), with a level dot; the pixel sizes sit behind a small Details toggle.
 
+### Home screen
+The home screen (ui contract, *Home*) is the same system as the editor: the same tokens by role in both themes, Geist and Geist Mono only, one blue. It adds no colour. Its light is a little bolder: the start panel's head carries the dot grid and a low accent light, and cards lift under the pointer.
+
+- **Columns.** A 236px navigation column on surface white with a hairline right border: Drawings with its count in mono, New drawing, then *Recent* and *Found on this computer* under group labels, each entry a 34px row with an 8px kind-hue swatch (chosen by position) and the name in 12.5px mono, and the server's address in soft mono at the foot above a hairline. The work column, padded 28 / 32px, holds a centred 940px stack, 36px apart: the start panel, then the drawings. A 312px side column on a 55% mix of surface into canvas, hairline left border, stacks side panels 14px apart. At 1240px wide or less the side column moves under the work column as a grid of panels; at 860px or less the navigation becomes one row; at 640px or less everything is one column.
+- **Start panel.** Surface white, firm hairline, 16px corners, ambient shadow. Behind its head, a dot grid (the dot token, 18px spacing) masked from full to nothing over 220px, and a 520 by 260px radial accent light at the top right (18% of the accent, scaled by the halo: 0.55 light, 1 dark). Head: the home title left, the stepper right.
+- **Stepper.** Four 22px numbered discs joined by 18px hairlines. Now: accent fill, accent-ink number, a 4px accent-soft ring, the name in ink. Done: well-grey disc, ink number, muted name, and the hairline after it turns accent. Later: surface disc, soft number and name.
+- **Source tabs.** A segmented control: a well-grey track with a hairline border, 9px corners and 2px padding; 28px tabs with a 15px icon and 12.5px 500 text; the selected tab on surface white with a firm-hairline ring.
+- **Folder field.** 46px, 10px corners, firm hairline, a folder (or link) icon 13px in, text in 14px Geist Mono; focus turns the border accent with a 4px accent-soft ring; disabled sits on well grey. Beside it `Choose folder…` (a default button) and Scan (primary), both 46px with 10px corners. The folder list drops 6px under the field: 12px corners, firm hairline, the lift shadow, group labels over 36px rows (swatch, name in 500, path and age in soft mono at the right). The link hint and the error sit 8px under the field in 12.5px, the error in the AI-agent rose.
+- **Scanning.** A well-grey 12px box: an 18px turning ring (accent top), `Scanning` in 600 over the latest line in muted 12px mono, a 3px track with an accent gradient sliding through it every 1.3s, and Cancel.
+- **Choice cards.** Two columns, 10px apart; the whole system and Something else span both. Each: surface white, hairline, 12px corners, 13 / 14px padding; a 34px icon box in 9px corners filled with 12% of its hue, its icon glowing; the title in 600 13.5px; the sentence in muted 12.5px; file chips in 11px mono on well grey with 5px corners. Hues: the whole system the accent (layers icon), sections the kind hues in turn (client, service, AI agent, data store, API, monitoring), flows the background-job orange (flow icon), Something else muted (pen icon). Hover: firm hairline, up 1px, ambient shadow. Ticked: a 60% accent border, a 5% accent wash, the 3px selection ring, and an 18px accent tick box.
+- **Destination cards.** Three in a row: a 74px well-grey frame with a 10px dot grid holding a small page in the channel's shape (LinkedIn post 4:5, README wide, Presentation 16:9) with two hairline text bars; under it the name in 600 13.5px and its size in soft 11.5px mono; a round radio at the right. Chosen: the 60% accent border and ring, the small page's border turning accent with a soft accent shadow.
+- **The bar.** Above a hairline: the summary in muted 13px with the count in ink 600, Change folder (ghost), and the draw button (primary, 42px, 10px corners, 14px text, an arrow that moves 2px on hover).
+- **Draw rows.** One per choice, surface white, hairline, 12px corners: the title in 600 13.5px (a 170px column), three stage marks, and the time in 12px mono at the right; under them the live line in 12px mono. A stage mark is its name in 12px over a 4px bar: waiting soft on the hairline; running accent 600 over accent-soft with a 40% accent bar sliding every 1.1s; done muted over emerald (the service hue). A long name wraps to two lines rather than being cut. The live line starts with a 7px accent dot that sends out one ring (0.9s) on every event; quiet turns the dot and the line amber (the check hue); waiting shows a hollow soft ring; done writes in emerald. Ready is an emerald box (45% emerald border, 7% wash) with Open as the primary. The draw line under the rows is muted 12px mono with a 14px turning ring.
+- **Drawing cards.** A grid of 272px-minimum columns, 16px apart. Surface white, firm hairline, 14px corners, ambient shadow; hover lifts 2px with the lift shadow and the preview zooms 4%. The preview is 16:10 on canvas with a 14px dot grid, the drawing inset 10px; a `<n> views` pill top left (translucent surface, blurred), view dots bottom left (the current one a 16px accent bar), and an accent `Open` pill top right on hover. Under it the title (600 14.5px), the path in muted 12px mono, then 10px kind dots overlapping by 3px with a surface ring, and the relative time in soft 11.5px mono at the right. The list layout puts a 132px preview at the left of a row. The search field is 32 by 220px with 8px corners; the grid and list switch is a two-icon segmented control.
+- **Side panels.** Surface white, firm hairline, 14px corners, ambient shadow; the header is a group label with an action at its right. Activity rows: 8px padding, 9px corners, a status dot (accent running, a hollow soft ring waiting, amber quiet, emerald done), the name in 600 13px, the status in muted 12px (amber when quiet), the time in muted 11.5px mono or a small primary Open at the right; the followed row on accent-soft. The Engine panel's two selects are 34px with 8px corners, and its status line carries the emerald dot.
+- **Notice.** Top centre under the bar: surface white, firm hairline, 10px corners, the lift shadow, an emerald dot, the sentence and a small primary Open; it fades in over 0.2s.
+
+**The Every Text Names Something Rule.** The home screen carries no hero, slogan, kicker, process guide, step counter or footer line: every text names a thing or a state.
+
 ### Figure-style caption (export)
 The exported image is the drawing on canvas colour with no chrome and no product mark. Its caption belongs to it like a figure's: the title (and optional lede) plus a colour key of the kinds present, each a glowing kind dot and label. Caption and key try an empty corner of the drawing first, together as one block, then in two corners, at 36 / 31 / 26% widths; when no corner is free they share a full-width strip under the drawing above a firm hairline, title left, key right, and the drawing refits above it.
 
@@ -456,6 +552,7 @@ A view of its own, made from the current one, for a tall 1080 by 1350 (4:5) post
 - **Do** set repository names, paths, sizes, counts and keys in Geist Mono, everything else in Geist.
 - **Do** size the export's caption, lede and key per format in image pixels and check them with the readability meter.
 - **Do** carry the dark theme as the same system: same roles, brighter kind hues, a stronger edge glow.
+- **Do** keep the home screen in the editor's tokens and type; its boldness is light and lift, never a new colour or a display face.
 
 ### Don't:
 - **Don't** put the product name, mark or a "made with" line on an exported image; the top-bar mark is editor chrome only.

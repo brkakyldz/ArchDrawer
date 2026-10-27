@@ -5,7 +5,8 @@ deterministic fixture engine that stands in for Claude Code and Codex, and
 how each test suite is run.
 
 Implemented by: `src/server/config.ts` (environment), `src/server/main.ts`,
-`scripts/start.mjs`, `src/server/engines/fixture.ts`,
+`scripts/start.mjs`, `src/server/engines/fixture.ts`, `src/server/picker.ts`
+and `src/server/remote.ts` (the test folder dialog and test links),
 `tests/e2e/playwright.config.ts`,
 `tests/acceptance/holdout/playwright.config.ts`, `vitest.config.ts`,
 `package.json` scripts.
@@ -19,7 +20,9 @@ node bin/archdrawer.mjs open <file> --no-browser   # validate, normalise, start 
 ```
 
 `npm start` prints `archdrawer listening on http://127.0.0.1:<PORT>` and then
-`Data: <dir> · engines: <ids or none>`; from then `GET /api/health` answers 200
+`Data: <dir> · engines: <ids or none>`, followed by ` · test folder dialog`
+and/or ` · test links` when `ARCHDRAW_TEST_PICKER` or `ARCHDRAW_TEST_REMOTES`
+is set; from then `GET /api/health` answers 200
 and `server.json` exists in the data directory. A port in use prints
 `Port <PORT> is in use. Set PORT to another port.` and exits 1. `archdrawer
 open` with the same `ARCHDRAW_DATA_DIR` and `PORT` reuses that server.
@@ -35,8 +38,13 @@ Read by the server and the CLI:
 | `ARCHDRAW_ENGINES` | `claude,codex` | comma-separated engine ids, case-insensitive, in preference order; `fixture` adds the test engine; `ARCHDRAW_ENGINES=fixture` offers only it; an empty value offers none; unknown ids are ignored with a warning |
 | `ARCHDRAW_FIXTURE_STEP_MS` | `250` | delay between fixture progress messages (`0` or invalid gives the default) |
 | `ARCHDRAW_RUN_TIMEOUT_MS` | `1200000` (20 min) | a run's time limit; at least 10000 |
+| `ARCHDRAW_JOB_KEEP_MS` | `3600000` (1 hour) | how long a finished run is kept, a finished scan listed in the activity, and what a failed draw kept (api contract, *Activity*); at least 1000 |
+| `ARCHDRAW_ENGINE_SLOTS` | `3` | engine processes at a time for the whole server (api contract, *Engine slots*); an integer from 1 to 8, anything else gives the default |
 | `ARCHDRAW_NO_OPEN` | unset | any non-empty value: never open a browser |
 | `ARCHDRAW_CLAUDE_BIN`, `ARCHDRAW_CODEX_BIN` | unset | path of the `claude` / `codex` executable instead of looking it up on PATH |
+| `ARCHDRAW_SEARCH_HOME` | the user's home folder | the home folder *Found on this computer* searches (api contract, *Recent and found*) |
+| `ARCHDRAW_TEST_PICKER` | unset | an absolute file path: the test folder dialog answers from that file and no real dialog opens (*The test folder dialog*) |
+| `ARCHDRAW_TEST_REMOTES` | unset | an absolute folder path: every link is copied from the local repositories in it and nothing reaches the network (*Test links*) |
 
 Tests write drawing files into their own temp folders (the file's folder, or
 its nearest ancestor holding `.git`, is the repository root for the `files`
@@ -230,8 +238,9 @@ post (drawing contract, Story answers).
 ### Scan
 
 Markers are read from the folder's last path segment, the same markers as
-above: `[fixture:fail]` fails the scan, and `[fixture:slow]` adds the 30 slow
-lines. Progress is `Reading the inputs`, then `Writing the card`.
+above: `[fixture:fail]` fails the scan, `[fixture:slow]` adds the 30 slow
+lines, and `[fixture:quiet]` sends no line for 45 s after `Reading the
+inputs`. Progress is `Reading the inputs`, then `Writing the card`.
 
 The answer is built from the inputs code gathered:
 
@@ -288,9 +297,22 @@ choice, and from a typed choice's text, where they act on that choice only:
   with `Fixture failure requested` the first time this server process makes
   it for the folder (its root), whatever the channel, focus, engine or model,
   and answer as usual every later time. A call the draw does not make (an
-  overview reused, api contract *What a failed draw keeps*) does not count.
+  overview reused, api contract *What a failed draw keeps*) does not count;
+- `[fixture:quiet]` makes the read call send no line for 45 s after its
+  `Reading the code` line, then go on as usual (for the quiet notice: the
+  choice's `lastEngineEventAt` stays at that line's time meanwhile).
 
-Each call has the fixture's progress lines.
+A failure that a marker requests fails only the choice whose call it is; the
+draw's other choices go on (api contract, *The draw run*). Each call has the
+fixture's progress lines, all `source: "engine"`.
+
+**File reads.** The read call reports reading A, then B when B differs (the
+files of *Read* below), both with its `Reading the code` line: the choice's
+`filesRead` becomes 2 (1 when the listing has one file) at that line, and its
+`choice` event follows it. No other call reports a file read, so a reused
+read leaves `filesRead` at 0. The checked read of the answer below holds 8
+component facts (`ghost` is dropped), so `parts` is 8 once the read is
+checked.
 
 **Read.** Let A be the listing's first file and B its second (else A). The
 answer is always the following, for every choice.
@@ -428,6 +450,71 @@ instruction as for every kind.
   only top-level component is a group answers no change (`Nothing
   changed`).
 
+## The test folder dialog
+
+Off unless `ARCHDRAW_TEST_PICKER` is set, as the fixture engine is off
+unless `ARCHDRAW_ENGINES` names it (AGENTS.md invariant 7). When it is set,
+no dialog helper ever runs; only the dialog is replaced, and its answer goes
+through `POST /api/folders/pick` as a real one's does (api contract, *The
+folder dialog*). The file is read at the moment of each request, so a test
+writes it before it clicks. Its first line, trimmed, is the dialog:
+
+| First line | `picker` in `GET /api/sources` | `POST /api/folders/pick` |
+|---|---|---|
+| no file, an empty file, or `cancel` | `true` | 200 `{"status": "cancelled"}` |
+| `none` | `false` | 200 `{"status": "unavailable"}` |
+| `fail` | `true` | 500 `The folder dialog failed: Test dialog failure` |
+| anything else | `true` | the line is the folder chosen, checked as in *Folders*: 200 `{"status": "picked", …}`, or that check's 400 (a relative path: `The path must be absolute`) |
+
+A second line `slow` makes the dialog answer 3 s after the request, so a
+second pick in that time gets 409 `The folder dialog is already open`. A
+slow dialog ends as a real one does when its request's connection closes or
+the server shuts down (api contract, *The folder dialog*): a pick made right
+after the first request's connection was closed opens at once, with no 409.
+
+## Test links
+
+Off unless `ARCHDRAW_TEST_REMOTES` is set. When it is set, a link is read and
+checked as any link (api contract, *Reading a link*), and then copied, with
+every option of *Git for a link*, from a local git repository instead of the
+network: the URL is `file://` plus the absolute path
+`<ARCHDRAW_TEST_REMOTES>/<host>/<owner>/<repo>` (its parts lower-cased), and
+`file` is the one transport git allows. Only where the repository comes from
+changes; the clone, the cache, the update, the progress lines and the errors
+are the real ones:
+
+- `<ARCHDRAW_TEST_REMOTES>/<host>` does not exist: every git call to the host
+  (clone, default branch, fetch) gets the error `Could not reach <host>`
+  without starting git, and the scan goes on as the api contract says for
+  that error (a clone or a switch fails, an update scans the copy as it is);
+- `<ARCHDRAW_TEST_REMOTES>/<host>/<owner>/<repo>` is not a git repository
+  with a commit: the same, with `This repository is private or does not
+  exist`;
+- a branch the repository does not have: git's own error, so `The branch
+  "<branch>" does not exist in <link>`;
+- a file `<ARCHDRAW_TEST_REMOTES>/<host>/<owner>/<repo>.slow` beside the
+  repository makes each copy and each fetch of it wait 30 s before git
+  starts, with the progress line already shown, so a test can cancel the scan
+  while the copy is made.
+
+A test makes a remote with `git init`, a commit, and optionally a branch; a
+new commit to it is what a later scan fetches. The repository's default
+branch is the branch its `HEAD` names.
+
+**Fixture markers in a copy.** The fixture reads its markers from the
+folder's last path segment (*Scan*, *Draw*), but a repository name cannot
+hold `[`, `:` or `]`. For a folder in a copy, the fixture also reads them
+from the copy's repository name in a dashed form: each `fixture-<words>`
+that starts the name or follows a `-`, running to the next `-fixture-` or
+to the end, is the marker `[fixture:<words>]` with each `-` in `<words>` read
+as `:`. So `shop-fixture-fail` is `[fixture:fail]`,
+`shop-fixture-fail-overview` is `[fixture:fail:overview]`, and
+`shop-fixture-slow-fixture-many` is `[fixture:slow]` and `[fixture:many]`.
+They act exactly as the bracketed markers do, on the scan and on a draw of
+the copy; an unknown one is ignored. A test makes the remote
+`<ARCHDRAW_TEST_REMOTES>/github.com/acme/shop-fixture-fail` and pastes
+`https://github.com/acme/shop-fixture-fail`.
+
 ## Test suites
 
 | Command | What it runs |
@@ -436,6 +523,11 @@ instruction as for every kind.
 | `npx vitest run <path>` | one area while iterating (`src/core`, `src/server`, …) |
 | `npm run e2e` | Playwright (`tests/e2e/`, Chromium, one worker). It starts its own `npm start` with `PORT=$E2E_PORT` (default 4398), `ARCHDRAW_DATA_DIR=$E2E_DATA_DIR` (default a new temp folder), `ARCHDRAW_ENGINES=fixture`, `ARCHDRAW_NO_OPEN=1`, `ARCHDRAW_FIXTURE_STEP_MS=60`; viewport 1440 × 900; artifacts in `test-results-e2e/` |
 | `npm run holdout` | Playwright over `tests/acceptance/holdout/H*.spec.ts` (Chromium, one worker). It starts its own `npm start` on `$ARCHDRAW_HOLDOUT_PORT` (default a free port) with `ARCHDRAW_DATA_DIR=$ARCHDRAW_HOLDOUT_DATA` (default a new temp folder), `ARCHDRAW_ENGINES=fixture`, `ARCHDRAW_NO_OPEN=1`, `ARCHDRAW_FIXTURE_STEP_MS=100`; viewport 1600 × 1000; results in `test-results/holdout.json` |
+
+Both browser suites also set `ARCHDRAW_SEARCH_HOME`, `ARCHDRAW_TEST_PICKER`
+and `ARCHDRAW_TEST_REMOTES` to paths in a temp folder of their own, so no
+browser test walks the real home folder, opens a real dialog or reaches the
+network.
 
 Both browser suites need `npx playwright install chromium` once and never
 reuse a running server. A browser test may assume a fresh data directory, the
@@ -463,6 +555,7 @@ The suite in `tests/acceptance/holdout/` is written from these contracts, not
 from the code. A failure there is fixed in the product, never by editing the
 suite.
 
-No suite calls a real engine. A run with `ARCHDRAW_ENGINES=claude` or `codex`
+No suite calls a real engine, opens a real folder dialog or copies a
+repository from the network. A run with `ARCHDRAW_ENGINES=claude` or `codex`
 against a real repository uses the user's own subscription and is opt-in;
 fixture results never count as evidence that a real engine works.

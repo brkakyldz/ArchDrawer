@@ -2,10 +2,16 @@
 id: 0015
 title: "Choices: tick sections and flows, one file holds them all (format 4), the whole system is a map"
 date: 2026-10-22
-status: accepted
+status: accepted (superseded in part by 0016: decision 4, choices drawn one after another, and the last sentence of decision 3)
 deciders: [brkakyldz]
 supersedes: []
 ---
+
+Superseded in part by ADR 0016: a draw's choices are drawn side by side within
+the server's engine slots; a choice that fails no longer stops the others,
+the file is written with every choice that finished, and `Try again` draws
+the failed choice into that file. Decision 4 below and the last sentence of
+decision 3 are history; the other decisions stand.
 
 ## Context
 

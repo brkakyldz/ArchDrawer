@@ -49,10 +49,10 @@ test('H231 [SRC-1 SRC-2 HOME-2 START-4 #201] the folder combobox and the navigat
     expect(options[2].text.replace(/\\/g, '/')).toContain(beta.dir.replace(/\\/g, '/'));
 
     // Typing filters by name or path, any case; a heading with no entry goes; no match gives the sentence.
-    await folder.fill('BETA'); expect(names(await comboOptions(page))).toEqual(['beta-api']); await expect(list).not.toContainText('Recent');
-    await folder.fill('projects'); expect(names(await comboOptions(page))).toEqual(['gamma']);
-    await folder.fill('library'); expect(names(await comboOptions(page))).toEqual(['library-shop']); await expect(list).not.toContainText('Found on this computer');
-    await folder.fill('zzz'); expect(await comboOptions(page)).toEqual([]);
+    await folder.fill('BETA'); await expect.poll(async () => names(await comboOptions(page))).toEqual(['beta-api']); await expect(list).not.toContainText('Recent');
+    await folder.fill('projects'); await expect.poll(async () => names(await comboOptions(page))).toEqual(['gamma']);
+    await folder.fill('library'); await expect.poll(async () => names(await comboOptions(page))).toEqual(['library-shop']); await expect(list).not.toContainText('Found on this computer');
+    await folder.fill('zzz'); await expect.poll(() => comboOptions(page)).toEqual([]);
     await expect(page.getByTestId('start-folder-none')).toHaveText('No repository here matches "zzz". Paste the whole path, or choose the folder.');
 
     // Enter takes the highlighted entry: the path is in the field, the list is closed and Scan has the focus; nothing was scanned.

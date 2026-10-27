@@ -34,7 +34,7 @@ test('H240 [JOB-3 JOB-8 START-7 HOME-4 HOME-6 STORY-1 #202] when one choice fail
     const named = await drawRows(page);
     expect(named[1].stages.map(s => [s.stage, s.state]), 'the failed choice stopped at its read').toEqual([['read', 'failed'], ['overview', 'waiting'], ['channel', 'waiting']]);
     expect(named[1].title).toBe(FLAKY);
-    expect((await jobsOnScreen(page)).find(j => j.id === first.runId)).toMatchObject({ state: 'succeeded', status: 'LinkedIn post · Ready, 1 failed', open: 'Open' });
+    await expect.poll(async () => (await jobsOnScreen(page)).find(j => j.id === first.runId)).toMatchObject({ state: 'succeeded', status: 'LinkedIn post · Ready, 1 failed', open: 'Open' });
     const firstRecord = await runRecordAt(request, server.base, first.runId);
     expect(firstRecord).toMatchObject({ status: 'succeeded', error: null }); expect(firstRecord.choices.map((c: { id: string; status: string }) => `${c.id}:${c.status}`)).toEqual(['system:done', `${FLAKY_ID}:failed`]);
     const before = await readChoices(file); expect(before.choices.map(c => c.id), 'the file holds the choice that finished only').toEqual(['system']);

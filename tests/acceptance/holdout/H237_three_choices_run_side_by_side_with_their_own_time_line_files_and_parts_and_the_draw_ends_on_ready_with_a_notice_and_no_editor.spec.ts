@@ -63,8 +63,7 @@ test('H237 [JOB-1 JOB-2 JOB-6 JOB-8 HOME-4 HOME-6 STORY-1 #200 #202] three choic
     await expect(notice).toHaveText(new RegExp(`${basename(project.dir)} is ready`)); await expect(notice).toHaveAttribute('role', 'status'); await expect(page.getByTestId('job-notice-open')).toHaveText('Open');
     await page.waitForTimeout(1000); await expect(page.getByTestId('editor'), 'nothing opens the editor by itself').toHaveCount(0);
     await expect(page.getByTestId('job-notice-dismiss')).toHaveAccessibleName('Dismiss'); await page.getByTestId('job-notice-dismiss').click(); await expect(notice).toHaveCount(0);
-    const jobs = await jobsOnScreen(page);
-    expect(jobs.find(j => j.id === run.runId)).toMatchObject({ type: 'draw', state: 'succeeded', status: 'LinkedIn post · Ready', current: true, open: 'Open' });
+    await expect.poll(async () => (await jobsOnScreen(page)).find(j => j.id === run.runId)).toMatchObject({ type: 'draw', state: 'succeeded', status: 'LinkedIn post · Ready', current: true, open: 'Open' });
     await expect(page.getByTestId('activity-count')).toHaveCount(0); await expect(page.getByTestId('activity')).toContainText('Done');
 
     // Open: the editor on the first choice at the chosen channel, one file with the choices in the order asked, ids as if drawn in turn.

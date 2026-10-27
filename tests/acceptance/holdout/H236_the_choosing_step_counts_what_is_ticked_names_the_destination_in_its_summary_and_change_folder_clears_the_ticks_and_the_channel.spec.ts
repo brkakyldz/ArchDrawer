@@ -15,7 +15,7 @@ test('H236 [HOME-2 HOME-3 SCAN-3 STORY-1 #200] the choosing step shows the choic
   try {
     const posts = watchPosts(page);
     await scanThroughHome(page, project.dir, server.base);
-    expect(await stepper(page)).toMatchObject({ now: expect.stringContaining('Focus'), nowCount: 1, done: 1 });
+    await expect.poll(() => stepper(page)).toMatchObject({ now: expect.stringContaining('Focus'), nowCount: 1, done: 1 });
 
     // The cards: the heading, the whole system's line, the sections and flows with their files as chips, none ticked, no count yet.
     const list = page.getByTestId('focus-list');
@@ -56,7 +56,7 @@ test('H236 [HOME-2 HOME-3 SCAN-3 STORY-1 #200] the choosing step shows the choic
 
     // Change folder: the Folder step, the folder kept and editable, ticks and channel gone; the same scan comes back untouched.
     await page.getByTestId('start-change-folder').click();
-    expect(await stepper(page)).toMatchObject({ now: expect.stringContaining('Folder'), nowCount: 1, done: 0 });
+    await expect.poll(() => stepper(page)).toMatchObject({ now: expect.stringContaining('Folder'), nowCount: 1, done: 0 });
     await expect(page.getByTestId('start-folder')).toHaveValue(project.dir); await expect(page.getByTestId('start-folder')).toBeEnabled(); await expect(page.getByTestId('start-scan')).toBeEnabled();
     await expect(page.getByTestId('focus-list')).toHaveCount(0); await expect(page.getByTestId('draw-start')).toHaveCount(0); await expect(page.getByTestId('home-continue').or(page.getByTestId('scan-card')).first()).toBeVisible();
     await page.getByTestId('start-scan').click(); await expect(page.getByTestId('focus-list')).toBeVisible({ timeout: 60_000 }); await expect(page.getByTestId('scan-cached')).toContainText('Scanned before at ');

@@ -57,7 +57,7 @@ contracts and never from product code. Each title reads
 spec that the journey observes.
 
 On 2026-10-27 the suite was reviewed by an independent pass (`REVIEW.md`): H131 and H133 were retired into the scenarios that observe
-the same outlines (their unique checks moved), H248, H249, H250, H251, H252, H253, H254 were split out of scenarios that joined independent journeys, 89 existing scenarios were revised
+the same outlines (their unique checks moved), H248, H249, H250, H251, H252, H253, H254 were split out of scenarios that joined independent journeys, 92 existing scenarios were revised
 (tags that name the issue whose elements a scenario waits for, `#202` only where a scenario needs the Activity rail or the draw's progress rows, waits
 cut to what the fixture engine needs, duplicated halves removed) and `H224` creates the folder it picks. No assertion the contract asks for was weakened. `COVERAGE.md`
 (*Review of 2026-10-27*) holds the current requirement and issue maps. The per-test time cap (`test.setTimeout`) of 125 scenarios was lowered to four times the scenario's passing time, at least 60 s and never raised; helper waits for a draw's or a retry's response are bounded at 30 s.

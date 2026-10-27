@@ -22,7 +22,7 @@ test('H239 [JOB-5 JOB-7 HOME-7 HOME-6 HOME-10 #202] a draw runs on while another
     await page.getByTestId('draw-another').click();
     await expect(page.getByTestId('draw-progress')).toHaveCount(0); await expect(page.getByTestId('start-folder')).toBeEnabled(); await expect(page.getByTestId('start-folder')).toHaveValue('');
     expect(await stepper(page)).toMatchObject({ now: expect.stringContaining('Folder') });
-    expect((await jobsOnScreen(page)).find(j => j.id === first.runId)).toMatchObject({ type: 'draw', state: 'running', current: false });
+    await expect.poll(async () => (await jobsOnScreen(page)).find(j => j.id === first.runId)).toMatchObject({ type: 'draw', state: 'running', current: false });
 
     // Ctrl K while a draw is followed: pressing the job follows it again; Ctrl K frees the panel and focuses the empty field; the draw goes on in Activity.
     await jobIn(page, first.runId).getByTestId('activity-job-name').click(); await expect(page.getByTestId('draw-progress')).toBeVisible();
@@ -63,7 +63,7 @@ test('H239 [JOB-5 JOB-7 HOME-7 HOME-6 HOME-10 #202] a draw runs on while another
     await expect(page.getByTestId('activity-count')).toHaveCount(0); await expect(page.getByTestId('activity')).toContainText('Done');
     const api = await activityNow(request, server.base);
     const byEnd = api.jobs.filter(j => j.endedAt).sort((a, b) => Date.parse(b.endedAt) - Date.parse(a.endedAt)).map(j => j.id);
-    expect((await jobsOnScreen(page)).map(j => j.id), 'Done lists the ended jobs, newest end first').toEqual(byEnd);
+    await expect.poll(async () => (await jobsOnScreen(page)).map(j => j.id), { message: 'Done lists the ended jobs, newest end first' }).toEqual(byEnd);
     await expect(page.getByTestId('job-notice')).toHaveCount(0, { timeout: 30_000 });
     await expect(page.getByTestId('editor')).toHaveCount(0);
 

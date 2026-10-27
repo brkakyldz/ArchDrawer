@@ -74,8 +74,11 @@ test('H233 [SRC-4 SRC-5 SRC-6 HOME-2 START-4 #201] a pasted link is checked as i
     const card = page.locator(`[data-testid="library-item"][data-diagram-id="${record.diagramId}"]`);
     await expect(card.getByTestId('library-item-path')).toHaveText(LINK);
     await page.getByTestId('start-folder').focus();
+    // The lists come from `GET /api/sources`, asked when the page loads: wait for the copy to be listed before reading them.
+    await expect.poll(async () => (await comboOptions(page)).some(o => samePath(o.path, copyDir(server, LINK))), { timeout: 15_000 }).toBe(true);
     const entry = (await comboOptions(page)).find(o => samePath(o.path, copyDir(server, LINK)));
     expect(entry, 'the copy is in Recent').toBeTruthy(); expect(entry!.text).toContain(LINK);
+    await expect.poll(async () => (await navItems(page, 'source-recent')).filter(o => samePath(o.path, copyDir(server, LINK))).length, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
     const recent = (await navItems(page, 'source-recent')).filter(o => samePath(o.path, copyDir(server, LINK)));
     expect(recent, 'the navigation lists the copy once, by its name').toHaveLength(1); expect(recent[0].text).toContain('shop');
     expect(posts.filter(p => p.path === '/api/runs'), 'one draw').toHaveLength(1);

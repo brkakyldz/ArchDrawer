@@ -20,6 +20,7 @@ test('H246 [JOB-7 HOME-7 #202] Activity keeps a finished scan with its choices a
     // A scan from the panel: its row says what it found; the panel follows it.
     await page.getByTestId('start-folder').fill(project.dir); await page.getByTestId('start-scan').click();
     await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 60_000 });
+    await expect.poll(async () => (await jobsOnScreen(page)).some(j => j.type === 'scan'), { timeout: 30_000 }).toBe(true);
     const scanId = (await jobsOnScreen(page)).find(j => j.type === 'scan')!.id;
     await expect.poll(async () => (await jobsOnScreen(page)).find(j => j.id === scanId)).toMatchObject({ state: 'succeeded', status: 'Scan · 3 sections and flows', name: basename(project.dir), current: true, open: 'Choose' });
     const choices = await optionsOnScreen(page);
@@ -43,6 +44,7 @@ test('H246 [JOB-7 HOME-7 #202] Activity keeps a finished scan with its choices a
     // A new look at the same commit is cached and listed again; New drawing leaves it: the fields are emptied, the job stays listed.
     await page.getByTestId('start-folder').fill(project.dir); await page.getByTestId('start-scan').click();
     await expect(page.getByTestId('scan-cached')).toContainText('Scanned before at ', { timeout: 60_000 });
+    await expect.poll(async () => (await jobsOnScreen(page)).find(j => j.type === 'scan')?.id ?? scanId, { timeout: 30_000, message: 'the second scan is listed' }).not.toBe(scanId);
     const second = (await jobsOnScreen(page)).find(j => j.type === 'scan')!; expect(second.id).not.toBe(scanId);
     await page.getByTestId('home-nav-new').click();
     await expect(page.getByTestId('start-folder')).toHaveValue(''); await expect(page.getByTestId('start-folder')).toBeEnabled(); await expect(page.getByTestId('start-folder')).toBeFocused();

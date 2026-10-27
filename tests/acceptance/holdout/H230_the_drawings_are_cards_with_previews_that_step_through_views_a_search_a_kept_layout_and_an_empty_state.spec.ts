@@ -30,7 +30,7 @@ test('H230 [HOME-9 #200] the drawings are cards with previews that step through 
     for (const card of [alpha, beta, cardOf(detailId)]) {
       const preview = card.getByTestId('library-item-preview'); await expect(preview).toBeVisible();
       await expect(preview).not.toContainText('No preview'); expect((await preview.boundingBox())!.width).toBeGreaterThan(100);
-      const dots = card.getByTestId('library-item-kinds').locator('[title]'); expect(await dots.count()).toBeGreaterThanOrEqual(1); expect(await dots.count()).toBeLessThanOrEqual(5);
+      const dots = card.getByTestId('library-item-kinds').locator('[title]'); await expect.poll(() => dots.count(), { message: 'the kinds are listed once the preview is drawn' }).toBeGreaterThanOrEqual(1); expect(await dots.count()).toBeLessThanOrEqual(5);
       expect(squash(await card.getByTestId('library-item-updated').textContent())).toMatch(/^(just now|\d+ min ago|\d+ h ago|Yesterday|\d+ days ago|\d{1,2} [A-Z][a-z]{2}( \d{4})?)$/);
     }
     const kinds = await cardOf(detailId).getByTestId('library-item-kinds').locator('[title]').evaluateAll(els => els.map(el => (el.getAttribute('title') ?? '').toLowerCase()));

@@ -129,7 +129,7 @@ the scenario controls. Either may be dropped without losing a requirement id.
 
 ## Review of 2026-10-27
 
-An independent review of the suite (size, waits, overlaps, bundles, tags, oracles) changed 89 existing scenarios, retired H131, H133 and added H248, H249, H250, H251, H252, H253, H254.
+An independent review of the suite (size, waits, overlaps, bundles, tags, oracles) changed 92 existing scenarios, retired H131, H133 and added H248, H249, H250, H251, H252, H253, H254.
 The review is `REVIEW.md` (beside this folder when it was written; its findings, what was applied and what was left). The maps below are the
 current ones: where an older requirement or issue map in this file lists other scenarios, these win. A title still carries exactly the
 requirement ids its scenario observes and each not-yet-built issue (`#202`) whose elements it waits for. The per-test time cap (`test.setTimeout`) of 125 scenarios was lowered to four times the scenario's passing time, at least 60 s and never raised; helper waits for a draw's or a retry's response are bounded at 30 s.
@@ -434,12 +434,12 @@ Retired (the id is never reused): H131 (every kind draws its own outline in the 
 | H228 | A-jobs-sources; review 2026-10-27 (changed) | a copy is deleted with its last drawing or from Recent only when nothing else is in it and nothing runs on it; every refusal forgets nothing; a copy in use is not updated or switched |
 | H229 | B-home; review 2026-10-27 (changed) | the home screen: three columns that fold at 1240, 860 and 640 px, `activity-toggle`, the stepper, Activity idle, the theme kept in the browser, no hero or footer |
 | H230 | B-home; review 2026-10-27 (changed) | the drawings are cards with previews that step through the views on hover, search by title and path, `library-none`, a layout kept in the browser, Enter opens, the empty state |
-| H231 | B-home | the folder combobox and the navigation list Recent and Found with branch and age; filtering, `start-folder-none`, a pasted path closes the list; taking an entry scans nothing; `Look again` |
+| H231 | B-home; review 2026-10-27 (changed) | the folder combobox and the navigation list Recent and Found with branch and age; filtering, `start-folder-none`, a pasted path closes the list; taking an entry scans nothing; `Look again` |
 | H232 | B-home | `Choose folder…` with the test dialog: a slow pick (disabled, `Dialog open…`), a path outside ASCII, a folder with a drawing, cancelled, refused, failed and unavailable change nothing |
 | H233 | B-home; review 2026-10-27 (changed) | a pasted link is checked as typed, copied, scanned and drawn; the copy is named by its link in the card, the lists and the library; a newer commit is fetched |
 | H234 | B-home; review 2026-10-27 (changed) | a link that cannot be copied ends with the server's sentence; a cancelled copy leaves no half copy and frees the panel |
 | H235 | B-home; review 2026-10-27 (changed) | a scanned folder joins Recent and is forgotten on request; a copy is deleted only when the second question is accepted |
-| H236 | B-home | the choosing step counts what is ticked, names the destination in its summary and `Change folder` clears the ticks and the channel |
+| H236 | B-home; review 2026-10-27 (changed) | the choosing step counts what is ticked, names the destination in its summary and `Change folder` clears the ticks and the channel |
 | H237 | B-home; review 2026-10-27 (changed) | three choices run side by side with their own time, line, files and parts; the draw ends on `Ready` with a notice and no editor; Activity; one file; ids in request order |
 | H238 | B-home; review 2026-10-27 (changed) | one engine slot: choices wait and say so, a scan of another folder waits in the same queue, Activity and the panel say so, pressing a job moves the panel |
 | H239 | B-home; review 2026-10-27 (changed) | a draw runs on while another repository is scanned and drawn; Activity lists each job; the panel follows the one pressed and keeps the ended ones; each file in its own repository |
@@ -449,7 +449,7 @@ Retired (the id is never reused): H131 (every kind draws its own outline in the 
 | H243 | B-home; review 2026-10-27 (changed) | when the server restarts in the middle of a draw the page says `The server restarted; 1 job stopped` once, lists none and frees the panel |
 | H244 | B-home; review 2026-10-27 (changed) | a choice whose engine says nothing for 30 s shows `Quiet for <s> s — still running (limit <m> min)` with the server's limit while the others do not; it goes with the next line |
 | H245 | B-home; review 2026-10-27 (changed) | the home screen works from the keyboard in order: `Ctrl K` finds the folder search, Enter takes and scans, Enter on a destination draws |
-| H246 | B-home | Activity keeps a finished scan with its choices across a reload until it expires; the panel stops following what is gone or left; `New drawing` |
+| H246 | B-home; review 2026-10-27 (changed) | Activity keeps a finished scan with its choices across a reload until it expires; the panel stops following what is gone or left; `New drawing` |
 | H247 | B-home; review 2026-10-27 (changed) | cancelling a draw with a slow second choice keeps the first done, shows the second cancelled, writes nothing, and `Try again` draws both into a new file (the screen half of H197, on a server of its own) |
 | H248 | review 2026-10-27 (new) | without an engine the home screen says what to install, keeps Scan off and sends nothing for a typed folder, and offers the example drawing, which opens |
 | H249 | review 2026-10-27 (new) | a section ticked on the home screen and drawn for LinkedIn is followed in its row and three stages, ends on Ready with Open, and opens in the editor on the LinkedIn channel of that section with its overview drawn |

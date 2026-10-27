@@ -32,7 +32,7 @@ test('H244 [HOME-5 JOB-6 #202] a choice whose engine says nothing for 30 seconds
     const s1 = Number(sentence.exec(text1)![1]); expect(s1).toBeGreaterThanOrEqual(30); expect(s1).toBeLessThan(46);
     await expect(row).toHaveAttribute('data-state', 'running');
     await expect.poll(async () => { const t = (await quiet.textContent().catch(() => null)) ?? ''; const m = sentence.exec(t.replace(/\s+/g, ' ').trim()); return m ? Number(m[1]) : 0; }, { timeout: 8_000, message: 'it counts up every second' }).toBeGreaterThan(s1);
-    expect((await jobsOnScreen(page)).find(j => j.id === run.runId)!.status, 'Activity says so too').toMatch(/quiet for \d+ s/i);
+    await expect.poll(async () => (await jobsOnScreen(page)).find(j => j.id === run.runId)?.status, { message: 'Activity says so too' }).toMatch(/quiet for \d+ s/i);
     const rows = await rowFacts(page); expect(rows.find(r => r.choice === 'system')!.quiet, 'a choice that is done is not quiet').toBeNull();
 
     // The engine speaks again: the sentence goes, the row is not failed, and the draw ends with both choices drawn.
@@ -40,6 +40,6 @@ test('H244 [HOME-5 JOB-6 #202] a choice whose engine says nothing for 30 seconds
     await expect(page.getByTestId('draw-ready')).toBeVisible({ timeout: 30_000 });
     expect((await rowFacts(page)).map(r => [r.choice, r.state])).toEqual([['system', 'done'], [QUIET_ID, 'done']]);
     await expect(page.getByTestId('draw-ready')).toContainText('2 drawings for a LinkedIn post'); await expect(page.getByTestId('draw-error')).toHaveCount(0);
-    expect((await jobsOnScreen(page)).find(j => j.id === run.runId)!.status).toBe('LinkedIn post · Ready');
+    await expect.poll(async () => (await jobsOnScreen(page)).find(j => j.id === run.runId)?.status).toBe('LinkedIn post · Ready');
   } finally { await server.close(); }
 });

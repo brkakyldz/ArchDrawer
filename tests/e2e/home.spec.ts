@@ -73,6 +73,24 @@ test("a late answer for a link typed before is dropped: the hint and Scan follow
   await expect(page.getByTestId("start-scan")).toBeDisabled();
 });
 
+test("a card scrolled under the sticky top bar still opens from its Open button", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 700 });
+  const updatedAt = new Date().toISOString();
+  const diagrams = Array.from({ length: 9 }, (_, i) => ({ id: `d_card${i}`, title: `Card ${i}`, path: `C:\\code\\c${i}\\docs\\a.archdraw.json`, root: `C:\\code\\c${i}`, updatedAt }));
+  await page.route("**/api/diagrams", (r) => r.fulfill({ json: { diagrams } }));
+  await page.route(/\/api\/diagrams\/d_card\d$/, (r) => r.fulfill({ status: 404, json: { error: "Not found" } }));
+  await page.goto("/");
+  await expect(page.getByTestId("library-item")).toHaveCount(9);
+  const card = page.locator('[data-testid="library-item"][data-diagram-id="d_card4"]');
+  // The card's top edge, where Open sits, under the 56 px bar, and the pointer on the bar, not on the card: the
+  // button must still count as there, and a click must bring it out from under the bar first.
+  await card.evaluate((el) => window.scrollTo(0, window.scrollY + el.getBoundingClientRect().top - 24));
+  await card.hover();
+  await page.mouse.move(800, 20);
+  await card.getByTestId("library-open").click({ timeout: 10_000 });
+  await expect(page).toHaveURL(/\/d\/d_card4/);
+});
+
 test("an entry of Recent puts its path in the folder field and focuses Scan, scanning nothing", async ({ page }) => {
   const entry = { name: "shop", path: "C:\\code\\shop", branch: "main", lastCommitAt: new Date(Date.now() - 3 * 3_600_000).toISOString(), link: null, diagrams: [], usedAt: null };
   await page.route("**/api/sources", (r) => r.fulfill({ json: { picker: false, recent: [entry], found: [{ ...entry, name: "infra", path: "C:\\code\\infra", branch: null, lastCommitAt: null }], foundAt: new Date().toISOString() } }));

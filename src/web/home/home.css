@@ -3,7 +3,8 @@
 
 .home { --halo: .55; --shadow-lift: 0 2px 4px rgba(16, 24, 40, .06), 0 22px 40px -22px rgba(16, 24, 40, .38); min-height: 100%; background: var(--canvas); color: var(--ink); }
 .home[data-theme="dark"] { --halo: 1; --shadow-lift: 0 2px 4px rgba(0, 0, 0, .45), 0 26px 50px -24px rgba(0, 0, 0, .9); }
-html:has(.home) { overflow-x: clip; }
+/* Scrolling something into view stops below the sticky top bar (56 px) instead of under it. */
+html:has(.home) { overflow-x: clip; scroll-padding-top: 72px; }
 .home .btn { justify-content: center; transition: background-color .15s, border-color .15s, box-shadow .15s, filter .15s; }
 .home .btn.primary { box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--accent) 80%, transparent); }
 .home .btn.primary:disabled { box-shadow: none; }
@@ -59,13 +60,13 @@ html:has(.home) { overflow-x: clip; }
 .hm-work-in { max-width: 940px; margin: 0 auto; display: flex; flex-direction: column; gap: 36px; }
 
 .hm-rail { position: sticky; top: 56px; height: calc(100vh - 56px); overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 20px 18px; border-left: 1px solid var(--line); background: var(--rail-ground); }
-.hm-panel { flex: none; border-radius: 14px; border: 1px solid var(--line-2); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; scroll-margin-top: 72px; }
+.hm-panel { flex: none; border-radius: 14px; border: 1px solid var(--line-2); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
 .hm-panel > header { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 12px 14px 0; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); }
 .hm-panel > header .btn { margin: -6px -6px -6px auto; text-transform: none; letter-spacing: 0; }
 .hm-panel .pad { padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
 
 /* ---------- the start panel ---------- */
-.hm-start { position: relative; border-radius: 16px; border: 1px solid var(--line-2); background: var(--surface); box-shadow: var(--shadow); isolation: isolate; scroll-margin-top: 72px; }
+.hm-start { position: relative; border-radius: 16px; border: 1px solid var(--line-2); background: var(--surface); box-shadow: var(--shadow); isolation: isolate; }
 .hm-start > .deco { position: absolute; inset: 0; z-index: -1; overflow: hidden; border-radius: inherit; pointer-events: none; }
 /* The lit drafting table: a dot grid and a low accent light behind the panel's head, fading out by mask. */
 .hm-start > .deco::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 220px; background-image: radial-gradient(var(--dot) 1px, transparent 1.3px); background-size: 18px 18px; -webkit-mask-image: linear-gradient(to bottom, #000, transparent); mask-image: linear-gradient(to bottom, #000, transparent); opacity: .8; }
@@ -225,8 +226,9 @@ html:has(.home) { overflow-x: clip; }
 .hm-view-dots { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 4px; }
 .hm-view-dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--line-2); transition: background-color .2s, width .2s; }
 .hm-view-dots i.on { width: 16px; background: var(--accent); }
-.hm-open { position: absolute; right: 10px; top: 10px; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font-size: 12.5px; font-weight: 600; cursor: pointer; visibility: hidden; opacity: 0; transform: translateY(-4px); transition: opacity .2s, transform .2s, visibility .2s; box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--accent) 80%, transparent); }
-.hm-card:hover .hm-open, .hm-card:focus-within .hm-open { visibility: visible; opacity: 1; transform: none; }
+.hm-open { position: absolute; right: 10px; top: 10px; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font-size: 12.5px; font-weight: 600; cursor: pointer; opacity: 0; transform: translateY(-4px); transition: opacity .2s, transform .2s; box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--accent) 80%, transparent); }
+/* Faded, not hidden: a pointer that leaves the card on its way to Open (a scroll, the bar above) does not take it away. */
+.hm-card:hover .hm-open, .hm-card:focus-within .hm-open { opacity: 1; transform: none; }
 .hm-card-body { display: flex; align-items: flex-start; gap: 6px; padding: 13px 10px 0 15px; }
 .hm-card-body .t { flex: 1; min-width: 0; }
 .hm-card-body b { display: block; font-size: 14.5px; font-weight: 600; letter-spacing: -.012em; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

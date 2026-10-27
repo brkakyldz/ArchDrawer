@@ -314,6 +314,8 @@ export class FixtureEngine implements Engine {
     for (const step of FIXTURE_STEPS) {
       await sleep(this.stepMs, req.signal);
       req.progress(step, step === "Reading the code" ? reads : undefined);
+      // `[fixture:quiet]`: the read says nothing for 45 s after its `Reading the code` line (testing contract, Draw).
+      if (stage === "read" && step === "Reading the code" && marked("[fixture:quiet]")) await sleep(45_000, req.signal);
     }
     await sleep(this.stepMs, req.signal);
     if (marked(stage === "read" ? "[fixture:fail]" : `[fixture:fail:${stage}]`)) throw new EngineError("Fixture failure requested");

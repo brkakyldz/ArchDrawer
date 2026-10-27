@@ -3,11 +3,12 @@ import { api, ApiError, type DiagramSummary, type SourceEntry, type Sources } fr
 import { navigate } from "../App";
 import { Icon } from "../ui/Icon";
 import { Logo } from "../ui/Logo";
-import { ActivityPanel, ActivityToggle, useActivity } from "./Activity";
+import { ActivityPanel, ActivityToggle, JobNotice, useActivity } from "./Activity";
 import { Continue, Drawings } from "./Drawings";
 import { EngineChip, EnginePanel, useEngine } from "./Engine";
 import { SourceList } from "./Source";
-import { ScanCard, StartPanel, useStart } from "./Start";
+import { openUrl } from "./jobs";
+import { ScanCard, StartPanel, useStart, type Ready } from "./Start";
 import "./home.css";
 
 /**
@@ -52,6 +53,10 @@ export function Home() {
   const [error, setError] = useState<string | null>(null);
   const [exampleBusy, setExampleBusy] = useState(false);
   const [looking, setLooking] = useState(false);
+  const [notice, setNotice] = useState<Ready | null>(null);
+  // The draws this page saw running, and those it already said were ready.
+  const sawRunning = useRef(new Set<string>());
+  const noticed = useRef(new Set<string>());
   const file = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
   const scanRef = useRef<HTMLButtonElement>(null);
@@ -61,9 +66,24 @@ export function Home() {
   const engine = useEngine();
   const activity = useActivity();
   const loadSources = () => api.sources().then(setSources, () => undefined);
-  const start = useStart({ engine, onJob: activity.bump, onSources: () => void loadSources() });
-
   const load = () => api.list().then(setList, (e: Error) => setError(e.message));
+  /** A draw the page saw running is ready: the notice, once per draw; its file is new in the lists. */
+  const tell = (r: Ready) => {
+    if (noticed.current.has(r.runId)) return;
+    noticed.current.add(r.runId); setNotice(r); void load(); void loadSources();
+  };
+  const start = useStart({
+    engine, activity: activity.data, onJob: activity.bump, onSources: () => void loadSources(),
+    onDrawn: (r) => { if (r) tell(r); else { void load(); void loadSources(); } },
+  });
+  // Activity also tells of the draws that end while the panel follows another job.
+  useEffect(() => {
+    for (const j of activity.data?.jobs ?? []) {
+      if (j.type !== "draw") continue;
+      if (j.status === "running") sawRunning.current.add(j.id);
+      else if (j.status === "succeeded" && j.diagramId && sawRunning.current.has(j.id)) tell({ runId: j.id, name: j.name ?? "The drawing", url: openUrl(j.diagramId, j.choice, j.channel) });
+    }
+  }, [activity.data]);
   useEffect(() => { void load(); void loadSources(); document.title = "archdrawer"; }, []);
   // A scan that succeeded joins Recent.
   useEffect(() => { if (start.scan) void loadSources(); }, [start.scan?.id]);
@@ -95,7 +115,7 @@ export function Home() {
     api.refreshSources().then(setSources, () => undefined).finally(() => setLooking(false));
   };
   // A scan the panel follows that waits for a free engine says so (its job in Activity).
-  const scanWaits = !!start.scanning?.id && !!activity.data?.jobs.some((j) => j.id === start.scanning!.id && (j as { waiting?: unknown }).waiting === true);
+  const scanWaits = !!start.scanning?.id && !!activity.data?.jobs.some((j) => j.id === start.scanning!.id && j.waiting === true);
 
   const onImport = async (f: File | undefined) => {
     if (!f) return;
@@ -141,6 +161,7 @@ export function Home() {
         <input data-testid="import-input" ref={file} type="file" accept=".json,application/json" hidden tabIndex={-1} onChange={(e) => void onImport(e.target.files?.[0])} />
       </header>
       {error && <p className="hm-form-error" data-testid="form-error" role="alert">{error}</p>}
+      {notice && <JobNotice ready={notice} onClose={() => setNotice(null)} />}
       <div className="hm-shell">
         <nav className="hm-nav" data-testid="home-nav" aria-label="Library">
           <button type="button" className="hm-nav-a on" data-testid="home-nav-drawings"
@@ -155,12 +176,12 @@ export function Home() {
         </nav>
         <main className="hm-work">
           <div className="hm-work-in">
-            <StartPanel s={start} sources={sources} scanWaits={scanWaits} narrow={narrow} folderRef={folderRef} scanRef={scanRef} />
+            <StartPanel s={start} sources={sources} scanWaits={scanWaits} timeoutMs={activity.data?.timeoutMs ?? null} narrow={narrow} folderRef={folderRef} scanRef={scanRef} />
             <Drawings list={list} onForget={(d) => void forget(d)} example={exampleButton} />
           </div>
         </main>
         <aside className="hm-rail" aria-label="Activity and engine">
-          <ActivityPanel data={activity.data} />
+          <ActivityPanel data={activity.data} restarted={activity.restarted} followed={start.followed} onFollow={(j) => { start.followJob(j); toStart(); }} />
           {start.scan ? <ScanCard s={start} /> : start.step === "Folder" && list && list.length > 0 && <Continue d={list[0]} />}
           <EnginePanel state={engine} busy={start.busy} example={empty ? null : exampleButton} />
         </aside>

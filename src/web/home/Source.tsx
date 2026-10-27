@@ -94,7 +94,7 @@ function FolderBox({ s, sources, folderRef }: { s: StartState; sources: Sources 
   const all = [...recent, ...found];
   const shown = open && !pathy && !s.following && (sources === null || all.length > 0 || q !== "");
   // The field shows the followed job's folder, a copy by its link.
-  const value = s.following && s.scan?.link ? s.scan.link : s.folder;
+  const value = s.fieldText;
   const close = () => { setOpen(false); setHi(-1); };
   const take = (e: SourceEntry) => { close(); s.take(e.path); };
   const key = (e: React.KeyboardEvent<HTMLInputElement>) => {

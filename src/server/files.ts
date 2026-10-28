@@ -82,7 +82,8 @@ export const docText = (doc: unknown) => JSON.stringify(doc, null, 2) + "\n";
 export const hashOf = (text: string) => createHash("sha256").update(text).digest("hex");
 
 /** The waits between rename attempts, in ms: 150 ms in all, the longest the event loop is held. */
-const RENAME_WAITS = [10, 20, 30, 40, 50];
+/** The waits between rename attempts, in ms. They block the event loop, so their sum stays short (issue #125). */
+export const RENAME_WAITS = [10, 20, 30, 40, 50];
 
 /**
  * Write through a temporary file and a rename, so a reader never sees half a file. A file that

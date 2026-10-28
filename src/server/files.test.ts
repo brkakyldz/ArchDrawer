@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { writeAtomic } from "./files";
+import { RENAME_WAITS, writeAtomic } from "./files";
 import { tempDir } from "./testkit";
 
 describe("writeAtomic", () => {
@@ -16,10 +16,9 @@ describe("writeAtomic", () => {
     const dir = tempDir();
     // A folder in the way: Windows refuses the rename with EPERM (retried), others with EISDIR.
     mkdirSync(join(dir, "taken"));
-    const t = Date.now();
     expect(() => writeAtomic(join(dir, "taken"), "{}\n")).toThrow();
-    // The wait between retries blocks the event loop, so it stays short (issue #125).
-    expect(Date.now() - t).toBeLessThan(500);
+    // The waits between retries block the event loop, so together they stay short (issue #125).
+    expect(RENAME_WAITS.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(200);
     expect(readdirSync(dir)).toEqual(["taken"]);
   });
 });

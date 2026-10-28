@@ -26,16 +26,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      # A pull request runs the held-out scenarios of the areas it touches and the @smoke journeys;
+      # main runs them all (testing contract, Which scenarios a pull request runs).
+      - name: Choose the held-out scenarios
+        id: holdout
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then sel=$(node scripts/holdout-areas.mjs "origin/$BASE"); else sel=ALL; fi
+          echo "Held-out scenarios: $sel"
+          printf 'selection=%s\n' "$sel" >> "$GITHUB_OUTPUT"
       - run: npm run e2e
       # Both suites always run, so one red suite does not hide the other's result.
-      - run: npm run holdout
-        if: ${{ !cancelled() }}
+      - name: Held-out scenarios
+        if: ${{ !cancelled() && steps.holdout.outputs.selection != 'NONE' }}
+        env:
+          SELECTION: ${{ steps.holdout.outputs.selection }}
+        run: |
+          if [ "$SELECTION" = "ALL" ]; then npm run holdout; else npm run holdout -- --grep "$SELECTION" --pass-with-no-tests; fi
       - uses: actions/upload-artifact@v4
         if: ${{ failure() }}
         with:

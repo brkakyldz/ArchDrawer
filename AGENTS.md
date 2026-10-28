@@ -173,6 +173,22 @@ The acceptance scenarios in `tests/acceptance/holdout/` are written by an
 author who sees the spec and the contracts but not the code. Whoever changes
 the code does not edit them. If one is wrong, report it in an issue.
 
+- **At most 40 acceptance scenarios.** A batch that would pass that first
+  merges or retires scenarios, through their author. Every rule of a
+  validator or a limit is a unit test; a scenario checks one refusal.
+- **Assert outcomes.** Values are asserted exactly only where the testing
+  contract (*What a test asserts exactly*) says so.
+- **No clocks.** No sleeps, fixed waits or elapsed-time assertions; wait on a
+  named state. A deadline comes from configuration, and its test asserts the
+  outcome.
+- **Pull requests run part of the suite.** They run `npm run check`,
+  `npm run e2e`, the `@smoke` journeys and the acceptance scenarios of the
+  areas they touch (`scripts/holdout-areas.mjs`). `main` runs all of them.
+- **A flaky test is quarantined the day it is seen.** It is tagged
+  `@quarantine` and gets an issue with its failing log. Retries stay 0.
+- **A removed feature takes its tests in the same change.** A test deleted
+  as a duplicate is named in the commit, with the test that still covers it.
+
 ## Before you commit
 
 Review your diff for drift from the contracts and ADRs, the invariants above,

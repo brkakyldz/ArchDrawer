@@ -393,25 +393,35 @@ describe("a draw of several choices", () => {
   });
 
   it("each choice has its own deadline from taking its slot: waiting counts toward none, and a choice past its own ends alone", async () => {
-    // Every call of a choice waits; two choices one after another outlast the deadline, each alone does not.
-    const waits = (byChoice: number[]) => new (class extends FixtureEngine {
+    // No race against the clock: the only real wait is one while nothing runs, and a slower machine only makes it longer.
+    const DEADLINE = 2500;
+    const hangs = (index: number) => new (class extends FixtureEngine {
       override async run(req: Parameters<FixtureEngine["run"]>[0]) {
-        const i = req.task?.data?.choiceIndex;
-        if (typeof i === "number") await new Promise((r) => setTimeout(r, byChoice[i]));
+        if (req.task?.data?.choiceIndex === index) {
+          await new Promise<void>((resolve) => { if (req.signal.aborted) resolve(); else req.signal.addEventListener("abort", () => resolve(), { once: true }); });
+        }
         return super.run(req);
       }
     })(1);
-    const draw2 = async (engine: FixtureEngine, slots: number) => {
-      const t = makeApp({ engines: [engine], timeoutMs: 4000, slots });
-      const scan = await scanOf(t, real(repo()));
-      return (await t.runs.wait((await start(t, scan, [{ kind: "whole" }, { kind: "typed", text: "Second" }])).body.runId))!;
+    const app = async (engine: FixtureEngine, slots: number) => {
+      const t = makeApp({ engines: [engine], timeoutMs: DEADLINE, slots });
+      return { t, scan: await scanOf(t, real(repo())) };
     };
-    // One slot: the second waits for the first (about 2.4 s each, 4.8 s in all) and does not time out.
-    const both = await draw2(waits([800, 800]), 1);
+    const draw2 = async (t: ReturnType<typeof makeApp>, scan: string) =>
+      (await start(t, scan, [{ kind: "whole" }, { kind: "typed", text: "Second" }])).body.runId as string;
+    // The test holds the only slot for longer than the deadline; both choices wait, then finish.
+    const one = await app(new FixtureEngine(1), 1);
+    const held = await one.t.slots.take(new AbortController().signal);
+    const waiting = await draw2(one.t, one.scan);
+    await new Promise((r) => setTimeout(r, DEADLINE + 500));
+    expect(one.t.runs.get(waiting)!.choices!.map((c) => c.status)).toEqual(["waiting", "waiting"]);
+    held.release();
+    const both = (await one.t.runs.wait(waiting))!;
     expect([both.status, both.error, both.choices!.map((c) => c.error)]).toEqual(["succeeded", null, [null, null]]);
-    expect(Date.parse(both.choices![1].endedAt!) - Date.parse(both.createdAt)).toBeGreaterThan(4000);
-    // A choice that outlasts its own deadline fails alone; the file holds the other.
-    const late = await draw2(waits([300, 1800]), 3);
+    expect(Date.parse(both.choices![1].endedAt!) - Date.parse(both.createdAt)).toBeGreaterThan(DEADLINE);
+    // A choice that never answers fails alone at its deadline; the file holds the other.
+    const three = await app(hangs(1), 3);
+    const late = (await three.t.runs.wait(await draw2(three.t, three.scan)))!;
     expect(late.status).toBe("succeeded");
     expect(late.choices!.map((c) => [c.status, c.error])).toEqual([["done", null], ["failed", "Timed out after 1 min — try a narrower instruction"]]);
     expect((JSON.parse(readFileSync(late.path!, "utf8")) as Document4).choices.map((c) => c.id)).toEqual(["system"]);

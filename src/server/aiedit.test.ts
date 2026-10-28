@@ -6,16 +6,17 @@ import type { DiagramDocument } from "../core/model";
 import { BUILD } from "./config";
 import { claudeModels } from "./engines/claude";
 import { codexModels } from "./engines/codex";
-import { fixtureAnswer, FixtureEngine, fixtureRoute } from "./engines/fixture";
+import { FixtureEngine, fixtureRoute } from "./engines/fixture";
 import type { Engine, EngineInfo, EngineRunRequest } from "./engines/types";
 import { makeApp, shopRepo } from "./testkit";
 import { choiceDoc } from "../core/file4";
 
-/** A stand-in for a real engine (Claude Code or Codex) that answers like the fixture. */
+/** A stand-in for a real engine (Claude Code or Codex) that answers every route as the fixture does. */
 class FakeReal implements Engine {
+  private readonly answers = new FixtureEngine(1);
   constructor(readonly id: string, readonly label: string, private readonly available = true) {}
   async detect(): Promise<EngineInfo> { return { id: this.id, label: this.label, available: this.available, version: "1", detail: "", test: false, models: [] }; }
-  async run(req: EngineRunRequest): Promise<unknown> { return fixtureAnswer(req.base, req.view, req.instruction); }
+  async run(req: EngineRunRequest): Promise<unknown> { return this.answers.run(req); }
 }
 
 async function setup(engines?: Engine[], engine: { id: string; model: null } | null = null) {
@@ -67,6 +68,8 @@ describe("engine: null never picks the fixture over a real engine", () => {
     const t = await setup(engines, remembered);
     const r = await t.run("add Cache", { engine: null });
     expect(r.status).toBe(202);
+    // The chosen engine also finishes the run; a stand-in that cannot answer would hide behind the choice.
+    expect([r.done!.status, r.done!.error]).toEqual(["succeeded", null]);
     return r.done!.engine;
   };
   it("takes the first real engine when the drawing remembers the fixture", async () => {

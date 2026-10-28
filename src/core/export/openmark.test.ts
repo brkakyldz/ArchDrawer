@@ -6,7 +6,7 @@ import { node } from "../testkit";
 import { PALETTES } from "../theme";
 import { drawView } from "./svg";
 
-// NAV-1 (diagram contract, The open mark): a part with an inside draws a 20 px circle in its kind colour holding the layers icon.
+// NAV-1 (diagram contract, The open mark): a part with an inside draws a 20 px circle on the surface, tinted and ringed in its kind colour, holding the layers icon in it.
 const view = (): DiagramView => fillDefaults({ version: 2, title: "marks", views: [{ id: "v", title: "V", caption: { what: "", how: "", notice: "" }, nodes: [
   node("card", { x: 0, y: 0, detail: "v2", kind: "service" }), node("cmp", { x: 400, y: 0, detail: "v2", form: "compact", kind: "data" }),
   node("zone", { x: 0, y: 300, detail: "v2", form: "group" }), node("in", { x: 40, y: 380, parent: "zone" }), node("plain", { x: 800, y: 0 }),
@@ -24,10 +24,11 @@ describe("the open mark (#184)", () => {
     const v = view(), rects = layoutRects(v), P = PALETTES.light, body = drawView(v, P).body;
     const front = (id: string) => shapeGeometry(shapeOf(v.nodes.find((n) => n.id === id)!) as PartShape, id === "cmp", false, rects.get(id)!).front;
     const card = circleIn(body, "card")!, f = front("card");
-    expect([card.r, card.fill]).toEqual([10, P.kinds.service]);
+    expect([card.r, card.fill]).toEqual([10, P.surface]);
+    expect(card.g).toContain(`fill="${P.kinds.service}" fill-opacity="0.14" stroke="${P.kinds.service}"`);
     expect([card.cx + 10, card.cy - 10]).toEqual([f.x + f.w - 8, f.y + 8]);
     expect(card.g).toContain('fill="none"'); // the layers icon is stroked
-    expect(card.g).toContain(`stroke="${P.canvas}"`);
+    expect(card.g).toContain(`fill="none" stroke="${P.kinds.service}"`);
     const cmp = circleIn(body, "cmp")!, fc = front("cmp");
     expect([cmp.cx + 10, cmp.cy]).toEqual([fc.x + fc.w - 12, fc.y + fc.h / 2]);
     const zone = circleIn(body, "zone", true)!, z = rects.get("zone")!;

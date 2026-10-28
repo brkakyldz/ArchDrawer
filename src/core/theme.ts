@@ -70,7 +70,7 @@ export const ICON_PATHS: Record<IconName | "stack" | "x" | "ar" | "al" | "lr", s
   pen: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
   receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
   inbox: '<path d="M3 13h5l1.5 3h5L16 13h5"/><path d="M5.5 5h13L21 13v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/>',
-  box: '<rect x="3.5" y="5" width="17" height="14" rx="3"/>',
+  box: '<path d="M12 3.5 19.5 7.75v8.5L12 20.5 4.5 16.25v-8.5z"/><path d="M4.5 7.75 12 12l7.5-4.25M12 12v8.5"/>',
   cpu: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2.5v3.5M15 2.5v3.5M9 18v3.5M15 18v3.5M2.5 9h3.5M2.5 15h3.5M18 9h3.5M18 15h3.5"/>',
   cog: '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M4.6 7l2.6 1.5M16.8 15.5l2.6 1.5M4.6 17l2.6-1.5M16.8 8.5 19.4 7"/><circle cx="12" cy="12" r="7"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.8 3.2 2.8 14.8 0 18M12 3c-2.8 3.2-2.8 14.8 0 18"/>',

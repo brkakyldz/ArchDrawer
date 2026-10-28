@@ -56,6 +56,14 @@ export function iconMarkup(name: string, x: number, y: number, size: number, col
   return `<g transform="translate(${n(x)} ${n(y)}) scale(${n(s)})" fill="none" stroke="${color}" stroke-width="${n(stroke)}" stroke-linecap="round" stroke-linejoin="round"${f}>${paths}</g>`;
 }
 
+/** The card's icon box (diagram contract, Shapes): a rounded square in 12 % of the kind colour, centred on the icon's `slot`, the icon smaller inside it; the post card's sits within its slot, its top inset being 6 px. */
+const CARD_BOX = { box: 30, icon: 18, rx: 8 } as const, POST_BOX = { box: 26, icon: 16, rx: 7 } as const, COMPACT_BOX = { box: 26, icon: 15, rx: 7 } as const;
+function iconInBox(name: string, x: number, y: number, slot: number, B: { box: number; icon: number; rx: number }, K: string, glow: string): string {
+  const c = { x: x + slot / 2, y: y + slot / 2 };
+  return `<rect class="shape-mark" x="${n(c.x - B.box / 2)}" y="${n(c.y - B.box / 2)}" width="${B.box}" height="${B.box}" rx="${B.rx}" fill="${K}" fill-opacity="0.12" pointer-events="none"/>` +
+    iconMarkup(name, c.x - B.icon / 2, c.y - B.icon / 2, B.icon, K, 1.75, glow);
+}
+
 function roundedRectPath(r: Rect, rad: number): string {
   const { x, y, w, h } = r;
   return `M${n(x + rad)},${n(y)} H${n(x + w - rad)} A${rad},${rad} 0 0 1 ${n(x + w)},${n(y + rad)} V${n(y + h - rad)} A${rad},${rad} 0 0 1 ${n(x + w - rad)},${n(y + h)} H${n(x + rad)} A${rad},${rad} 0 0 1 ${n(x)},${n(y + h - rad)} V${n(y + rad)} A${rad},${rad} 0 0 1 ${n(x + rad)},${n(y)} Z`;
@@ -136,9 +144,7 @@ function shapeMarks(shape: PartShape, compact: boolean, post: boolean, r: Rect, 
   const pe = ` pointer-events="none"`;
   switch (shape) {
     case "card":
-      out.push(compact
-        ? `<rect class="shape-mark" x="${n(r.x + 1)}" y="${n(r.y + 10)}" width="3" height="${n(Math.max(0, r.h - 20))}" rx="1.5" fill="${K}"${pe}/>`
-        : `<rect class="shape-mark" x="${n(r.x + 12)}" y="${n(r.y + 1)}" width="${n(Math.max(0, r.w - 24))}" height="3" rx="1.5" fill="${K}"${pe}/>`);
+      // The card's mark is its icon box, drawn with the icon (`iconInBox`).
       break;
     case "person": {
       const a = compact ? r.h / 2 : OUTLINE.avatar[s] / 2, cx = compact ? r.x + a : r.x + r.w / 2, cy = r.y + a;
@@ -284,7 +290,7 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
       const a = OUTLINE.avatar[post ? 1 : 0] / 2, size = OUTLINE.avatarIcon[post ? 1 : 0];
       out.push(iconMarkup(icon, r.x + r.w / 2 - size / 2, r.y + a - size / 2, size, K, 1.6, ig));
     } else {
-      out.push(iconMarkup(icon, cx - CARD.icon / 2, y, CARD.icon, K, 1.6, ig));
+      out.push(shape === "card" ? iconInBox(icon, cx - CARD.icon / 2, y, CARD.icon, post ? POST_BOX : CARD_BOX, K, ig) : iconMarkup(icon, cx - CARD.icon / 2, y, CARD.icon, K, 1.6, ig));
       y += CARD.icon + CARD.iconGap;
     }
     const spans = box.lines.map((l, i) => `<tspan x="${n(cx)}" y="${n(baseline(y + i * CARD.line, CARD.line, T.title.size))}">${esc(l)}${i < box.lines.length - 1 ? " " : ""}</tspan>`).join("");
@@ -303,7 +309,7 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
     const size = OUTLINE.compactAvatarIcon;
     out.push(iconMarkup(icon, r.x + r.h / 2 - size / 2, r.y + r.h / 2 - size / 2, size, K, 1.75, ig));
   } else {
-    out.push(iconMarkup(icon, cb.x, cy - COMPACT.icon / 2, COMPACT.icon, K, 1.75, ig));
+    out.push(shape === "card" ? iconInBox(icon, cb.x, cy - COMPACT.icon / 2, COMPACT.icon, COMPACT_BOX, K, ig) : iconMarkup(icon, cb.x, cy - COMPACT.icon / 2, COMPACT.icon, K, 1.75, ig));
     lx += COMPACT.icon + COMPACT.gap;
   }
   out.push(label(box.lines[0], lx, baseline(cy - 10, 20, T.compactTitle.size), "start", T.compactTitle.size));
@@ -317,12 +323,15 @@ export function nodeMarkup(node: DiagramNode, r: Rect, P: Palette, o: NodeMarkup
 }
 
 /**
- * The open mark of a part with an inside (diagram contract, The open mark): a filled circle 20 px across in the part's
- * kind colour, holding the `layers` icon, 12 px, in the canvas colour; `x`, `y` its top-left. The editor's `node-inside`.
+ * The open mark of a part with an inside (diagram contract, The open mark): a circle 20 px across tinted with the part's
+ * kind colour and ringed in it, holding the `layers` icon, 12 px, in the kind colour; `x`, `y` its top-left. The editor's `node-inside`.
  */
 function openMark(x: number, y: number, K: string, P: Palette, o: MarkupOptions): string {
-  const r = INSIDE / 2, icon = 12;
-  return `<g${tid(o, "node-inside")} class="open-mark"><circle cx="${n(x + r)}" cy="${n(y + r)}" r="${n(r)}" fill="${K}"/>${iconMarkup("layers", x + r - icon / 2, y + r - icon / 2, icon, P.canvas, 2)}</g>`;
+  const r = INSIDE / 2, icon = 12, cx = n(x + r), cy = n(y + r);
+  // A surface disc first, so a trace under it does not show through the tint; the ring sits inside the 20 px.
+  return `<g${tid(o, "node-inside")} class="open-mark"><circle cx="${cx}" cy="${cy}" r="${n(r)}" fill="${P.surface}"/>` +
+    `<circle cx="${cx}" cy="${cy}" r="${n(r - 0.5)}" fill="${K}" fill-opacity="0.14" stroke="${K}" stroke-opacity="0.5" stroke-width="1"/>` +
+    `${iconMarkup("layers", x + r - icon / 2, y + r - icon / 2, icon, K, 2)}</g>`;
 }
 
 /** `kind`: drawn in its kind colours; `neutral`: in the theme's one connection colour (diagram contract, Colour). */

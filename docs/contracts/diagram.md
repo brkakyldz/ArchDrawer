@@ -588,8 +588,9 @@ tall), a compact part its sub-line text, and a group header its sub-line;
 the group header stays 46 px, so a group's box does not change.
 
 **The open mark** (NAV-1). A part whose `detail` is set draws the open mark:
-a filled circle 20 px across in the part's kind colour, holding the `layers`
-icon, 12 px, in the canvas colour. It sits 8 px inside the top-right corner
+a circle 20 px across: a disc in the surface colour, over it 14 % of the
+part's kind colour ringed by a 1 px line in the kind colour at 50 % inside
+the 20 px, holding the `layers` icon, 12 px, in the kind colour. It sits 8 px inside the top-right corner
 of a card's or panel's front body (*Shapes*), 12 px inside the right end of a
 compact part's front body and centred on its height, and at the right end of
 a group's header, centred on it. The label row keeps `8 + 20` px for it (the
@@ -609,7 +610,7 @@ its kind's shape as a card does, and a `group` is `group`, whatever its kind.
 | `actor` (Person) | `person` | an avatar circle, 40 px across (post 36), centred on the box's width with its top on the box's top; the body is a rounded rectangle whose top edge passes through the avatar's centre. The avatar holds the icon (22 px; post 20) | the left end is a circle as tall as the part (46 px) holding the icon (18 px); the body runs right from its centre |
 | `client` (Client app) | `window` | a rounded rectangle with a title bar across its top, 14 px tall (post 10), tinted in the kind colour, holding three dots (radius 2, 6 px apart, the first 10 px from the left) and an address capsule (6 px tall, 40 % of the width, centred) | a 6 px title bar across the top, no dots |
 | `api` (API) | `port` | a hexagon: straight top and bottom edges, the left and right ends coming to a point at the side midpoints, 14 px deep (post 12); a dot of radius 3 in the kind colour at each point | the same, 10 px deep, dots of radius 2.5 |
-| `service` (Service) | `card` | the rounded rectangle (radius 12) with a 3 px rule in the kind colour along the inside of its top edge, from 12 px to the width − 12 | the rule runs along the inside of the left edge, from 10 px to the height − 10 |
+| `service` (Service) | `card` | the rounded rectangle (radius 12); the icon sits in a 30 px rounded square (radius 8) in 12 % of the kind colour, centred on the icon's 26 px place, the icon 18 px inside it (post: 26 px, radius 7, the icon 16 px) | the box is 26 px (radius 7), centred on the icon's 18 px place, the icon 15 px |
 | `worker` (Background job) | `stack` | the front card is the box less 8 px at the top and right; two outlines behind it, each 4 px right and 4 px up from the one in front | the same with 6 px and 3 px |
 | `llm` (AI agent) | `agent` | a rounded rectangle whose 1.5 px stroke is a gradient from the kind colour at the top left to the agent end colour at the bottom right; an inner outline 4 px inside at opacity 0.35; a spark (the `spark` icon, 10 px) 8 px inside the top-right corner | the same, inner outline 3 px inside, spark 8 px, 4 px inside the corner |
 | `external` (External) | `external` | a dashed outline (`6 4`) whose top edge is three cloud bumps 10 px tall (post 8); the rest is the rounded rectangle | the same, bumps 6 px tall |

@@ -1,1303 +1,490 @@
-import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+// Test-owned helpers for the held-out suite. Written from the contracts alone: nothing here imports the product, and nothing mocks it.
+// Every wait is on a state a contract names (an auto-retrying assertion or `expect.poll`), never on a clock.
+import { expect, type Locator, type Page } from '@playwright/test';
 import { execFile } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, writeFile, rename, readdir, realpath, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { createServer } from 'node:net';
+import { dirname, join, resolve as resolvePath } from 'node:path';
+import { root, type Product } from './server';
 
-export const root = fileURLToPath(new URL('../../../', import.meta.url));
-export const baseURL = () => `http://127.0.0.1:${process.env.ARCHDRAW_HOLDOUT_PORT}`;
-export const kinds = ['actor', 'client', 'api', 'service', 'worker', 'llm', 'external', 'ops', 'gate', 'data'] as const;
-export const channelNames = ['overview', 'linkedin', 'readme', 'presentation'] as const;
-export type Channel = typeof channelNames[number];
-// diagram contract, Lane: exactly one of these shapes, or null.
-export type Lane = null | { spine: number } | { anchor: string; side: 'above' | 'below' };
+export { root };
 
 // ---------------------------------------------------------------------------------------------------------------
-// The drawn shape ("what a channel draws", diagram contract): a view joined with its facts. Scenarios author
-// and compare drawings in this shape; `readDrawing` returns the stored `archdraw/diagram@3` file joined into it
-// (the overview views in file order, plus `post`: the LinkedIn channel's view). The stored shape is `Doc3`.
+// Paths and folders
 // ---------------------------------------------------------------------------------------------------------------
-export interface Component {
-  id: string; label: string; kind: string; form: string; icon: string | null; sub: string;
-  items: string[]; description: string; files: string[]; parent: string | null;
-  detail: string | null; place: { row: number; col: number } | null;
-  lane?: Lane; from?: string[]; facts?: string[]; x?: number; y?: number;
-  // 0.3: only present when the part draws a mechanism row or a limit row (items then holds the mechanisms' labels first).
-  limits?: string[];
-}
-export interface Connection { id?: string; from: string; to: string; label: string; style: string; both: boolean; step: number | null }
-export interface Text { id: string; text: string; x: number; y: number; size: number }
-export interface View {
-  id: string; title: string; caption: { title: string; lede: string }; postOf?: string | null;
-  nodes: Component[]; edges: Connection[]; texts: Text[];
-}
-export interface Request { id: string; text: string; channel?: string; view: string; at: string }
-export interface Drawing {
-  schema: string; id?: string; title: string; theme?: string; showSteps?: boolean;
-  source?: { kind: string; path: string } | null; engine?: { id: string; model: string | null } | null;
-  createdAt?: string; updatedAt?: string; views: View[]; warnings?: string[];
-  requests?: Request[]; post?: View | null;
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// The stored shape, `archdraw/diagram@3` (diagram contract, Shape).
-// ---------------------------------------------------------------------------------------------------------------
-export interface Evidence { file: string; lines: [number, number] | null }
-export interface Fact {
-  id: string; label: string; kind: string; sub: string; description: string; files: string[]; items: string[];
-  within?: string | null; evidence?: Evidence[];
-}
-export interface Relation { id: string; from: string; to: string; label: string; style: string; both: boolean; evidence?: Evidence[] }
-export interface LimitFact { id: string; on: string; text: string; evidence?: Evidence[] }
-export interface Part {
-  id: string; facts: string[]; form: string; icon: string | null; parent: string | null; detail: string | null;
-  place: { row: number; col: number } | null; lane?: Lane; x?: number; y?: number;
-  held?: string[]; limits?: string[];
-  label?: string | null; kind?: string | null; sub?: string | null; description?: string | null; items?: string[] | null;
-}
-export interface Link { id?: string; from: string; to: string; relations?: string[]; step: number | null; label?: string | null; style?: string | null; both?: boolean | null }
-export interface View3 { id: string; title: string; caption: { title: string; lede: string }; nodes: Part[]; edges: Link[]; texts?: Text[] }
-export interface Step { id: string; parts: string[]; text: string; note: string }
-export interface ChannelDoc { views?: View3[]; showSteps?: boolean; outdated?: string[]; steps?: Step[] }
-export interface Doc3 {
-  schema: string; id?: string; title: string; theme?: string; source?: { kind: string; path: string } | null;
-  engine?: { id: string; model: string | null } | null; createdAt?: string; updatedAt?: string;
-  facts: { components: Fact[]; relations?: Relation[]; limits?: LimitFact[] };
-  channels: { overview: ChannelDoc; linkedin?: ChannelDoc; readme?: ChannelDoc; presentation?: ChannelDoc };
-  requests?: Request[]; warnings?: string[];
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// Authoring: the drawn shape (written as `@3` by `workspace`), and the stored shape built directly.
-// ---------------------------------------------------------------------------------------------------------------
-export function component(id: string, patch: Partial<Component> = {}): Component {
-  return { id, label: id, kind: 'service', form: 'card', icon: null, sub: '',
-    items: [], description: `Handles ${id}.`, files: [], parent: null, detail: null, place: null, ...patch };
-}
-// An `archdraw/diagram@2` document (one `views` list, content next to layout). The server converts it when read.
-export function drawing(title: string): Drawing {
-  return { schema: 'archdraw/diagram@2', title, views: [{ id: 'overview', title: 'Overview',
-    caption: { title: `How ${title} works`, lede: 'A request becomes a stored order.' },
-    nodes: [
-      component('web', { label: 'Web app', kind: 'client', sub: 'React', files: ['src/web.ts'], place: { row: 0, col: 0 } }),
-      component('api', { label: 'Order API', kind: 'api', form: 'panel', items: ['Validate order', 'Create order'], files: ['src/api.ts'], place: { row: 0, col: 1 } }),
-      component('db', { label: 'Orders DB', kind: 'data', sub: 'Postgres', files: ['src/db.ts'], place: { row: 1, col: 1 } }),
-    ], edges: [
-      { id: 'e1', from: 'web', to: 'api', label: 'POST /orders', style: 'call', both: true, step: 1 },
-      { id: 'e2', from: 'api', to: 'db', label: '', style: 'async', both: false, step: 2 },
-    ], texts: [] }] };
-}
-// An `@2` document with a detail view and a LinkedIn post (a view with `postOf`, parts that say `from`).
-export function legacyWithPost(title: string): Drawing {
-  const doc = drawing(title);
-  doc.views[0].nodes[1].detail = 'inside-api';
-  doc.views.push({ id: 'inside-api', title: 'Inside API', caption: { title: 'Inside order intake', lede: '' },
-    nodes: [component('validator', { label: 'Validator', kind: 'gate', files: ['src/extra.ts'] }), component('writer', { label: 'Writer' })],
-    edges: [{ id: 'detail-edge', from: 'validator', to: 'writer', label: 'valid', style: 'call', both: false, step: 1 }], texts: [] });
-  doc.views.push({ id: 'overview-linkedin', title: 'LinkedIn', postOf: 'overview',
-    caption: { title: 'An order in three steps', lede: 'Someone orders and the shop keeps it.' },
-    nodes: [
-      component('web-linkedin', { label: 'Shop front', kind: 'client', sub: 'start here', description: 'Handles web.', files: ['src/web.ts'], from: ['web'], lane: { spine: 0 } }),
-      component('api-linkedin', { label: 'Order API', kind: 'api', form: 'panel', items: ['Validate order'], description: 'Handles api.', files: ['src/api.ts'], from: ['api'], lane: { spine: 1 } }),
-      component('db-linkedin', { label: 'Orders DB', kind: 'data', sub: 'Postgres', description: 'Handles db.', files: ['src/db.ts'], from: ['db'], lane: { spine: 2 } }),
-    ], edges: [
-      { id: 'p1', from: 'web-linkedin', to: 'api-linkedin', label: 'POST /orders', style: 'call', both: true, step: 1 },
-      { id: 'p2', from: 'api-linkedin', to: 'db-linkedin', label: '', style: 'async', both: false, step: 2 },
-    ], texts: [] });
-  return doc;
-}
-export function fact(id: string, patch: Partial<Fact> = {}): Fact {
-  return { id, label: id, kind: 'service', sub: '', description: `Handles ${id}.`, files: [], items: [], ...patch };
-}
-export function part(id: string, patch: Partial<Part> = {}): Part {
-  return { id, facts: [id], form: 'card', icon: null, parent: null, detail: null, place: null, ...patch };
-}
-// A small valid `@3` shop: three facts, two relations, an overview of three parts and no other channel.
-export function shop3(title: string): Doc3 {
-  return { schema: 'archdraw/diagram@3', title,
-    facts: {
-      components: [
-        fact('web', { label: 'Web app', kind: 'client', sub: 'React', description: 'The shop pages.', files: ['src/web.ts'] }),
-        fact('api', { label: 'Order API', kind: 'api', description: 'Takes orders.', files: ['src/api.ts'], items: ['Validate order', 'Create order'] }),
-        fact('db', { label: 'Orders DB', kind: 'data', sub: 'Postgres', description: 'Keeps orders.', files: ['src/db.ts'] }),
-      ],
-      relations: [
-        { id: 'r1', from: 'web', to: 'api', label: 'POST /orders', style: 'call', both: true },
-        { id: 'r2', from: 'api', to: 'db', label: '', style: 'async', both: false },
-      ],
-    },
-    channels: { overview: { showSteps: false, outdated: [], views: [{ id: 'overview', title: 'Overview',
-      caption: { title: `How ${title} works`, lede: 'A request becomes a stored order.' },
-      nodes: [part('web', { place: { row: 0, col: 0 } }), part('api', { form: 'panel', place: { row: 0, col: 1 } }), part('db', { place: { row: 1, col: 1 } })],
-      edges: [{ id: 'e1', from: 'web', to: 'api', relations: ['r1'], step: 1 }, { id: 'e2', from: 'api', to: 'db', relations: ['r2'], step: 2 }],
-      texts: [] }] } } };
-}
-// Adds a detail view "Inside API" (parts `validator`, `writer`, reached through the `api` part) to the overview.
-export function withDetail(doc: Doc3): Doc3 {
-  doc.facts.components.push(fact('validator', { label: 'Validator', kind: 'gate', description: 'Checks each order.' }), fact('writer', { label: 'Writer', description: 'Stores each order.' }));
-  doc.facts.relations!.push({ id: 'r3', from: 'validator', to: 'writer', label: 'valid', style: 'call', both: false });
-  const views = doc.channels.overview.views!;
-  views[0].nodes.find(n => n.id === 'api')!.detail = 'inside-api';
-  views.push({ id: 'inside-api', title: 'Inside API', caption: { title: 'Inside order intake', lede: '' },
-    nodes: [part('validator'), part('writer')], edges: [{ id: 'detail-edge', from: 'validator', to: 'writer', relations: ['r3'], step: 1 }], texts: [] });
-  return doc;
-}
-// Adds a LinkedIn channel drawn over the same facts: `visitor` (web), `intake` (api, a panel) and `ledger` (db).
-// By default `ledger` keeps its own label "Orders ledger"; `visitor` and `intake` show their facts directly.
-export function withLinkedIn(doc: Doc3, opts: { id?: string; visitorLabel?: string; ledgerLabel?: string | null; intakeItems?: string[]; outdated?: string[] } = {}): Doc3 {
-  const ledgerLabel = opts.ledgerLabel === undefined ? 'Orders ledger' : opts.ledgerLabel;
-  doc.channels.linkedin = { showSteps: false, outdated: opts.outdated ?? [], views: [{ id: opts.id ?? 'linkedin-post', title: 'LinkedIn',
-    caption: { title: 'An order in three steps', lede: 'Someone orders and the shop keeps it.' },
-    nodes: [
-      part('visitor', { facts: ['web'], lane: { spine: 0 }, ...(opts.visitorLabel ? { label: opts.visitorLabel } : {}) }),
-      part('intake', { facts: ['api'], form: 'panel', lane: { spine: 1 }, ...(opts.intakeItems ? { items: opts.intakeItems } : {}) }),
-      part('ledger', { facts: ['db'], lane: { spine: 2 }, ...(ledgerLabel ? { label: ledgerLabel } : {}) }),
-    ], edges: [
-      { id: 'visitor-intake', from: 'visitor', to: 'intake', relations: ['r1'], step: 1 },
-      { id: 'intake-ledger', from: 'intake', to: 'ledger', relations: ['r2'], step: 2 },
-    ], texts: [] }] };
-  return doc;
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// Reading: the join (diagram contract, What a channel draws), and the stored file read back.
-// ---------------------------------------------------------------------------------------------------------------
-export function joinView(doc: Doc3, view: View3): View {
-  const facts = new Map(doc.facts.components.map(f => [f.id, f] as const));
-  const relations = new Map((doc.facts.relations ?? []).map(r => [r.id, r] as const));
-  const limits = new Map((doc.facts.limits ?? []).map(l => [l.id, l] as const));
-  const nodes: Component[] = view.nodes.map(p => {
-    const shown = p.facts.map(id => facts.get(id)).filter((f): f is Fact => !!f);
-    const single = shown.length === 1 ? shown[0] : null;
-    const files: string[] = [];
-    for (const f of shown) for (const file of f.files) if (!files.includes(file)) files.push(file);
-    // 0.3 (diagram contract, What a channel draws): a panel's rows are its held mechanisms' labels, its shown items, then its
-    // limits' texts. `limits` is only set when the part draws one, so a drawing written before 0.3 joins exactly as it did.
-    const held = (p.held ?? []).map(id => facts.get(id)?.label ?? id);
-    const limitTexts = (p.limits ?? []).map(id => limits.get(id)?.text ?? id);
-    return { id: p.id, label: p.label ?? single?.label ?? p.id, kind: p.kind ?? single?.kind ?? 'service', form: p.form, icon: p.icon,
-      sub: p.sub ?? single?.sub ?? '', items: p.form === 'panel' ? [...held, ...(p.items ?? single?.items ?? [])] : [],
-      description: p.description ?? single?.description ?? '', files: files.slice(0, 20), parent: p.parent, detail: p.detail,
-      place: p.place, lane: p.lane ?? null, facts: p.facts,
-      ...(limitTexts.length && p.form === 'panel' ? { limits: limitTexts } : {}),
-      ...(p.x !== undefined ? { x: p.x } : {}), ...(p.y !== undefined ? { y: p.y } : {}) };
-  });
-  const edges: Connection[] = view.edges.map(l => {
-    const only = (l.relations ?? []).length === 1 ? relations.get(l.relations![0]) : undefined;
-    return { ...(l.id ? { id: l.id } : {}), from: l.from, to: l.to, label: l.label ?? only?.label ?? '',
-      style: l.style ?? only?.style ?? 'call', both: l.both ?? only?.both ?? false, step: l.step };
-  });
-  return { id: view.id, title: view.title, caption: view.caption, nodes, edges, texts: view.texts ?? [] };
-}
-export function project(doc: Doc3): Drawing {
-  const post = doc.channels.linkedin?.views?.[0];
-  return { schema: doc.schema, id: doc.id, title: doc.title, theme: doc.theme, showSteps: doc.channels.overview.showSteps ?? false,
-    source: doc.source, engine: doc.engine, createdAt: doc.createdAt, updatedAt: doc.updatedAt,
-    views: (doc.channels.overview.views ?? []).map(v => joinView(doc, v)), warnings: doc.warnings, requests: doc.requests,
-    post: post ? joinView(doc, post) : null };
-}
-export function allViews(doc: Doc3): View[] {
-  return channelNames.flatMap(c => (doc.channels[c]?.views ?? []).map(v => joinView(doc, v)));
-}
-export const viewOf = (doc: Doc3, channel: Channel = 'overview', id?: string): View3 | undefined => {
-  const views = doc.channels[channel]?.views ?? [];
-  return id ? views.find(v => v.id === id) : views[0];
-};
-export const drawn = (doc: Doc3, channel: Channel = 'overview', id?: string): View => joinView(doc, viewOf(doc, channel, id)!);
-export const factOf = (doc: Doc3, id: string) => doc.facts.components.find(f => f.id === id);
-export const relationOf = (doc: Doc3, id: string) => (doc.facts.relations ?? []).find(r => r.id === id);
-export const partOf = (doc: Doc3, channel: Channel, id: string, view?: string) => viewOf(doc, channel, view)?.nodes.find(n => n.id === id);
-export const outdatedOf = (doc: Doc3, channel: Channel): string[] => doc.channels[channel]?.outdated ?? [];
-export const sorted = (values: string[]) => [...values].sort();
-export const ownText = (p: Part | Link | undefined) => ({ label: p?.label ?? null, kind: (p as Part | undefined)?.kind ?? null, sub: (p as Part | undefined)?.sub ?? null,
-  description: (p as Part | undefined)?.description ?? null, items: (p as Part | undefined)?.items ?? null });
-// The drawn label of an overview part, set the way an outside writer (a session) would: in the part's own text when
-// it has one, else in its fact. The drawn label is then `label` whichever way the product stores a rename.
-export function setDrawnLabel(doc: Doc3, partId: string, label: string) {
-  const p = viewOf(doc)!.nodes.find(n => n.id === partId)!;
-  if (p.label !== undefined && p.label !== null) p.label = label; else factOf(doc, p.facts[0])!.label = label;
-}
-// A drawing authored in the drawn shape, as a `@3` file (one fact per part, one relation per connection, no own text).
-export function fromLegacy(old: Drawing): Doc3 {
-  const components: Fact[] = [], relations: Relation[] = [], taken = new Set<string>();
-  for (const v of old.views) for (const n of v.nodes) {
-    if (taken.has(n.id)) continue; taken.add(n.id);
-    components.push({ id: n.id, label: n.label, kind: n.kind, sub: n.sub, description: n.description, files: [...n.files], items: [...n.items] });
-  }
-  let next = 1; const freeRelation = () => { while (taken.has(`r${next}`)) next++; taken.add(`r${next}`); return `r${next}`; };
-  const views: View3[] = old.views.map(v => ({ id: v.id, title: v.title, caption: v.caption,
-    nodes: v.nodes.map(n => ({ id: n.id, facts: [n.id], form: n.form, icon: n.icon, parent: n.parent, detail: n.detail, place: n.place,
-      ...(n.lane !== undefined ? { lane: n.lane } : {}), ...(n.x !== undefined ? { x: n.x } : {}), ...(n.y !== undefined ? { y: n.y } : {}) })),
-    edges: v.edges.map(e => {
-      let id: string; if (e.id && !taken.has(e.id)) { id = e.id; taken.add(id); } else id = freeRelation();
-      relations.push({ id, from: e.from, to: e.to, label: e.label, style: e.style, both: e.both });
-      return { ...(e.id ? { id: e.id } : {}), from: e.from, to: e.to, relations: [id], step: e.step };
-    }), texts: v.texts ?? [] }));
-  return { schema: 'archdraw/diagram@3', ...(old.id ? { id: old.id } : {}), title: old.title, ...(old.theme ? { theme: old.theme } : {}),
-    ...(old.source !== undefined ? { source: old.source } : {}), ...(old.engine !== undefined ? { engine: old.engine } : {}),
-    ...(old.createdAt ? { createdAt: old.createdAt } : {}), ...(old.updatedAt ? { updatedAt: old.updatedAt } : {}),
-    facts: { components, relations }, channels: { overview: { views, showSteps: old.showSteps ?? false, outdated: [] } },
-    ...(old.requests ? { requests: old.requests.map(r => ({ ...r, channel: r.channel ?? 'overview' })) } : {}),
-    ...(old.warnings ? { warnings: old.warnings } : {}) };
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// Files, the server and the command line.
-// ---------------------------------------------------------------------------------------------------------------
-// A repository folder: `.git`, `src/{web,api,db,extra}.ts`, and the drawing file path `architecture.archdraw.json`.
-export async function repo(id: string) {
-  const dir = await mkdtemp(join(tmpdir(), `archdrawer-${id}-`));
-  // Keep the contracted repository root independent of the temp folder's ancestors.
-  await mkdir(join(dir, '.git'));
-  await writeFile(join(dir, '.git', 'HEAD'), 'ref: refs/heads/main\n');
-  await mkdir(join(dir, 'src'));
-  for (const name of ['web', 'api', 'db', 'extra']) await writeFile(join(dir, 'src', `${name}.ts`), '// Acceptance path fixture.\n');
-  return { dir, file: join(dir, 'architecture.archdraw.json') };
-}
-// A repository holding the drawing authored in the drawn shape, stored as `archdraw/diagram@3`.
-export async function workspace(id: string, doc: Drawing = drawing(id)) {
-  const made = await repo(id); await writeJSON(made.file, fromLegacy(doc)); return made;
-}
-// A repository holding the given document exactly as it is (`@3`, `@2`, `@1`, or an invalid one).
-export async function workspaceRaw(id: string, doc: unknown) {
-  const made = await repo(id); await writeJSON(made.file, doc); return made;
-}
-export async function writeJSON(file: string, value: unknown) { await writeFile(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
-// A stored or served document is `archdraw/diagram@4` once the product has opened it (diagram contract, *Reading `archdraw/diagram@3`*):
-// `facts` and `channels` live in each of its `choices`. These readers keep the `@3` shape every older scenario reads: for a `@4` document
-// they return the document's first choice (the one a drawing opens on) with its own `facts` and `channels` at the top, the document's other
-// keys as they are, the requests of that choice (without their `choice` key), and `schema` `archdraw/diagram@3` — a document of that shape
-// is also what a session that knows only `@3` writes, so it can be written back by `outsideWrite`. A `@3` document is returned as it is.
-// Use `readStoredRaw` / `getStoredRaw` to see the format the file really has, and `flattenChoice(doc, id)` for another choice.
-export function flattenChoice(raw: any, choiceId?: string): Doc3 {
-  if (!raw || !Array.isArray(raw.choices)) return raw as Doc3;
-  const { choices, requests, schema: _schema, ...rest } = raw;
-  const chosen = choiceId ? choices.find((c: any) => c.id === choiceId) : choices[0];
-  if (!chosen) throw new Error(`No choice ${choiceId} in the document: ${choices.map((c: any) => c.id).join(', ')}`);
-  const mine = (requests as any[] | undefined)?.filter(r => (r.choice ?? chosen.id) === chosen.id).map(({ choice: _choice, ...r }) => r);
-  return { ...rest, schema: 'archdraw/diagram@3', facts: chosen.facts, channels: chosen.channels, ...(requests ? { requests: mine } : {}) } as Doc3;
-}
-export async function readStoredRaw(file: string): Promise<any> { return JSON.parse(await readFile(file, 'utf8')); }
-export async function readDocument(file: string): Promise<Doc3> { return flattenChoice(await readStoredRaw(file)); }
-export async function readDrawing(file: string): Promise<Drawing> { return project(await readDocument(file)); }
-// Replaces the drawing file with a drawing authored in the drawn shape (stored as `@3`).
-export async function writeDrawing(file: string, doc: Drawing) { await writeJSON(file, fromLegacy(doc)); }
-export async function outsideWrite(file: string, doc: unknown) {
-  // A session's atomic edit, through the contracted drawing-file surface.
-  const next = `${file}.session.tmp`;
-  await writeJSON(next, doc); await rename(next, file);
-}
-export async function token(request: APIRequestContext, base = baseURL()): Promise<string> {
-  const response = await request.get(`${base}/`); expect(response.status()).toBe(200);
-  const html = await response.text();
-  const tag = html.match(/<meta\b(?=[^>]*\bname=["']archdraw-token["'])[^>]*>/i)?.[0];
-  const value = tag?.match(/\bcontent=["']([^"']+)["']/i)?.[1];
-  expect(value, 'HTML exposes the local process token').toBeTruthy(); return value!;
-}
-export async function register(request: APIRequestContext, file: string, base = baseURL()) {
-  const auth = await token(request, base);
-  const response = await request.post(`${base}/api/files`, { headers: { 'X-Archdraw-Token': auth }, data: { path: file } });
-  expect(response.status(), await response.text()).toBe(200);
-  const result = await response.json() as { id: string; url: string };
-  return { ...result, token: auth };
-}
-export async function openDrawing(page: Page, request: APIRequestContext, file: string, base = baseURL()) {
-  const result = await register(request, file, base);
-  await page.goto(new URL(result.url, base).href);
-  await expect(page.getByTestId('editor')).toBeVisible();
-  await expect(page.getByTestId('save-status')).toHaveText('Saved'); return result;
-}
-// The stored document as the server returns it (re-read from disk; an `@2` file is converted first).
-// A `@4` document comes back as its first choice in the `@3` shape (see `readDocument`); `getStoredRaw` returns it as served.
-export async function getDocument(request: APIRequestContext, id: string, base = baseURL()): Promise<Doc3> {
-  return flattenChoice(await getStoredRaw(request, id, base));
-}
-export async function getStoredRaw(request: APIRequestContext, id: string, base = baseURL()): Promise<any> {
-  const response = await request.get(`${base}/api/diagrams/${id}`); expect(response.status(), await response.text()).toBe(200);
-  return await response.json();
-}
-// GET export.svg / export.mmd with a query string such as `channel=linkedin&format=feed`.
-export async function exportOf(request: APIRequestContext, id: string, kind: 'svg' | 'mmd', query = '', base = baseURL()) {
-  return await request.get(`${base}/api/diagrams/${id}/export.${kind}${query ? `?${query}` : ''}`);
-}
-export async function saved(page: Page) { await expect(page.getByTestId('save-status')).toHaveText('Saved'); }
-export async function callout(page: Page, id: string) {
-  const result = page.getByTestId(`callout-${id}`);
-  // A group's `node-label` sits in its `node-head-<id>` row, not inside `node-<id>` (ui contract); any other part holds it itself.
-  if (!await result.isVisible()) {
-    const head = page.getByTestId(`node-head-${id}`);
-    await ((await head.count()) > 0 ? head : page.getByTestId(`node-${id}`)).getByTestId('node-label').click();
-  }
-  await expect(result).toBeVisible(); return result;
-}
-export async function persisted(file: string, predicate: (doc: Drawing) => boolean, timeout = 10_000) {
-  await expect.poll(async () => { try { return predicate(await readDrawing(file)); } catch { return false; } }, { timeout }).toBe(true);
-}
-// The same wait over the stored shape.
-export async function persistedDoc(file: string, predicate: (doc: Doc3) => boolean, timeout = 10_000) {
-  await expect.poll(async () => { try { return predicate(await readDocument(file)); } catch { return false; } }, { timeout }).toBe(true);
-}
-export async function cli(args: string[], overrides: Record<string, string> = {}) {
-  const env = { ...process.env, PORT: process.env.ARCHDRAW_HOLDOUT_PORT,
-    ARCHDRAW_DATA_DIR: process.env.ARCHDRAW_HOLDOUT_DATA, ARCHDRAW_ENGINES: 'fixture',
-    ARCHDRAW_NO_OPEN: '1', ARCHDRAW_FIXTURE_STEP_MS: '100', ...overrides };
-  return await new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
-    execFile(process.execPath, [join(root, 'bin', 'archdrawer.mjs'), ...args],
-      { cwd: root, env, shell: false, encoding: 'utf8', timeout: 30_000, maxBuffer: 4 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        if (error && typeof error.code !== 'number') return reject(error);
-        resolve({ code: error ? Number(error.code) : 0, stdout, stderr });
-      });
-  });
-}
-export async function freePort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const server = createServer(); server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      if (!address || typeof address === 'string') return reject(new Error('No port'));
-      server.close(error => error ? reject(error) : resolve(address.port));
-    });
-  });
-}
-export async function box(locator: Locator) {
-  const result = await locator.boundingBox(); expect(result).not.toBeNull(); return result!;
-}
-export function overlaps(a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-}
-export async function drag(page: Page, locator: Locator, dx: number, dy: number) {
-  const b = await box(locator);
-  await page.mouse.move(b.x + b.width / 2, b.y + Math.min(b.height / 2, 24));
-  await page.mouse.down(); await page.mouse.move(b.x + b.width / 2 + dx, b.y + Math.min(b.height / 2, 24) + dy, { steps: 8 }); await page.mouse.up();
-}
-export async function canvasClick(page: Page, x: number, y: number) {
-  await page.getByTestId('canvas').click({ position: { x, y } });
-}
-export async function emptyCanvasPoint(page: Page) {
-  const canvas = await box(page.getByTestId('canvas'));
-  const occupied = await page.getByTestId('canvas').locator('[data-testid]').evaluateAll(elements => elements.filter(el => /^(node|text)-/.test(el.getAttribute('data-testid') ?? '') && el.hasAttribute('data-selected')).map(el => {
-    const b = el.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height };
-  }));
-  for (let y = 120; y < canvas.height - 160; y += 60) for (let x = 100; x < canvas.width - 100; x += 60) {
-    if (!occupied.some(b => overlaps({ x: canvas.x + x - 24, y: canvas.y + y - 24, width: 48, height: 48 }, b))) return { x, y };
-  }
-  throw new Error('No free canvas point in this scenario');
-}
-export async function svgInfo(page: Page, svg: string) {
-  return await page.evaluate(text => {
-    const xml = new DOMParser().parseFromString(text, 'image/svg+xml');
-    const attr = (el: Element | null, name: string) => el?.getAttribute(name) ?? '';
-    return {
-      error: !!xml.querySelector('parsererror'),
-      width: Number(attr(xml.documentElement, 'width')), height: Number(attr(xml.documentElement, 'height')),
-      theme: attr(xml.documentElement, 'data-theme'), format: attr(xml.documentElement, 'data-format'),
-      viewBox: attr(xml.documentElement, 'viewBox'), xmlns: attr(xml.documentElement, 'xmlns'),
-      text: Array.from(xml.querySelectorAll('text')).map(el => el.textContent ?? ''),
-      forbidden: !!xml.querySelector('foreignObject, script'),
-      nodes: Array.from(xml.querySelectorAll('g[data-node-id]')).map(el => {
-        const rect = el.querySelector('rect');
-        return { id: attr(el, 'data-node-id'), width: Number(attr(rect, 'width')), height: Number(attr(rect, 'height')),
-          text: Array.from(el.querySelectorAll('text')).map(t => t.textContent ?? ''),
-          paths: Array.from(el.querySelectorAll('path')).map(p => attr(p, 'd')) };
-      }),
-      edges: Array.from(xml.querySelectorAll('g[data-edge-id]')).map(el => ({ id: attr(el, 'data-edge-id'),
-        paths: Array.from(el.querySelectorAll('path')).map(p => attr(p, 'd')) })),
-    };
-  }, svg);
-}
-export async function previewSVG(page: Page) {
-  const preview = page.getByTestId('share-preview');
-  return await preview.evaluate(el => (el.tagName.toLowerCase() === 'svg' ? el : el.querySelector('svg'))!.outerHTML);
-}
-export async function download(page: Page, testId: string, file: string) {
-  const waiting = page.waitForEvent('download'); await page.getByTestId(testId).click();
-  const result = await waiting; await result.saveAs(file); expect(await result.failure()).toBeNull(); return result;
-}
-export async function edgePaths(page: Page, id: string) {
-  return await page.getByTestId(`edge-${id}`).evaluate(el => {
-    const paths = el.tagName.toLowerCase() === 'path' ? [el] : Array.from(el.querySelectorAll('path'));
-    return paths.map(p => p.getAttribute('d'));
-  });
-}
-export async function clickEdge(page: Page, id: string) {
-  const edge = page.getByTestId(`edge-${id}`);
-  const point = await edge.evaluate(el => {
-    const paths = (el.tagName.toLowerCase() === 'path' ? [el] : Array.from(el.querySelectorAll('path'))) as SVGPathElement[];
-    const path = paths.sort((a, b) => b.getTotalLength() - a.getTotalLength())[0];
-    if (!path) return null;
-    const point = path.getPointAtLength(path.getTotalLength() * 0.5); const matrix = path.getScreenCTM();
-    if (!matrix) return null; const screen = new DOMPoint(point.x, point.y).matrixTransform(matrix);
-    return { x: screen.x, y: screen.y };
-  });
-  if (point) await page.mouse.click(point.x, point.y); else await edge.click();
-}
-// A refine run on the given view (and channel, when given; the default is the overview).
-export async function startRun(request: APIRequestContext, id: string, auth: string, instruction: string, view = 'overview', channel?: Channel) {
-  const response = await request.post(`${baseURL()}/api/runs`, {
-    headers: { 'X-Archdraw-Token': auth },
-    data: { diagramId: id, ...(channel ? { channel } : {}), view, instruction, engine: 'fixture', model: null },
-  });
-  expect(response.status(), await response.text()).toBe(202); return (await response.json()).runId as string;
-}
-export async function finishRun(request: APIRequestContext, runId: string, status: string, timeout = 30_000, base = baseURL()) {
-  await expect.poll(async () => (await (await request.get(`${base}/api/runs/${runId}`)).json()).status, { timeout }).toBe(status);
-  return await (await request.get(`${base}/api/runs/${runId}`)).json();
-}
-export async function isolatedDrawing(page: Page, request: APIRequestContext, file: string, stepMs = '750', engines = 'fixture') {
-  const data = await mkdtemp(join(tmpdir(), 'archdrawer-isolated-'));
-  const port = await freePort(), base = `http://127.0.0.1:${port}`;
-  const env = { PORT: String(port), ARCHDRAW_DATA_DIR: data, ARCHDRAW_ENGINES: engines, ARCHDRAW_FIXTURE_STEP_MS: stepMs };
-  const started = await cli(['open', file, '--no-browser'], env);
-  const close = async () => {
-    await page.goto('about:blank');
-    const stopped = await cli(['stop'], env); expect(stopped.code, stopped.stderr).toBe(0);
-  };
-  try {
-    expect(started.code, started.stderr).toBe(0);
-    return { ...await openDrawing(page, request, file, base), base, data, env, close };
-  } catch (error) { await close(); throw error; }
-}
-// A run started with a full request body (kind, format, scope, channel ...); the run id of the accepted run.
-export async function startKind(request: APIRequestContext, auth: string, data: Record<string, unknown>, base = baseURL()) {
-  const response = await request.post(`${base}/api/runs`, { headers: { 'X-Archdraw-Token': auth }, data });
-  expect(response.status(), await response.text()).toBe(202);
-  return (await response.json()).runId as string;
-}
-// A run request the server must refuse: its status and error message.
-export async function refusedRun(request: APIRequestContext, auth: string, data: Record<string, unknown>, base = baseURL()) {
-  const response = await request.post(`${base}/api/runs`, { headers: { 'X-Archdraw-Token': auth }, data });
-  const body = await response.json() as { error?: string };
-  return { status: response.status(), error: body.error ?? '' };
-}
-export interface Shape { tag: string; testId: string; nodeId: string; edgeId: string; text: string; x: number; y: number; width: number; height: number }
-// Boxes inside an exported SVG (ui contract, The share image): rendered in its own blank page, so a
-// downloaded or HTTP image can be measured in image pixels.
-export async function svgBoxes(page: Page, svg: string, selector: string): Promise<Shape[]> {
-  const holder = await page.context().newPage();
-  try {
-    await holder.setContent(`<!doctype html><html><body style="margin:0">${svg}</body></html>`);
-    await expect(holder.locator('svg').first()).toBeVisible();
-    await holder.evaluate(async () => { await document.fonts.ready; }); // measure with the image's own fonts
-    return await boxesIn(holder.locator('body'), selector);
-  } finally { await holder.close(); }
-}
-async function boxesIn(locator: Locator, selector: string): Promise<Shape[]> {
-  return await locator.evaluate((element, css) => {
-    const svg = (element.tagName.toLowerCase() === 'svg' ? element : element.querySelector('svg')) as SVGSVGElement;
-    const toRoot = svg.getScreenCTM()!.inverse();
-    return Array.from(svg.querySelectorAll(css)).map(found => {
-      const target = found as SVGGraphicsElement, bbox = target.getBBox();
-      const matrix = toRoot.multiply(target.getScreenCTM()!);
-      const corners = [[bbox.x, bbox.y], [bbox.x + bbox.width, bbox.y], [bbox.x, bbox.y + bbox.height], [bbox.x + bbox.width, bbox.y + bbox.height]]
-        .map(([x, y]) => new DOMPoint(x, y).matrixTransform(matrix));
-      const xs = corners.map(point => point.x), ys = corners.map(point => point.y);
-      return { tag: target.tagName.toLowerCase(), testId: target.getAttribute('data-testid') ?? '',
-        nodeId: target.getAttribute('data-node-id') ?? '', edgeId: target.getAttribute('data-edge-id') ?? '',
-        text: (target.textContent ?? '').replace(/\s+/g, ' ').trim(),
-        x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
-    });
-  }, selector);
-}
-// ui contract, Layout report: the unrounded values the surface exposes.
-export function reportNumber(raw: string | null, name: string) {
-  if (raw === null || raw.trim() === '' || !Number.isFinite(Number(raw)))
-    throw new Error(`Missing, empty or non-finite layout-report data-${name}: ${JSON.stringify(raw)}`);
-  const value = Number(raw);
-  return value === 0 ? 0 : value;
-}
-export async function reportAttributes(page: Page, scope = 'share-dialog') {
-  const report = page.getByTestId(scope).getByTestId('layout-report');
-  await expect(report).toBeVisible();
-  const read = async (name: string) => await report.getAttribute(`data-${name}`);
-  const number = async (name: string) => reportNumber(await read(name), name);
-  return {
-    crossings: await number('crossings'), overParts: await number('over-parts'), cut: await number('cut'),
-    overLimit: await number('over-limit'), inPlace: await number('in-place'), opened: await number('opened'),
-    level: await read('level'), parts: await number('parts'), zones: await number('zones'),
-    connections: await number('connections'), longest: await number('longest'),
-    view: await read('view'), format: await read('format'),
-  };
-}
-// ui contract, Layout report: in Share it recomputes when format, part, toggles or caption change. Read it
-// only once two consecutive readings agree, so a report still being recomputed is never compared.
-export async function settledReport(page: Page, scope = 'share-dialog') {
-  let last = await reportAttributes(page, scope);
-  await expect.poll(async () => {
-    const next = await reportAttributes(page, scope);
-    const same = JSON.stringify(next) === JSON.stringify(last); last = next; return same;
-  }, { timeout: 15_000, intervals: [200, 200, 300, 500, 1000] }).toBe(true);
-  return last;
-}
-
-// Match names against the public document, including wrapped lines and explicitly shortened names.
-// shortcut: repeated label/detail strings are ambiguous in exports, keep fixtures distinct until a name role is contracted.
-export async function previewTextSizes(page: Page) {
-  const url = new URL(page.url()), id = url.pathname.split('/').at(-1)!;
-  const response = await page.request.get(`${url.origin}/api/diagrams/${id}`);
-  expect(response.status()).toBe(200);
-  const raw = await response.json();
-  const preview = page.getByTestId('share-preview'), viewId = await preview.getAttribute('data-view');
-  // The served document is `@4` (api contract): look for the shown view in every choice (a view id belongs to one choice).
-  const choiceIds: (string | undefined)[] = Array.isArray(raw.choices) ? raw.choices.map((c: { id: string }) => c.id) : [undefined];
-  const shown = choiceIds.flatMap(c => allViews(flattenChoice(raw, c))).find(v => v.id === viewId); expect(shown).toBeTruthy();
-  return await visibleTextSizes(preview, shown!);
-}
-
-export async function visibleTextSizes(surface: Locator, view: View) {
-  return await surface.evaluate((element, labels) => {
-    const svg = (element.tagName.toLowerCase() === 'svg' ? element : element.querySelector('svg')) as SVGSVGElement;
-    const toRoot = svg.getScreenCTM()!.inverse();
-    const walker = document.createTreeWalker(svg, NodeFilter.SHOW_TEXT);
-    const characters: { source: Node; text: string; nodeId: string | null; name: boolean; font: number; weight: number; opened: number; lineYs: number[] }[] = [];
-    const offsets = new Map<SVGTextElement, number>();
-    let run: Node | null;
-    while ((run = walker.nextNode())) {
-      const text = run.parentElement as SVGTextContentElement | null;
-      const nameText = text?.closest('text') as SVGTextElement | null;
-      if (!text || !nameText) continue;
-      const content = run.textContent ?? '', offset = offsets.get(nameText) ?? 0;
-      offsets.set(nameText, offset + content.length);
-      if (!content.trim() || text.closest('defs, clipPath, mask, marker')) continue;
-      const style = getComputedStyle(text);
-      if (style.visibility === 'hidden' || style.visibility === 'collapse') continue;
-      if ((style.fill === 'none' || Number(style.fillOpacity) === 0)
-        && (style.stroke === 'none' || Number(style.strokeOpacity) === 0)) continue;
-      let hidden = false;
-      for (let at: Element | null = text; at && at !== svg.parentElement; at = at.parentElement) {
-        const own = getComputedStyle(at);
-        if (own.display === 'none' || Number(own.opacity) === 0) { hidden = true; break; }
-      }
-      if (hidden) continue;
-      const matrix = toRoot.multiply(text.getScreenCTM()!);
-      const font = parseFloat(style.fontSize), opened = font * Math.hypot(matrix.a, matrix.b);
-      if (!Number.isFinite(opened) || opened <= 0) throw new Error('Invalid visible text size');
-      const nameMatrix = toRoot.multiply(nameText.getScreenCTM()!);
-      for (let i = 0; i < content.length; i++) {
-        const y = content[i].trim() ? nameText.getStartPositionOfChar(offset + i).matrixTransform(nameMatrix).y : 0;
-        characters.push({ source: run, text: content[i], nodeId: text.closest('g[data-node-id]')?.getAttribute('data-node-id') ?? text.closest('g[data-group-head]')?.getAttribute('data-group-head') ?? null,
-          name: false, font, weight: Number(style.fontWeight), opened, lineYs: content[i].trim() ? [Math.round(y * 1000) / 1000] : [] });
-      }
-    }
-    // A part's name is read from its `g[data-node-id]`, a group's from its `g[data-group-head]` (diagram contract, A group's name).
-    const owners = new Set(Array.from(svg.querySelectorAll('g[data-node-id], g[data-group-head]'))
-      .map(g => (g.getAttribute('data-node-id') ?? g.getAttribute('data-group-head'))!));
-    for (const id of owners) {
-      const label = labels[id].replace(/\s/g, '');
-      const own = characters.filter(c => c.nodeId === id && c.text.trim()), actual = own.map(c => c.text).join('');
-      let start = actual.indexOf(label), length = label.length;
-      if (start < 0) {
-        for (let at = 0; at < own.length; at++) {
-          const end = actual.indexOf('…', at);
-          if (end >= at && label.startsWith(actual.slice(at, end))) { start = at; length = end - at + 1; break; }
-        }
-      }
-      if (start < 0 || !length) throw new Error(`No rendered name for ${id}: ${actual}`);
-      own.slice(start, start + length).forEach(c => { c.name = true; });
-    }
-    const runs: { text: string; nodeId: string | null; name: boolean; font: number; weight: number; opened: number; lineYs: number[] }[] = [];
-    for (const source of new Set(characters.map(c => c.source))) {
-      const own = characters.filter(c => c.source === source), first = own.findIndex(c => c.name), last = own.map(c => c.name).lastIndexOf(true);
-      const slices = first < 0 ? [own] : [own.slice(0, first), own.slice(first, last + 1), own.slice(last + 1)];
-      for (const slice of slices) {
-        if (!slice.some(c => c.text.trim())) continue;
-        const name = slice.some(c => c.name), { nodeId, font, weight, opened } = slice[0];
-        runs.push({ text: slice.map(c => c.text).join(''), nodeId, name, font, weight, opened,
-          lineYs: name ? slice.flatMap(c => c.lineYs) : [] });
-      }
-    }
-    const minimum = (values: number[]) => values.length ? Math.min(...values) : 0;
-    return { opened: minimum(runs.map(r => r.opened)), namesOpened: minimum(runs.filter(r => r.name).map(r => r.opened)), runs };
-  }, Object.fromEntries(view.nodes.map(n => [n.id, n.label])));
-}
-
-async function reportFields(page: Page, scope = 'share-dialog') {
-  const report = page.getByTestId(scope).getByTestId('layout-report');
-  for (const name of ['crossings', 'over-parts', 'cut', 'over-limit', 'in-place', 'opened', 'parts', 'zones', 'connections', 'longest']) {
-    await expect.poll(async () => {
-      const raw = await report.getAttribute(`data-${name}`);
-      return raw !== null && raw.trim() !== '' && Number.isFinite(Number(raw)) && Number(raw) >= 0;
-    }).toBe(true);
-  }
-  await expect(report).toHaveAttribute('data-level', /^(good|ok|warn)$/);
-}
-
-// The share dialog's layout report and readability level agree with the text actually drawn in the preview.
-// The meter's wording and the numbers it prints are not pinned: only its level, which the report also carries.
-export async function checkReadability(page: Page, width: number, seen: number) {
-  await reportFields(page);
-  const surface = page.getByTestId('share-dialog').getByTestId('layout-report');
-  await expect(surface).toHaveAttribute('data-view', (await page.getByTestId('share-preview').getAttribute('data-view'))!);
-  const format = await page.getByTestId('share-preview').evaluate(el => (el.tagName.toLowerCase() === 'svg' ? el : el.querySelector('svg'))!.getAttribute('data-format'));
-  expect(format).toBeTruthy(); await expect(surface).toHaveAttribute('data-format', format!);
-  await expect.poll(async () => {
-    const report = await settledReport(page);
-    return Math.abs(report.opened - (await previewTextSizes(page)).opened);
-  }).toBeLessThan(0.001);
-  const report = await settledReport(page), measured = await previewTextSizes(page);
-  expect(measured.runs.length).toBeGreaterThan(0); expect(measured.namesOpened).toBeGreaterThan(0);
-  expect(report.opened).toBeGreaterThan(0);
-  expect(report.inPlace).toBeCloseTo(report.opened * seen / width, 6);
-  const namesInPlace = measured.namesOpened * seen / width;
-  expect(report.level).toBe(namesInPlace >= 9 && report.inPlace >= 6.5 ? 'good' : report.opened >= 8 ? 'ok' : 'warn');
-  const meter = page.getByTestId('share-dialog').getByTestId('readability');
-  await expect(meter).toHaveAttribute('data-level', report.level!);
-  return { ...report, namesInPlace, namesOpened: measured.namesOpened };
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// 0.3: facts with evidence, mechanisms and limits, and a README and a presentation drawn over the same facts.
-// ---------------------------------------------------------------------------------------------------------------
-// An agent project's facts: `app`, an `agent` that holds the mechanisms `model-call` and `tool-check` (a gate) and has a
-// limit, and a `store`; every fact carries evidence in the files `repo()` writes. The overview draws the agent as a panel
-// with two mechanism rows and one limit row.
-export function agent3(title: string): Doc3 {
-  const at = (file: string, lines: [number, number] | null = [1, 1]): Evidence[] => [{ file, lines }];
-  return { schema: 'archdraw/diagram@3', title,
-    facts: {
-      components: [
-        fact('app', { label: 'App', kind: 'client', description: 'Starts the work.', files: ['src/web.ts'], evidence: at('src/web.ts', null) }),
-        fact('agent', { label: 'Agent', kind: 'llm', description: 'Runs the tool loop.', files: ['src/api.ts'], evidence: at('src/api.ts') }),
-        fact('model-call', { label: 'Model call', kind: 'llm', description: 'Asks the model for the next step.', within: 'agent', files: ['src/api.ts'], evidence: at('src/api.ts') }),
-        fact('tool-check', { label: 'Tool check', kind: 'gate', description: 'Approves a tool call before it runs.', within: 'agent', files: ['src/extra.ts'], evidence: at('src/extra.ts') }),
-        fact('store', { label: 'Store', kind: 'data', description: 'Keeps the run state.', files: ['src/db.ts'], evidence: at('src/db.ts', null) }),
-      ],
-      relations: [
-        { id: 'r1', from: 'app', to: 'agent', label: 'asks', style: 'call', both: false, evidence: at('src/web.ts') },
-        { id: 'r2', from: 'agent', to: 'store', label: 'keeps state', style: 'call', both: false, evidence: at('src/db.ts') },
-      ],
-      limits: [{ id: 'turn-limit', on: 'agent', text: 'Stops after 12 turns', evidence: at('src/api.ts') }],
-    },
-    channels: { overview: { showSteps: false, outdated: [], views: [{ id: 'overview', title: 'Overview',
-      caption: { title: `How ${title} runs`, lede: 'An app asks an agent, which keeps its state.' },
-      nodes: [part('app', { place: { row: 0, col: 0 } }),
-        part('agent', { form: 'panel', place: { row: 0, col: 1 }, held: ['model-call', 'tool-check'], limits: ['turn-limit'] }),
-        part('store', { place: { row: 1, col: 1 } })],
-      edges: [{ id: 'e1', from: 'app', to: 'agent', relations: ['r1'], step: 1 }, { id: 'e2', from: 'agent', to: 'store', relations: ['r2'], step: 2 }],
-      texts: [] }] } } };
-}
-function overviewCopy(doc: Doc3, id: string, title: string): View3 {
-  // `detail` is null outside the overview channel (diagram contract, validation rule 10), so the copy keeps no inside.
-  const copy = structuredClone(doc.channels.overview.views![0]);
-  return { ...copy, id, title, texts: [], nodes: copy.nodes.map(n => ({ ...n, detail: null })) };
-}
-// A README channel drawn over the same facts: the overview's first view under the id `readme`.
-export function withReadme(doc: Doc3, opts: { outdated?: string[]; id?: string } = {}): Doc3 {
-  doc.channels.readme = { showSteps: false, outdated: opts.outdated ?? [], views: [overviewCopy(doc, opts.id ?? 'readme', 'README')] };
-  return doc;
-}
-// A presentation channel over the same facts: the overview's first view under the id `presentation` and ordered steps
-// (by default one per top-level part that shows a fact, the first three).
-export function withPresentation(doc: Doc3, opts: { steps?: Step[]; outdated?: string[]; id?: string } = {}): Doc3 {
-  const view = overviewCopy(doc, opts.id ?? 'presentation', 'Presentation');
-  const shown = view.nodes.filter(n => n.form !== 'group' && n.facts.length > 0).map(n => n.id).slice(0, 3);
-  const steps = opts.steps ?? shown.map((id, i) => ({ id: `s${i + 1}`, parts: [id], text: `Look at ${id}`, note: `Say what ${id} does.` }));
-  doc.channels.presentation = { showSteps: false, outdated: opts.outdated ?? [], views: [view], steps };
-  return doc;
-}
-// shop3 with no `files`, so a drawing file may sit anywhere (a project folder of a scan) without missing paths.
-export function shopWithoutFiles(title: string): Doc3 {
-  const doc = shop3(title); for (const f of doc.facts.components) f.files = []; return doc;
-}
-export const outputLines = (result: { stdout: string; stderr: string }) => `${result.stdout}\n${result.stderr}`.split(/\r?\n/).map(line => line.trimEnd());
-export const warnLines = (result: { stdout: string; stderr: string }) => outputLines(result).filter(line => /^WARN\s/.test(line));
-export const errorLines = (result: { stdout: string; stderr: string }) => outputLines(result).filter(line => /^ERROR /.test(line));
+export async function tempDir(tag: string) { return await realpath(await mkdtemp(join(tmpdir(), `archdrawer-${tag}-`))); }
 export async function exists(path: string) { try { await stat(path); return true; } catch { return false; } }
-// The same folder whichever way the platform writes it (case on Windows, separators).
-export const samePath = (a: string, b: string) => {
-  const flat = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '');
-  return process.platform === 'win32' ? flat(a).toLowerCase() === flat(b).toLowerCase() : flat(a) === flat(b);
-};
+export async function listDir(path: string) { try { return await readdir(path); } catch { return []; } }
+// A path as the system means it: resolved, real, with one kind of separator, and in one case where the disk ignores case.
+export async function canonical(path: string) {
+  let p = resolvePath(path);
+  try { p = await realpath(p); } catch { /* not on disk: compare as resolved */ }
+  p = p.replace(/\\/g, '/').replace(/\/+$/, '');
+  return process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p;
+}
+export async function expectSamePath(actual: string | null | undefined, expected: string, what: string) {
+  expect(actual, what).toBeTruthy();
+  expect(await canonical(actual!), what).toBe(await canonical(expected));
+}
+export async function writeFiles(dir: string, files: Record<string, string>) {
+  for (const [name, content] of Object.entries(files)) {
+    const target = join(dir, name); await mkdir(dirname(target), { recursive: true }); await writeFile(target, content, 'utf8');
+  }
+}
+export async function writeJSON(file: string, value: unknown) { await mkdir(dirname(file), { recursive: true }); await writeFile(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
+export async function readJSON(file: string): Promise<any> { return JSON.parse(await readFile(file, 'utf8')); }
+export async function readText(file: string) { return await readFile(file, 'utf8'); }
+// A session's edit of a drawing file: written aside, then renamed into place (the contracted way a file changes outside the editor).
+export async function outsideWrite(file: string, value: unknown) { const next = `${file}.session.tmp`; await writeJSON(next, value); await rename(next, file); }
 
 // ---------------------------------------------------------------------------------------------------------------
-// 0.3: project folders to scan and draw. A folder in git is a real repository with commits (`git` is on PATH).
+// Git repositories (git is on PATH where the suite runs; testing contract, *Test links*)
 // ---------------------------------------------------------------------------------------------------------------
-export const dataDir = () => process.env.ARCHDRAW_HOLDOUT_DATA!;
-function git(cwd: string, args: string[]) {
+export function git(cwd: string, args: string[]) {
   return new Promise<string>((resolve, reject) => {
-    execFile('git', ['-c', 'user.name=Holdout', '-c', 'user.email=holdout@example.com', '-c', 'commit.gpgsign=false', ...args],
-      { cwd, encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+    execFile('git', ['-c', 'user.name=Holdout', '-c', 'user.email=holdout@example.com', '-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false', ...args],
+      { cwd, encoding: 'utf8', windowsHide: true, timeout: 60_000 },
       (error, stdout, stderr) => error ? reject(new Error(`git ${args.join(' ')}: ${stderr || error.message}`)) : resolve(stdout));
   });
 }
 const sixLines = (name: string) => Array.from({ length: 6 }, (_, i) => `// ${name} line ${i + 1}`).join('\n') + '\n';
-// The project every scan and draw scenario uses. The names sort the same under every collation, so the fixture's
-// "first", "second" and "third" file of the listing are alpha.ts, beta.ts and gamma.ts.
+// The project scanned and drawn throughout. Its listing, in sorted order, starts alpha.ts, beta.ts, gamma.ts: the fixture's files A and B
+// are alpha.ts and beta.ts, and its third file is gamma.ts (testing contract, *Scan*, *Draw*).
 export const projectFiles: Record<string, string> = {
   'alpha.ts': sixLines('alpha'), 'beta.ts': sixLines('beta'), 'gamma.ts': sixLines('gamma'), 'main.ts': sixLines('main'),
   'package.json': '{\n  "name": "holdout-project",\n  "main": "main.ts"\n}\n', 'readme.md': '# Holdout project\n\nA project for the scan.\n',
 };
-export async function writeFiles(dir: string, files: Record<string, string>) {
-  for (const [name, content] of Object.entries(files)) { const target = join(dir, name); await mkdir(dirname(target), { recursive: true }); await writeFile(target, content, 'utf8'); }
-}
-// A repository with one commit holding `files`.
-export async function gitRepo(id: string, files: Record<string, string> = projectFiles, folderName?: string) {
-  const parent = await realpath(await mkdtemp(join(tmpdir(), `archdrawer-${id}-`)));
-  const dir = folderName ? join(parent, folderName) : parent;
-  if (folderName) await mkdir(dir);
-  await git(dir, ['init']); await writeFiles(dir, files);
-  await git(dir, ['add', '--all']); await git(dir, ['commit', '-m', 'first commit']);
+export interface Repo { dir: string; git(args: string[]): Promise<string>; head(): Promise<string>; commit(files: Record<string, string>, message?: string): Promise<string> }
+function repoAt(dir: string): Repo {
   return {
-    dir, git: (args: string[]) => git(dir, args), head: async () => (await git(dir, ['rev-parse', 'HEAD'])).trim(),
-    write: (more: Record<string, string>) => writeFiles(dir, more),
-    commit: async (more: Record<string, string>, message = 'next commit') => {
-      await writeFiles(dir, more); await git(dir, ['add', '--all']); await git(dir, ['commit', '-m', message]);
+    dir, git: args => git(dir, args), head: async () => (await git(dir, ['rev-parse', 'HEAD'])).trim(),
+    commit: async (files, message = 'next commit') => {
+      await writeFiles(dir, files); await git(dir, ['add', '--all']); await git(dir, ['commit', '-q', '-m', message]);
       return (await git(dir, ['rev-parse', 'HEAD'])).trim();
     },
   };
 }
-// A folder that is not in git at all.
-export async function plainFolder(id: string, files: Record<string, string> = projectFiles) {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), `archdrawer-${id}-`))); await writeFiles(dir, files); return dir;
+// A repository with one commit holding `files`, in a fresh temp folder (named `name` inside it when given).
+export async function gitRepo(tag: string, files: Record<string, string> = projectFiles, name?: string): Promise<Repo> {
+  const parent = await tempDir(tag), dir = name ? join(parent, name) : parent;
+  await mkdir(dir, { recursive: true });
+  await git(dir, ['init', '-q', '-b', 'main']); await writeFiles(dir, files);
+  await git(dir, ['add', '--all']); await git(dir, ['commit', '-q', '-m', 'first commit']);
+  return repoAt(dir);
 }
-// A repository with no commit yet: `.git` exists, `git rev-parse HEAD` fails, so it is not in git for the product.
-export async function gitWithoutCommit(id: string, files: Record<string, string> = projectFiles) {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), `archdrawer-${id}-`))); await git(dir, ['init']); await writeFiles(dir, files); return dir;
-}
-// A folder whose last segment carries a fixture marker (testing contract, Scan). A Windows folder cannot be named with
-// ":", so there it is null and a scenario skips the part that needs it (the marker also works in a typed focus for a draw).
-export async function markerFolder(marker: string, files: Record<string, string> = projectFiles): Promise<string | null> {
-  if (process.platform === 'win32') return null;
-  const parent = await realpath(await mkdtemp(join(tmpdir(), 'archdrawer-marker-')));
-  const dir = join(parent, `shop ${marker}`); await mkdir(dir); await writeFiles(dir, files); return dir;
-}
-// The same, as a repository with a commit (so a finished scan of it would be cached).
-export async function markerRepo(marker: string, files: Record<string, string> = projectFiles) {
-  if (process.platform === 'win32') return null;
-  return await gitRepo('marker', files, `shop ${marker}`);
-}
-// A project folder that already holds a drawing at docs/architecture.archdraw.json (api contract, The draw run).
-export async function writeExistingDrawing(dir: string, name = 'architecture.archdraw.json', title = 'Earlier drawing') {
-  await mkdir(join(dir, 'docs'), { recursive: true }); const file = join(dir, 'docs', name);
-  await writeJSON(file, shopWithoutFiles(title)); return file;
-}
-export async function scanCacheCount() {
-  try { return (await readdir(join(dataDir(), 'scans'))).filter(name => name.endsWith('.json')).length; } catch { return 0; }
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// 0.3: the scan resource, the draw run and event streams.
-// ---------------------------------------------------------------------------------------------------------------
-export interface ScanOption { id: string; kind: string; title: string; sentence: string; files: string[] }
-export interface ScanRecord {
-  id: string; status: string; progress: string[]; folder: string; root: string; commit: string | null; cached: boolean;
-  card: { name: string; sentence: string; type: string; languages: string[]; entryPoints: string[] } | null;
-  options: ScanOption[] | null; warnings: string[]; error: string | null; engine: string | null; model: string | null;
-}
-// A POST that carries the token; the status and the parsed body, whatever they are.
-export async function postJSON(request: APIRequestContext, auth: string, path: string, data: unknown, base = baseURL()) {
-  const response = await request.post(`${base}${path}`, { headers: { 'X-Archdraw-Token': auth }, data });
-  let body: any = null; try { body = await response.json(); } catch { body = null; }
-  return { status: response.status(), body };
-}
-export const checkFolder = (request: APIRequestContext, auth: string, folder: unknown, base = baseURL()) => postJSON(request, auth, '/api/folders/check', { folder }, base);
-export async function startScan(request: APIRequestContext, auth: string, folder: string, extra: Record<string, unknown> = {}, base = baseURL()) {
-  const started = await postJSON(request, auth, '/api/scans', { folder, engine: 'fixture', model: null, ...extra }, base);
-  expect(started.status, JSON.stringify(started.body)).toBe(202); return started.body.scanId as string;
-}
-export async function scanRecord(request: APIRequestContext, scanId: string, base = baseURL()): Promise<ScanRecord> {
-  const response = await request.get(`${base}/api/scans/${scanId}`); expect(response.status()).toBe(200); return await response.json() as ScanRecord;
-}
-export async function finishScan(request: APIRequestContext, scanId: string, status = 'succeeded', timeout = 60_000, base = baseURL()) {
-  await expect.poll(async () => (await scanRecord(request, scanId, base)).status, { timeout }).toBe(status);
-  return await scanRecord(request, scanId, base);
-}
-// Starts a scan and waits for it to succeed.
-export async function scanFolder(request: APIRequestContext, auth: string, folder: string, extra: Record<string, unknown> = {}, base = baseURL()) {
-  return await finishScan(request, await startScan(request, auth, folder, extra, base), 'succeeded', 60_000, base);
-}
-// Starts a `draw` run (api contract, The draw run) and returns its id.
-export async function startDraw(request: APIRequestContext, auth: string, scan: string, focus: unknown, channel: string, extra: Record<string, unknown> = {}, base = baseURL()) {
-  return await startKind(request, auth, { kind: 'draw', scan, focus, channel, engine: 'fixture', model: null, ...extra }, base);
-}
-export async function refusedDraw(request: APIRequestContext, auth: string, data: Record<string, unknown>, base = baseURL()) {
-  return await refusedRun(request, auth, { kind: 'draw', engine: 'fixture', model: null, ...data }, base);
-}
-// Scan, then draw, then wait: the finished run record.
-export async function drawFolder(request: APIRequestContext, auth: string, folder: string, opts: { focus?: unknown; channel?: string; status?: string; extra?: Record<string, unknown> } = {}, base = baseURL()) {
-  const scan = await scanFolder(request, auth, folder, {}, base);
-  const runId = await startDraw(request, auth, scan.id, opts.focus ?? { kind: 'option', option: 'o1' }, opts.channel ?? 'linkedin', opts.extra ?? {}, base);
-  return { scan, runId, run: await finishRun(request, runId, opts.status ?? 'succeeded', 120_000, base) };
-}
-// The events of a scan or a run: the stream is read until its `done` event, then closed.
-export async function sseEvents(url: string, until = 'done', timeoutMs = 60_000): Promise<{ event: string; data: any }[]> {
-  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs), events: { event: string; data: any }[] = [];
-  try {
-    const response = await fetch(url, { signal: controller.signal, headers: { accept: 'text/event-stream' } });
-    expect(response.status).toBe(200);
-    const reader = response.body!.getReader(), decoder = new TextDecoder(); let buffer = '';
-    for (;;) {
-      const { value, done } = await reader.read(); if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      for (let at = buffer.search(/\r?\n\r?\n/); at >= 0; at = buffer.search(/\r?\n\r?\n/)) {
-        const block = buffer.slice(0, at); buffer = buffer.slice(at).replace(/^\r?\n\r?\n/, '');
-        let event = 'message'; const data: string[] = [];
-        for (const line of block.split(/\r?\n/)) {
-          if (line.startsWith(':')) continue;
-          if (line.startsWith('event:')) event = line.slice(6).trim(); else if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
-        }
-        if (!data.length) continue;
-        events.push({ event, data: JSON.parse(data.join('\n')) });
-        if (event === until) { controller.abort(); return events; }
-      }
-    }
-    return events;
-  } catch (error) {
-    if (events.some(e => e.event === until)) return events; throw error;
-  } finally { clearTimeout(timer); }
-}
-export const scanEvents = (scanId: string, base = baseURL()) => sseEvents(`${base}/api/scans/${scanId}/events`, 'done');
-export const runEvents = (runId: string, base = baseURL()) => sseEvents(`${base}/api/runs/${runId}/events`, 'done');
-export async function listedDiagrams(request: APIRequestContext, base = baseURL()) {
-  const response = await request.get(`${base}/api/diagrams`); expect(response.status()).toBe(200);
-  return (await response.json()).diagrams as { id: string; title: string; path: string | null; updatedAt: string }[];
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// 0.3: the editor's start flow, the steps panel and the keyboard.
-// ---------------------------------------------------------------------------------------------------------------
-// Tab until the element with this test id (or one inside it) has the focus; fails when it is not reached.
-export async function tabTo(page: Page, testId: string, max = 60) {
-  for (let i = 0; i < max; i++) {
-    const there = await page.evaluate(id => !!document.activeElement?.closest(`[data-testid="${id}"]`), testId);
-    if (there) return; await page.keyboard.press('Tab');
+// A remote for a test link: `<ARCHDRAW_TEST_REMOTES>/<host>/<owner>/<repo>`, parts lower-cased, with a commit on `main` (its HEAD), and
+// optionally another branch with one more commit (testing contract, *Test links*).
+export async function makeRemote(product: Product, link: string, files: Record<string, string> = projectFiles, opts: { branch?: string; branchFiles?: Record<string, string> } = {}) {
+  const dir = join(product.remotes, ...link.toLowerCase().split('/'));
+  await mkdir(dir, { recursive: true });
+  await git(dir, ['init', '-q', '-b', 'main']); await writeFiles(dir, files);
+  await git(dir, ['add', '--all']); await git(dir, ['commit', '-q', '-m', 'first commit']);
+  const repo = repoAt(dir);
+  if (opts.branch) {
+    await git(dir, ['checkout', '-q', '-b', opts.branch]);
+    await repo.commit(opts.branchFiles ?? { 'branch-only.ts': sixLines('branch') }, `work on ${opts.branch}`);
+    await git(dir, ['checkout', '-q', 'main']);
   }
-  throw new Error(`Tab never reached ${testId}`);
+  return repo;
 }
-export async function stepIds(page: Page) {
-  return await page.getByTestId('step-item').evaluateAll(items => items.map(item => item.getAttribute('data-step-id')));
-}
-// The ids of the parts a step lights (`data-step="on"`) and of those it dims, on the canvas.
-export async function litParts(page: Page) {
-  return await page.getByTestId('canvas').locator('[data-testid^="node-"][data-form]').evaluateAll(nodes => {
-    const id = (el: Element) => (el.getAttribute('data-testid') ?? '').slice('node-'.length);
-    return { on: nodes.filter(n => n.getAttribute('data-step') === 'on').map(id).sort(),
-      dim: nodes.filter(n => n.getAttribute('data-dim') === 'true').map(id).sort(),
-      all: nodes.map(id).sort() };
-  });
-}
-export async function nodeSizes(page: Page, ids: string[]) {
-  const sizes: Record<string, { width: number; height: number }> = {};
-  for (const id of ids) { const b = await box(page.getByTestId(`node-${id}`)); sizes[id] = { width: Math.round(b.width * 10) / 10, height: Math.round(b.height * 10) / 10 }; }
-  return sizes;
-}
+// A folder that is not in git at all.
+export async function plainFolder(tag: string, files: Record<string, string> = projectFiles) { const dir = await tempDir(tag); await writeFiles(dir, files); return dir; }
+export const copyFolder = (product: Product, link: string) => join(product.data, 'repos', ...link.toLowerCase().split('/'));
+export const partialFolder = (product: Product) => join(product.data, 'repos', '.partial');
 
 // ---------------------------------------------------------------------------------------------------------------
-// 0.4: shapes (LOOK-2), the one AI conversation (AI-2), previews (AI-3), suggestions (AI-4) and the second look (LAYOUT-4).
-// Nothing above this line changed. These helpers only read the surfaces the contracts name.
+// Drawing documents (drawing contract, *Shape*; testing contract, *A minimal valid file*)
 // ---------------------------------------------------------------------------------------------------------------
-// diagram contract, Geometry, Shapes: a `card` or `compact` part's `data-shape` by its kind; a panel is `card`, a group `group`.
-export const shapeByKind: Record<string, string> = { llm: 'agent', actor: 'person', data: 'store', external: 'external', gate: 'check' };
-export function shapeFor(kind: string, form: string): string {
-  if (form === 'group') return 'group';
-  if (form === 'panel') return 'card';
-  return shapeByKind[kind] ?? 'card';
+export const KINDS = ['actor', 'client', 'api', 'service', 'worker', 'llm', 'external', 'ops', 'gate', 'data'] as const;
+export const SHAPE_OF: Record<string, string> = {
+  actor: 'person', client: 'window', api: 'port', service: 'card', worker: 'stack', llm: 'agent', external: 'external', ops: 'pulse', gate: 'check', data: 'store',
+};
+export function comp(id: string, label: string, kind = 'service', extra: Record<string, unknown> = {}) {
+  return { id, label, kind, sub: '', description: `${label} does its part.`, files: [] as string[], items: [] as string[], ...extra };
 }
-// The `data-shape` of a part's own outline (the element with class `body`, directly under `node-<id>` or the node itself) in the editor;
-// null when there is none. A `body` nested deeper never counts.
-export async function editorShape(page: Page, id: string): Promise<string | null> {
-  return await page.getByTestId(`node-${id}`).evaluate(el => {
-    const body = el.matches('[class~="body"]') ? el : el.querySelector(':scope > [class~="body"]');
-    return body ? body.getAttribute('data-shape') : null;
+export function rel(id: string, from: string, to: string, extra: Record<string, unknown> = {}) {
+  return { id, from, to, label: '', style: 'call', both: false, ...extra };
+}
+export function part(id: string, extra: Record<string, unknown> = {}) {
+  return { id, facts: [id], form: 'card', icon: null, parent: null, detail: null, place: null, ...extra } as Record<string, any>;
+}
+export function link(from: string, to: string, relations: string[], step: number | null = null, extra: Record<string, unknown> = {}) {
+  return { from, to, relations, step, ...extra } as Record<string, any>;
+}
+export function view(id: string, title: string, nodes: any[], edges: any[], extra: Record<string, unknown> = {}) {
+  return { id, title, caption: { title, lede: '' }, nodes, edges, ...extra } as Record<string, any>;
+}
+export function choice(id: string, title: string, kind: string, facts: { components: any[]; relations?: any[]; limits?: any[] }, overview: any[], extra: Record<string, unknown> = {}) {
+  return { id, title, kind, about: '', facts: { relations: [], limits: [], ...facts }, channels: { overview: { views: overview, showSteps: false, outdated: [] } }, ...extra } as Record<string, any>;
+}
+export function doc(title: string, choices: any[], extra: Record<string, unknown> = {}) {
+  return { schema: 'archdraw/diagram@4', title, choices, ...extra } as Record<string, any>;
+}
+// The testing contract's Sample Shop, as one `system` choice of a format 4 file, its parts in a row and a column.
+export function shopDoc(title = 'Sample Shop') {
+  return doc(title, [choice('system', 'The whole system', 'system', {
+    components: [
+      comp('web', 'Web app', 'client', { sub: 'React', description: "The shop's pages.", files: ['src/web.ts'] }),
+      comp('api', 'Order API', 'api', { description: 'Takes orders.', files: ['src/api.ts'], items: ['Validate order', 'Create order'] }),
+      comp('db', 'Orders DB', 'data', { sub: 'Postgres', description: 'Keeps orders.', files: ['src/db.ts'] }),
+    ],
+    relations: [rel('r1', 'web', 'api', { label: 'POST /orders', both: true }), rel('r2', 'api', 'db')],
+  }, [view('overview', 'Overview', [
+    part('web', { place: { row: 0, col: 0 } }),
+    part('api', { form: 'panel', place: { row: 0, col: 1 } }),
+    part('db', { place: { row: 1, col: 1 } }),
+  ], [link('web', 'api', ['r1'], 1), link('api', 'db', ['r2'], 2)], { caption: { title: `How an order flows through ${title}`, lede: '' } })])]);
+}
+export const repoFiles: Record<string, string> = {
+  'src/web.ts': '// web\n', 'src/api.ts': '// api\n', 'src/db.ts': '// db\n', 'src/extra.ts': '// extra\n', 'readme.md': '# Shop\n',
+};
+// A repository holding a drawing file at `<repo>/<name>` (not committed, as a session writes it).
+export async function drawingRepo(tag: string, document: unknown, name = 'architecture.archdraw.json', files: Record<string, string> = repoFiles) {
+  const repo = await gitRepo(tag, files); const file = join(repo.dir, name); await writeJSON(file, document);
+  return { repo, dir: repo.dir, file };
+}
+export const choiceOf = (document: any, id?: string) => id ? document.choices.find((c: any) => c.id === id) : document.choices[0];
+export const viewOf = (document: any, channel = 'overview', viewId?: string, choiceId?: string) => {
+  const views = choiceOf(document, choiceId)?.channels?.[channel]?.views ?? [];
+  return viewId ? views.find((v: any) => v.id === viewId) : views[0];
+};
+export const nodeOf = (v: any, id: string) => v?.nodes?.find((n: any) => n.id === id);
+
+// ---------------------------------------------------------------------------------------------------------------
+// The API (api contract)
+// ---------------------------------------------------------------------------------------------------------------
+export async function register(product: Product, file: string) {
+  const answer = await product.post('/api/files', { path: file });
+  expect(answer.status, answer.text).toBe(200); return answer.body as { id: string; url: string };
+}
+export async function stored(product: Product, id: string) {
+  const answer = await product.get(`/api/diagrams/${id}`); expect(answer.status, answer.text).toBe(200); return answer.body;
+}
+export async function library(product: Product) {
+  const answer = await product.get('/api/diagrams'); expect(answer.status).toBe(200);
+  return answer.body.diagrams as { id: string; title: string; path: string | null; root: string | null; link: string | null; updatedAt: string }[];
+}
+export async function exportSvg(product: Product, id: string, query = '') {
+  const response = await fetch(`${product.base}/api/diagrams/${id}/export.svg${query ? `?${query}` : ''}`);
+  expect(response.status, `export.svg?${query}`).toBe(200); return await response.text();
+}
+export const WHOLE = { kind: 'whole' };
+export const option = (id: string) => ({ kind: 'option', option: id });
+export const typed = (text: string) => ({ kind: 'typed', text });
+// The fixture scan's options of `projectFiles` (testing contract, *Scan*), and the ids a draw gives them (api contract, *The choices*).
+export const OPTION = {
+  o1: { kind: 'flow', title: 'How a request moves through the project', id: 'how-a-request-moves-through-the-project' },
+  o2: { kind: 'section', title: 'The agent loop', id: 'the-agent-loop' },
+  o3: { kind: 'section', title: 'The server side', id: 'the-server-side' },
+} as const;
+export const ENGINE_LINES = ['Reading the drawing', 'Reading the code', 'Updating the drawing'];
+export async function startScan(product: Product, target: { folder?: string; link?: string }, extra: Record<string, unknown> = {}) {
+  const answer = await product.post('/api/scans', { engine: 'fixture', model: null, ...target, ...extra });
+  expect(answer.status, answer.text).toBe(202); return answer.body.scanId as string;
+}
+export async function scanRecord(product: Product, id: string) { const a = await product.get(`/api/scans/${id}`); expect(a.status, a.text).toBe(200); return a.body; }
+export async function runRecord(product: Product, id: string) { const a = await product.get(`/api/runs/${id}`); expect(a.status, a.text).toBe(200); return a.body; }
+export async function waitScan(product: Product, id: string, status = 'succeeded', timeout = 90_000) {
+  await expect.poll(async () => (await scanRecord(product, id)).status, { timeout, message: `scan ${id} ends` }).not.toBe('running');
+  const record = await scanRecord(product, id);
+  expect(record.status, JSON.stringify({ error: record.error, progress: record.progress })).toBe(status); return record;
+}
+export async function scan(product: Product, target: { folder?: string; link?: string }, extra: Record<string, unknown> = {}) {
+  return await waitScan(product, await startScan(product, target, extra));
+}
+export async function startDraw(product: Product, scanId: string, choices: unknown[], channel: string, extra: Record<string, unknown> = {}) {
+  const answer = await product.post('/api/runs', { kind: 'draw', scan: scanId, choices, channel, engine: 'fixture', model: null, ...extra });
+  expect(answer.status, answer.text).toBe(202); return answer.body.runId as string;
+}
+export async function waitRun(product: Product, id: string, status = 'succeeded', timeout = 180_000) {
+  await expect.poll(async () => (await runRecord(product, id)).status, { timeout, message: `run ${id} ends` }).not.toBe('running');
+  const record = await runRecord(product, id);
+  expect(record.status, JSON.stringify({ error: record.error, choices: record.choices?.map((c: any) => `${c.id}:${c.status}:${c.error ?? ''}`) })).toBe(status);
+  return record;
+}
+export async function activity(product: Product) { const a = await product.get('/api/activity'); expect(a.status).toBe(200); return a.body; }
+export const states = (record: any) => (record.choices as any[]).map(c => `${c.id}:${c.status}`);
+
+// Event streams (api contract: past events replayed, then new ones, then exactly one `done`).
+export interface Ev { event: string; data: any }
+export interface Stream { events: Ev[]; stop(): void; closed: Promise<void> }
+export function watchStream(product: Product, path: string): Stream {
+  const controller = new AbortController(), events: Ev[] = [];
+  const closed = (async () => {
+    try {
+      const response = await fetch(`${product.base}${path}`, { signal: controller.signal, headers: { accept: 'text/event-stream' } });
+      if (response.status !== 200) { events.push({ event: 'http', data: { status: response.status } }); return; }
+      const reader = response.body!.getReader(), decoder = new TextDecoder(); let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read(); if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        for (let at = buffer.search(/\r?\n\r?\n/); at >= 0; at = buffer.search(/\r?\n\r?\n/)) {
+          const block = buffer.slice(0, at); buffer = buffer.slice(at).replace(/^\r?\n\r?\n/, '');
+          let event = 'message'; const data: string[] = [];
+          for (const line of block.split(/\r?\n/)) {
+            if (line.startsWith(':')) continue;
+            if (line.startsWith('event:')) event = line.slice(6).trim(); else if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
+          }
+          if (data.length) events.push({ event, data: JSON.parse(data.join('\n')) });
+          if (event === 'done') { controller.abort(); return; }
+        }
+      }
+    } catch { /* aborted, or the server went away */ }
+  })();
+  return { events, stop: () => controller.abort(), closed };
+}
+// The whole stream of a job up to its `done`.
+export async function eventsOf(product: Product, path: string, timeout = 180_000): Promise<Ev[]> {
+  const stream = watchStream(product, path);
+  try {
+    await expect.poll(() => stream.events.some(e => e.event === 'done' || e.event === 'http'), { timeout, message: `the done event of ${path}` }).toBe(true);
+  } finally { stream.stop(); }
+  return [...stream.events];
+}
+export const runEvents = (product: Product, id: string, timeout?: number) => eventsOf(product, `/api/runs/${id}/events`, timeout);
+export const scanEvents = (product: Product, id: string, timeout?: number) => eventsOf(product, `/api/scans/${id}/events`, timeout);
+// A progress line is text the user reads: a scenario looks for its key words, never the whole sentence.
+export const says = (list: string[], words: RegExp) => list.some(l => words.test(l));
+export const saying = (list: string[], words: RegExp) => list.filter(l => words.test(l)).length;
+// The progress lines an engine call wrote (`source: "engine"`): none means no engine call was made.
+export const engineLines = (events: Ev[], choiceId?: string, stage?: string) => events
+  .filter(e => e.event === 'progress' && e.data.source === 'engine' && (choiceId === undefined || e.data.choice === choiceId) && (stage === undefined || e.data.stage === stage));
+export const lines = (events: Ev[], choiceId?: string, stage?: string) => events
+  .filter(e => e.event === 'progress' && (choiceId === undefined || e.data.choice === choiceId) && (stage === undefined || e.data.stage === stage))
+  .map(e => String(e.data.message));
+
+// ---------------------------------------------------------------------------------------------------------------
+// The command line (cli contract), against the scenario's own product
+// ---------------------------------------------------------------------------------------------------------------
+export async function cli(product: Product, args: string[], overrides: Record<string, string> = {}) {
+  return await new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
+    execFile(process.execPath, [join(root, 'bin', 'archdrawer.mjs'), ...args],
+      { cwd: root, env: { ...product.env, ...overrides }, shell: false, encoding: 'utf8', timeout: 60_000, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
+      (error, stdout, stderr) => {
+        if (error && typeof (error as any).code !== 'number') return reject(error);
+        resolve({ code: error ? Number((error as any).code) : 0, stdout, stderr });
+      });
   });
 }
-export async function editorShapes(page: Page, ids: string[]) {
-  const shapes: Record<string, string | null> = {};
-  for (const id of ids) shapes[id] = await editorShape(page, id);
-  return shapes;
+export const outLines = (r: { stdout: string; stderr: string }) => `${r.stdout}\n${r.stderr}`.split(/\r?\n/).map(l => l.trimEnd()).filter(Boolean);
+
+// ---------------------------------------------------------------------------------------------------------------
+// The home screen (ui contract, *Home*)
+// ---------------------------------------------------------------------------------------------------------------
+export async function home(page: Page, product: Product) {
+  await page.goto(`${product.base}/`); await expect(page.getByTestId('start')).toBeVisible();
 }
-// The same in an exported image: every `g[data-node-id]` and the `data-shape` of its outline (the `body` directly under the group).
-export async function svgShapes(page: Page, svg: string): Promise<Record<string, string | null>> {
-  return await page.evaluate(text => {
-    const xml = new DOMParser().parseFromString(text, 'image/svg+xml');
-    const result: Record<string, string | null> = {};
-    for (const group of Array.from(xml.querySelectorAll('g[data-node-id]'))) {
-      const body = group.querySelector(':scope > [class~="body"]');
-      result[group.getAttribute('data-node-id')!] = body ? body.getAttribute('data-shape') : null;
+export async function scanOnHome(page: Page, product: Product, folder: string) {
+  await home(page, product);
+  await page.getByTestId('start-folder').fill(folder);
+  await page.getByTestId('start-scan').click();
+  await expect(page.getByTestId('scan-card')).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId('focus-list')).toBeVisible();
+}
+export const optionCard = (page: Page, id: string) => page.locator(`[data-testid="focus-option"][data-option="${id}"]`);
+export async function tick(page: Page, picks: { whole?: boolean; options?: string[]; typed?: string }, channel?: 'linkedin' | 'readme') {
+  if (picks.whole) await page.getByTestId('focus-whole').click();
+  for (const id of picks.options ?? []) await optionCard(page, id).click();
+  if (picks.typed !== undefined) { await page.getByTestId('focus-typed').click(); await page.getByTestId('focus-text').fill(picks.typed); }
+  if (channel) await page.getByTestId(`channel-choice-${channel}`).click();
+}
+// The answer to the request a click sends (the click and the request are the user's; the answer is the server's).
+export async function answerTo(page: Page, method: string, path: RegExp, trigger: () => Promise<unknown>, timeout = 30_000) {
+  const waiting = page.waitForResponse(r => r.request().method() === method && path.test(new URL(r.url()).pathname), { timeout });
+  await trigger(); const response = await waiting;
+  let body: any = null; try { body = await response.json(); } catch { body = null; }
+  let sent: any = null; try { sent = response.request().postDataJSON(); } catch { sent = null; }
+  return { status: response.status(), body, sent, path: new URL(response.url()).pathname };
+}
+export async function startedRun(page: Page, trigger: () => Promise<unknown>) {
+  const answer = await answerTo(page, 'POST', /^\/api\/runs$/, trigger);
+  expect(answer.status, JSON.stringify(answer.body)).toBe(202); return { runId: answer.body.runId as string, sent: answer.sent };
+}
+export interface Row { choice: string; kind: string; state: string; stages: { stage: string; state: string }[] }
+export async function rows(page: Page): Promise<Row[]> {
+  return await page.getByTestId('draw-choice').evaluateAll(els => els.map(row => ({
+    choice: row.getAttribute('data-choice') ?? '', kind: row.getAttribute('data-kind') ?? '', state: row.getAttribute('data-state') ?? '',
+    stages: Array.from(row.querySelectorAll('[data-testid="draw-stage"]')).map(s => ({ stage: s.getAttribute('data-stage') ?? '', state: s.getAttribute('data-state') ?? '' })),
+  })));
+}
+export const rowStates = async (page: Page) => (await rows(page)).map(r => `${r.choice}:${r.state}`);
+export const rowOf = (page: Page, choiceId: string) => page.locator(`[data-testid="draw-choice"][data-choice="${choiceId}"]`);
+
+// ---------------------------------------------------------------------------------------------------------------
+// The editor (ui contract, *Editor frame*, *Drawing*)
+// ---------------------------------------------------------------------------------------------------------------
+export async function saved(page: Page) { await expect(page.getByTestId('save-status')).toHaveText(/^\s*Saved\s*$/); }
+export async function openDrawing(page: Page, product: Product, file: string, query = '') {
+  const registered = await register(product, file);
+  await page.goto(`${product.base}/d/${registered.id}${query}`);
+  await expect(page.getByTestId('editor')).toBeVisible(); await saved(page);
+  return registered.id;
+}
+export async function box(locator: Locator) { const b = await locator.boundingBox(); expect(b, 'the element is drawn').not.toBeNull(); return b!; }
+export async function drag(page: Page, locator: Locator, dx: number, dy: number, steps = 10) {
+  const b = await box(locator), x = b.x + b.width / 2, y = b.y + Math.min(b.height / 2, 24);
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x + dx, y + dy, { steps }); await page.mouse.up();
+}
+export async function openAi(page: Page) {
+  if (!await page.getByTestId('ai-panel').isVisible()) await page.getByTestId('ai-button').click();
+  await expect(page.getByTestId('ai-panel')).toBeVisible();
+}
+export async function send(page: Page, text: string) {
+  await openAi(page);
+  return await startedRun(page, async () => { await page.getByTestId('ai-input').fill(text); await page.getByTestId('ai-send').click(); });
+}
+export const turn = (page: Page, runId: string) => page.locator(`[data-testid="ai-turn"][data-run-id="${runId}"]`);
+// The conversation lives in the AI panel, so it is opened first: a run started from a channel stage is a turn there too.
+export async function turnEnds(page: Page, runId: string, timeout = 90_000) {
+  await openAi(page);
+  await expect(turn(page, runId)).toHaveCount(1, { timeout });
+  await expect(turn(page, runId)).not.toHaveAttribute('data-state', 'running', { timeout });
+  return (await turn(page, runId).getAttribute('data-state'))!;
+}
+export const PAUSED = /paused while the instruction runs/i;
+export const ACCEPT_FIRST = /accept or undo/i;
+
+// ---------------------------------------------------------------------------------------------------------------
+// Geometry: what the editor draws against what an export draws (AGENTS.md invariant 5)
+// ---------------------------------------------------------------------------------------------------------------
+export interface Point { x: number; y: number }
+export interface Box { left: number; right: number; top: number; bottom: number }
+export interface Drawn {
+  nodes: Record<string, Box>;
+  edges: Record<string, { p: Point[] | null; d: string; tone: string | null; hidden: boolean }>;
+  trunks: Record<string, Point[] | null>;
+}
+// Every part's box and every connection's cubic on a surface (the editor's canvas or an exported SVG on a page), in drawing px measured
+// from the top-left of the `anchor` part, so two surfaces drawn at different zooms and offsets compare number for number.
+export async function drawn(surface: Locator, anchor: string): Promise<Drawn> {
+  return await surface.evaluate((element, anchorId) => {
+    const rootSvg = (element.tagName.toLowerCase() === 'svg' ? element : element.querySelector('svg')) as SVGSVGElement;
+    const nodeSelector = 'g[data-node-id], [data-testid^="node-"][data-kind]';
+    const idOf = (g: Element) => g.getAttribute('data-node-id') ?? (g.getAttribute('data-testid') ?? '').slice(5);
+    const corners = (el: SVGGraphicsElement) => {
+      const b = el.getBBox(), m = el.getScreenCTM()!;
+      const c = [[b.x, b.y], [b.x + b.width, b.y], [b.x, b.y + b.height], [b.x + b.width, b.y + b.height]].map(([x, y]) => new DOMPoint(x, y).matrixTransform(m));
+      return { left: Math.min(...c.map(q => q.x)), right: Math.max(...c.map(q => q.x)), top: Math.min(...c.map(q => q.y)), bottom: Math.max(...c.map(q => q.y)), local: b.width };
+    };
+    const rects: Record<string, ReturnType<typeof corners>> = {};
+    for (const g of Array.from(rootSvg.querySelectorAll(nodeSelector))) {
+      const own = Array.from(g.querySelectorAll('rect')).filter(r => !r.closest('defs, clipPath, mask, marker') && r.closest(nodeSelector) === g);
+      const rect = (own.find(r => r.classList.contains('box')) ?? own[0]) as SVGRectElement | undefined;
+      if (rect) rects[idOf(g)] = corners(rect);
     }
-    return result;
+    const a = rects[anchorId]; if (!a) throw new Error(`No part ${anchorId} on this surface`);
+    const scale = (a.right - a.left) / a.local;
+    const norm = (q: { x: number; y: number }) => ({ x: (q.x - a.left) / scale, y: (q.y - a.top) / scale });
+    const nodes: Record<string, { left: number; right: number; top: number; bottom: number }> = {};
+    for (const [id, r] of Object.entries(rects)) { const tl = norm({ x: r.left, y: r.top }), br = norm({ x: r.right, y: r.bottom }); nodes[id] = { left: tl.x, top: tl.y, right: br.x, bottom: br.y }; }
+    const cubic = (path: SVGPathElement) => {
+      const d = path.getAttribute('d') ?? '', n = (d.match(/-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g) ?? []).map(Number);
+      if (n.length !== 8) return null; const m = path.getScreenCTM()!;
+      return [0, 2, 4, 6].map(i => norm(new DOMPoint(n[i], n[i + 1]).matrixTransform(m)));
+    };
+    const painted = (p: SVGPathElement) => {
+      const s = getComputedStyle(p); return s.stroke !== 'none' && !/rgba\([^)]*,\s*0\)|transparent/.test(s.stroke) && parseFloat(s.strokeWidth) > 0;
+    };
+    const lineOf = (el: Element) => {
+      const paths = (el.tagName.toLowerCase() === 'path' ? [el] : Array.from(el.querySelectorAll('path'))) as SVGPathElement[];
+      const candidates = paths.filter(p => !p.closest('defs, marker, clipPath, mask, [data-testid^="step-badge-"], [data-testid^="edge-label-"]'));
+      const good = candidates.filter(painted);
+      return (good.length ? good : candidates).sort((x, y) => y.getTotalLength() - x.getTotalLength())[0] ?? null;
+    };
+    const edges: Record<string, { p: { x: number; y: number }[] | null; d: string; tone: string | null; hidden: boolean }> = {};
+    for (const el of Array.from(rootSvg.querySelectorAll('g[data-edge-id], [data-testid^="edge-"][data-style]'))) {
+      const id = el.getAttribute('data-edge-id') ?? (el.getAttribute('data-testid') ?? '').slice(5);
+      const line = lineOf(el);
+      edges[id] = { p: line ? cubic(line) : null, d: line?.getAttribute('d') ?? '', tone: el.getAttribute('data-tone'), hidden: el.getAttribute('data-hidden') === 'true' };
+    }
+    const trunks: Record<string, { x: number; y: number }[] | null> = {};
+    for (const el of Array.from(rootSvg.querySelectorAll('g[data-trunk], [data-testid="trunk"]'))) {
+      const key = el.getAttribute('data-trunk') ?? `${el.getAttribute('data-part')}:${el.getAttribute('data-side')}`;
+      const line = lineOf(el); trunks[`${key}|${el.getAttribute('data-edges')}`] = line ? cubic(line) : null;
+    }
+    return { nodes, edges, trunks };
+  }, anchor);
+}
+// An exported SVG on a page of its own, so it can be measured the way the browser draws it.
+export async function svgOnPage(page: Page, svg: string) {
+  const other = await page.context().newPage();
+  await other.setContent(`<!doctype html><html><body style="margin:0;background:#fff">${svg}</body></html>`);
+  const surface = other.locator('svg').first(); await expect(surface).toBeVisible();
+  return { surface, close: () => other.close() };
+}
+// Invariant 5: the same parts with the same boxes and the same connections with the same cubic, within `tolerance` drawing px.
+export function expectSameDrawing(editor: Drawn, image: Drawn, what: string, tolerance = 0.5) {
+  expect(Object.keys(editor.nodes).sort(), `${what}: the same parts`).toEqual(Object.keys(image.nodes).sort());
+  for (const [id, b] of Object.entries(editor.nodes)) for (const k of ['left', 'right', 'top', 'bottom'] as const)
+    expect(Math.abs(b[k] - image.nodes[id][k]), `${what}: ${k} of ${id}`).toBeLessThanOrEqual(tolerance);
+  const shown = (d: Drawn) => Object.entries(d.edges).filter(([, e]) => !e.hidden && e.p).map(([id]) => id).sort();
+  expect(shown(editor), `${what}: the same connections are drawn`).toEqual(shown(image));
+  for (const id of shown(editor)) editor.edges[id].p!.forEach((q, i) => {
+    expect(Math.abs(q.x - image.edges[id].p![i].x), `${what}: ${id} point ${i} x`).toBeLessThanOrEqual(tolerance);
+    expect(Math.abs(q.y - image.edges[id].p![i].y), `${what}: ${id} point ${i} y`).toBeLessThanOrEqual(tolerance);
+  });
+  expect(Object.keys(editor.trunks).sort(), `${what}: the same trunks`).toEqual(Object.keys(image.trunks).sort());
+}
+export const overlap = (a: Box, b: Box) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+// One smooth curve: a single `M … C …`, no straight command and no second segment (drawing contract, *Connections*).
+export const isOneCubic = (d: string) => /^\s*M[\s,]*-?[\d.eE+-]+[\s,]+-?[\d.eE+-]+[\s,]*C([\s,]*-?[\d.eE+-]+){6}\s*$/.test(d);
+
+// What an exported image holds, read as markup (ui contract, *The share image*; drawing contract, *Geometry*).
+export interface ImageNode { id: string; kind: string; form: string; open: string | null; shape: string | null; w: number; h: number; texts: string[]; traces: string[]; usedBy: string | null; openMark: boolean }
+export interface Image {
+  parsed: boolean; width: number; height: number; theme: string; format: string; viewBox: string; xmlns: string; forbidden: boolean;
+  words: string[]; nodes: ImageNode[]; edges: { id: string; tone: string | null; d: string[] }[]; trunks: string[]; heads: string[];
+}
+export async function readImage(page: Page, svg: string): Promise<Image> {
+  return await page.evaluate(text => {
+    const xml = new DOMParser().parseFromString(text, 'image/svg+xml'), rootEl = xml.documentElement;
+    const at = (el: Element | null, n: string) => el?.getAttribute(n) ?? '';
+    return {
+      parsed: !xml.querySelector('parsererror'), width: Number(at(rootEl, 'width')), height: Number(at(rootEl, 'height')),
+      theme: at(rootEl, 'data-theme'), format: at(rootEl, 'data-format'), viewBox: at(rootEl, 'viewBox'), xmlns: at(rootEl, 'xmlns'),
+      forbidden: !!xml.querySelector('foreignObject, script'),
+      words: Array.from(xml.querySelectorAll('text')).map(t => t.textContent ?? ''),
+      nodes: Array.from(xml.querySelectorAll('g[data-node-id]')).map(g => {
+        const rect = (g.querySelector('rect.box') ?? g.querySelector('rect'));
+        return {
+          id: at(g, 'data-node-id'), kind: at(g, 'data-kind'), form: at(g, 'data-form'), open: g.getAttribute('data-open'),
+          shape: g.querySelector('.body')?.getAttribute('data-shape') ?? g.querySelector('[data-shape]')?.getAttribute('data-shape') ?? null,
+          w: Number(at(rect, 'width')), h: Number(at(rect, 'height')), texts: Array.from(g.querySelectorAll('text')).map(t => t.textContent ?? ''),
+          traces: Array.from(g.querySelectorAll('path.trace')).map(p => at(p, 'data-edge-of')),
+          usedBy: g.querySelector('[data-used-by]')?.getAttribute('data-used-by') ?? null, openMark: !!g.querySelector('.open-mark'),
+        };
+      }),
+      edges: Array.from(xml.querySelectorAll('g[data-edge-id]')).map(g => ({ id: at(g, 'data-edge-id'), tone: g.getAttribute('data-tone'), d: Array.from(g.querySelectorAll('path')).map(p => at(p, 'd')) })),
+      trunks: Array.from(xml.querySelectorAll('g[data-trunk]')).map(g => `${at(g, 'data-trunk')}|${at(g, 'data-edges')}`),
+      heads: Array.from(xml.querySelectorAll('g[data-group-head]')).map(g => at(g, 'data-group-head')),
+    };
   }, svg);
 }
-// The `data-shape` values drawn in the component picker's button of a form (ui contract, Adding a component).
-export async function thumbShapes(page: Page, form: string): Promise<string[]> {
-  return await page.getByTestId(`picker-form-${form}`).evaluate(el =>
-    [el, ...Array.from(el.querySelectorAll('[data-shape]'))].map(found => found.getAttribute('data-shape')).filter((value): value is string => !!value));
-}
-
-// ui contract, Preview, Accept and Undo; While a run is going.
-export const REFUSED_WHILE_PREVIEW = "Accept or undo the AI's change first";
-export const PAUSED_WHILE_RUNNING = 'Edits are paused while the instruction runs';
-// ui contract, AI panel: the sentences of a refine's route.
-export const FACTS_ROUTE = 'Changed the facts: every channel that shows them shows it';
-export const STORY_ROUTE = 'Redrew this channel from the facts, without reading the code';
-// ui contract, Suggestions: per channel the test id suffix and label, and the instruction each one sends.
-export const SUGGESTIONS: Record<Channel, [string, string][]> = {
-  overview: [['simpler', 'Simpler'], ['loop', 'Show the loop']], linkedin: [['shorter', 'Shorter for LinkedIn']],
-  readme: [['fewer-details', 'Fewer details']], presentation: [['fewer-steps', 'Fewer steps']],
-};
-export const SUGGESTION_TEXT: Record<string, string> = {
-  simpler: 'Simplify the overview: keep every component in a detail view or a merged part',
-  loop: "Show the loop: draw the agent's loop and the checks around it as parts with numbered connections",
-  shorter: 'Make it shorter for LinkedIn: fewer parts and shorter names',
-  'fewer-details': 'Show fewer details: hold mechanisms only where the story is about them',
-  'fewer-steps': 'Use fewer steps: merge steps that say the same thing',
-};
-
-export async function openAiPanel(page: Page) {
-  const panel = page.getByTestId('ai-panel');
-  if (!await panel.isVisible()) await page.getByTestId('ai-button').click();
-  await expect(panel).toBeVisible();
-}
-export const aiTurns = (page: Page) => page.getByTestId('ai-thread').getByTestId('ai-turn');
-// The turn a run made (`data-run-id`).
-export const aiTurn = (page: Page, runId: string) => page.locator(`[data-testid="ai-turn"][data-run-id="${runId}"]`);
-export async function turnStates(page: Page) {
-  return await aiTurns(page).evaluateAll(turns => turns.map(turn => turn.getAttribute('data-state')));
-}
-export async function turnTexts(page: Page) {
-  return await aiTurns(page).evaluateAll(turns => turns.map(turn => (turn.querySelector('[data-testid="ai-turn-text"]')?.textContent ?? '').trim()));
-}
-// Runs `trigger` (a click on any control that starts a run) and returns the accepted run's id and request body.
-export async function startedRun(page: Page, trigger: () => Promise<unknown>) {
-  const waiting = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/runs', { timeout: 30_000 });
-  await trigger();
-  const response = await waiting; expect(response.status(), await response.text()).toBe(202);
-  return { runId: (await response.json()).runId as string, body: response.request().postDataJSON() as Record<string, any> };
-}
-// Types into the AI panel and sends with the button, or with Enter.
-export async function sendInPanel(page: Page, text: string, how: 'button' | 'enter' = 'button') {
-  await openAiPanel(page);
-  return await startedRun(page, async () => {
-    await page.getByTestId('ai-input').fill(text);
-    if (how === 'enter') await page.getByTestId('ai-input').press('Enter'); else await page.getByTestId('ai-send').click();
+// The connections of a stored view as the editor names them (`edge-<id>`).
+export const edgeIds = (v: any) => (v.edges as any[]).map(e => e.id as string);
+// A control is disabled when it, or the input it wraps, is disabled or says so (a card that holds a checkbox or a radio).
+export async function isDisabled(locator: Locator) {
+  return await locator.evaluate(el => {
+    const off = (e: Element | null) => !!e && ((e as HTMLInputElement).disabled === true || e.getAttribute('aria-disabled') === 'true');
+    return off(el) || off(el.querySelector('input, button, [role="checkbox"], [role="radio"]'));
   });
 }
-// Waits until the run's turn is no longer `running`; returns the state it ended in.
-export async function runDone(page: Page, runId: string, timeout = 90_000): Promise<string> {
-  await openAiPanel(page);
-  const turn = aiTurn(page, runId);
-  await expect(turn).toHaveCount(1, { timeout });
-  await expect(turn).not.toHaveAttribute('data-state', 'running', { timeout });
-  return (await turn.getAttribute('data-state'))!;
-}
-// Keeps a run's preview (`ai-accept`) and waits for the preview to go.
-export async function acceptPreview(page: Page) {
-  await page.getByTestId('ai-accept').click();
-  await expect(page.getByTestId('ai-preview')).toHaveCount(0);
-}
-// A toast shows for about 2.6 s: wait for none, so the next one read is a fresh one.
-export async function noToast(page: Page) { await expect(page.getByTestId('toast')).toHaveCount(0, { timeout: 8_000 }); }
-
-// api contract, The second look: a PNG is base64 with no `data:` prefix and starts with the PNG signature.
-export const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-// A 1 × 1 PNG.
-export const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
-// `bytes` long once decoded: the signature, then zeros.
-export const paddedPng = (bytes: number) => Buffer.concat([PNG_SIGNATURE, Buffer.alloc(Math.max(0, bytes - PNG_SIGNATURE.length))]).toString('base64');
-export function pngInfo(base64: string) {
-  const bytes = Buffer.from(base64, 'base64');
-  return { png: bytes.length >= 24 && bytes.subarray(0, 8).equals(PNG_SIGNATURE), width: bytes.length >= 24 ? bytes.readUInt32BE(16) : 0, height: bytes.length >= 24 ? bytes.readUInt32BE(20) : 0, bytes: bytes.length };
-}
-// ui contract, Share: the format a channel opens the share dialog with, and its size (1×).
-export const DEFAULT_IMAGE: Record<Channel, { width: number; height: number }> = {
-  overview: { width: 1600, height: 900 }, linkedin: { width: 1080, height: 1350 }, readme: { width: 1600, height: 900 }, presentation: { width: 1920, height: 1080 },
-};
-export const noChanges = { added: [], removed: [], changed: [], moved: [], edgesAdded: [], edgesRemoved: [], edgesChanged: [] };
-
-// ---------------------------------------------------------------------------------------------------------------
-// 0.5: the slide image, presenting (PRES-1), the tour (PRES-2) and the slide exports (PRES-3).
-// Nothing above this line changed. These helpers only read the surfaces the contracts name; the presenting and tour
-// helpers are used by the present lane's files, the PDF, zip and pixel helpers by the share lane's.
-// ---------------------------------------------------------------------------------------------------------------
-// A presentation of four parts, one of them a group holding two others, with a text and three steps:
-//   web (Storefront) · zone (Backend zone, a group) holding api (Order desk) and cache (Price cache) · db (Order ledger)
-//   e1 web → api (step 1), e2 api → cache, e3 api → db (step 2), and the text `t1`.
-// The steps light: s1 web + api, s2 the group zone + db, s3 api + db. Plain rectangles only (no shaped kinds), so a part's
-// first `rect` is its box. The facts are the shop's and the files exist in `repo()`; the relations are r1 web → api
-// and r2 api → db (and r3 api → cache), but the facts carry no items: `withLinkedIn` adds `intake` as a panel over `api`, and a
-// panel shows at least one row (diagram contract, rule 8), so a caller that adds the LinkedIn channel passes `{ intakeItems: [...] }`.
-export const SLIDE_STEPS: Step[] = [
-  { id: 's1', parts: ['web', 'api'], text: 'The shopper clicks buy', note: 'Say who is asking.\nThen show the click.' },
-  { id: 's2', parts: ['zone', 'db'], text: 'The backend zone takes the order and the ledger keeps it, so a shopper never pays twice or loses one', note: '' },
-  { id: 's3', parts: ['api', 'db'], text: 'The desk writes the ledger', note: 'One line only.' },
-];
-export function slideShop(title: string, opts: { theme?: string; steps?: Step[] } = {}): Doc3 {
-  const doc: Doc3 = { schema: 'archdraw/diagram@3', title, ...(opts.theme ? { theme: opts.theme } : {}),
-    facts: {
-      components: [
-        fact('web', { label: 'Storefront', kind: 'client', description: 'The shop pages.', files: ['src/web.ts'] }),
-        fact('api', { label: 'Order desk', kind: 'api', description: 'Takes orders.', files: ['src/api.ts'] }),
-        fact('cache', { label: 'Price cache', kind: 'service', description: 'Keeps recent prices.', files: ['src/extra.ts'] }),
-        fact('db', { label: 'Order ledger', kind: 'worker', description: 'Keeps every order.', files: ['src/db.ts'] }),
-      ],
-      relations: [
-        { id: 'r1', from: 'web', to: 'api', label: 'buy', style: 'call', both: false },
-        { id: 'r2', from: 'api', to: 'db', label: 'write', style: 'call', both: false },
-        { id: 'r3', from: 'api', to: 'cache', label: 'price', style: 'call', both: false },
-      ],
-    },
-    channels: { overview: { showSteps: false, outdated: [], views: [{ id: 'overview', title: 'Overview',
-      caption: { title: `Selling with ${title}`, lede: 'From a click to a stored order.' },
-      nodes: [part('web', { place: { row: 0, col: 0 } }),
-        part('zone', { facts: [], form: 'group', label: 'Backend zone', kind: 'service', description: 'Where orders are handled.', place: { row: 0, col: 1 } }),
-        part('api', { parent: 'zone' }), part('cache', { parent: 'zone' }), part('db', { place: { row: 0, col: 2 } })],
-      edges: [{ id: 'e1', from: 'web', to: 'api', relations: ['r1'], step: 1 }, { id: 'e2', from: 'api', to: 'cache', relations: ['r3'], step: null },
-        { id: 'e3', from: 'api', to: 'db', relations: ['r2'], step: 2 }],
-      texts: [] }] } } };
-  withPresentation(doc, { steps: opts.steps ?? SLIDE_STEPS.map(s => structuredClone(s)) });
-  doc.channels.presentation!.views![0].texts = [{ id: 't1', text: 'Mind the price cache', x: 40, y: 40, size: 20 }];
-  return doc;
-}
-// A presentation whose parts name files and cite lines, so the tour's `tour-file` text is known exactly. The presentation
-// view is the overview's: storefront, desk (a panel holding the mechanism `retry`), ledger (no file at all) and gateway
-// (a merged part of two facts). Steps: s1 desk + storefront (listed in that order), s2 ledger + gateway (no note), s3 desk.
-// Per part, `tour-file` reads (the ranges of a path are all on the one fact that lists the path or cites it first):
-//   storefront  src/web.ts:1
-//   desk        src/api.ts:3–9, 20–24 (see TOUR_DESK_FIRST) · src/db.ts:2 · src/extra.ts:40–52
-//   ledger      (no file: `No files recorded`)
-//   gateway     src/db.ts · src/web.ts · src/extra.ts
-export function tourShop(title: string): Doc3 {
-  const at = (file: string, lines: [number, number] | null): Evidence => ({ file, lines });
-  const doc: Doc3 = { schema: 'archdraw/diagram@3', title,
-    facts: {
-      components: [
-        fact('web', { label: 'Storefront', kind: 'client', description: 'The shop pages.', files: ['src/web.ts'], evidence: [at('src/web.ts', [1, 1])] }),
-        fact('api', { label: 'Order desk', kind: 'api', description: 'Takes orders.', files: ['src/api.ts'],
-          evidence: [at('src/api.ts', [3, 9]), at('src/db.ts', [2, 2]), at('src/api.ts', [20, 24])] }),
-        fact('retry', { label: 'Retry check', kind: 'gate', description: 'Refuses a repeated order.', within: 'api', files: ['src/extra.ts'], evidence: [at('src/extra.ts', [40, 52])] }),
-        fact('db', { label: 'Order ledger', kind: 'worker', description: 'Keeps every order.' }),
-        fact('gw1', { label: 'Gateway in', kind: 'service', description: 'Takes the first half.', files: ['src/db.ts', 'src/web.ts'] }),
-        fact('gw2', { label: 'Gateway out', kind: 'service', description: 'Sends the second half.', files: ['src/web.ts', 'src/extra.ts'] }),
-      ],
-      relations: [
-        { id: 'r1', from: 'web', to: 'api', label: 'buy', style: 'call', both: false },
-        { id: 'r2', from: 'api', to: 'db', label: 'write', style: 'call', both: false },
-        { id: 'r3', from: 'db', to: 'gw1', label: 'hand over', style: 'call', both: false },
-      ],
-    },
-    channels: { overview: { showSteps: false, outdated: [], views: [{ id: 'overview', title: 'Overview',
-      caption: { title: `Learning ${title}`, lede: 'Where each step lives in the code.' },
-      nodes: [part('storefront', { facts: ['web'], place: { row: 0, col: 0 } }),
-        part('desk', { facts: ['api'], form: 'panel', held: ['retry'], place: { row: 0, col: 1 } }),
-        part('ledger', { facts: ['db'], place: { row: 0, col: 2 } }),
-        part('gateway', { facts: ['gw1', 'gw2'], label: 'Gateway', kind: 'service', description: 'Both halves of the gateway.', place: { row: 1, col: 1 } })],
-      edges: [{ id: 'e1', from: 'storefront', to: 'desk', relations: ['r1'], step: 1 }, { id: 'e2', from: 'desk', to: 'ledger', relations: ['r2'], step: 2 },
-        { id: 'e3', from: 'ledger', to: 'gateway', relations: ['r3'], step: 3 }],
-      texts: [] }] } } };
-  return withPresentation(doc, { steps: [
-    { id: 's1', parts: ['desk', 'storefront'], text: 'The shopper reaches the desk', note: 'Start with the click.\nThen the desk takes over.' },
-    { id: 's2', parts: ['ledger', 'gateway'], text: 'The ledger feeds the gateway', note: '' },
-    { id: 's3', parts: ['desk'], text: 'The desk retries safely', note: 'Only the desk repeats work.' },
-  ] });
-}
-// The contract writes the ranges of a path as `:<from>–<to>` "joined by `, `": read literally the second range keeps its colon.
-// Whether the product writes `src/api.ts:3–9, :20–24` or `src/api.ts:3–9, 20–24` is open, and both are accepted.
-export const TOUR_DESK_FIRST = /^src\/api\.ts:3–9, :?20–24$/;
-
-// Opens the presentation channel and waits for its steps panel.
-export async function toPresentation(page: Page) {
-  await page.getByTestId('channel-tab-presentation').click();
-  await expect(page.getByTestId('editor')).toHaveAttribute('data-channel', 'presentation');
-  await expect(page.getByTestId('steps-panel')).toBeVisible();
-}
-// Presses `present-start` (or `tour-start`) and waits for the layer in that mode.
-export async function openLayer(page: Page, mode: 'present' | 'tour' = 'present') {
-  await page.getByTestId(mode === 'present' ? 'present-start' : 'tour-start').click();
-  const layer = page.getByTestId('present');
-  await expect(layer).toBeVisible(); await expect(layer).toHaveAttribute('data-mode', mode); return layer;
-}
-// What the slide shown draws (ui contract, The slide image). `dim` is `data-dim="true"`, `opacity` the group's attribute.
-export interface SlideMark { id: string; dim: boolean; opacity: string | null }
-export interface SlideRead {
-  slide: string | null; format: string | null; theme: string | null; width: string | null; height: string | null; viewBox: string | null;
-  nodes: (SlideMark & { ratio: number })[]; edges: SlideMark[]; texts: SlideMark[];
-  band: boolean; bandText: string | null; bandCount: string | null; words: string[];
-}
-export async function slideRead(page: Page): Promise<SlideRead> {
-  return await page.getByTestId('present-slide').evaluate(el => {
-    const svg = (el.tagName.toLowerCase() === 'svg' ? el : el.querySelector('svg')) as SVGSVGElement;
-    const flat = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
-    const mark = (g: Element, attribute: string) => ({ id: g.getAttribute(attribute) ?? '', dim: g.getAttribute('data-dim') === 'true', opacity: g.getAttribute('opacity') });
-    // The step's text may be one element or one per line: every outermost `[data-slide-text]`, in document order.
-    const texts = Array.from(svg.querySelectorAll('[data-slide-text]')).filter(t => !t.parentElement?.closest('[data-slide-text]'));
-    const count = svg.querySelector('[data-slide-count]');
-    return {
-      slide: svg.getAttribute('data-slide'), format: svg.getAttribute('data-format'), theme: svg.getAttribute('data-theme'),
-      width: svg.getAttribute('width'), height: svg.getAttribute('height'), viewBox: svg.getAttribute('viewBox'),
-      nodes: Array.from(svg.querySelectorAll('g[data-node-id]')).map(g => {
-        const rect = g.querySelector('rect'); const w = Number(rect?.getAttribute('width')), h = Number(rect?.getAttribute('height'));
-        return { ...mark(g, 'data-node-id'), ratio: h > 0 ? w / h : 0 };
-      }),
-      edges: Array.from(svg.querySelectorAll('g[data-edge-id]')).map(g => mark(g, 'data-edge-id')),
-      texts: Array.from(svg.querySelectorAll('g[data-text-id]')).map(g => mark(g, 'data-text-id')),
-      band: !!svg.querySelector('g[data-slide-band]'), bandText: texts.length ? flat(texts.map(t => flat(t.textContent)).join(' ')) : null, bandCount: count ? flat(count.textContent) : null,
-      words: Array.from(svg.querySelectorAll('text')).map(t => flat(t.textContent)),
-    };
+export async function isChecked(locator: Locator) {
+  return await locator.evaluate(el => {
+    const on = (e: Element | null) => !!e && ((e as HTMLInputElement).checked === true || e.getAttribute('aria-checked') === 'true');
+    return on(el) || on(el.querySelector('input, [role="checkbox"], [role="radio"]'));
   });
 }
-// A slide is 1920 × 1080: the SVG shown is scaled to fit, so either its `viewBox` or its own `width` and `height` say so.
-export function slideSized(read: SlideRead) {
-  return (read.viewBox ?? '').trim().split(/[\s,]+/).join(' ') === '0 0 1920 1080' || (read.width === '1920' && read.height === '1080');
-}
-// Where the slide itself is drawn on the page: the corners (0,0) and (1920,1080) of its coordinates through the SVG's screen
-// matrix. The `present-slide` element may be larger than the slide (an SVG letterboxing its drawing, or a wrapper).
-export async function slideBox(page: Page) {
-  return await page.getByTestId('present-slide').evaluate(el => {
-    const svg = (el.tagName.toLowerCase() === 'svg' ? el : el.querySelector('svg')) as SVGSVGElement;
-    const m = svg.getScreenCTM()!, a = new DOMPoint(0, 0).matrixTransform(m), b = new DOMPoint(1920, 1080).matrixTransform(m);
-    return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) };
+// A click on the middle of a connection's drawn line (where a user clicks it).
+export async function clickEdge(page: Page, id: string) {
+  const point = await page.getByTestId(`edge-${id}`).evaluate(el => {
+    const paths = (el.tagName.toLowerCase() === 'path' ? [el] : Array.from(el.querySelectorAll('path'))) as SVGPathElement[];
+    const path = paths.sort((a, b) => b.getTotalLength() - a.getTotalLength())[0];
+    if (!path) return null;
+    const q = path.getPointAtLength(path.getTotalLength() * 0.5), m = path.getScreenCTM();
+    if (!m) return null; const s = new DOMPoint(q.x, q.y).matrixTransform(m); return { x: s.x, y: s.y };
   });
+  expect(point, `connection ${id} is drawn`).not.toBeNull();
+  await page.mouse.click(point!.x, point!.y);
 }
-// The ids a slide draws at full strength and the ids it dims, per kind of element.
-export function slideDimming(read: SlideRead) {
-  const split = (items: SlideMark[]) => ({ lit: items.filter(i => !i.dim).map(i => i.id).sort(), dim: items.filter(i => i.dim).map(i => i.id).sort() });
-  return { nodes: split(read.nodes), edges: split(read.edges), texts: split(read.texts) };
-}
-// A dimmed group says `opacity="0.25"` as well as `data-dim="true"`, and a lit one says neither.
-export function dimsAgree(read: SlideRead) {
-  return [...read.nodes, ...read.edges, ...read.texts].every(m => m.dim ? Number(m.opacity) === 0.25 : Number(m.opacity ?? 1) !== 0.25);
-}
-export const squeezed = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, '');
-// The lines of an element's text as the user sees them (a note keeps its newlines, whichever markup makes them).
-export async function textLines(locator: Locator) { return (await locator.innerText()).split(/\r?\n/).map(line => line.trim()).filter(Boolean); }
-// The layer's `data-fullscreen` against the browser's own full-screen element: they agree once the request has been answered.
-// Returns whether the layer is full screen. A refused or unsupported request is a valid answer.
-export async function fullscreenAgrees(page: Page): Promise<boolean> {
-  const layer = page.getByTestId('present');
-  // The request is answered a moment after the layer opens (a grant, a refusal, or nothing at all), and `false` with no full-screen
-  // element agree from the first instant. So wait out a short period first, then until the two agree and have stayed the same
-  // for several samples in a row.
-  await page.waitForTimeout(1000);
-  let last = '', steady = 0;
-  await expect.poll(async () => {
-    const attribute = await layer.getAttribute('data-fullscreen'), real = await layer.evaluate(el => document.fullscreenElement === el), now = `${attribute}/${real}`;
-    steady = now === last ? steady + 1 : 0; last = now;
-    return attribute === String(real) && steady >= 3;
-  }, { timeout: 10_000, intervals: [150] }).toBe(true);
-  return (await layer.getAttribute('data-fullscreen')) === 'true';
-}
-// Focus stays inside the element with this test id through `presses` presses of a key (Tab, Shift+Tab).
-export async function focusStaysIn(page: Page, testId: string, key = 'Tab', presses = 12) {
-  for (let i = 0; i < presses; i++) {
-    await page.keyboard.press(key);
-    expect(await page.getByTestId(testId).evaluate(el => el.contains(document.activeElement)), `${key} ${i + 1}: focus left ${testId}`).toBe(true);
-  }
-}
-// Every toast that shows from now on, in order (a toast lasts 2.6 s, so polling `toast` can miss one).
-export async function watchToasts(page: Page) {
-  await page.evaluate(() => {
-    const seen: string[] = ((window as any).__toasts = []);
-    const look = () => {
-      for (const t of Array.from(document.querySelectorAll('[data-testid="toast"]'))) {
-        const text = (t.textContent ?? '').trim(); if (text && seen[seen.length - 1] !== text) seen.push(text);
-      }
-    };
-    new MutationObserver(look).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true }); look();
-  });
-}
-export async function toastsSeen(page: Page): Promise<string[]> { return await page.evaluate(() => [...(((window as any).__toasts as string[]) ?? [])]); }
-// A session's write to the stored document (atomic, with a later version each time, as an agent session's is).
-export async function sessionWrite(file: string, change: (doc: Doc3) => void): Promise<Doc3> {
-  // `change` edits the first choice in the `@3` shape; on a `@4` file the result is merged back into that choice and the other choices stay.
-  const raw = await readStoredRaw(file), doc = flattenChoice(raw); change(doc);
-  doc.updatedAt = new Date(Math.max((Date.parse(doc.updatedAt ?? '') || 0) + 60_000, Date.UTC(2098, 0, 1))).toISOString();
-  if (!Array.isArray(raw.choices)) { await outsideWrite(file, doc); return doc; }
-  const { facts, channels, requests, schema: _schema, ...rest } = doc as any;
-  const first = raw.choices[0];
-  const written = { ...raw, ...rest, schema: raw.schema, choices: [{ ...first, facts, channels }, ...raw.choices.slice(1)],
-    ...(requests || raw.requests ? { requests: [...(raw.requests ?? []).filter((r: any) => (r.choice ?? first.id) !== first.id),
-      ...(requests ?? []).map((r: any) => ({ ...r, choice: first.id }))] } : {}) };
-  await outsideWrite(file, written); return doc;
-}
-
-// ui contract, Share: `<slug>`, the title lower-cased, accents removed, non-alphanumerics → `-`, trimmed (`diagram` when empty).
-export function slugOf(title: string) {
-  return title.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'diagram';
-}
-// Presses a download button and keeps the file: its suggested name, where it was saved and its bytes.
-export async function downloaded(page: Page, testId: string, timeout = 120_000) {
-  const dir = await mkdtemp(join(tmpdir(), 'archdrawer-slides-'));
-  const waiting = page.waitForEvent('download', { timeout }); await page.getByTestId(testId).click();
-  const result = await waiting, name = result.suggestedFilename(), path = join(dir, name.replace(/[\\/]/g, '_'));
-  await result.saveAs(path); expect(await result.failure()).toBeNull();
-  return { name, path, bytes: await readFile(path) };
-}
-const CRC_TABLE = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
-export function crc32Of(bytes: Uint8Array) { let c = 0xffffffff; for (const b of bytes) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
-// testing contract, Test suites: a zip whose entries are stored; the end-of-central-directory record gives the count.
-export interface ZipEntry { name: string; method: number; size: number; stored: number; crcOk: boolean; data: Buffer }
-export function readZip(bytes: Buffer): { count: number; entries: ZipEntry[] } {
-  const eocd = bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
-  if (eocd < 0) throw new Error('No end-of-central-directory record');
-  const count = bytes.readUInt16LE(eocd + 10), entries: ZipEntry[] = []; let at = bytes.readUInt32LE(eocd + 16);
-  for (let i = 0; i < count; i++) {
-    if (bytes.readUInt32LE(at) !== 0x02014b50) throw new Error(`Central directory entry ${i} is missing`);
-    const method = bytes.readUInt16LE(at + 10), crc = bytes.readUInt32LE(at + 16), stored = bytes.readUInt32LE(at + 20), size = bytes.readUInt32LE(at + 24);
-    const nameLength = bytes.readUInt16LE(at + 28), extraLength = bytes.readUInt16LE(at + 30), commentLength = bytes.readUInt16LE(at + 32), local = bytes.readUInt32LE(at + 42);
-    const name = bytes.subarray(at + 46, at + 46 + nameLength).toString('utf8');
-    if (bytes.readUInt32LE(local) !== 0x04034b50) throw new Error(`Local header of ${name} is missing`);
-    const start = local + 30 + bytes.readUInt16LE(local + 26) + bytes.readUInt16LE(local + 28), data = bytes.subarray(start, start + stored);
-    entries.push({ name, method, size, stored, crcOk: crc32Of(data) === crc, data });
-    at += 46 + nameLength + extraLength + commentLength;
-  }
-  return { count, entries };
-}
-// testing contract, Test suites: a PDF of uncompressed objects, read as Latin-1 text (one character per byte).
-export interface PdfRead {
-  starts: boolean; ends: boolean; count: number | null; pages: { mediaBox: boolean }[];
-  images: { width: number; height: number; dct: boolean; jpeg: boolean; bytes: Buffer }[]; pageImages: Buffer[];
-}
-export function readPdf(bytes: Buffer): PdfRead {
-  const text = bytes.toString('latin1');
-  const objects = [...text.matchAll(/(\d+)\s+0\s+obj/g)].map(m => {
-    const start = m.index! + m[0].length, end = text.indexOf('endobj', start), stream = text.indexOf('stream', start);
-    const hasStream = stream >= 0 && stream < end;
-    let data = -1; if (hasStream) { data = stream + 6; if (text[data] === '\r') data++; if (text[data] === '\n') data++; }
-    return { n: Number(m[1]), dict: text.slice(start, hasStream ? stream : end), data };
-  });
-  const pagesObject = objects.find(o => /\/Type\s*\/Pages(?![A-Za-z])/.test(o.dict));
-  const pageObjects = objects.filter(o => /\/Type\s*\/Page(?![A-Za-z])/.test(o.dict));
-  const images = objects.filter(o => /\/Subtype\s*\/Image/.test(o.dict)).map(o => {
-    const end = text.indexOf('endstream', o.data), body = o.data >= 0 && end >= 0 ? bytes.subarray(o.data, end) : Buffer.alloc(0);
-    return { n: o.n, width: Number(o.dict.match(/\/Width\s+(\d+)/)?.[1] ?? 0), height: Number(o.dict.match(/\/Height\s+(\d+)/)?.[1] ?? 0),
-      dct: /\/Filter\s*(\[\s*)?\/DCTDecode/.test(o.dict), jpeg: body.length > 2 && body[0] === 0xff && body[1] === 0xd8, bytes: body };
-  });
-  // The pages in the order of /Kids; each page's image by its /XObject reference, else the images in file order.
-  const kids = [...(pagesObject?.dict.match(/\/Kids\s*\[([^\]]*)\]/)?.[1] ?? '').matchAll(/(\d+)\s+0\s+R/g)].map(m => Number(m[1]));
-  const ordered = kids.map(n => objects.find(o => o.n === n)).filter((o): o is NonNullable<typeof o> => !!o);
-  const byRef = ordered.map(o => { const ref = o.dict.match(/\/XObject\s*<<[^>]*?(\d+)\s+0\s+R/)?.[1]; return images.find(i => String(i.n) === ref)?.bytes; });
-  const pageImages = byRef.length === images.length && byRef.every(Boolean) && new Set(byRef).size === byRef.length ? byRef as Buffer[] : images.map(i => i.bytes);
-  return { starts: text.startsWith('%PDF-1.4'), ends: text.trimEnd().endsWith('%%EOF'), count: pagesObject ? Number(pagesObject.dict.match(/\/Count\s+(\d+)/)?.[1] ?? NaN) : null,
-    pages: pageObjects.map(o => ({ mediaBox: /\/MediaBox\s*\[\s*0\s+0\s+960\s+540\s*\]/.test(o.dict) })),
-    images: images.map(({ width, height, dct, jpeg, bytes: body }) => ({ width, height, dct, jpeg, bytes: body })), pageImages };
-}
-// A PNG's size from its IHDR, and its signature.
-export function pngSize(bytes: Buffer) {
-  return { png: bytes.length >= 24 && bytes.subarray(0, 8).equals(PNG_SIGNATURE), width: bytes.length >= 24 ? bytes.readUInt32BE(16) : 0, height: bytes.length >= 24 ? bytes.readUInt32BE(20) : 0 };
-}
-// Images (PNG or JPEG bytes) decoded by the browser and shrunk to a grid of grey levels, so two slides can be compared
-// without a library and without fixing a colour: the same slide in two encodings is near, two other slides are not.
-export async function pixelGrids(page: Page, images: { bytes: Buffer; mime: string }[], columns = 192, rows = 108): Promise<number[][]> {
-  const holder = await page.context().newPage();
-  try {
-    await holder.setContent('<!doctype html><html><body></body></html>');
-    return await holder.evaluate(async ({ items, columns, rows }) => {
-      const grids: number[][] = [];
-      for (const item of items) {
-        const binary = atob(item.data), array = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
-        const bitmap = await createImageBitmap(new Blob([array], { type: item.mime }));
-        const canvas = document.createElement('canvas'); canvas.width = columns; canvas.height = rows;
-        const context = canvas.getContext('2d')!; context.imageSmoothingQuality = 'high'; context.drawImage(bitmap, 0, 0, columns, rows);
-        const data = context.getImageData(0, 0, columns, rows).data, grid: number[] = [];
-        for (let i = 0; i < data.length; i += 4) grid.push(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-        grids.push(grid);
-      }
-      return grids;
-    }, { items: images.map(i => ({ data: i.bytes.toString('base64'), mime: i.mime })), columns, rows });
-  } finally { await holder.close(); }
-}
-export const gridDistance = (a: number[], b: number[]) => a.reduce((sum, value, i) => sum + Math.abs(value - b[i]), 0) / a.length;
-export const gridMean = (a: number[]) => a.reduce((sum, value) => sum + value, 0) / a.length;

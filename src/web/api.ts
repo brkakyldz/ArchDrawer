@@ -19,7 +19,7 @@ export interface ScanRecord {
   cached: boolean; card: RepoCard | null; options: FocusOption[] | null; warnings: string[]; error: string | null; link?: string | null;
 }
 export type DrawFocus = { kind: "option"; option: string } | { kind: "whole" } | { kind: "typed"; text: string };
-export type DrawChannel = "linkedin" | "readme" | "presentation";
+export type DrawChannel = "linkedin" | "readme";
 /** One choice of a draw run as its record lists it (api contract, Run record). */
 export interface DrawChoiceState {
   id: string; kind: "system" | "section" | "flow" | "custom"; title: string; status: "waiting" | "running" | "done" | "failed" | "cancelled"; stage: "read" | "overview" | "channel" | null;

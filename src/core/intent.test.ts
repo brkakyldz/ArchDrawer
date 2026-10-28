@@ -16,7 +16,7 @@ const intent = (name: string): StoryIntent => parseIntent(JSON.parse(readFileSyn
 const part = (id: string, extra: Partial<StoryPart> = {}): StoryPart =>
   ({ id, label: id, sub: "", kind: "service", chips: [], zone: null, spine: null, anchor: null, side: null, from: [], inside: null, held: [], limits: [], ...extra });
 const small = (extra: Partial<StoryIntent> = {}): StoryIntent => ({
-  title: "Orders end to end", lede: "A shop takes an order.", zones: [], steps: [],
+  title: "Orders end to end", lede: "A shop takes an order.", zones: [],
   parts: [part("web", { spine: 0, from: ["web"] }), part("api", { spine: 1, chips: ["Validate", "Create"], from: ["api"] }), part("db", { anchor: "api", side: "below", from: ["db", "ghost"] })],
   edges: [{ from: "web", to: "api", label: "", style: "call", step: 1 }, { from: "api", to: "db", label: "writes", style: "call", step: null }],
   ...extra,
@@ -116,24 +116,21 @@ describe("story intent → post view", () => {
     expect(warnings.filter((w) => w.includes("rows"))).toEqual(['Kept the first 12 rows of "api"']);
   });
 
-  it("lists every problem of an answer at once: relations, texts over their limits, an empty title, the steps", () => {
+  it("lists every problem of an answer at once: relations, texts over their limits, an empty title", () => {
     const i = small({
       title: " ", lede: "x".repeat(241),
       parts: [part("web", { spine: 0, label: "L".repeat(49), chips: ["c".repeat(45)] }), part("api", { spine: 0 }), part("db", { anchor: "api", side: "below" })],
     });
-    expect(storyProblems(i, "linkedin")).toEqual([
+    expect(storyProblems(i)).toEqual([
       'part "api" has spine 0, which is negative or taken',
       "the description is 241 characters, over the 240 it may hold",
       'the label of "web" is 49 characters, over the 48 it may hold',
       'a chip of "web" is 45 characters, over the 44 it may hold',
       "it has no title",
     ]);
-    expect(storyProblems(small(), "linkedin")).toEqual([]);
-    const steps = Array.from({ length: 21 }, (_, k) => ({ parts: ["web"], text: k === 2 ? "" : `Step ${k + 1}`, note: "" }));
-    expect(storyProblems(small({ steps }), "presentation")).toEqual(["it has 21 steps, over the 20 a presentation holds", "step 3 has no text"]);
-    expect(storyProblems(small({ steps }), "readme")).toEqual([]);
+    expect(storyProblems(small())).toEqual([]);
     const many = small({ zones: [{ id: "z", label: "Z" }], parts: Array.from({ length: 60 }, (_, k) => part(`p${k}`, { spine: k })), edges: [] });
-    expect(storyProblems(many, "overview")).toEqual(["it has 60 parts and 1 zones, over the 60 a view holds"]);
+    expect(storyProblems(many)).toEqual(["it has 60 parts and 1 zones, over the 60 a view holds"]);
   });
 
   it("after the repair turn, shortens a text over its limit with one warning each, and fails naming every relation still violated", () => {
@@ -150,7 +147,7 @@ describe("story intent → post view", () => {
     );
     // A holder's chips are dropped with one warning, never a problem or shortened; a cut never splits a surrogate pair.
     const holder = small({ parts: [part("web", { spine: 0, chips: ["h".repeat(45)] }), part("api", { spine: 0, inside: "web" })], edges: [] });
-    expect(storyProblems(holder, "readme")).toEqual([]);
+    expect(storyProblems(holder)).toEqual([]);
     const held = intentToDocument(shop(), "overview", holder, { portrait: false, channel: "readme" }).warnings.filter((w) => w.includes('"web"'));
     expect(held).toEqual(['"web" holds parts, so it draws no chips']);
     const emoji = intentToDocument(shop(), "overview", small({ lede: "a".repeat(238) + "😀😀" }), { portrait: true });
@@ -166,8 +163,8 @@ describe("story intent → post view", () => {
     expect(() => parseIntent({ ...raw, parts: [{ ...raw.parts[0], spine: 1.5 }] })).toThrow(/integer/);
     const { title: _t, ...noTitle } = raw;
     expect(() => parseIntent(noTitle)).toThrow(/missing "title"/);
-    const { steps: _s, ...noSteps } = raw;
-    expect(() => parseIntent(noSteps)).toThrow(/missing "steps"/);
+    // The removed presentation's steps are no part of the schema any more (ADR 0019).
+    expect(() => parseIntent({ ...raw, steps: [] })).toThrow(/unknown property "steps"/);
     const { held: _h, ...noHeld } = raw.parts[0];
     expect(() => parseIntent({ ...raw, parts: [noHeld] })).toThrow(/parts\[0\] is missing "held"/);
   });

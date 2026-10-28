@@ -66,9 +66,9 @@ export interface DrawChoice {
   filesRead: number; parts: number | null;
 }
 
-const STAGE_LINES: Record<StoryChannel, string> = { linkedin: "Drawing the LinkedIn post", readme: "Drawing the README drawing", presentation: "Drawing the presentation" };
-const REUSED_LINES: Record<StoryChannel, string> = { linkedin: "Using the LinkedIn post already drawn", readme: "Using the README drawing already drawn", presentation: "Using the presentation already drawn" };
-const FORMAT_OF: Record<StoryChannel, FormatId> = { linkedin: "feed", readme: "readme", presentation: "slide" };
+const STAGE_LINES: Record<StoryChannel, string> = { linkedin: "Drawing the LinkedIn post", readme: "Drawing the README drawing" };
+const REUSED_LINES: Record<StoryChannel, string> = { linkedin: "Using the LinkedIn post already drawn", readme: "Using the README drawing already drawn" };
+const FORMAT_OF: Record<StoryChannel, FormatId> = { linkedin: "feed", readme: "readme" };
 
 /**
  * What a draw that ended without a drawing kept of one choice (api contract, What a failed draw keeps): its read

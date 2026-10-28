@@ -1,5 +1,5 @@
 import { applyChannel, clearOutdated, joinChannel } from "./channels";
-import { CHANNELS, FACT3_LIMITS, freeIdAmong, validateDocument3, type ChannelId, type Document3, type Step } from "./file3";
+import { CHANNELS, freeIdAmong, validateDocument3, type ChannelId, type Document3 } from "./file3";
 import { layoutView } from "./layout";
 import {
   allIds, ID_RE, KINDS, LIMITS, LINKEDIN_SUFFIX, validateDocument,
@@ -9,8 +9,8 @@ import { STORY_LIMITS } from "./report";
 
 /**
  * The story intent (diagram contract, Story answers): what the engine decides for a channel — the
- * story, zones, main path, side parts, parts inside others, chips, held mechanisms, limits and, for
- * the presentation, steps — without pixels. Code converts it into the channel's view and places it.
+ * story, zones, main path, side parts, parts inside others, chips, held mechanisms and limits —
+ * without pixels. Code converts it into the channel's view and places it.
  */
 export interface StoryPart {
   id: string; label: string; sub: string; kind: Kind; chips: string[];
@@ -21,13 +21,12 @@ export interface StoryPart {
   held: string[]; limits: string[];
 }
 export interface StoryEdge { from: string; to: string; label: string; style: EdgeStyle; step: number | null }
-export interface StoryStep { parts: string[]; text: string; note: string }
-export interface StoryIntent { title: string; lede: string; zones: { id: string; label: string }[]; parts: StoryPart[]; edges: StoryEdge[]; steps: StoryStep[] }
+export interface StoryIntent { title: string; lede: string; zones: { id: string; label: string }[]; parts: StoryPart[]; edges: StoryEdge[] }
 
 /** The schema the engine answers in (diagram contract); each text carries its hard limit as `maxLength`. */
 export const STORY_SCHEMA = {
   type: "object", additionalProperties: false,
-  required: ["title", "lede", "zones", "parts", "edges", "steps"],
+  required: ["title", "lede", "zones", "parts", "edges"],
   properties: {
     title: { type: "string", maxLength: LIMITS.captionTitle },
     lede: { type: "string", maxLength: LIMITS.lede },
@@ -55,9 +54,6 @@ export const STORY_SCHEMA = {
         style: { type: "string", enum: ["call", "async", "dep"] },
         step: { anyOf: [{ type: "integer" }, { type: "null" }] },
       } } },
-    steps: { type: "array", items: { type: "object", additionalProperties: false,
-      required: ["parts", "text", "note"],
-      properties: { parts: { type: "array", items: { type: "string" } }, text: { type: "string", maxLength: FACT3_LIMITS.stepText }, note: { type: "string", maxLength: FACT3_LIMITS.stepNote } } } },
   },
 } as const;
 
@@ -113,10 +109,6 @@ export function parseIntent(raw: unknown): StoryIntent {
       if (style !== "call" && style !== "async" && style !== "dep") fail(`${w}.style`, "must be call, async or dep");
       return { from: str(o.from, `${w}.from`), to: str(o.to, `${w}.to`), label: str(o.label, `${w}.label`), style: style as EdgeStyle, step: intOrNull(o.step, `${w}.step`) };
     }),
-    steps: list(r.steps, "steps").map((s, i) => {
-      const w = `steps[${i}]`, o = exact(s, w, STORY_SCHEMA.properties.steps.items.required);
-      return { parts: list(o.parts, `${w}.parts`).map((p, j) => str(p, `${w}.parts[${j}]`)), text: str(o.text, `${w}.text`), note: str(o.note, `${w}.note`) };
-    }),
   };
 }
 
@@ -148,9 +140,9 @@ export interface StoryOptions {
   channel?: ChannelId;
   rows?: StoryRows;
 }
-const VIEW_TITLES: Record<ChannelId, string> = { overview: "Overview", linkedin: "LinkedIn", readme: "README", presentation: "Presentation" };
+const VIEW_TITLES: Record<ChannelId, string> = { overview: "Overview", linkedin: "LinkedIn", readme: "README" };
 /** A channel's name in an error the user reads (diagram contract, Problems and the repair turn). */
-const CHANNEL_NAMES: Record<ChannelId, string> = { overview: "overview", linkedin: "LinkedIn post", readme: "README drawing", presentation: "presentation" };
+const CHANNEL_NAMES: Record<ChannelId, string> = { overview: "overview", linkedin: "LinkedIn post", readme: "README drawing" };
 
 /**
  * The hard limits of a story answer's texts (diagram contract, Hard limits), in the words a problem
@@ -158,16 +150,16 @@ const CHANNEL_NAMES: Record<ChannelId, string> = { overview: "overview", linkedi
  */
 export const STORY_HARD_LIMITS = {
   title: LIMITS.captionTitle, lede: LIMITS.lede, zoneLabel: LIMITS.label, label: LIMITS.label, sub: LIMITS.sub,
-  chip: LIMITS.item, edgeLabel: LIMITS.edgeLabel, stepText: FACT3_LIMITS.stepText, stepNote: FACT3_LIMITS.stepNote,
+  chip: LIMITS.item, edgeLabel: LIMITS.edgeLabel,
   /** Parts and zones of one story together (a zone becomes a part of the view). */
-  parts: LIMITS.nodesPerView, steps: FACT3_LIMITS.steps,
+  parts: LIMITS.nodesPerView,
 } as const;
 
 /**
  * Each text of an intent that has a hard limit, with a way to replace it. A holder draws no chips: its
  * chips are dropped in the conversion with one warning, so they are no problem and are never shortened.
  */
-function limitedTexts(intent: StoryIntent, channel: ChannelId): { text: string; limit: number; what: string; put: (t: string) => void }[] {
+function limitedTexts(intent: StoryIntent): { text: string; limit: number; what: string; put: (t: string) => void }[] {
   const L = STORY_HARD_LIMITS;
   const holders = new Set(intent.parts.filter((p) => p.inside !== null).map((p) => p.inside!));
   const out: { text: string; limit: number; what: string; put: (t: string) => void }[] = [
@@ -181,11 +173,6 @@ function limitedTexts(intent: StoryIntent, channel: ChannelId): { text: string; 
     if (!holders.has(p.id)) p.chips.forEach((c, i) => out.push({ text: c, limit: L.chip, what: `a chip of ${q(p.id)}`, put: (t) => (p.chips[i] = t) }));
   }
   for (const e of intent.edges) out.push({ text: e.label, limit: L.edgeLabel, what: `the label of ${e.from} → ${e.to}`, put: (t) => (e.label = t) });
-  // Steps outside the presentation are ignored, so only the presentation's are held to its limits.
-  if (channel === "presentation") intent.steps.slice(0, L.steps).forEach((s, i) => {
-    out.push({ text: s.text, limit: L.stepText, what: `the text of step ${i + 1}`, put: (t) => (s.text = t) });
-    out.push({ text: s.note, limit: L.stepNote, what: `the note of step ${i + 1}`, put: (t) => (s.note = t) });
-  });
   return out;
 }
 
@@ -252,17 +239,12 @@ function relationProblems(intent: StoryIntent): string[] {
 
 /**
  * Every problem of a story answer (diagram contract, Problems and the repair turn): each relation it
- * violates, each text over its hard limit, an empty title, a presentation step with no text, more
- * steps than a presentation holds. With any, the engine gets one repair turn.
+ * violates, each text over its hard limit, an empty title. With any, the engine gets one repair turn.
  */
-export function storyProblems(intent: StoryIntent, channel: ChannelId): string[] {
+export function storyProblems(intent: StoryIntent): string[] {
   const out = relationProblems(intent);
-  for (const t of limitedTexts(structuredClone(intent), channel)) if (t.text.length > t.limit) out.push(`${t.what} is ${t.text.length} characters, over the ${t.limit} it may hold`);
+  for (const t of limitedTexts(structuredClone(intent))) if (t.text.length > t.limit) out.push(`${t.what} is ${t.text.length} characters, over the ${t.limit} it may hold`);
   if (!intent.title.trim()) out.push("it has no title");
-  if (channel === "presentation") {
-    if (intent.steps.length > STORY_HARD_LIMITS.steps) out.push(`it has ${intent.steps.length} steps, over the ${STORY_HARD_LIMITS.steps} a presentation holds`);
-    intent.steps.slice(0, STORY_HARD_LIMITS.steps).forEach((s, i) => { if (!s.text.trim()) out.push(`step ${i + 1} has no text`); });
-  }
   return out;
 }
 
@@ -274,16 +256,11 @@ const shorten = (text: string, limit: number) => {
 
 /**
  * The hard limits after the repair turn (diagram contract, Hard limits), one warning each: a text
- * over its limit is shortened, an empty title takes the drawing's, a presentation keeps its first
- * steps. A step with no text is dropped where steps are converted.
+ * over its limit is shortened, an empty title takes the drawing's.
  */
 function fitLimits(intent: StoryIntent, channel: ChannelId, title: string, warnings: string[]): StoryIntent {
   const next = structuredClone(intent);
-  if (channel === "presentation" && next.steps.length > STORY_HARD_LIMITS.steps) {
-    warnings.push(`Kept the first ${STORY_HARD_LIMITS.steps} of the ${next.steps.length} steps`);
-    next.steps = next.steps.slice(0, STORY_HARD_LIMITS.steps);
-  }
-  for (const t of limitedTexts(next, channel)) {
+  for (const t of limitedTexts(next)) {
     if (t.text.length <= t.limit) continue;
     t.put(shorten(t.text, t.limit));
     warnings.push(`Shortened ${t.what} to ${t.limit} characters`);
@@ -300,7 +277,7 @@ function fitLimits(intent: StoryIntent, channel: ChannelId, title: string, warni
  * view, created or replaced keeping its id. A violated relation fails; every repair adds exactly
  * one warning, a text over its hard limit included (diagram contract, Hard limits).
  */
-export function intentToDocument(doc: DiagramDocument, source: string, intent: StoryIntent, o: StoryOptions): { doc: DiagramDocument; view: string; warnings: string[]; steps: Step[] } {
+export function intentToDocument(doc: DiagramDocument, source: string, intent: StoryIntent, o: StoryOptions): { doc: DiagramDocument; view: string; warnings: string[] } {
   const channel = o.channel ?? "linkedin";
   const post = channel === "linkedin";
   const src = doc.views.find((v) => v.id === source);
@@ -311,7 +288,7 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
   // Relations (diagram contract, Problems and the repair turn): code does not guess a story.
   const violated = relationProblems(intent);
   if (violated.length) throw new StoryError(`The engine's ${name} cannot be drawn: ${violated.join("; ")}`);
-  // What is left is repaired, one warning each: a text over its hard limit, an empty title, the steps.
+  // What is left is repaired, one warning each: a text over its hard limit, an empty title.
   intent = fitLimits(intent, channel, doc.title, warnings);
   const holders = new Set(intent.parts.filter((p) => p.inside !== null).map((p) => p.inside!));
 
@@ -432,25 +409,6 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
     else if (e.step === null && e.label.trim().split(/\s+/).length > STORY_LIMITS.sideLabelWords) warnings.push(`The label "${e.label}" of ${e.id} is over the post's ${STORY_LIMITS.sideLabelWords} words; it is kept as written`);
   }
 
-  // Steps: only the presentation has them; a step keeps the parts that exist.
-  const steps: Step[] = [];
-  if (channel !== "presentation") {
-    if (intent.steps.length) warnings.push("Ignored the steps: only a presentation has steps");
-  } else intent.steps.forEach((s, i) => {
-    // A step with no text is dropped, one warning, and gets none for its parts (diagram contract, Hard limits).
-    if (!s.text.trim()) { warnings.push(`Step ${i + 1} has no text and was dropped`); return; }
-    const parts: string[] = [], wrong: string[] = [];
-    for (const p of s.parts) {
-      const mapped = partOf.get(p);
-      if (!mapped) wrong.push(p);
-      else if (!parts.includes(mapped)) parts.push(mapped);
-    }
-    // A step none of whose parts exist is dropped: that is the one repair, with one warning.
-    if (!parts.length) { warnings.push(`Step ${i + 1} names no part and was dropped`); return; }
-    for (const p of wrong) warnings.push(`Step ${i + 1}: dropped "${p}", which is no part`);
-    steps.push({ id: `s${steps.length + 1}`, parts, text: s.text, note: s.note });
-  });
-
   const title = (o.ids ? VIEW_TITLES[channel] : src.id === doc.views[0].id ? "LinkedIn" : `${src.title} · LinkedIn`).slice(0, LIMITS.viewTitle);
   const laid = layoutView({ id, title, caption: { title: intent.title, lede: intent.lede }, postOf: post ? source : null, nodes, edges, texts: [] }, { portrait: o.portrait, labels: true, post });
   const view: DiagramView = { ...laid, postOf: post ? source : null, texts: [] };
@@ -461,16 +419,16 @@ export function intentToDocument(doc: DiagramDocument, source: string, intent: S
     warnings: [...doc.warnings, ...warnings],
   };
   // A channel's view is checked once it is part of the file (`intentToChannel`).
-  if (o.ids) return { doc: next, view: id, warnings, steps };
+  if (o.ids) return { doc: next, view: id, warnings };
   const checked = validateDocument(next);
   if (!checked.ok) throw new StoryError(`The engine's post could not become a valid drawing: ${checked.error}`);
-  return { doc: checked.doc, view: id, warnings, steps };
+  return { doc: checked.doc, view: id, warnings };
 }
 
 
 /**
  * A story answer as a channel's one view (diagram contract, Story answers): its parts point to the
- * facts the intent names, replacing what the channel held (and, for the presentation, its steps).
+ * facts the intent names, replacing what the channel held.
  * The facts and every other channel stay; the channel's `outdated` is emptied. The overview is drawn
  * this way only for a first drawing, and code then draws every fact it left out (*Every fact drawn*).
  */
@@ -584,11 +542,10 @@ function storyChannel(stored: Document3, intent: StoryIntent, portrait: boolean,
   const groups = stored.channels[channel].views.find((v) => v.id === view)?.nodes.filter((n) => n.form === "group").map((n) => n.id);
   const r = intentToDocument(base, source.id, intent, { portrait, ids: { view, groups }, channel, rows });
   const drawn = r.doc.views.find((v) => v.id === r.view)!;
-  const cleared: Document3 = { ...stored, channels: { ...stored.channels, [channel]: { ...stored.channels[channel], views: [], ...(channel === "presentation" ? { steps: [] } : {}) } } };
+  const cleared: Document3 = { ...stored, channels: { ...stored.channels, [channel]: { ...stored.channels[channel], views: [] } } };
   const split = applyChannel(cleared, channel, {
     views: [{ ...drawn, postOf: null, nodes: drawn.nodes.map((n) => ({ ...n, facts: [...(n.from ?? [])] })) }],
     warnings: [...stored.warnings, ...r.warnings, ...added],
-    ...(channel === "presentation" ? { steps: r.steps } : {}),
   }, { keepFacts: true });
   if (!split.ok) throw new StoryError(split.error);
   const doc = clearOutdated(split.doc, channel);

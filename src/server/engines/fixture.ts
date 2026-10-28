@@ -98,7 +98,7 @@ function strip(d: Draft): Draft {
 }
 
 /** The suggestions whose instruction the fixture hears as a story (testing contract, Routing; ui contract, Suggestions). */
-export const STORY_SUGGESTIONS = ["Make it shorter for LinkedIn", "Show fewer details", "Use fewer steps"] as const;
+export const STORY_SUGGESTIONS = ["Make it shorter for LinkedIn", "Show fewer details"] as const;
 
 /** The fixture's answer to a refine's routing question: the story marker or a story suggestion, else the facts. */
 export function fixtureRoute(instruction: string): "facts" | "story" {
@@ -151,11 +151,10 @@ export function fixtureScan(folderName: string, data: { listing?: string[]; entr
 }
 
 /**
- * The README and presentation stories (testing contract, Story): built from the overview's first
+ * The README story (testing contract, Story): built from the overview's first
  * view — each part that is not a group and shows a fact, in view order, at most 12, on the spine —
- * and, for the presentation, a step for each of the first three parts plus one naming `ghost-part`.
  */
-export function fixtureStory(view: DiagramView, presentation: boolean) {
+export function fixtureStory(view: DiagramView) {
   const parts = view.nodes.filter((n) => n.form !== "group" && (n.facts?.length ?? 0) > 0).slice(0, 12);
   const ids = new Set(parts.map((p) => p.id));
   return {
@@ -165,9 +164,6 @@ export function fixtureStory(view: DiagramView, presentation: boolean) {
       facts: [...(n.facts ?? [])], held: [...(n.heldIds ?? [])], limits: [...(n.limitIds ?? [])],
     })),
     edges: view.edges.filter((e) => ids.has(e.from) && ids.has(e.to)).map((e) => ({ from: e.from, to: e.to, label: e.label, style: e.style, step: e.step })),
-    steps: presentation
-      ? [...parts.slice(0, 3).map((n, i) => ({ parts: [n.id], text: `Step ${i + 1}: ${n.label}`, note: `The test engine explains ${n.label}.` })), { parts: ["ghost-part"], text: "A step about nothing", note: "" }]
-      : [],
   };
 }
 
@@ -222,7 +218,6 @@ export function fixtureOverview(title: string, partial: boolean) {
       { from: "app", to: "agent", label: "asks", style: "call", step: 1 },
       ...(partial ? [] : [{ from: "agent", to: "store", label: "", style: "call", step: null }]),
     ],
-    steps: [],
   };
 }
 
@@ -288,11 +283,11 @@ export class FixtureEngine implements Engine {
     if (req.task?.kind === "revise") {
       const channel = req.task.data?.channel;
       if (channel === "linkedin") return fixturePost(req.base, req.view, req.instruction);
-      if ((channel === "readme" || channel === "presentation") && req.task.data?.overview) return fixtureStory(req.task.data.overview, channel === "presentation");
+      if (channel === "readme" && req.task.data?.overview) return fixtureStory(req.task.data.overview);
       return fixtureNudge(req.base, req.view);
     }
     if (req.task?.kind === "post") return fixturePost(req.base, req.view, req.instruction);
-    if (req.task?.kind === "story" && req.task.data?.overview) return fixtureStory(req.task.data.overview, req.task.data.channel === "presentation");
+    if (req.task?.kind === "story" && req.task.data?.overview) return fixtureStory(req.task.data.overview);
     if (req.simplify) return fixtureSimplify(req.base, req.instruction);
     return fixtureAnswer(req.base, req.view, req.instruction);
   }
@@ -330,7 +325,7 @@ export class FixtureEngine implements Engine {
     if (stage === "read") return fixtureRead(data.listing ?? []);
     if (stage === "overview") return overlong(fixtureOverview(data.title ?? req.folderName, marked("[fixture:partial]")), marked(OVERLONG));
     if (req.task?.kind === "post") return fixturePost(req.base, req.view, req.instruction);
-    return fixtureStory(data.overview!, data.channel === "presentation");
+    return fixtureStory(data.overview!);
   }
 }
 
@@ -395,7 +390,6 @@ export const CANNED_INTENT = {
     { from: "result", to: "approval", label: "review", style: "async", step: null },
     { from: "approval", to: "result", label: "decision", style: "call", step: null },
   ],
-  steps: [],
 };
 
 /** The fixture's post: part i shows the fact the source view's part i shows; markers per the testing contract. */

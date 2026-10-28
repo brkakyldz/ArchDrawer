@@ -47,24 +47,17 @@ describe("story runs", () => {
     expect(after.channels.overview).toEqual(before.channels.overview);
   });
 
-  it("give the presentation its steps, the fixture's ghost-part step dropped with a warning", async () => {
-    const { run, read } = await opened();
-    const r = await run({ kind: "story", channel: "presentation" });
-    expect(r).toMatchObject({ status: "succeeded", channel: "presentation", view: "presentation" });
-    const doc = read();
-    expect(doc.channels.presentation.steps.map((s: { id: string; text: string }) => [s.id, s.text])).toEqual([["s1", "Step 1: Web app"], ["s2", "Step 2: Order API"], ["s3", "Step 3: Orders DB"]]);
-    expect(doc.warnings.filter((w: string) => w.startsWith("Step 4"))).toEqual(["Step 4 names no part and was dropped"]);
-    expect((r as { layoutReport: { format: string } }).layoutReport.format).toBe("slide");
-  });
-
   it("a run's save replaces the warnings: a clean story or refine after one with warnings leaves none", async () => {
     const { run, read } = await opened();
-    await run({ kind: "story", channel: "presentation" });
-    expect(read().warnings).toContain("Step 4 names no part and was dropped");
+    // The overview's story route ignores a content change, with a warning (testing contract, Routing).
+    const warned = { channel: "overview", view: "overview", instruction: "add Mailer component [fixture:story]" };
+    expect(await run(warned)).toMatchObject({ status: "succeeded", route: "story" });
+    const first = read().warnings;
+    expect(first).not.toEqual([]);
     expect(await run({ kind: "story", channel: "readme" })).toMatchObject({ status: "succeeded", progress: expect.arrayContaining(["Saved"]) });
     expect(read().warnings).toEqual([]);
-    await run({ kind: "story", channel: "presentation" });
-    expect(read().warnings).toEqual(["Step 4 names no part and was dropped"]);
+    await run(warned);
+    expect(read().warnings).toEqual(first);
     expect(await run({ channel: "overview", view: "overview", instruction: "add Mailer component" })).toMatchObject({ status: "succeeded", progress: expect.arrayContaining(["Saved"]) });
     expect(read().warnings).toEqual([]);
   });
@@ -76,12 +69,13 @@ describe("story runs", () => {
     const strip = (d: { channels: { linkedin: unknown } }) => d.channels.linkedin;
     expect(strip(a.read())).toEqual(strip(b.read()));
     const refused = async (body: object) => (await a.run(body)) as { status: number; body: { error: string } };
-    expect((await refused({ kind: "story" })).body.error).toBe("A story is drawn in the linkedin, readme or presentation channel");
-    expect((await refused({ kind: "story", channel: "overview" })).body.error).toBe("A story is drawn in the linkedin, readme or presentation channel");
+    expect((await refused({ kind: "story" })).body.error).toBe("A story is drawn in the linkedin or readme channel");
+    expect((await refused({ kind: "story", channel: "overview" })).body.error).toBe("A story is drawn in the linkedin or readme channel");
+    // The presentation channel is gone (ADR 0019).
+    expect((await refused({ kind: "story", channel: "presentation" })).body.error).toBe('Unknown channel "presentation"; use one of overview, linkedin, readme');
     expect((await refused({ kind: "story", channel: "readme", scope: { kind: "all" } })).body.error).toBe('A story draws the channel\'s one view: give no scope or {"kind": "view"}');
     expect((await refused({ kind: "story", channel: "linkedin", format: "readme" })).body.error).toBe('Invalid format "readme"; use one of feed, linkedin');
     expect((await refused({ kind: "story", channel: "readme", format: "square" })).body.error).toBe('Invalid format "square"; use one of readme');
-    expect((await refused({ kind: "story", channel: "presentation", format: "readme" })).body.error).toBe('Invalid format "readme"; use one of slide');
     expect((await refused({ kind: "draw" })).body.error).toBe("Scan the folder first: that scan is unknown or did not succeed");
     expect((await refused({ kind: "refine", instruction: "x", view: "overview", readCode: true })).body.error).toBe("readCode is for a story");
     expect((await refused({ kind: "poster" })).body.error).toBe("Unknown run kind poster: use refine, story, post, simplify, revise or draw");

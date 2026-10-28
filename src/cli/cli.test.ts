@@ -22,6 +22,18 @@ describe("archdrawer validate", () => {
     expect(readFileSync(file, "utf8")).toBe(before);
   });
 
+  it("checks a file holding the removed presentation channel without it, with one warning, and writes nothing", async () => {
+    const { file } = shopRepo();
+    const f = JSON.parse(readFileSync(file, "utf8"));
+    f.channels.presentation = { views: [{ ...f.channels.overview.views[0], id: "presentation", title: "Presentation" }], steps: [] };
+    writeFileSync(file, JSON.stringify(f));
+    const before = readFileSync(file, "utf8");
+    const r = await cli("validate", file);
+    expect(r.code).toBe(0);
+    expect(r.out.filter((l) => l.startsWith("WARN "))).toEqual(["WARN  The presentation channel was removed"]);
+    expect(readFileSync(file, "utf8")).toBe(before);
+  });
+
   it("lists every violation with its path and what is allowed, then the count", async () => {
     const { file } = shopRepo();
     const f = shopFile2() as { views: { nodes: Record<string, unknown>[]; edges: Record<string, unknown>[] }[] };

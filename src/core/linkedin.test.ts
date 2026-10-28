@@ -78,7 +78,7 @@ const part = (id: string, extra: Partial<StoryPart>): StoryPart =>
 
 describe("a post answer as the LinkedIn channel (intentToChannel)", () => {
   const intent: StoryIntent = {
-    title: "How an order flows", lede: "", steps: [],
+    title: "How an order flows", lede: "",
     zones: [{ id: "back", label: "Back end" }],
     parts: [
       part("web", { label: "Shop", spine: 0, from: ["web"] }),

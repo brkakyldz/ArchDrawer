@@ -6,21 +6,21 @@ import { prepareChannel } from "./simple";
 import { node } from "./testkit";
 import { choiceAsFile3 } from "./file4";
 
-// The simple README and presentation (ui contract, Simple versions): the overview's first view as it is.
+// The simple README (ui contract, Simple versions): the overview's first view as it is.
 
 const NOW = "2026-10-21T00:00:00.000Z";
-function stored(steps = true): Document3 {
+function stored(): Document3 {
   const r = readAnyFile({
     schema: "archdraw/diagram@2", title: "Shop",
     views: [{ id: "overview", title: "Overview", caption: { title: "Shop", lede: "Orders." },
       nodes: [node("web", { kind: "client", place: { row: 0, col: 0 } }), node("api", { kind: "api", form: "panel", items: ["Check"], place: { row: 0, col: 1 } }), node("db", { kind: "data", place: { row: 0, col: 2 } })],
-      edges: [{ from: "web", to: "api", label: "", style: "call", both: false, step: steps ? 1 : null }, { from: "api", to: "db", label: "saves", style: "call", both: false, step: steps ? 2 : null }], texts: [] }],
+      edges: [{ from: "web", to: "api", label: "", style: "call", both: false, step: 1 }, { from: "api", to: "db", label: "saves", style: "call", both: false, step: 2 }], texts: [] }],
   });
   if (!r.ok) throw new Error(r.errors.join("; "));
   return normalizeFile3(choiceAsFile3(r.file!), { id: "d_simple0001", now: NOW, source: null });
 }
 
-describe("the simple README and presentation", () => {
+describe("the simple README", () => {
   it("draws the README as the overview's first view: the same parts and connections, no own text, no texts, nothing marked", () => {
     const d = stored();
     const r = prepareChannel(d, "readme");
@@ -35,7 +35,7 @@ describe("the simple README and presentation", () => {
     expect(r.doc.channels.readme.outdated).toEqual([]);
   });
 
-  it("drops an inside view's link and an overview part's own text: the README and presentation show the facts' names", () => {
+  it("drops an inside view's link and an overview part's own text: the README shows the facts' names", () => {
     const r0 = readAnyFile({
       schema: "archdraw/diagram@2", title: "Shop",
       views: [
@@ -47,23 +47,9 @@ describe("the simple README and presentation", () => {
     const d = normalizeFile3(choiceAsFile3(r0.file!), { id: "d_simple0002", now: NOW, source: null });
     const db = d.channels.overview.views[0].nodes.find((p) => p.id === "db")!;
     db.label = "DB (short)";
-    for (const channel of ["readme", "presentation"] as const) {
-      const r = prepareChannel(d, channel);
-      if (!r.ok) throw new Error(r.error);
-      const [v] = r.doc.channels[channel].views;
-      expect(v.nodes.map((p) => [p.id, p.detail, p.label ?? null])).toEqual([["api", null, null], ["db", null, null]]);
-    }
-  });
-
-  it("gives the presentation one step per numbered connection, else one step of every top-level part", () => {
-    const r = prepareChannel(stored(), "presentation");
+    const r = prepareChannel(d, "readme");
     if (!r.ok) throw new Error(r.error);
-    expect(r.doc.channels.presentation.steps).toEqual([
-      { id: "s1", parts: ["web", "api"], text: "Web → Api", note: "" },
-      { id: "s2", parts: ["api", "db"], text: "saves", note: "" },
-    ]);
-    const none = prepareChannel(stored(false), "presentation");
-    if (!none.ok) throw new Error(none.error);
-    expect(none.doc.channels.presentation.steps).toEqual([{ id: "s1", parts: ["web", "api", "db"], text: "Shop", note: "" }]);
+    const [v] = r.doc.channels.readme.views;
+    expect(v.nodes.map((p) => [p.id, p.detail, p.label ?? null])).toEqual([["api", null, null], ["db", null, null]]);
   });
 });

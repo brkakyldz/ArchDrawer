@@ -50,7 +50,7 @@ describe("@4 through the server (FILE-2)", () => {
     expect(await li.text()).toContain('data-node-id="web-li"');
     expect(await json(await t.req(`/api/diagrams/${id}/export.svg?view=overview-linkedin`))).toEqual({ status: 400, body: { error: 'Unknown view "overview-linkedin"' } });
     expect(await json(await t.req(`/api/diagrams/${id}/export.svg?channel=readme`))).toEqual({ status: 400, body: { error: 'The channel "readme" has no drawing' } });
-    expect(await json(await t.req(`/api/diagrams/${id}/export.mmd?channel=blog`))).toEqual({ status: 400, body: { error: 'Unknown channel "blog"; use one of overview, linkedin, readme, presentation' } });
+    expect(await json(await t.req(`/api/diagrams/${id}/export.mmd?channel=blog`))).toEqual({ status: 400, body: { error: 'Unknown channel "blog"; use one of overview, linkedin, readme' } });
     expect(await json(await t.req(`/api/diagrams/${id}/export.svg?channel=overview&view=overview-linkedin`))).toEqual({ status: 400, body: { error: 'Unknown view "overview-linkedin"' } });
     // A request names its channel.
     const q = await json(await t.req(`/api/diagrams/${id}/requests`, { method: "POST", json: { channel: "linkedin", view: "overview-linkedin", text: "Shorter" } }));
@@ -103,7 +103,7 @@ describe("the command line on @4 (FILE-2, START-5)", () => {
     expect(svg.code).toBe(0);
     expect(svg.out.at(-1)).toBe(out);
     expect(readFileSync(out, "utf8")).toContain('data-node-id="api-li"');
-    expect(await cli("svg", file, "--channel", "blog")).toMatchObject({ code: 2, err: ['Unknown channel "blog"; use one of overview, linkedin, readme, presentation', 'Run "archdrawer --help" for the commands.'] });
+    expect(await cli("svg", file, "--channel", "blog")).toMatchObject({ code: 2, err: ['Unknown channel "blog"; use one of overview, linkedin, readme', 'Run "archdrawer --help" for the commands.'] });
     expect(await cli("svg", file, "--channel", "readme")).toMatchObject({ code: 1, err: [`The channel "readme" has no drawing in ${file}`] });
     expect(await cli("svg", file, "--channel", "linkedin", "--view", "overview")).toMatchObject({ code: 1, err: [`No view "overview" in the linkedin channel of ${file}; views: overview-linkedin`] });
   });

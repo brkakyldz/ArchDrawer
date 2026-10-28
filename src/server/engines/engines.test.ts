@@ -393,7 +393,7 @@ describe("a story from the facts alone (STORY-1)", () => {
 describe("the repair turn of a story answer (STORY-7)", () => {
   const facts = { components: [{ id: "api", label: "Order API", description: "Takes orders.", files: ["src/api.ts"] }], relations: [] };
   const answer = (lede: string) => ({
-    title: "Orders", lede, zones: [], steps: [], edges: [],
+    title: "Orders", lede, zones: [], edges: [],
     parts: [{ id: "api", label: "Order API", sub: "takes orders", kind: "api", chips: [], zone: null, inside: null, spine: 0, anchor: null, side: null, facts: ["api"], held: [], limits: [] }],
   });
   const story = { first: answer("x".repeat(300)), repair: answer("Takes an order.") };

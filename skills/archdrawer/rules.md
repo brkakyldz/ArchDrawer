@@ -3,7 +3,7 @@
 You write one JSON file that an editor opens. It holds two things: the
 **facts** — what the system is made of and who talks to whom, read from the
 code — and the **overview drawing** of those facts. The editor draws the
-LinkedIn, README and presentation versions from the same facts later. The
+LinkedIn and README versions from the same facts later. The
 drawing must carry the real architecture, at the same depth for any
 repository:
 
@@ -14,7 +14,7 @@ repository:
   a component whose code shows distinct mechanisms lists them as `items` in a
   `panel` (e.g. a tool gateway: "Schema validation", "Scope re-check",
   "Idempotency key", "Typed errors", "Audit event"): the overview holds every
-  mechanism. A README or presentation drawing holds them only on a part whose
+  mechanism. A README drawing holds them only on a part whose
   working its story is about, and a LinkedIn post holds none. Items name
   mechanisms, rules or contents, 2–5 words each.
 - **Components inside components.** When one component runs an inner loop or

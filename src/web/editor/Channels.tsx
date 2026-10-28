@@ -2,7 +2,7 @@ import { CHANNEL_LABELS, CHANNELS, type ChannelId, type Document3 } from "../../
 
 const changes = (n: number) => `${n} change${n === 1 ? "" : "s"}`;
 
-/** `channel-tabs` (ui contract, Editor frame): the four channels in order, the current one and the marks. */
+/** `channel-tabs` (ui contract, Editor frame): the three channels in order, the current one and the marks. */
 export function ChannelTabs({ stored, current, onPick }: { stored: Document3; current: ChannelId; onPick: (c: ChannelId) => void }) {
   return (
     <nav className="channel-tabs" data-testid="channel-tabs" aria-label="Channels">
@@ -36,11 +36,11 @@ export function OutdatedBanner({ count, onKeep, onRedraw, busy = false }: { coun
 
 const NOT_DRAWN: Record<ChannelId, string> = {
   overview: "The overview is not drawn yet", linkedin: "The LinkedIn post is not drawn yet",
-  readme: "The README drawing is not drawn yet", presentation: "The presentation is not drawn yet",
+  readme: "The README drawing is not drawn yet",
 };
 
 /**
- * How the README or the presentation is drawn on its empty stage (ui contract, Channels): with an
+ * How the README is drawn on its empty stage (ui contract, Channels): with an
  * engine a story from the facts alone (`channel-draw`), without one the simple version (`channel-prepare`).
  */
 export function ChannelStart({ engine, running, onDraw, onPrepare }: { engine: boolean; running: boolean; onDraw: () => void; onPrepare: () => void }) {

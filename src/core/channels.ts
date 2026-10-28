@@ -16,7 +16,7 @@ import {
 } from "./model";
 import {
   CHANNELS, assignConnectionIds, fillDefaults3, freeIdAmong, isChannel,
-  type Channel, type ChannelId, type ComponentFact, type Connection, type Document3, type File3, type LimitFact, type Part, type RelationFact, type Step, type View3,
+  type Channel, type ChannelId, type ComponentFact, type Connection, type Document3, type File3, type LimitFact, type Part, type RelationFact, type View3,
 } from "./file3";
 
 const TEXT_FIELDS = ["label", "kind", "sub", "description"] as const;
@@ -108,7 +108,6 @@ export function joinChannel(doc: Document3, channel: ChannelId): DiagramDocument
     views: ch.views.map((v) => joinView(doc, channel, v)),
     requests: doc.requests.map((r) => ({ ...r })),
     warnings: [...doc.warnings],
-    ...(ch.steps ? { steps: ch.steps.map((s) => ({ ...s, parts: [...s.parts] })) } : {}),
   };
 }
 
@@ -120,7 +119,7 @@ export function channelView(doc: Document3, channel: ChannelId, viewId?: string)
 }
 
 /** The new state of a channel, in the view-shaped form `joinChannel` returns. */
-export type ChannelState = Pick<DiagramDocument, "views"> & Partial<Pick<DiagramDocument, "title" | "theme" | "showSteps" | "requests" | "warnings" | "engine" | "steps">>;
+export type ChannelState = Pick<DiagramDocument, "views"> & Partial<Pick<DiagramDocument, "title" | "theme" | "showSteps" | "requests" | "warnings" | "engine">>;
 
 export type ApplyResult = { ok: true; doc: Document3 } | { ok: false; error: string };
 
@@ -499,10 +498,7 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
   const channels = {} as Record<ChannelId, Channel>;
   for (const c of CHANNELS) {
     const ch = doc.channels[c];
-    const steps = c === "presentation" ? next.steps ?? ch.steps : undefined;
-    channels[c] = c === channel
-      ? { views, showSteps: next.showSteps ?? ch.showSteps, outdated: [...ch.outdated], ...(steps ? { steps: steps.map((s) => ({ ...s, parts: [...s.parts] })) } : {}) }
-      : structuredClone(ch);
+    channels[c] = c === channel ? { views, showSteps: next.showSteps ?? ch.showSteps, outdated: [...ch.outdated] } : structuredClone(ch);
   }
 
   const result: Document3 = {
@@ -515,7 +511,6 @@ export function applyChannel(doc: Document3, channel: ChannelId, next: ChannelSt
     warnings: [...(next.warnings ?? doc.warnings), ...repairs],
   };
   cascade(result, deletedFacts, deletedRels);
-  pruneSteps(result);
 
   // A fact added outside the overview gets a part in the overview's first view (rule 16).
   if (!overview) {
@@ -600,23 +595,6 @@ function freeSpines(nodes: Part[], moved: Part[]) {
     let next = Math.max(-1, ...others) + 1;
     for (const p of mine) p.lane = { spine: next++ };
   }
-}
-
-/**
- * A step names parts of the presentation view: a part that left it leaves every step, and a step
- * left with no part is removed, one warning each (contract, Edits, Steps).
- */
-function pruneSteps(doc: Document3) {
-  const ch = doc.channels.presentation;
-  if (!ch.steps) return;
-  const parts = new Set(ch.views[0]?.nodes.map((p) => p.id) ?? []);
-  const kept: Step[] = [];
-  for (const s of ch.steps) {
-    const left = s.parts.filter((id) => parts.has(id));
-    if (left.length) kept.push(left.length === s.parts.length ? s : { ...s, parts: left });
-    else doc.warnings.push(`Step "${s.id}" had no part left and was removed`);
-  }
-  if (kept.length !== ch.steps.length || kept.some((s, i) => s !== ch.steps![i])) doc.channels.presentation = { ...ch, steps: kept };
 }
 
 /**
@@ -742,7 +720,7 @@ export function markOutdated(before: Document3, after: Document3, madeIn: readon
 
 /** An outside write: the channels whose views changed made the change; the others get marks. */
 export function markOutside(before: Document3, after: Document3): Document3 {
-  const madeIn = CHANNELS.filter((c) => JSON.stringify([before.channels[c].views, before.channels[c].steps]) !== JSON.stringify([after.channels[c].views, after.channels[c].steps]));
+  const madeIn = CHANNELS.filter((c) => JSON.stringify(before.channels[c].views) !== JSON.stringify(after.channels[c].views));
   return markOutdated(before, after, madeIn);
 }
 

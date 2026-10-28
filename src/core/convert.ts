@@ -1,7 +1,8 @@
 /**
  * Reading older drawing files (docs/contracts/diagram.md, *Reading `archdraw/diagram@3`* and *Reading
  * `archdraw/diagram@2`*; ADR 0006, ADR 0015): `@2` becomes `@3`, and `@3` becomes `@4`. Pure (invariant 4).
- * Every change of meaning adds one warning; `@3` to `@4` changes none.
+ * Every change of meaning adds one warning; `@3` to `@4` changes none. A removed presentation channel is
+ * dropped before any rule is checked (*Reading a `presentation` channel*; ADR 0019).
  */
 import { SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, validateFile, type DiagramFile, type EdgeInput, type FileCheck, type NodeInput, type ViewInput } from "./model";
 import { migrateV1 } from "./migrate";
@@ -12,6 +13,8 @@ import {
 import { convertV3, validateFile4, type File4 } from "./file4";
 
 export const CONVERTED_V2 = "Converted from archdraw/diagram@2";
+/** The one warning of a file whose dropped presentation channel held a view (diagram contract, *Reading a `presentation` channel*). */
+export const PRESENTATION_REMOVED = "The presentation channel was removed";
 const EDGE_TEXT = ["label", "style", "both"] as const;
 
 /** Convert a valid `@2` file (notes already read as texts) to an `@3` file. */
@@ -127,7 +130,6 @@ export function convertV2(file: DiagramFile): { file: File3; warnings: string[] 
       overview: { views: overview, showSteps, outdated: [] },
       linkedin: { views: post ? [convertPost(post)] : [], showSteps: post ? showSteps : false, outdated: [] },
       readme: { views: [], showSteps: false, outdated: [] },
-      presentation: { views: [], showSteps: false, outdated: [] },
     },
     requests,
     warnings: [...(file.warnings ?? []), ...warnings],
@@ -154,13 +156,44 @@ function asV4(r: { ok: boolean; errors: string[]; warnings: string[]; file: File
   return { ok: true, errors: [], warnings: r.warnings.map(inChoice), file };
 }
 
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * An `@4` or `@3` file without the removed presentation channel (diagram contract, *Reading a `presentation`
+ * channel*; ADR 0019): the `presentation` key dropped from every choice's `channels` (an `@3` file's own), with
+ * every request on that channel. `held` when any dropped channel held a view. The value given is not changed.
+ */
+export function dropPresentation(raw: unknown): { raw: unknown; held: boolean } {
+  if (!isObj(raw) || (raw.schema !== SCHEMA_V4 && raw.schema !== SCHEMA_V3)) return { raw, held: false };
+  let held = false;
+  const strip = (channels: unknown): unknown => {
+    if (!isObj(channels) || !("presentation" in channels)) return channels;
+    const { presentation, ...rest } = channels;
+    if (isObj(presentation) && Array.isArray(presentation.views) && presentation.views.length > 0) held = true;
+    return rest;
+  };
+  const out: Record<string, unknown> = { ...raw };
+  if (raw.schema === SCHEMA_V3) out.channels = strip(raw.channels);
+  else if (Array.isArray(raw.choices)) out.choices = raw.choices.map((c) => (isObj(c) && isObj(c.channels) && "presentation" in c.channels ? { ...c, channels: strip(c.channels) } : c));
+  if (Array.isArray(raw.requests)) out.requests = raw.requests.filter((r) => !(isObj(r) && r.channel === "presentation"));
+  return { raw: out, held };
+}
+
 /**
  * Read any drawing file as `@4`: an `@4` file is validated; an `@3` file is validated as `@3` and
  * converted; an `@2` file is validated as `@2`, converted to `@3`, the result validated and converted
- * again; an `@1` file only when `allowV1` (import, `migrate`). The returned warnings are the file's
- * own plus the conversion's.
+ * again; an `@1` file only when `allowV1` (import, `migrate`). A presentation channel is dropped first
+ * (`dropPresentation`); when one held a view the file gets one warning. The returned warnings are the
+ * file's own plus the conversion's.
  */
-export function readAnyFile(raw: unknown, check: FileCheck = {}, o: { allowV1?: boolean; now?: string } = {}): ReadReport {
+export function readAnyFile(given: unknown, check: FileCheck = {}, o: { allowV1?: boolean; now?: string } = {}): ReadReport {
+  const { raw, held } = dropPresentation(given);
+  const r = readKnown(raw, check, o);
+  if (!held || !r.ok || !r.file) return r;
+  return { ...r, warnings: [...r.warnings, PRESENTATION_REMOVED], file: { ...r.file, warnings: [...(r.file.warnings ?? []), PRESENTATION_REMOVED] } };
+}
+
+function readKnown(raw: unknown, check: FileCheck, o: { allowV1?: boolean; now?: string }): ReadReport {
   const schema = raw && typeof raw === "object" ? (raw as { schema?: unknown }).schema : undefined;
   if (schema === SCHEMA_V1 && o.allowV1) {
     const { doc } = migrateV1(raw, o.now ?? new Date().toISOString());

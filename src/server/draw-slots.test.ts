@@ -39,7 +39,7 @@ const WHOLE = { kind: "whole" }, O1 = { kind: "option", option: "o1" }, O2 = { k
 const typed = (text: string) => ({ kind: "typed", text });
 /** Every event of a run, replayed: the run has ended. */
 const eventsOf = (t: App, id: string) => { const out: RunEvent[] = []; t.runs.subscribe(id, (e) => out.push(e)); return out; };
-const viewIds = (doc: Document4) => doc.choices.map((c) => [c.id, ...(["overview", "linkedin", "readme", "presentation"] as const).flatMap((ch) => c.channels[ch].views.map((v) => `${ch}:${v.id}`))]);
+const viewIds = (doc: Document4) => doc.choices.map((c) => [c.id, ...(["overview", "linkedin", "readme"] as const).flatMap((ch) => c.channels[ch].views.map((v) => `${ch}:${v.id}`))]);
 
 /** A fixture whose calls first wait `ms[choiceIndex]`, that hangs until cancelled for a typed choice saying "Hold", and fails the indices in `fail`. */
 function engineOf(o: { ms?: number[]; fail?: number[] } = {}) {

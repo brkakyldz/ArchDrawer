@@ -14,9 +14,9 @@ import { detailAt, toWorld, zoomAt } from "./viewport";
 /** A drag's marks on a part or a connection (ui contract, Dragging): lifted, or dimmed while others move. */
 type DragMark = "lifted" | "dim" | undefined;
 
-const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, changed, open = false, post, match, on = false, drag, subLines = true, dropTarget = false, traces, usedBy }: { node: DiagramNode; rect: Rect; P: Palette; selected: boolean; dim: boolean; changed: boolean; open?: boolean; post: boolean; match?: "true" | "current"; on?: boolean; drag?: DragMark; subLines?: boolean; dropTarget?: boolean; traces?: string; usedBy?: string }) {
+const NodeShape = memo(function NodeShape({ node, rect, P, selected, dim, changed, open = false, post, match, drag, subLines = true, dropTarget = false, traces, usedBy }: { node: DiagramNode; rect: Rect; P: Palette; selected: boolean; dim: boolean; changed: boolean; open?: boolean; post: boolean; match?: "true" | "current"; drag?: DragMark; subLines?: boolean; dropTarget?: boolean; traces?: string; usedBy?: string }) {
   return (
-    <g className={`nd${dim ? " dim" : ""}${changed ? " changed" : ""}${open ? " open" : ""}`} data-changed={changed ? "true" : undefined} data-dim={dim ? "true" : undefined} data-match={match} data-step={on ? "on" : undefined} data-testid={`node-${node.id}`} data-node-id={node.id} data-kind={node.kind} data-form={node.form}
+    <g className={`nd${dim ? " dim" : ""}${changed ? " changed" : ""}${open ? " open" : ""}`} data-changed={changed ? "true" : undefined} data-dim={dim ? "true" : undefined} data-match={match} data-testid={`node-${node.id}`} data-node-id={node.id} data-kind={node.kind} data-form={node.form}
       data-parent={node.parent ?? ""} data-selected={String(selected)} data-lifted={drag === "lifted" ? "true" : undefined} data-drag-dim={drag === "dim" ? "true" : undefined} data-drop-target={dropTarget ? "true" : undefined} style={{ ["--hover-k" as string]: P.kinds[node.kind] }}
       // A part with an inside is a button that opens it (ui contract, Opening a part's inside).
       {...(node.detail ? { "data-open": "true", tabIndex: 0, role: "button", "aria-label": `Open ${node.label}` } : {})}
@@ -495,10 +495,8 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   // While searching, the matches stay lit and everything else dims (ui contract, search); otherwise an open callout decides.
   const found = ctl.found;
   const matchOf = (id: string) => (!found?.ids.has(id) ? undefined : found.current === id ? "current" : "true");
-  // A presentation step lights its parts the way search does, never changing a part's size.
-  const step = found ? null : ctl.step;
-  const dimNode = (id: string) => (found ? !found.ids.has(id) : step ? !step.has(id) : !!lit && !lit.has(id));
-  const dimEdge = (e: DiagramEdge) => (steps && e.step === null) || (step ? !(step.has(e.from) && step.has(e.to)) : found ? !(found.ids.has(e.from) && found.ids.has(e.to))
+  const dimNode = (id: string) => (found ? !found.ids.has(id) : !!lit && !lit.has(id));
+  const dimEdge = (e: DiagramEdge) => (steps && e.step === null) || (found ? !(found.ids.has(e.from) && found.ids.has(e.to))
     : !!lit && !(lit.has(e.from) && lit.has(e.to) && (e.from === ctl.callout || e.to === ctl.callout || descendants(view, ctl.callout!).has(e.from))));
   const hovered = hover && rects.get(hover) && ctl.tool !== "pan" && !live ? hover : null;
   const k = vp.k;
@@ -509,7 +507,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
   const ends = (e: DiagramEdge, has: (id: string) => boolean) => has(e.from) || has(e.to);
   const inFocus = (e: DiagramEdge) => touches(e) || selEdges.has(e.id) || (!live && hoverEdge === e.id)
     || (!live && !!hover && ends(e, (id) => id === hover)) || ends(e, (id) => selNodes.has(id) || id === ctl.callout)
-    || (!!step && step.has(e.from) && step.has(e.to)) || (!!found && found.ids.has(e.from) && found.ids.has(e.to));
+    || (!!found && found.ids.has(e.from) && found.ids.has(e.to));
   const dragMark = (id: string): DragMark => (!moving ? undefined : moving.has(id) ? "lifted" : "dim");
   // Ends glide while a drag is on and once on its release, to the stateless routes (diagram contract, While dragging).
   const gliding = !!moving || afterDrag || dragged.current;
@@ -592,7 +590,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
       <svg className="world" aria-label={view.title}>
         <defs dangerouslySetInnerHTML={{ __html: defs }} />
         <g transform={`translate(${vp.x} ${vp.y}) scale(${k})`}>
-          {groups.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} drag={dragMark(n.id)} subLines={view.subLines !== false} dropTarget={dropTarget === n.id} />)}
+          {groups.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} drag={dragMark(n.id)} subLines={view.subLines !== false} dropTarget={dropTarget === n.id} />)}
           {/* A dragged part's own connections are drawn above every other one, still under the parts. */}
           {[...view.edges.filter((e) => !touches(e)), ...view.edges.filter(touches)].map((e) => {
             const r = routes.get(e.id);
@@ -623,7 +621,7 @@ export function Canvas({ ctl, steps, onDouble }: { ctl: Ctl; steps: boolean; onD
             );
           })}
           {groups.map((n) => <GroupHead key={`head-${n.id}`} node={n} rect={rects.get(n.id)!} P={P} dim={dimNode(n.id)} open={ctl.callout === n.id} post={post} drag={dragMark(n.id)} subLines={view.subLines !== false} />)}
-          {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} on={!!step?.has(n.id)} drag={dragMark(n.id)} subLines={view.subLines !== false} traces={tracesFor(n.id)} usedBy={usedBy.get(n.id)} />)}
+          {plain.map((n) => <NodeShape key={n.id} node={n} rect={rects.get(n.id)!} P={P} selected={selNodes.has(n.id)} dim={dimNode(n.id)} changed={ctl.changed.has(n.id)} open={ctl.callout === n.id} post={post} match={matchOf(n.id)} drag={dragMark(n.id)} subLines={view.subLines !== false} traces={tracesFor(n.id)} usedBy={usedBy.get(n.id)} />)}
           {view.edges.map((e) => {
             const r = routes.get(e.id);
             if (!r || hiddenNow(e)) return null;

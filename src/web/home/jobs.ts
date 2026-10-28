@@ -10,7 +10,6 @@ export type Stage = (typeof STAGES)[number];
 export const CHANNELS: { id: DrawChannel; label: string; size: string; summary: string; name: string; page: { w: number; h: number } }[] = [
   { id: "linkedin", label: "LinkedIn post", size: "1080 × 1350", summary: " for a LinkedIn post", name: "LinkedIn post", page: { w: 44, h: 55 } },
   { id: "readme", label: "README drawing", size: "wide · light or dark", summary: " for a README", name: "README drawing", page: { w: 96, h: 40 } },
-  { id: "presentation", label: "Presentation", size: "16 : 9 slides", summary: " for a presentation", name: "presentation", page: { w: 80, h: 45 } },
 ];
 export const channelOf = (id: string | null | undefined) => CHANNELS.find((c) => c.id === id) ?? null;
 /** A choice is quiet once no engine line came for this long. */

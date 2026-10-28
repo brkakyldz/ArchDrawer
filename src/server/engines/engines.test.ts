@@ -323,13 +323,12 @@ describe("engine detection (#131)", () => {
     const slow = slowCli(kind, 1500);
     const env = { ...process.env, [`ARCHDRAW_${kind.toUpperCase()}_BIN`]: slow.bin };
     const t = makeApp({ engines: [kind === "claude" ? new ClaudeEngine(env) : new CodexEngine(env)] });
-    const started = Date.now();
-    const engines = t.req("/api/engines");
-    await new Promise((r) => setTimeout(r, 200));
+    let detected = false;
+    const engines = Promise.resolve(t.req("/api/engines")).then((r) => { detected = true; return r; });
     const health = await t.req("/api/health");
     expect(health.status).toBe(200);
-    // Well before one slow `--help` could have ended.
-    expect(Date.now() - started).toBeLessThan(1000);
+    // Health answers while the slow `--help` is still running.
+    expect(detected).toBe(false);
     const body = (await (await engines).json()) as { engines: { available: boolean; version: string }[] };
     expect(body.engines[0]).toMatchObject({ available: true, version: "1.2.3" });
   }, 20_000);

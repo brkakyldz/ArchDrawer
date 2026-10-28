@@ -535,6 +535,53 @@ fixture engine only, no browser opening, and `npm ci` done; downloads are read
 through Playwright's download API, and the clipboard needs the
 `clipboard-read`/`clipboard-write` permissions.
 
+### Which scenarios a pull request runs
+
+A pull request runs `npm run check` (Linux and Windows), `npm run e2e` and a
+part of `npm run holdout`. A push to `main` runs all of `npm run holdout`.
+
+`scripts/holdout-areas.mjs` holds the map from paths to requirement prefixes
+(`HOME`, `SRC`, `LAYOUT`, …). A pull request runs the scenarios whose titles
+name one of the prefixes its changed paths map to, together with every
+scenario whose title carries `@smoke`.
+
+- A path the map does not name runs every scenario. So does a path every
+  area depends on: the model and the file formats, the server's core, the app
+  shell, the fixture engine, the build, the contracts and the scenarios
+  themselves.
+- A pull request that changes only what no scenario observes runs none: unit
+  tests, `tests/e2e/`, ADRs, the README.
+
+### What a test asserts exactly
+
+A contract's values bind a test in two ways.
+
+**Exact.** A test asserts these as the contracts write them:
+
+- identifiers: the file's `schema`, its field names and enum values, ids,
+  API routes, HTTP status codes and response fields, test ids, CLI commands,
+  exit codes and the `ERROR` / `WARN` line prefixes;
+- the refusals that keep the user safe: `AGENTS.md` invariants 1–3 and the
+  sentences in *Failures that do not announce themselves*, such as
+  `This repository is private or does not exist`;
+- invariant 5's equalities: a part's box and a connection's path are the same
+  in the editor and in the SVG export.
+
+**Descriptive.** Everything else describes the product. A test asserts the
+outcome it describes, not the value:
+
+- **Text the user reads** (labels, notices, error sentences, placeholders): a
+  test checks that it is shown and where. It may match key words with a
+  regular expression, never the whole sentence.
+- **Sizes, gaps, colours, radii, opacities and font sizes** (`ui.md`,
+  `diagram.md` *Shapes*, `DESIGN.md`): a test checks the relation the
+  contract states. Examples: text inside its outline, no overlap, readable at
+  the channel's size, the same in editor and export. Measured text gets a
+  1 px tolerance.
+- **A connection's shape** is asserted only where the spec makes it a
+  requirement: one smooth curve that is never bent around a part (LAYOUT-1,
+  LAYOUT-2).
+
 The slide downloads (ui contract, *Share*) are written so a test reads them
 without a library:
 

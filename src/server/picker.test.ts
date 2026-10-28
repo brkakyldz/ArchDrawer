@@ -182,15 +182,18 @@ describe("the test folder dialog", () => {
 });
 
 describe("the API of the dialog", () => {
-  const app = (testFile: string | null, helper?: Helper | null) => {
+  const build = (testFile: string | null, helper?: Helper | null) => {
     const dataDir = tempDir("archdraw-data-");
-    const config = loadConfig({ PORT: String(PORT), ARCHDRAW_DATA_DIR: dataDir, ARCHDRAW_ENGINES: "fixture", ARCHDRAW_SEARCH_HOME: tempDir(), ...(testFile ? { ARCHDRAW_TEST_PICKER: testFile } : {}) });
+    const config = loadConfig({ PORT: String(PORT), ARCHDRAW_DATA_DIR: dataDir, ARCHDRAW_ENGINES: "fixture", ...(testFile ? { ARCHDRAW_TEST_PICKER: testFile } : {}) });
     const store = new Store(dataDir);
     const picker = new FolderPicker({ testFile: config.testPicker, helper, slowMs: 1_000 });
-    const a = createApp({
+    return createApp({
       config, store, runs: new RunManager(store, { timeoutMs: 60_000 }), scans: new ScanManager(dataDir, { timeoutMs: 60_000 }),
       engines: new Map([["fixture", new FixtureEngine(1)]]), token: TOKEN, picker,
     });
+  };
+  const app = (testFile: string | null, helper?: Helper | null) => {
+    const a = build(testFile, helper);
     return async (signal?: AbortSignal, token: string | null = TOKEN) => a.request(`${BASE}/api/folders/pick`, {
       method: "POST", signal, headers: { host: `127.0.0.1:${PORT}`, "content-type": "application/json", ...(token ? { "x-archdraw-token": token } : {}) }, body: "{}",
     });
@@ -228,6 +231,20 @@ describe("the API of the dialog", () => {
     await first;
     writeFileSync(file, "cancel", "utf8");
     expect(await (await pick()).json()).toEqual({ status: "cancelled" });
+  });
+
+  const sources = async (testFile: string | null, helper?: Helper | null) => {
+    const r = await build(testFile, helper).request(`${BASE}/api/sources`, { headers: { host: `127.0.0.1:${PORT}` } });
+    return [r.status, await r.json()];
+  };
+
+  it("GET /api/sources answers only whether the folder dialog can open", async () => {
+    const file = join(tempDir(), "picker.txt");
+    writeFileSync(file, "cancel", "utf8");
+    expect(await sources(file)).toEqual([200, { picker: true }]);
+    writeFileSync(file, "none", "utf8");
+    expect(await sources(file)).toEqual([200, { picker: false }]);
+    expect(await sources(null, null), "a system with no dialog").toEqual([200, { picker: false }]);
   });
 });
 

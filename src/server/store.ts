@@ -126,8 +126,6 @@ export class Store extends EventEmitter {
       throw new Error(`The file ${abs} cannot be written`);
     }
     if (!known) this.saveRegistry();
-    // Its repository becomes a recent folder (api contract, Recent and found).
-    this.emit("registered", abs);
     return r.doc;
   }
 

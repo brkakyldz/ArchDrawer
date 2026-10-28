@@ -1,10 +1,9 @@
 import { expect, test } from "@playwright/test";
 
 // The home screen's frame. The journeys (the columns and their folds, the theme, the drawings grid, the choosing step,
-// the keyboard, the sources: the folder list, the dialog, a link, forgetting) are held-out H229, H230, H236, H245, H27
-// and H231–H235. What stays here needs a faked server response: Activity's count, its keep line and the top bar's
-// toggle on a given GET /api/activity, a list entry on a given GET /api/sources, the folder list's highlight going
-// round, and a link check that answers late.
+// the keyboard, the sources: the path, the dialog, a link) are held-out H229, H230, H236, H245, H27 and H231–H235.
+// What stays here needs a faked server response: Activity's count, its keep line and the top bar's toggle on a given
+// GET /api/activity, and a link check that answers late.
 
 const job = (id: string, status: string, waiting = false) => ({ type: "draw", events: `/api/runs/${id}/events`, id, status, waiting, createdAt: "2026-10-27T10:00:00.000Z" });
 
@@ -31,26 +30,6 @@ test("without GET /api/activity the panel says nothing runs and promises nothing
   await expect(page.getByTestId("activity-none")).toHaveText("Nothing is running.");
   await expect(page.getByTestId("activity-keep")).toHaveCount(0);
   await expect(page.getByTestId("activity-count")).toHaveCount(0);
-});
-
-test("the folder list's highlight wraps with ArrowUp and names the option it is on, and Enter takes it", async ({ page }) => {
-  const entry = (name: string) => ({ name, path: `C:\\code\\${name}`, branch: "main", lastCommitAt: null, link: null, diagrams: [], usedAt: null });
-  await page.route("**/api/sources", (r) => r.fulfill({ json: { picker: false, recent: [entry("shop"), entry("infra")], found: [entry("tools")], foundAt: new Date().toISOString() } }));
-  await page.goto("/");
-  const folder = page.getByRole("combobox", { name: "Folder of the project" });
-  await folder.focus();
-  await expect(page.getByTestId("start-folder-option")).toHaveCount(3);
-  await expect(folder).not.toHaveAttribute("aria-activedescendant");
-  await folder.press("ArrowUp"); // from no highlight to the last entry, the one under Found on this computer
-  const on = await folder.getAttribute("aria-activedescendant");
-  await expect(page.locator(`[id="${on}"]`)).toHaveAttribute("data-path", "C:\\code\\tools");
-  await expect(page.locator(`[id="${on}"]`)).toHaveAttribute("aria-selected", "true");
-  await folder.press("ArrowDown"); // and round to the first
-  await expect(page.locator(`[id="${await folder.getAttribute("aria-activedescendant")}"]`)).toHaveAttribute("data-path", "C:\\code\\shop");
-  await folder.press("Enter");
-  await expect(folder).toHaveValue("C:\\code\\shop");
-  await expect(page.getByTestId("start-folder-list")).toHaveCount(0);
-  await expect(folder).toHaveAttribute("aria-expanded", "false");
 });
 
 test("a late answer for a link typed before is dropped: the hint and Scan follow the latest text", async ({ page }) => {
@@ -89,22 +68,4 @@ test("a card scrolled under the sticky top bar still opens from its Open button"
   await page.mouse.move(800, 20);
   await card.getByTestId("library-open").click({ timeout: 10_000 });
   await expect(page).toHaveURL(/\/d\/d_card4/);
-});
-
-test("an entry of Recent puts its path in the folder field and focuses Scan, scanning nothing", async ({ page }) => {
-  const entry = { name: "shop", path: "C:\\code\\shop", branch: "main", lastCommitAt: new Date(Date.now() - 3 * 3_600_000).toISOString(), link: null, diagrams: [], usedAt: null };
-  await page.route("**/api/sources", (r) => r.fulfill({ json: { picker: false, recent: [entry], found: [{ ...entry, name: "infra", path: "C:\\code\\infra", branch: null, lastCommitAt: null }], foundAt: new Date().toISOString() } }));
-  const scans: string[] = [];
-  page.on("request", (req) => { if (req.method() === "POST" && new URL(req.url()).pathname === "/api/scans") scans.push(req.url()); });
-  await page.goto("/");
-  const recent = page.getByTestId("source-recent").getByTestId("source-item");
-  await expect(recent).toHaveAttribute("data-path", entry.path);
-  await expect(recent).toContainText("shop");
-  await expect(recent).toContainText("main · 3 h ago");
-  await expect(page.getByTestId("source-found").getByTestId("source-item")).toHaveText("infra"); // no branch, no commit: the name alone
-  await recent.click();
-  await expect(page.getByTestId("start-folder")).toHaveValue(entry.path);
-  await expect(page.getByTestId("start-scan")).toBeFocused();
-  await page.waitForTimeout(300);
-  expect(scans).toEqual([]);
 });

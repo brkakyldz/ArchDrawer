@@ -1249,7 +1249,8 @@ The result must pass validation before it is saved.
 A drawing once had a fourth channel, the presentation, with ordered steps for
 presenting and the tour (ADR 0019). The format kept its number, so an `@4`
 file can still hold one. Opening, importing, following an outside change,
-`archdrawer validate` and `archdrawer migrate` drop a `presentation` key from
+`archdrawer validate`, and `archdrawer migrate` of an `@3`, `@2` or `@1`
+file drop a `presentation` key from
 every choice's `channels` before the rules are checked, with its view,
 `steps`, `showSteps` and `outdated`, and every request on that channel with
 it. The server writes the file back without it. When any dropped channel held

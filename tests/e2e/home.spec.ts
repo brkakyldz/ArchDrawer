@@ -34,9 +34,14 @@ test("without GET /api/activity the panel says nothing runs and promises nothing
 
 test("a late answer for a link typed before is dropped: the hint and Scan follow the latest text", async ({ page }) => {
   const answer = (link: string) => ({ folder: `C:\\data\\repos\\${link}`, root: `C:\\data\\repos\\${link}`, git: false, drawing: null, link, branch: null, copied: false });
+  // The first text's answer is held until the second's is on screen, then let through: no clock decides the order.
+  let release!: () => void;
+  const held = new Promise<void>((done) => { release = done; });
+  let answered!: () => void;
+  const lateAnswer = new Promise<void>((done) => { answered = done; });
   await page.route("**/api/folders/check", async (r) => {
     const { link } = r.request().postDataJSON() as { link: string };
-    if (link.endsWith("/slow")) { await new Promise((done) => setTimeout(done, 1500)); return r.fulfill({ json: answer("github.com/acme/slow") }); }
+    if (link.endsWith("/slow")) { await held; await r.fulfill({ json: answer("github.com/acme/slow") }); answered(); return; }
     return r.fulfill({ status: 400, json: { error: "Not a repository link" } });
   });
   await page.goto("/");
@@ -46,7 +51,9 @@ test("a late answer for a link typed before is dropped: the hint and Scan follow
   await page.waitForRequest((q) => q.url().endsWith("/api/folders/check")); // the check of the first text is on its way
   await link.fill("https://github.com/acme/slow/x");
   await expect(hint).toHaveText("Not a repository link");
-  await page.waitForTimeout(1800); // the first answer has arrived by now
+  release();
+  await lateAnswer;
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))); // the page has handled it
   await expect(hint).toHaveText("Not a repository link");
   await expect(hint).toHaveAttribute("role", "alert");
   await expect(page.getByTestId("start-scan")).toBeDisabled();

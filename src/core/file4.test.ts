@@ -130,3 +130,70 @@ describe("views made in a choice (diagram contract, The view; review 510f7bc-1)"
     expect(validateFile4(withChoice(d2, "server", next.doc)).ok).toBe(true);
   });
 });
+
+describe("a file holding the removed presentation channel (diagram contract, Reading a `presentation` channel; ADR 0019)", () => {
+  const REMOVED = "The presentation channel was removed";
+  /** A presentation channel as a file once held it: one view of the choice's parts and its steps. */
+  const drawn = (c: ChoiceInput4) => {
+    const v = c.channels.overview.views[0];
+    return { views: [{ ...structuredClone(v), id: `${c.id}-presentation`, title: "Presentation" }], showSteps: true, outdated: [], steps: [{ id: "s1", parts: [v.nodes[0].id], text: "It starts here", note: "" }] };
+  };
+  const withPresentation = (channel: (c: ChoiceInput4) => unknown, which: (i: number) => boolean = () => true): File4 => {
+    const f = three();
+    f.choices = f.choices.map((c, i) => (which(i) ? { ...c, channels: { ...c.channels, presentation: channel(c) } as ChoiceInput4["channels"] } : c));
+    return f;
+  };
+  const noPresentation = (f: File4 | null) => f!.choices.every((c) => !("presentation" in c.channels));
+  const removed = (ws: string[] | undefined) => (ws ?? []).filter((w) => w === REMOVED).length;
+
+  it("is read without the channel, and with one warning when the channel held a view", () => {
+    const r = readAnyFile(withPresentation(drawn, (i) => i === 0));
+    expect([r.ok, r.errors]).toEqual([true, []]);
+    expect(noPresentation(r.file)).toBe(true);
+    expect([removed(r.warnings), removed(r.file!.warnings)]).toEqual([1, 1]);
+    // Everything else stays as it was.
+    expect(r.file!.choices.map((c) => c.channels.overview)).toEqual(three().choices.map((c) => c.channels.overview));
+  });
+
+  it("gets no warning when the dropped channel drew nothing", () => {
+    for (const empty of [{}, { views: [] }, { views: [], showSteps: false, outdated: [], steps: [] }]) {
+      const r = readAnyFile(withPresentation(() => empty));
+      expect(r.ok, JSON.stringify(empty)).toBe(true);
+      expect(noPresentation(r.file)).toBe(true);
+      expect([r.warnings, r.file!.warnings ?? []]).toEqual([[], []]);
+    }
+  });
+
+  it("gets one warning however many choices held a view", () => {
+    const r = readAnyFile(withPresentation(drawn));
+    expect(r.ok).toBe(true);
+    expect([removed(r.warnings), removed(r.file!.warnings)]).toEqual([1, 1]);
+  });
+
+  it("drops the requests on that channel and keeps the others", () => {
+    const f = withPresentation(drawn, (i) => i === 2);
+    f.requests = [
+      { id: "q1", text: "Fewer steps", choice: "system", channel: "presentation" as never, view: "system-presentation", at: NOW },
+      { id: "q2", text: "Add a cache", choice: "system", channel: "overview", view: "overview", at: NOW },
+    ];
+    const r = readAnyFile(f);
+    expect(r.ok).toBe(true);
+    expect(r.file!.requests!.map((q) => q.id)).toEqual(["q2"]);
+  });
+
+  it("reads an @3 file the same way, once converted", () => {
+    const f3 = shop3();
+    (f3.channels as Record<string, unknown>).presentation = { views: [{ ...structuredClone(f3.channels.overview.views[0]), id: "presentation", title: "Presentation" }], steps: [] };
+    const r = readAnyFile(f3);
+    expect([r.ok, r.from]).toEqual([true, "@3"]);
+    expect(noPresentation(r.file)).toBe(true);
+    expect(r.warnings).toEqual([REMOVED]);
+  });
+
+  it("leaves the value it was given unchanged", () => {
+    const f = withPresentation(drawn);
+    const before = JSON.stringify(f);
+    readAnyFile(f);
+    expect(JSON.stringify(f)).toBe(before);
+  });
+});

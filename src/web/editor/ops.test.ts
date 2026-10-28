@@ -173,8 +173,12 @@ describe("editor edits", () => {
   });
 
   it("creates a view inside a component and finds the way back", () => {
-    const { doc: d1, view } = createInside(doc(), V, "api");
+    const d0 = doc();
+    viewOf(d0, V).nodes.find((x) => x.id === "api")!.label = "Order API";
+    const { doc: d1, view } = createInside(d0, V, "api");
     ok(d1);
+    // Named after the part's id, not its label (ui contract, callout-create-inside).
+    expect(view).toBe("api-inside");
     expect(n(d1, "api").detail).toBe(view);
     expect(viewOf(d1, view).nodes).toHaveLength(1);
     expect(crumbsTo(d1, view)).toEqual([V, view]);

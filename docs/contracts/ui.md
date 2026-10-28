@@ -77,7 +77,7 @@ before.
 | `home-engine-chip` | a dot and `Engine <label>`, the engine `ai-engine` holds; pressing it scrolls `start-engine` into view and focuses `ai-engine`. Absent without an engine |
 | `home-import` | `Import`: opens `import-input` |
 | `activity-toggle` | only at 1240 px wide or less: `<n> running`, `<n>` as in `activity-count`, hidden when it is 0; pressing it scrolls `activity` into view |
-| `home-nav` | the left column: `home-nav-drawings`, `home-nav-new`, then *Recent* and *Found on this computer* (*Choosing a repository*), then `home-server` |
+| `home-nav` | the left column: `home-nav-drawings`, `home-nav-new`, then `home-server` |
 | `home-nav-drawings` | `Drawings` and the number of drawings in the library; scrolls `library` into view |
 | `home-nav-new` | `New drawing`: as `draw-another`, then focuses `start-folder` |
 | `home-server` | the page's own host and port (`127.0.0.1:4317`) |
@@ -87,28 +87,20 @@ before.
 ### Choosing a repository
 
 `start-source` holds two tabs: `start-source-local` (`This computer`,
-selected at first) and `start-source-link` (`Link`). The lists come from
-`GET /api/sources`, asked when the page loads, after a scan succeeds, after
-a draw the page sees succeed (it registered its file), and after
-`source-forget`, `source-found-refresh`, `library-forget` and
-`start-open-existing`.
+selected at first) and `start-source-link` (`Link`). This computer takes a
+pasted path or a folder chosen with `Choose folder…`; Link takes a pasted
+link (ADR 0018). Whether `Choose folder…` shows comes from `GET /api/sources`
+(`picker`), asked when the page loads.
 
 | Test id | Element and behaviour |
 |---|---|
-| `start-folder` | This computer: a combobox, accessible name `Folder of the project`, placeholder `Search your repositories, or paste a path`. Focusing it or typing opens `start-folder-list`, unless its text starts like a path: a drive letter then `:\` or `:/`, or `\\`, `/`, `~/` or `~\`. Then it is a pasted path and the list stays closed. ArrowDown and ArrowUp move a highlight through the list; Enter takes the highlighted entry, or presses `start-scan` when none is highlighted; Escape closes the list |
-| `start-folder-list` | a listbox: the heading `Recent` over the entries of `recent`, then `Found on this computer` over those of `found`, each entry a `start-folder-option`. Only entries whose name or path holds the text (case-insensitive) are listed; all of them when the text is empty. A heading with no entry under it is left out; when none is left, `start-folder-none`: `No repository here matches "<text>". Paste the whole path, or choose the folder.` |
-| `start-folder-option` | `data-path` the entry's `path`; it shows the entry's name, its path (its `link` for a copy) and `<branch> · <relative time of lastCommitAt>`, the branch left out when `branch` is null and the time when `lastCommitAt` is null (nothing when both are). Taking one puts its path in `start-folder`, closes the list and focuses `start-scan`; it does not scan |
+| `start-folder` | This computer: a text field, accessible name `Folder of the project`, placeholder `Paste the path of a folder`. Enter presses `start-scan` |
 | `start-pick` | `Choose folder…`, beside `start-folder`, shown only when `picker` is `true` and while the panel is on the `Folder` step of This computer. It calls `POST /api/folders/pick`; while that waits it is disabled and reads `Dialog open…`. `picked`: the answer's `folder` goes into `start-folder`, `start-scan` takes focus, and when the answer's `drawing` is not null `start-existing` shows. `cancelled`: nothing changes. `unavailable`: `start-pick` is hidden. A 400, 409 or 500 shows its message in `start-error` |
 | `start-link` | Link: a text field, accessible name `Repository link`, placeholder `https://github.com/owner/repo`. 300 ms after its last change, a text that is not empty is checked with `POST /api/folders/check` `{"link"}`, and `start-link-hint` shows the answer of the latest check. Enter presses `start-scan` |
 | `start-link-hint` | under `start-link`. Empty field: `A github.com, gitlab.com or bitbucket.org link, public or reachable with your own git sign-in.` Accepted: the answer's `link`, then `, branch <branch>` when `branch` is not null, then ` · copied into archdrawer's own folder, read-only` when `copied` is false, or ` · already on this computer` when it is true. Refused: the 400's message, `role="alert"` |
 | `start-scan` | `Scan`. This computer: an empty `start-folder` shows `start-error` `Give the whole path, starting from the drive or from /.`; otherwise `POST /api/folders/check` `{"folder"}`, then, unless refused or `start-existing` shows, `POST /api/scans` `{"folder", "engine", "model"}`. Link: disabled until the latest check of the text accepted it; then `POST /api/scans` `{"link", "engine", "model"}`, unless the check's `drawing` is not null (`start-existing`). The engine and model are those of `start-engine`. On 202 the panel follows the scan (*Following a job*). A 409 for a scan already running makes the panel follow the scan its `scanId` names |
-| `start-error` | one plain sentence, `role="alert"`, under the field: for the folder check, `This folder does not exist.` (`Not found`), `This is a file, not a folder.` (`Not a folder`), `Give the whole path, starting from the drive or from /.` (`The path must be absolute`); any other refusal of the check, the dialog, a scan, a join or a forget shows the server's message; for a failed scan, its `error` (`Could not reach the archdrawer server` when the server went away). A failed draw shows in `draw-error`. It is cleared by the next `start-scan` |
+| `start-error` | one plain sentence, `role="alert"`, under the field: for the folder check, `This folder does not exist.` (`Not found`), `This is a file, not a folder.` (`Not a folder`), `Give the whole path, starting from the drive or from /.` (`The path must be absolute`); any other refusal of the check, the dialog, a scan or a join shows the server's message; for a failed scan, its `error` (`Could not reach the archdrawer server` when the server went away). A failed draw shows in `draw-error`. It is cleared by the next `start-scan` |
 | `start-existing` | when the check's `drawing` is not null: `This folder already has a drawing.` with `start-open-existing` (`Open it`: `POST /api/files` with that path, then the editor) and `start-again` (`Start again`: goes on to the scan; the new drawing gets the next free name). Neither scans by itself |
-| `source-recent` | in `home-nav`, under `Recent`: one `source-item` per entry of `recent` |
-| `source-found` | in `home-nav`, under `Found on this computer` and beside `source-found-refresh`: one `source-item` per entry of `found` |
-| `source-item` | `data-path` the entry's `path`; its name and, under it, `<branch> · <relative time of lastCommitAt>` as in `start-folder-option`; the path (or link) as its tooltip. Pressing it selects This computer, puts the path in `start-folder`, scrolls `start` into view and focuses `start-scan`; it does not scan |
-| `source-forget` | in a `source-item` of *Recent* whose `diagrams` is empty, shown on hover and focus: icon button, accessible name `Remove <name> from Recent`. It asks `confirm("Remove \"<name>\" from Recent?")`, then, for an entry with a `link`, `confirm("Also delete the copy of <link> from this computer?")`, and calls `POST /api/sources/forget` `{"path", "deleteCopy"}` with the second answer |
-| `source-found-refresh` | icon button, accessible name `Look again`: `POST /api/sources/refresh`; disabled until it answers |
 
 While the panel follows a job, `start-source`, `start-folder`, `start-link`,
 `start-pick` and `start-scan` are disabled, and the field shows the job's
@@ -137,8 +129,8 @@ destinations, and the bar.
 | `focus-typed` | checkbox `Something else`, the full width, always there, `data-kind="custom"`. Ticking it shows and focuses `focus-text`, a text field of at most 300 chars (`What should the drawing explain?`); unticking hides it and keeps its text |
 | `focus-none` | when the scan gave no option: `The scan found no sections or flows. Draw the whole system, or say what to draw.` |
 | `focus-count` | once a choice is ticked: `<n> chosen` |
-| `channel-choice-linkedin`, `channel-choice-readme`, `channel-choice-presentation` | under the heading `Where will it go?`, shown once a choice is ticked: radio cards `LinkedIn post` (`1080 × 1350`), `README drawing` (`wide · light or dark`) and `Presentation` (`16 : 9 slides`), each with a small frame of its shape. None is chosen at first. The one chosen is drawn for every choice (STORY-1) |
-| `draw-summary` | in the bar: `Pick at least one` with no choice ticked; `<n> drawing` or `<n> drawings`, then `: choose where it will go` with no channel, or ` for a LinkedIn post`, ` for a README` or ` for a presentation` |
+| `channel-choice-linkedin`, `channel-choice-readme` | under the heading `Where will it go?`, shown once a choice is ticked: radio cards `LinkedIn post` (`1080 × 1350`) and `README drawing` (`wide · light or dark`), each with a small frame of its shape. None is chosen at first. The one chosen is drawn for every choice (STORY-1) |
+| `draw-summary` | in the bar: `Pick at least one` with no choice ticked; `<n> drawing` or `<n> drawings`, then `: choose where it will go` with no channel, or ` for a LinkedIn post` or ` for a README` |
 | `start-change-folder` | in the bar: `Change folder`: back to the `Folder` step, the folder kept, the ticks and the channel cleared |
 | `draw-start` | in the bar: `Draw it` with one choice ticked, `Draw all <n>` with several; enabled once a choice is ticked and a channel chosen, and `focus-text` is not empty when `focus-typed` is ticked. It starts a `draw` run (`POST /api/runs`, *The draw run*) with the followed scan, `choices` in the order of `focus-list` (the whole system, the sections, the flows, then the typed text), the channel, and the engine and model of `start-engine`; on 202 the panel follows the run. A 409 whose `runId` names a running draw turns the step into a join (below), the ticks kept |
 
@@ -154,7 +146,7 @@ the choosing step joins it:
   holds a choice of kind `custom`;
 - the destinations show the draw's channel, chosen and disabled, with
   `channel-locked`: `New choices join the draw that is running, so they take
-  its <LinkedIn post | README drawing | presentation>.`;
+  its <LinkedIn post | README drawing>.`;
 - `draw-start` reads `Add it to the draw` or `Add all <n> to the draw`, `<n>`
   the new choices, and sends only those with
   `POST /api/runs/:runId/choices` `{"scan", "choices"}`; on 200 the panel
@@ -188,13 +180,13 @@ longer lists it. A job left this way goes on in `activity`.
 |---|---|
 | `draw-progress` | one `draw-choice` per choice of the draw, in the draw's order, a joined choice added when its first `choice` event arrives; then one of three, under the rows: while the draw runs, `draw-line` (a turning mark and the draw's latest progress line, of any choice) with `draw-another` and `draw-cancel` (`Cancel`: `POST /api/runs/:runId/cancel`; hidden while `writing`); once it succeeded, `draw-ready`; once it failed or was cancelled, `draw-error`. The rows are shown once, as the draw ended |
 | `draw-choice` | `data-choice` (its id in the run record), `data-kind` and `data-state` (its record's `status`: `waiting`, `running`, `done`, `failed`, `cancelled`). It shows `draw-choice-title` (its `title`), three `draw-stage`, `draw-choice-time` and `draw-choice-line` |
-| `draw-stage` | one per stage, in order, with `data-stage` (`read`, `overview`, `channel`) and `data-state`: every stage `waiting` while the choice waits and `done` once it is done; else the stages before its `stage` `done`, its `stage` `running` (`failed` for a failed or cancelled choice), the later ones `waiting`. The texts are `Reading the code`, `Drawing the overview` (for the whole system `Drawing the map`) and `Drawing the <LinkedIn post / README drawing / presentation>` |
+| `draw-stage` | one per stage, in order, with `data-stage` (`read`, `overview`, `channel`) and `data-state`: every stage `waiting` while the choice waits and `done` once it is done; else the stages before its `stage` `done`, its `stage` `running` (`failed` for a failed or cancelled choice), the later ones `waiting`. The texts are `Reading the code`, `Drawing the overview` (for the whole system `Drawing the map`) and `Drawing the <LinkedIn post / README drawing>` |
 | `draw-choice-time` | `mm:ss` from its `startedAt`, every second, while it runs; from `startedAt` to `endedAt` once it ended; empty while it waits |
 | `draw-choice-line` | waiting, while the draw runs: `Waiting for a free engine`; once the draw has ended: `Not started`. Running: `draw-choice-pulse`, then the `message` of the latest progress event whose `choice` is this choice, then `draw-choice-files` (`<n> files read`, `1 file read`; shown once `filesRead` is above 0), then `draw-choice-parts` (`<n> parts found`, `1 part found`; shown once `parts` is not null). Done: `Drawn`, then ` · <n> parts` when `parts` is not null. Failed: `Could not draw: <error>`. Cancelled: `Cancelled` |
 | `draw-choice-pulse` | a dot; `data-events` counts the progress events of this choice received so far, and the dot beats once on each |
 | `draw-choice-quiet` | in `draw-choice-line` in place of the message, while the choice runs and no engine line came for 30 s: the `at` of this choice's latest progress event with `source: "engine"` received on the stream, else its record's `lastEngineEventAt`, else its `startedAt`, is at least 30 s before the server's now. It reads `Quiet for <s> s — still running (limit <m> min)`, `<s>` the whole seconds since that time, every second; `<m>` the run time limit in whole minutes, `timeoutMs` of `GET /api/activity` / 60 000 rounded down. It goes with the next engine line |
 | `draw-line` | the draw's latest progress line; `Writing the drawing` while it writes |
-| `draw-ready` | once the draw `succeeded`, in place of `draw-line`: `Ready`, then `<k> drawing` or `<k> drawings`, `<k>` the `done` choices, then ` for a LinkedIn post`, ` for a README` or ` for a presentation`, then ` · <f> could not be drawn` when `<f>` choices failed; `draw-open` (`Open`: `/d/<diagramId>?choice=<choice>&channel=<channel>` of the run), `draw-another`; and, when a choice failed, `draw-retry` |
+| `draw-ready` | once the draw `succeeded`, in place of `draw-line`: `Ready`, then `<k> drawing` or `<k> drawings`, `<k>` the `done` choices, then ` for a LinkedIn post` or ` for a README`, then ` · <f> could not be drawn` when `<f>` choices failed; `draw-open` (`Open`: `/d/<diagramId>?choice=<choice>&channel=<channel>` of the run), `draw-another`; and, when a choice failed, `draw-retry` |
 | `draw-error` | inside `draw-progress`, under the rows, once the draw ended `failed` or `cancelled`: its `error` (`Cancelled` for a cancel), `role="alert"`, with `draw-retry` and `draw-another` |
 | `draw-retry` | `Try again`: `POST /api/runs/:runId/retry` (*Trying again*): after a draw that succeeded, its failed choices are drawn into its file; after one that failed or was cancelled, every choice into a new file, the finished ones from what was kept (a reused stage shows `running` with its `Using …` line, then `done`). On 202 the panel follows the new run. A refusal shows its message in `draw-error` after a draw that failed or was cancelled, and in `start-error` after one that succeeded |
 
@@ -216,7 +208,7 @@ between answers.
 | `activity` | the header `Activity` with `activity-count`, then the jobs that are `running` (waiting ones included), newest `createdAt` first, then `Done` over the ended ones, newest `endedAt` first; `activity-none` (`Nothing is running.`) when no job runs; at the bottom `activity-keep`: `Keeps going if you reload. Up to <total> at once.`, `<total>` the answer's `slots.total` |
 | `activity-count` | `<n> running`, `<n>` the jobs `running` and not `waiting`; hidden when 0 |
 | `activity-job` | one per listed job: `data-job` its id, `data-type` (`scan`, `draw`), `data-state` (`waiting` while its `waiting` is true, else its `status`), `aria-current="true"` on the followed one. It shows a status dot, `activity-job-name` (its `name`), `activity-job-status` and, while it runs, `activity-job-time` (`mm:ss` from its `startedAt`, from its `createdAt` while `startedAt` is null). Pressing it makes the panel follow it |
-| `activity-job-status` | a scan: `Scanning`; `Scan · <n> sections and flows` once it succeeded (`<n>` its options); `Scan failed`; `Scan cancelled`. A draw, after its channel's name (`LinkedIn post`, `README drawing`, `Presentation`) and ` · `: `<d> of <n> drawn` with several choices, `step <s> of 3` with one (`<s>` the place of its stage, 1–3); `quiet for <s> s` when a running choice is quiet (*Following a job*), the longest; `writing the drawing`; `Ready`, with `, <f> failed` after it when choices failed; `failed`; `cancelled`. While a job waits, whatever its type: `Waiting for a free engine` |
+| `activity-job-status` | a scan: `Scanning`; `Scan · <n> sections and flows` once it succeeded (`<n>` its options); `Scan failed`; `Scan cancelled`. A draw, after its channel's name (`LinkedIn post`, `README drawing`) and ` · `: `<d> of <n> drawn` with several choices, `step <s> of 3` with one (`<s>` the place of its stage, 1–3); `quiet for <s> s` when a running choice is quiet (*Following a job*), the longest; `writing the drawing`; `Ready`, with `, <f> failed` after it when choices failed; `failed`; `cancelled`. While a job waits, whatever its type: `Waiting for a free engine` |
 | `activity-open` | on an ended job: `Open` on a draw that succeeded (the editor, as `draw-open`); `Choose` on a scan that succeeded (the panel follows it) |
 | `job-notice` | when a draw the page saw running ends `succeeded`: `<name> is ready` with `job-notice-open` (`Open`, as `draw-open`) and `job-notice-dismiss` (a close button, accessible name `Dismiss`), `role="status"`, at the top centre; it leaves after 8 s |
 | `jobs-restarted` | when `instance` changes while the page followed jobs `running` (JOB-9): `The server restarted; <n> jobs stopped` (`The server restarted; 1 job stopped`), once, at the top of `activity`, until the page reloads |
@@ -261,10 +253,9 @@ Every control is reachable with Tab in this order: the top bar, `home-nav`,
 choices, the destinations, `start-change-folder`, `draw-start`; or the
 rows' controls), the drawings, the side column. `Ctrl K` (`⌘ K` on macOS)
 selects This computer and focuses `start-folder`, after `draw-another` when
-the panel follows a job. Enter in a field acts as its button (`start-folder`
-as said above); Space ticks a checkbox and chooses a destination; on the
-choosing step, Enter on a focused choice or destination presses `draw-start`
-when it is enabled.
+the panel follows a job. Enter in a field acts as its button; Space ticks a
+checkbox and chooses a destination; on the choosing step, Enter on a focused
+choice or destination presses `draw-start` when it is enabled.
 
 ## Editor frame
 
@@ -272,7 +263,7 @@ when it is enabled.
 |---|---|
 | `editor` | root; `data-theme` `light`/`dark`; `data-choice` the current choice's id; `data-channel` the current channel; `data-view` the current view id |
 | `repo-name` | the document `title` |
-| `channel-tabs` | the current choice's channels, four tabs in this order: `channel-tab-overview` (`Overview`), `channel-tab-linkedin` (`LinkedIn`), `channel-tab-readme` (`README`), `channel-tab-presentation` (`Presentation`); the current one `aria-current="true"`; a tab whose channel's `outdated` is not empty has `data-outdated="<n>"` and shows `channel-outdated-<channel>`, a dot with the accessible name `Needs update: <n> change(s)`; choosing a tab goes to that channel's first view |
+| `channel-tabs` | the current choice's channels, three tabs in this order: `channel-tab-overview` (`Overview`), `channel-tab-linkedin` (`LinkedIn`), `channel-tab-readme` (`README`); the current one `aria-current="true"`; a tab whose channel's `outdated` is not empty has `data-outdated="<n>"` and shows `channel-outdated-<channel>`, a dot with the accessible name `Needs update: <n> change(s)`; choosing a tab goes to that channel's first view |
 | `crumbs` | overview channel only: the path of views from the current choice's first overview view to the current one, following `detail` links; earlier views are buttons `crumb-<viewId>`, the current one is text. Absent in the other channels |
 | `save-status` | `Saved` when the file has the latest edit; `Saving…` while one is pending (edits are saved 350 ms after the last change, one request at a time, always the latest document); on failure the error and `save-retry` (`Retry`), never `Saved`; on 409 `The file changed outside the editor` and `save-reload` (`Load the file's version`), which loads the stored document |
 | `canvas` | the drawing surface; `data-detail`, `data-tool`. Wheel zooms around the pointer (Ctrl+wheel and pinch faster); drag pans with the pan tool, or with any tool while Space is held or with the middle or right button; dragging empty canvas with the select tool box-selects; a drag never selects page text |
@@ -282,7 +273,6 @@ when it is enabled.
 | `views-panel` | the views panel (*Choices and the views panel*). There is no `views-button`, `views-menu` or `view-item-<viewId>` any more |
 | `search-button` | also `/` or Ctrl/Cmd+K when no text input has focus: opens `search` with `search-input` focused (`/` or Ctrl/Cmd+K focuses it again when it is already open). A component matches when its label contains the typed text, case-insensitively. As you type, the matches on the current view are lit on the canvas (`node-<id>` `data-match="true"`, a ring drawn around the part) and every other component dims (`data-dim="true"` on `node-<id>`, and on every `edge-<id>` that does not join two matches); nothing moves and no part changes size. `search-count` shows `<n> match(es)`, `<i> of <n>` once stepped, or `No match in this view`; any typing in `search-input`, even of the same text, ends the stepping (no current match). Enter steps to the next match on this view and Shift+Enter to the previous one, wrapping (also `search-next`, `search-prev`): the match becomes `data-match="current"` and the only selected component, and the view moves, at the same zoom, only when that part is not wholly on screen or is behind the search panel (it is then centred below the panel). Matches in other views are listed under `In other views` (at most 50): `search-result` with `data-view` and `data-node-id`, label and view title; a click, or the arrow keys then Enter, goes to that view (fitted, then moved the same way only if the part is still off screen or behind the panel) with that match selected and current; with no match on this view, Enter opens the first listed one. `No component is called that` when no view has a match. Search stays open until Escape (in it, or anywhere outside a text input), which closes it, ends the highlight and dimming and keeps the selection |
 | `ai-button` | toggles `ai-panel` |
-| `present-start`, `tour-start` | presentation channel only: `Present` and `Tour` open `present` (*Presenting and the tour*). Disabled, with the title `Add a step first`, when the channel has no view or no step. They stay in the header at every width (icon-only, with these accessible names, below 900 px wide); `header-menu` is unchanged |
 | `header-menu-button` | only below 900 px wide: opens `header-menu`, which then holds `repo-name`, `channel-tabs`, `crumbs`, `views-panel` (when there is one), `tool-undo`, `tool-redo`, `tool-theme`, `tool-steps`, `tool-sublines` |
 
 Every icon-only button has an accessible name at every width.
@@ -332,10 +322,9 @@ full opacity. Faded elements stay clickable.
 
 A drawing holds one or more choices (drawing contract, *Choice*); the editor
 shows one at a time, the **current choice**. `channel-tabs`, `crumbs`, the
-canvas, search, the AI panel and its runs, the steps panel, presenting, the
-tour and the share dialog with its downloads all act on the current choice
-alone, and an edit changes only it (drawing contract, *Edits: facts or
-channel*). Search looks in the current choice only. Undo and redo cover the
+canvas, search, the AI panel and its runs and the share dialog with its
+downloads all act on the current choice alone, and an edit changes only it
+(drawing contract, *Edits: facts or channel*). Search looks in the current choice only. Undo and redo cover the
 edits of every choice.
 
 `views-panel` (`<nav>`, accessible name `Views`) lists every overview view
@@ -391,7 +380,7 @@ leaves it out of that channel. The current channel is never marked.
 
 | Test id | Element and behaviour |
 |---|---|
-| `channel-empty` | the stage of a channel with no view, instead of the canvas: `The <LinkedIn post / README drawing / presentation> is not drawn yet`. With an engine, `channel-draw` (`Draw it`) draws it from the facts alone, as a preview that, once accepted, is one undoable step: a `story` run whose request carries `readCode: false` (the engine is asked to read no file, and Claude Code runs with no tools; STORY-1). Without one, `channel-prepare` (`Prepare the simple version`; on LinkedIn `linkedin-prepare`) draws the simple version (*Simple versions*), and `post-engine-note` shows (`No engine available — prepared without AI`). LinkedIn also has the controls of *The LinkedIn flow*; its `channel-draw` may send the same run as a `post` with `readCode: false` (api contract: a post is a story on LinkedIn). Drawing tools and `share-button` are disabled there |
+| `channel-empty` | the stage of a channel with no view, instead of the canvas: `The <LinkedIn post / README drawing> is not drawn yet`. With an engine, `channel-draw` (`Draw it`) draws it from the facts alone, as a preview that, once accepted, is one undoable step: a `story` run whose request carries `readCode: false` (the engine is asked to read no file, and Claude Code runs with no tools; STORY-1). Without one, `channel-prepare` (`Prepare the simple version`; on LinkedIn `linkedin-prepare`) draws the simple version (*Simple versions*), and `post-engine-note` shows (`No engine available — prepared without AI`). LinkedIn also has the controls of *The LinkedIn flow*; its `channel-draw` may send the same run as a `post` with `readCode: false` (api contract: a post is a story on LinkedIn). Drawing tools and `share-button` are disabled there |
 | `channel-outdated` | on the stage of a channel other than the overview whose `outdated` is not empty: `<n> change(s) in the facts since this was drawn`. `channel-keep` (`Keep as it is`) empties `outdated` as one undoable edit. `channel-redraw` (`Redraw it`) redraws the channel from the facts as one undoable step: with an engine a `story` run (a preview first) whose request carries `readCode: false`, without one the simple version. On the overview only `channel-keep` shows. Both are disabled during a run |
 
 ### Simple versions
@@ -402,8 +391,8 @@ code. It is one undoable edit that replaces what the channel held and empties
 its `outdated`. The view keeps its id when the channel already has one, else
 it is named as a story's new view is (drawing contract, *The view*: the
 channel's name, such as `readme`, or `<choice id>-readme` outside the file's
-first choice, `-2`, … when taken). It is titled `LinkedIn`, `README` or
-`Presentation`, and its caption is copied from the overview's first view.
+first choice, `-2`, … when taken). It is titled `LinkedIn` or `README`, and
+its caption is copied from the overview's first view.
 
 - **LinkedIn:** as *The LinkedIn flow* says.
 - **README:** the overview's first view as it is:
@@ -412,36 +401,8 @@ first choice, `-2`, … when taken). It is titled `LinkedIn`, `README` or
   - the same connections and relations;
   - laid out again with the README format's spacing;
   - no texts.
-- **Presentation:** the README's simple version, plus one step per numbered
-  connection, in step order. Each step:
-  - names the connection's two parts;
-  - has as text the connection's drawn label, else
-    `<from label> → <to label>`;
-  - has an empty note.
 
-  With no numbered connection, it has one step naming every top-level part,
-  with the caption title as its text.
-
-### README and presentation
-
-The README channel is edited, measured and shared like the others. On the
-presentation, `steps-panel` sits beside the drawn view (STORY-4):
-
-| Test id | Element and behaviour |
-|---|---|
-| `steps-panel` | `Steps`: one `step-item` per step, in order (`data-step-id`, its number and text); the current one `aria-current="true"` |
-| `step-item` | choosing it makes it current. Its parts get `data-step="on"` and every other part `data-dim="true"`, the way search dims them, never changing a part's size. `step-text` (input, at most 120 chars) and `step-note` (textarea, at most 1000 chars) edit the current step |
-| `step-prev`, `step-next` | `Previous` and `Next` go one step back or on. They are disabled at the ends. With no step current, `Next` goes to the first. Left and right arrow keys do the same while focus is in the panel and not in a field |
-| `step-parts` | `Parts in this step`: one checkbox per part of the view, checked for the step's parts. Unchecking the last one is refused, with the toast `A step highlights at least one part` |
-| `step-add` | `Add a step` after the current one (else at the end). It holds the selected parts, else the current step's, and has the text `New step` and an empty note. At most 20 steps |
-| `step-remove` | `Remove this step` |
-| `step-up`, `step-down` | move the current step one place |
-| `step-none` | without steps: `No steps yet`, with `step-add` |
-
-Every step edit is undoable, saved like any edit, and changes only the
-presentation channel. Escape on the canvas leaves the current step and
-un-dims the parts. The steps are presented, toured and exported as slides
-(*Presenting and the tour*, *Share*, *The slide image*).
+The README channel is edited, measured and shared like the others.
 
 ## Drawing
 
@@ -462,7 +423,7 @@ zoom, a `node-<id>` box has the size of the first `rect` of
 `[data-node-id="<id>"]` in the exported SVG, and once no pointer is down every
 `edge-<id>` line has the path of the `<g data-edge-id>` line in the export.
 The marks of focus, dragging, guides and the drop target are the editor's
-alone: no export, share preview or slide draws them.
+alone: no export or share preview draws them.
 
 ### Connections in focus
 
@@ -474,8 +435,6 @@ its kind colours with its label's border in its colour — while:
   which includes the component whose callout is open;
 - it is selected, or the pointer is over it or over its `edge-label-<id>`;
 - one of its ends is being dragged;
-- on the presentation channel with a step current, both its ends are in that
-  step's parts;
 - while search lights matches, both its ends match.
 
 A connection with a step is always `data-tone="kind"`, with `data-focus` only
@@ -766,7 +725,6 @@ each saves its instruction as a request.
 | overview | `ai-suggest-loop` | `Show the loop` | a refine: `Show the loop: draw the agent's loop and the checks around it as parts with numbered connections` |
 | linkedin | `ai-suggest-shorter` | `Shorter for LinkedIn` | a refine: `Make it shorter for LinkedIn: fewer parts and shorter names` |
 | readme | `ai-suggest-fewer-details` | `Fewer details` | a refine: `Show fewer details: hold mechanisms only where the story is about them` |
-| presentation | `ai-suggest-fewer-steps` | `Fewer steps` | a refine: `Use fewer steps: merge steps that say the same thing` |
 
 There is no `overview-suggestion` and no `simplify-overview` any more
 (ADR 0007, ADR 0008).
@@ -775,72 +733,13 @@ There is no `overview-suggestion` and no `simplify-overview` any more
 
 When the stored file changes outside the editor and the editor has no
 unsaved edit and no run going, it shows the new document within 2 s with the
-toast `Updated from the file`, except while `present` is open (*Presenting and
-the tour*). With an unsaved edit, the next save gets 409 and `save-status`
-says so.
+toast `Updated from the file`. With an unsaved edit, the next save gets 409
+and `save-status` says so.
 
 Showing the file's version, after `Updated from the file` or `save-reload`,
 starts a new history: `tool-undo` and `tool-redo` have nothing to step to until
 the next edit, so undo never writes the editor's older version over a change a
 session or the CLI made.
-
-## Presenting and the tour
-
-`present` is a layer over the whole window (`role="dialog"`, `aria-modal`)
-with `data-mode` `present` or `tour`, `data-index` the slide shown and
-`data-fullscreen` `true` while the layer is the browser's full-screen
-element, else `false`. It shows the slides of *The slide image*: index 0 is
-the opening slide, index *i* the *i*-th of the *n* steps. Nothing in it edits
-the drawing, and the editor under it takes no key or pointer input while it
-is open.
-
-| Test id | Element and behaviour |
-|---|---|
-| `present-slide` | the slide's SVG, scaled to fit the space it has, keeping 16:9, centred on the canvas colour. In `present` mode it fills the layer; in `tour` mode it shares the layer with `tour-panel` |
-| `present-status` | a polite live region, visually hidden, independent of the toggles: `Step <i> of <n>: <text>` on a step, the presentation view's `caption.title` on the opening slide |
-| `present-hint` | `present` mode only: `← → to move · Esc to exit`, shown until `data-index` first changes |
-| `present-note-toggle` | `present` mode only, hidden on the opening slide: `Speaker note` (`aria-expanded`, closed when the layer opens, and kept open or closed from slide to slide); open, it shows `present-note`: the step's `note` with its newlines, or `No note for this step` |
-| `present-exit` | `Exit`; leaves as Escape does |
-| `tour-panel` | `tour` mode only: beside the slide when the window is at least 900 px wide, else under it. Holds `tour-note` (the step's `note` with its newlines, or `No note for this step`) and one `tour-part` per part in the step's `parts`, in the order of the view's `nodes` (`data-node-id`, the part's label) |
-| `tour-file` | in a `tour-part`: its files, each path once. They are gathered from the part's `facts` in order, then its `held` facts in order; for each fact its `files` first, then its `evidence` files not already listed. Text: the path, then for each evidence range on that path in that order `:<from>–<to>` (`:<from>` when `from` = `to`), joined by `, `. A part with no file shows `No files recorded` instead |
-| `tour-copy` | one per `tour-file`: `Copy path`; copies the path alone; toast `Copied the path`, or `Copying is not allowed here` |
-
-Entering:
-
-- `present-start` opens `present` mode on the opening slide and asks the
-  browser for full screen on the layer. A refused or unsupported full screen
-  leaves the layer open, filling the window, with `data-fullscreen="false"`.
-- `tour-start` opens `tour` mode on the first step, never full screen.
-- Focus moves to the layer itself (`tabindex="-1"`); Tab and Shift+Tab cycle
-  inside it. The theme is the drawing's `theme`. The share toggles are the
-  slide format's starting toggles (*Share*), except that the opening slide
-  always shows the caption's title and, when not empty, its lede.
-
-Keys, while the layer is open. Space and Enter on a focused button activate
-it and do not move; no other key acts on a focused button.
-
-| Key | `present` | `tour` |
-|---|---|---|
-| Right, Down, Space, PageDown | next slide | next step |
-| Left, Up, PageUp | previous slide | previous step |
-| Home | the opening slide | the first step |
-| End | the last step | the last step |
-| N | toggles `present-note` on a step; nothing on the opening slide | nothing |
-| Escape | leaves | leaves |
-
-A click on `present-slide` is the next slide. Moving past either end does
-nothing. In `present` mode, once the layer has been full screen, the browser
-leaving full screen (its own Escape, or F11) leaves the layer as well.
-
-Leaving returns focus to the button that opened the layer and makes the step
-shown current in `steps-panel` (no step current after the opening slide).
-
-While the layer is open, an outside change to the file (*External changes*)
-re-renders the slide shown, with no toast. A step is followed by its `id`:
-the step shown stays shown wherever it moved; when it was removed the last
-step is shown; the opening slide stays the opening slide. When no step is
-left the layer closes with the toast `The presentation has no steps any
-more`.
 
 ## Share
 
@@ -853,26 +752,16 @@ part (SHARE-2).
 
 | Test id | Element and behaviour |
 |---|---|
-| `format-feed`, `format-readme`, `format-slide`, `format-square` | `Where will you share it?` (`aria-pressed`): `LinkedIn` 1080×1350, `README` 1600×900, `Slide` 1920×1080, `Square post` 1080×1080. `format-feed` is also pressed for the wide post. Default `format-feed` on the LinkedIn channel, `format-slide` on the presentation, else `format-readme` |
+| `format-feed`, `format-readme`, `format-slide`, `format-square` | `Where will you share it?` (`aria-pressed`): `LinkedIn` 1080×1350, `README` 1600×900, `Slide` 1920×1080, `Square post` 1080×1080. `format-feed` is also pressed for the wide post. Default `format-feed` on the LinkedIn channel, else `format-readme` |
 | `share-theme-light`, `share-theme-dark` | the image theme (default the drawing's) |
 | `share-advanced-toggle` | `Advanced options` (`aria-expanded`); shows `share-advanced`: `format-linkedin` (`Landscape LinkedIn post`, 1620×1080) and checkboxes `show-title`, `show-lede`, `show-sub` (`Sub-lines`), `show-steps`, `show-labels`, `show-legend`, `show-texts`. Starting toggles (reset when the format changes): on the LinkedIn channel, or with `format-feed`, title, description, numbered path, labels and texts on, colour key off; Square: title, description, numbered path and texts on, labels and colour key off; otherwise title, numbered path, labels, colour key and texts on, description off; in every format `show-sub` starts as the view's sub-line switch (`tool-sublines`). There is no `show-items`: no part draws rows |
-| `share-actions` | always visible: `readability`, `layout-report`, `download-png`, `download-svg`, `copy-image`; on the presentation channel also `download-slides-pdf` and `download-slides-png` |
+| `share-actions` | always visible: `readability`, `layout-report`, `download-png`, `download-svg`, `copy-image` |
 | `readability` | `data-level` `good`/`ok`/`warn`; one plain sentence for the chosen destination with at most one suggestion, and no numbers (Readability, below); `readability-details-toggle` (`Details`, `aria-expanded`, closed when the dialog opens) shows `readability-details`: `Names <a> px and text <b> px <where>, <c> px opened.` |
 | `share-clipped` | when component text is shortened with `…`: `Shortened in this image:` and `share-clipped-item` per text (`<label>: <full text>`) |
 | `download-png` | `<slug>-<view>-<format>.png`, at twice the image size |
 | `download-svg` | the same name with `.svg`; fonts embedded |
-| `download-slides-pdf` | `Slides as PDF`: `<slug>-slides.pdf`, one page per slide (*The slide image*), the opening slide first. Disabled, with the title `Add a step first`, without a step |
-| `download-slides-png` | `Slides as PNG`: `<slug>-slides.zip` holding `<slug>-slide-00.png` (the opening slide) to `<slug>-slide-<nn>.png`, two digits, each at twice the slide size. Disabled like `download-slides-pdf` |
 | `copy-image` | copies the PNG; toast `Copied the image` or `Copying images is not allowed here — use Download PNG` |
 | `share-close` | closes; also Escape or a click on the backdrop |
-
-Both slide downloads use the dialog's theme and its toggles as they are when
-pressed — they follow the format chosen, as always, and `format-slide` is the
-default on the presentation channel — with title and description on the
-opening slide only. The format sets nothing else: a slide is always
-1920 × 1080. While the slides are being made both buttons are
-disabled and the one pressed says `Making slides…`; a failure shows the toast
-`The slides could not be made` and no file.
 
 `<slug>`: the title lower-cased, accents removed, non-alphanumerics → `-`,
 trimmed (`diagram` when empty).
@@ -996,33 +885,6 @@ The same image comes from the preview, the downloads, `archdrawer svg` and
   texts.
 - Caption sizes in image px (title / description / key): wide post 36/28/27,
   README 32/20/18, slide 38/24/21, square 30/19/18, feed 36/22/21.
-
-### The slide image
-
-The presenter, the tour and the slide downloads show one image per slide,
-made from the presentation view. It is the share image of the `slide` format
-(*The share image*) with these differences:
-
-- Root `<svg>` 1920 × 1080 with `data-format="slide"`, `data-slide` (the
-  index) and `data-theme`.
-- **Opening slide** (index 0): the caption as the toggles say and the whole
-  view; nothing dimmed; no band.
-- **Step slide** (index *i*, 1 ≤ *i* ≤ *n*, *n* the number of steps): no
-  caption. Dimmed, with `data-dim="true"` and `opacity="0.25"` on its group:
-  - every `<g data-node-id>` whose part is not in the step's `parts` — a
-    group part too, even when parts inside it are lit; a lit group does not
-    light its children;
-  - every `<g data-edge-id>` unless both its `from` and its `to` are in the
-    step's `parts` (its label and badge are inside the group and dim with it);
-  - every `<g data-text-id>`.
-
-  A dimmed part keeps its box. Along the bottom, `<g data-slide-band>` holds
-  the step's `text` (`data-slide-text`, weight 500, at most 1640 px wide,
-  never shortened: 34 px on up to two lines, else 28 px on up to three, else
-  22 px on as many as it needs) and the counter `<i> / <n>` (`data-slide-count`, mono 24 px,
-  right-aligned on the last line's baseline). The drawing is fitted into the
-  margins above the band.
-- Badges, labels, sub-lines, texts and the key follow the toggles given.
 
 ### Readability
 

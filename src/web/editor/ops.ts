@@ -337,7 +337,7 @@ export function createInside(doc: DiagramDocument, vid: string, id: string, rese
   const src = viewOf(doc, vid).nodes.find((n) => n.id === id);
   if (!src) return { doc, view: vid };
   const taken = [...reserved];
-  const view = freshId(doc, `${src.label}-inside`, taken);
+  const view = freshId(doc, `${src.id}-inside`, taken);
   const copyId = freshId({ ...doc, views: [...doc.views, { id: view, title: "", caption: { title: "", lede: "" }, postOf: null, nodes: [], edges: [], texts: [] }] }, src.id, taken);
   const copy: DiagramNode = { ...src, id: copyId, parent: null, detail: null, place: { row: 0, col: 0 }, x: 40, y: 40, form: src.form === "group" ? "card" : src.form };
   const next: DiagramDocument = {

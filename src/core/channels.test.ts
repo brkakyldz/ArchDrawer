@@ -90,7 +90,7 @@ describe("validateFile3", () => {
       return validateFile3(f).errors;
     };
     expect(bad((f) => { f.facts.relations![0].id = "a"; })).toContain('facts.relations[0].id: "a" is used twice; fact ids are unique among facts');
-    expect(bad((f) => { (f.channels as Record<string, unknown>).blog = { views: [] }; })).toContain('channels.blog: "blog" is not a channel; use one of overview, linkedin, readme, presentation');
+    expect(bad((f) => { (f.channels as Record<string, unknown>).blog = { views: [] }; })).toContain('channels.blog: "blog" is not a channel; use one of overview, linkedin, readme');
     expect(bad((f) => { const v = structuredClone(f.channels.linkedin!.views![0]); f.channels.readme = { views: [v, { ...structuredClone(v), id: "readme-2" }] }; })[0]).toBe("channels.readme.views: has 2 views; at most 1");
     expect(bad((f) => { f.channels.linkedin!.views![0].nodes[1].facts = ["a"]; })).toContain('channels.linkedin.views[0].nodes[1].facts[0]: "a" is already shown or held by another part of this view');
     expect(bad((f) => { f.channels.linkedin!.views![0].nodes[1].facts = []; })).toEqual(expect.arrayContaining([

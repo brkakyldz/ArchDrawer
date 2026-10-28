@@ -1,19 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError, type DiagramSummary, type SourceEntry, type Sources } from "../api";
+import { api, ApiError, type DiagramSummary, type Sources } from "../api";
 import { navigate } from "../App";
 import { Icon } from "../ui/Icon";
 import { Logo } from "../ui/Logo";
 import { ActivityPanel, ActivityToggle, JobNotice, useActivity } from "./Activity";
 import { Continue, Drawings } from "./Drawings";
 import { EngineChip, EnginePanel, useEngine } from "./Engine";
-import { SourceList } from "./Source";
 import { openUrl } from "./jobs";
 import { ScanCard, StartPanel, useStart, type Ready } from "./Start";
 import "./home.css";
 
 /**
- * `/`: the home screen (ui contract, Home; DESIGN.md, Home screen). Three columns: the navigation (the drawings,
- * New drawing, Recent and Found on this computer), the work column (the `Draw a project` panel over the drawings)
+ * `/`: the home screen (ui contract, Home; DESIGN.md, Home screen). Three columns: the navigation (the drawings
+ * and New drawing), the work column (the `Draw a project` panel over the drawings)
  * and the side column (Activity, then the newest drawing or the scanned repository, then the engine).
  */
 
@@ -52,7 +51,6 @@ export function Home() {
   const [sources, setSources] = useState<Sources | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exampleBusy, setExampleBusy] = useState(false);
-  const [looking, setLooking] = useState(false);
   const [notice, setNotice] = useState<Ready | null>(null);
   // The draws this page saw running, and those it already said were ready.
   const sawRunning = useRef(new Set<string>());
@@ -65,16 +63,15 @@ export function Home() {
   const folded = useMedia("(max-width: 1240px)");
   const engine = useEngine();
   const activity = useActivity();
-  const loadSources = () => api.sources().then(setSources, () => undefined);
   const load = () => api.list().then(setList, (e: Error) => setError(e.message));
-  /** A draw the page saw running is ready: the notice, once per draw; its file is new in the lists. */
+  /** A draw the page saw running is ready: the notice, once per draw; its file is new in the library. */
   const tell = (r: Ready) => {
     if (noticed.current.has(r.runId)) return;
-    noticed.current.add(r.runId); setNotice(r); void load(); void loadSources();
+    noticed.current.add(r.runId); setNotice(r); void load();
   };
   const start = useStart({
-    engine, activity: activity.data, onJob: activity.bump, onSources: () => void loadSources(),
-    onDrawn: (r) => { if (r) tell(r); else { void load(); void loadSources(); } },
+    engine, activity: activity.data, onJob: activity.bump,
+    onDrawn: (r) => { if (r) tell(r); else void load(); },
   });
   // Activity also tells of the draws that end while the panel follows another job.
   useEffect(() => {
@@ -84,9 +81,8 @@ export function Home() {
       else if (j.status === "succeeded" && j.diagramId && sawRunning.current.has(j.id)) tell({ runId: j.id, name: j.name ?? "The drawing", url: openUrl(j.diagramId, j.choice, j.channel) });
     }
   }, [activity.data]);
-  useEffect(() => { void load(); void loadSources(); document.title = "archdrawer"; }, []);
-  // A scan that succeeded joins Recent.
-  useEffect(() => { if (start.scan) void loadSources(); }, [start.scan?.id]);
+  // Whether `Choose folder…` shows is asked once, when the page loads (ui contract, Choosing a repository).
+  useEffect(() => { void load(); void api.sources().then(setSources, () => undefined); document.title = "archdrawer"; }, []);
 
   // `Ctrl K` (`⌘ K` on macOS): the folder field, after freeing the panel when it follows a job.
   useEffect(() => {
@@ -99,21 +95,6 @@ export function Home() {
   });
 
   const toStart = () => document.getElementById("start")?.scrollIntoView({ block: "start", behavior: "smooth" });
-  const take = (path: string) => { start.take(path); toStart(); };
-
-  /** `source-forget`: asks first, and for a copy whether to delete it too; a refusal shows in `start-error`. */
-  const forgetSource = async (e: SourceEntry) => {
-    if (!confirm(`Remove "${e.name}" from Recent?`)) return;
-    const deleteCopy = !!e.link && confirm(`Also delete the copy of ${e.link} from this computer?`);
-    start.setError(null);
-    await api.forgetSource(e.path, deleteCopy).catch((err: Error) => start.setError(err.message));
-    void loadSources();
-  };
-  /** `source-found-refresh`: the found list made again now; off until it answers. */
-  const lookAgain = () => {
-    setLooking(true);
-    api.refreshSources().then(setSources, () => undefined).finally(() => setLooking(false));
-  };
   // A scan the panel follows that waits for a free engine says so (its job in Activity).
   const scanWaits = !!start.scanning?.id && !!activity.data?.jobs.some((j) => j.id === start.scanning!.id && j.waiting === true);
 
@@ -136,7 +117,7 @@ export function Home() {
     if (!confirm(d.path ? `Remove "${d.title}" from this list? The file stays where it is.` : `Delete the imported drawing "${d.title}"?`)) return;
     const copy = !!d.link && confirm(`Also delete the copy of ${d.link} from this computer?`);
     await api.forget(d.id, copy).catch((e: Error) => setError(e.message));
-    void load(); void loadSources();
+    void load();
   };
 
   const example = async () => {
@@ -169,9 +150,6 @@ export function Home() {
             <Icon name="layers" size={18} />Drawings <span className="n">{list?.length ?? 0}</span>
           </button>
           <button type="button" className="hm-nav-a" data-testid="home-nav-new" onClick={() => { start.newDrawing(); toStart(); }}><Icon name="plus" size={18} />New drawing</button>
-          {!!sources?.recent.length && <SourceList testId="source-recent" title="Recent" entries={sources.recent} onTake={take} onForget={(e) => void forgetSource(e)} />}
-          <SourceList testId="source-found" title="Found on this computer" entries={sources?.found ?? []} onTake={take}
-            extra={<button type="button" className="hm-look" data-testid="source-found-refresh" aria-label="Look again" title="Look again" disabled={looking} onClick={lookAgain}><Icon name="refresh" size={14} /></button>} />
           <p className="hm-server" data-testid="home-server"><span className="hm-dot" aria-hidden="true" />{location.host}</p>
         </nav>
         <main className="hm-work">

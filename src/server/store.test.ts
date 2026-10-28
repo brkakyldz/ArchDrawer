@@ -83,6 +83,35 @@ describe("file-backed store", () => {
     expect(store.get(doc.id)!.title).toBe("Renamed shop");
   });
 
+  it("drops the removed presentation channel when it opens a file, follows an outside change or imports, and writes the file back without it", () => {
+    const REMOVED = "The presentation channel was removed";
+    const presentation = (overview: { id: string }) => ({ views: [{ ...overview, id: "presentation", title: "Presentation" }], steps: [] });
+    const count = (ws: string[]) => ws.filter((w) => w === REMOVED).length;
+    const store = new Store(tempDir());
+    const { file } = shopRepo();
+    const f = read(file);
+    f.channels.presentation = presentation(f.channels.overview.views[0]);
+    writeFileSync(file, JSON.stringify(f));
+    const doc = store.register(file);
+    expect(count(doc.warnings)).toBe(1);
+    const onDisk = read(file);
+    expect(onDisk.choices.some((c: { channels: object }) => "presentation" in c.channels)).toBe(false);
+    expect(count(onDisk.warnings)).toBe(1);
+    // Read again, nothing is dropped and no warning is added.
+    expect(count(store.get(doc.id)!.warnings)).toBe(1);
+    // An outside write that adds one back: dropped again, one more warning for that repair.
+    const outside = read(file);
+    outside.choices[0].channels.presentation = presentation(outside.choices[0].channels.overview.views[0]);
+    writeFileSync(file, JSON.stringify(outside, null, 2));
+    store.poll();
+    expect(read(file).choices[0].channels).not.toHaveProperty("presentation");
+    expect(count(store.get(doc.id)!.warnings)).toBe(2);
+    // An import is read the same way.
+    const imported = store.import(f);
+    expect(imported.ok).toBe(true);
+    expect(count(store.get((imported as { id: string }).id)!.warnings)).toBe(1);
+  });
+
   it("refuses a save based on an older version (409) and accepts one based on the current", () => {
     const store = new Store(tempDir());
     const { file } = shopRepo();

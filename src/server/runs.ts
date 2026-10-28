@@ -431,7 +431,7 @@ export class RunManager {
       if (!req.image) throw new EngineError("A revise needs the drawing's image");
       progress("Looking at the drawing");
       const channel = req.channel ?? "overview";
-      const format: FormatId = channel === "linkedin" ? "feed" : channel === "presentation" ? "slide" : "readme";
+      const format: FormatId = channel === "linkedin" ? "feed" : "readme";
       const shown = joinChannel(req.stored, channel);
       const view = shown.views.find((v) => v.id === req.view) ?? shown.views[0];
       look = { image: req.image, report: { ...layoutReport(shown, view.id, { ...startSwitches(format, channel === "linkedin"), format, theme: shown.theme }, { map: isMapView(req.stored, view.id) }), channel } };

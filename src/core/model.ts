@@ -99,8 +99,6 @@ export interface DiagramRequest { id: string; text: string; view: string; at: st
 export type DiagramSource = { kind: "local"; path: string };
 export interface EngineRef { id: string; model: string | null }
 
-/** A presentation step (diagram contract, Presentation steps). */
-export interface DiagramStep { id: string; parts: string[]; text: string; note: string }
 export interface DiagramDocument {
   schema: typeof SCHEMA_ID;
   id: string;
@@ -114,8 +112,6 @@ export interface DiagramDocument {
   views: DiagramView[];
   requests: DiagramRequest[];
   warnings: string[];
-  /** The presentation channel's steps, when the document is that channel joined. */
-  steps?: DiagramStep[];
 }
 
 /** A file as a session writes it: positions, edge ids and document fields may be missing. */

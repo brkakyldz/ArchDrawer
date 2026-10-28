@@ -147,16 +147,15 @@ describe("health and the example", () => {
 });
 
 describe("the fixture routes the suggestions as the testing contract says (AI-4)", () => {
-  it("hears Shorter for LinkedIn, Fewer details and Fewer steps as a story, and Show the loop as the facts", () => {
+  it("hears Shorter for LinkedIn and Fewer details as a story, and Show the loop as the facts", () => {
     // The suggestions' instructions, as the ui contract (Suggestions) words them.
     const SUGGESTED: Record<string, string> = {
       loop: "Show the loop: draw the agent's loop and the checks around it as parts with numbered connections",
       shorter: "Make it shorter for LinkedIn: fewer parts and shorter names",
       "fewer-details": "Show fewer details: hold mechanisms only where the story is about them",
-      "fewer-steps": "Use fewer steps: merge steps that say the same thing",
     };
     const route = Object.fromEntries(Object.entries(SUGGESTED).map(([id, text]) => [id, fixtureRoute(text)]));
-    expect(route).toEqual({ loop: "facts", shorter: "story", "fewer-details": "story", "fewer-steps": "story" });
+    expect(route).toEqual({ loop: "facts", shorter: "story", "fewer-details": "story" });
   });
   it("still hears the story marker anywhere, and anything else as the facts", () => {
     expect(fixtureRoute("move Web app right of API [fixture:story]")).toBe("story");

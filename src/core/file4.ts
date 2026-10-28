@@ -1,6 +1,6 @@
 /**
  * The stored drawing file `archdraw/diagram@4` (docs/contracts/diagram.md, *Choice*; ADR 0015): the
- * document's own fields and a list of choices, each holding facts and four channels in exactly the
+ * document's own fields and a list of choices, each holding facts and three channels in exactly the
  * shape an `@3` file held them. Every rule inside a choice is the `@3` rule, checked by `validateFile3`
  * on that choice alone and reported under `choices[<i>].`; this file adds the rules between choices.
  * Pure: no Node or DOM APIs (invariant 4).
@@ -64,7 +64,7 @@ export function validateFile4(raw: unknown, check: FileCheck = {}): ValidationRe
   for (const k of DOC_KEYS) if (raw[k] !== undefined) own[k] = raw[k];
   errors.push(...validateFile3(own).errors.filter((e) => !inChoice(e) && !e.startsWith("schema")));
 
-  // Rule 25: the choices; rules inside a choice are its @3 rules.
+  // Rule 24: the choices; rules inside a choice are its @3 rules.
   const choices = Array.isArray(raw.choices) ? raw.choices : (err("choices", `must be an array of 1–${CHOICE_LIMITS.choices} choices`), []);
   if (Array.isArray(raw.choices) && choices.length < 1) err("choices", "must hold at least one choice");
   if (choices.length > CHOICE_LIMITS.choices) err("choices", `has ${choices.length} choices; at most ${CHOICE_LIMITS.choices}`);

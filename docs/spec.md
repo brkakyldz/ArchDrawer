@@ -12,10 +12,10 @@ cite, and a status:
 
 Developers who want to explain their own project. They point Archdrawer at a
 repository; their own Claude Code or Codex reads it; they get an architecture
-drawing that is correct and ready for one of three channels — a LinkedIn
-image, a README drawing, a step-by-step presentation — and adjust it in an
-editor before exporting. Side jobs: a map to drill from the system into a part
-and its files, and a guided tour for learning a repository (ADR 0001).
+drawing that is correct and ready for one of two channels — a LinkedIn
+image or a README drawing — and adjust it in an editor before exporting. Side
+job: a map to drill from the system into a part and its files (ADR 0001,
+ADR 0019).
 
 ## 2. Requirements
 
@@ -24,14 +24,14 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 - **START-1** (To change) The Claude Code / Codex plugin is the main install
   path; its command opens the app on the session's repository (ADR 0004).
 - **START-2** (To build) The first launch shows a ready-made example drawing
-  and its presentation before the user starts their own.
+  before the user starts their own.
 - **START-3** (Today) Before a run, the app tells whether `claude` and/or
   `codex` is installed, signed in and recent enough, and says what to do when
   it is not.
 - **START-4** (Today) The home screen starts a drawing from a repository
-  chosen by a click: an entry of *Recent* or *Found on this computer*, a
-  folder picked in the operating system's own folder dialog (`Choose
-  folder…`), a pasted path, or a pasted link (SRC-1 … SRC-6, ADR 0017).
+  chosen in one of three ways: a pasted path, a folder picked in the
+  operating system's own folder dialog (`Choose folder…`), or a pasted link
+  (SRC-3 … SRC-6, ADR 0017, ADR 0018).
 - **START-5** (Today) The `archdrawer` command opens, validates and exports
   drawing files.
 - **START-6** (Today) A draw that fails after its read keeps what it read,
@@ -49,20 +49,8 @@ and its files, and a guided tour for learning a repository (ADR 0001).
 
 A repository comes from one of two sources: *This computer* (a local folder)
 or *Link* (a repository copied from a link). Exact shapes and texts are in
-the api contract, *Sources* (ADR 0017).
+the api contract, *Sources* (ADR 0017, ADR 0018).
 
-- **SRC-1** (Today) *Recent* lists the folders scanned or drawn before,
-  most recently used first, at most 20; a folder that no longer exists is
-  left out. Each entry has its name, its path, its branch, the time of its
-  last commit and, for a copy, its link (`github.com/owner/repo`). An entry
-  without a drawing in the library can be removed from the list.
-- **SRC-2** (Today) *Found on this computer* lists the git repositories
-  found below the home folder, below `code`, `src`, `projects`, `repos`,
-  `dev` and `Documents/GitHub` under it, and below the parent folder of each
-  drawing's repository in the library: at most two levels deep, at most 50,
-  newest last commit first, none already in *Recent*, with the same fields as
-  SRC-1. The list is made again at most every five minutes, or at once on
-  request.
 - **SRC-3** (Today) `Choose folder…` opens the operating system's own
   folder dialog in front of the browser: the modern Explorer folder picker on
   Windows, Finder's `choose folder` on macOS, `zenity` or `kdialog` on Linux.
@@ -86,9 +74,10 @@ the api contract, *Sources* (ADR 0017).
   one plain sentence. The drawing files in the copy are never removed or
   overwritten by an update.
 - **SRC-6** (Today) The library names a copy's drawing by its link instead
-  of its path. `Remove from list` on that drawing, or on a copy's entry in
-  *Recent*, offers to delete the copy too; the copy is deleted only when no
-  other drawing in the library is in it and nothing runs on it.
+  of its path. `Remove from list` on that drawing offers to delete the copy
+  too; the copy is deleted only when no other drawing in the library is in it
+  and nothing runs on it. A copy with no drawing in the library stays in
+  archdrawer's data folder (ADR 0018).
 
 ### Scan and choices (SCAN)
 
@@ -173,15 +162,13 @@ api contract, *Engine slots*, *The draw run*, *Activity*).
 ### Channels and story (STORY)
 
 - **STORY-1** (To change) The user chooses one channel after the choices —
-  LinkedIn, README or presentation — and it is drawn for every choice. Each
-  choice has its own set of channels (overview, LinkedIn, README,
-  presentation) and can switch channel without a new deep read.
+  LinkedIn or README — and it is drawn for every choice. Each choice has its
+  own set of channels (overview, LinkedIn, README) and can switch channel
+  without a new deep read (ADR 0019).
 - **STORY-2** (Today) LinkedIn: one image, about 8–12 parts, a title and one
   plain sentence, no held items, readable on a phone.
 - **STORY-3** (Today) README: a detailed drawing; one-line descriptions;
   held items only on the few parts whose mechanism matters.
-- **STORY-4** (Today) Presentation: ordered steps; each highlights some
-  parts and carries a short on-screen text and a speaker note.
 - **STORY-5** (Today) Numbers that explain a guarantee (a deadline, a turn
   limit) may appear outside LinkedIn.
 - **STORY-6** (Today) The model decides what is drawn and its rough place
@@ -242,11 +229,11 @@ api contract, *Engine slots*, *The draw run*, *Activity*).
   follows the view unless its own switch says otherwise (ADR 0014).
 - **LOOK-4** (To build) Calm connections: lines are drawn in one neutral
   colour, and take their kind colours when they are numbered or in focus (a
-  hovered or selected part's lines, a selected line, the current step, search
-  matches). No start ring; dotted lines stay readable at fit zoom. A line
-  behind a part leaves a faint trace over it, and a label sits clear of other
-  lines. A part that four or more parts use is marked "used by N" and the
-  lines into it show on hover or selection (ADR 0013).
+  hovered or selected part's lines, a selected line, search matches). No
+  start ring; dotted lines stay readable at fit zoom. A line behind a part
+  leaves a faint trace over it, and a label sits clear of other lines. A
+  part that four or more parts use is marked "used by N" and the lines into
+  it show on hover or selection (ADR 0013).
 
 ### File and editing (FILE, EDIT)
 
@@ -295,8 +282,8 @@ api contract, *Engine slots*, *The draw run*, *Activity*).
   system, each section and each flow of the drawing, with their detail views
   under them, marks the current one and goes to any of them in one click;
   below 900 px it folds into the header menu. Tabs show the current choice's
-  channels (overview, LinkedIn, README, presentation) with a "needs update"
-  mark; a breadcrumb shows the path into detail views.
+  channels (overview, LinkedIn, README) with a "needs update" mark; a
+  breadcrumb shows the path into detail views.
 - **NAV-3** (Today) Search highlights matching parts on the canvas as the
   user types, dims the rest, shows the match count and steps through matches
   with Enter; the view moves only when a match is off screen.
@@ -307,24 +294,23 @@ api contract, *Engine slots*, *The draw run*, *Activity*).
 The screen at `/` (ui contract, *Home*; DESIGN.md, *Home screen*). It uses
 the sources of SRC and the jobs of JOB.
 
-- **HOME-1** (Today) Three columns: a navigation column (the drawings,
-  `New drawing`, *Recent* and *Found on this computer*), a work column (the
-  `Draw a project` panel, then the drawings) and a side column (Activity,
-  then the newest drawing or the scanned repository's card, then the engine
-  and model). Narrower windows move the side column under the work column,
-  then put the navigation in one row, then show one column.
+- **HOME-1** (Today) Three columns: a navigation column (the drawings and
+  `New drawing`), a work column (the `Draw a project` panel, then the
+  drawings) and a side column (Activity, then the newest drawing or the
+  scanned repository's card, then the engine and model). Narrower windows
+  move the side column under the work column, then put the navigation in
+  one row, then show one column.
 - **HOME-2** (Today) The `Draw a project` panel goes through four steps
   shown as a stepper, Folder, Focus, Destination and Draw. The repository is
-  chosen on *This computer* by searching the recent and found repositories,
-  pasting a path or `Choose folder…`, or on *Link* by pasting a link, which
-  is checked as it is typed. Choosing one never scans by itself; `Scan`
-  does.
+  chosen on *This computer* by pasting a path or `Choose folder…`, or on
+  *Link* by pasting a link, which is checked as it is typed. Choosing one
+  never scans by itself; `Scan` does.
 - **HOME-3** (Today) After a scan the choices are cards in two columns,
   the whole system first and widest, then the sections, the flows and
   *Something else*; each shows its title, sentence and first files, the rest
-  on demand. Three destination cards show the shape of each channel. A bar
-  says how many drawings for what, and holds `Change folder` and the draw
-  button.
+  on demand. Two destination cards, LinkedIn and README, show the shape of
+  each channel. A bar says how many drawings for what, and holds `Change
+  folder` and the draw button.
 - **HOME-4** (Today) While a scan or a draw of the folder chosen runs,
   the panel follows it. Each choice of a draw shows its three stages, the
   time since it started, ticking every second, the engine's latest line with
@@ -354,22 +340,13 @@ the sources of SRC and the jobs of JOB.
   list layout is kept in the browser. The newest drawing waits in a
   `Continue` panel.
 - **HOME-10** (Today) The keyboard reaches every control in order;
-  `Ctrl K` (`⌘ K`) goes to the folder search, Enter scans or draws, Space
+  `Ctrl K` (`⌘ K`) goes to the path field, Enter scans or draws, Space
   ticks.
 - **HOME-11** (Today) The home screen keeps the app's light and dark
   themes, Geist and Geist Mono, and the one blue for state and the primary
   action.
 - **HOME-12** (Today) No hero, slogan, process guide or footer line: every
   text names a thing or a state.
-
-### Presentation and tour (PRES)
-
-- **PRES-1** (Today) A full-screen presentation mode steps through the
-  presentation channel with the arrow keys, highlighting each step's parts and
-  dimming the rest.
-- **PRES-2** (Today) The same steps form the guided tour for learning a
-  repository.
-- **PRES-3** (Today) The steps export as PDF pages and PNG slides.
 
 ### Share (SHARE)
 
@@ -405,14 +382,15 @@ the sources of SRC and the jobs of JOB.
   connections over parts and no cut text, and text readable at the channel's
   size.
 - **QUAL-3** (To build) In an agent project, the agent's loop is visible in the
-  README and presentation outputs.
+  README output.
 
 ## 3. Out of scope for now
 
-Drawing answers to free questions; risk audits; keeping a drawing current on
-every pull request; designing changes on the drawing; blog layouts; LinkedIn
-carousels; CLI/library and monorepo layouts; links other than `https` links
-of github.com, gitlab.com and bitbucket.org; hosted mode, accounts, API-key
+Presentations, presenting and guided tours (ADR 0019); drawing answers to
+free questions; risk audits; keeping a drawing current on every pull
+request; designing changes on the drawing; blog layouts; LinkedIn carousels;
+CLI/library and monorepo layouts; links other than `https` links of
+github.com, gitlab.com and bitbucket.org; hosted mode, accounts, API-key
 engines.
 
 ## 4. Contracts

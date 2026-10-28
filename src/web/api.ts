@@ -19,7 +19,7 @@ export interface ScanRecord {
   cached: boolean; card: RepoCard | null; options: FocusOption[] | null; warnings: string[]; error: string | null; link?: string | null;
 }
 export type DrawFocus = { kind: "option"; option: string } | { kind: "whole" } | { kind: "typed"; text: string };
-export type DrawChannel = "linkedin" | "readme" | "presentation";
+export type DrawChannel = "linkedin" | "readme";
 /** One choice of a draw run as its record lists it (api contract, Run record). */
 export interface DrawChoiceState {
   id: string; kind: "system" | "section" | "flow" | "custom"; title: string; status: "waiting" | "running" | "done" | "failed" | "cancelled"; stage: "read" | "overview" | "channel" | null;
@@ -32,9 +32,8 @@ export interface RunRecord {
   channel?: string | null; message?: string | null; writing?: boolean; folder?: string | null; root?: string | null; link?: string | null; name?: string | null;
   scan?: string | null; createdAt?: string; startedAt?: string | null; endedAt?: string | null; waiting?: boolean; lastEngineEventAt?: string | null;
 }
-/** An entry of Recent or Found on this computer (api contract, Recent and found). */
-export interface SourceEntry { name: string; path: string; branch: string | null; lastCommitAt: string | null; link: string | null; diagrams: string[]; usedAt: string | null }
-export interface Sources { picker: boolean; recent: SourceEntry[]; found: SourceEntry[]; foundAt: string }
+/** `GET /api/sources` (api contract): whether the folder dialog can open. */
+export interface Sources { picker: boolean }
 export interface Health { ok: boolean; app: string; version: string; build: string }
 /** What every job record carries for the activity list (api contract, Scan record, Run record). */
 export interface JobFields { message: string | null; name: string | null; createdAt: string; startedAt: string | null; endedAt: string | null; link: string | null; events: string; waiting?: boolean }
@@ -79,11 +78,8 @@ export const api = {
   health: () => call<Health>("GET", "/api/health"),
   engines: () => call<{ engines: EngineInfo[] }>("GET", "/api/engines").then((r) => r.engines),
   list: () => call<{ diagrams: DiagramSummary[] }>("GET", "/api/diagrams").then((r) => r.diagrams),
-  /** The home screen's Recent and Found on this computer. */
+  /** Whether `Choose folder…` can open the system's dialog. */
   sources: () => call<Sources>("GET", "/api/sources"),
-  /** Make the found list again now; answers as `sources()`. */
-  refreshSources: () => call<Sources>("POST", "/api/sources/refresh"),
-  forgetSource: (path: string, deleteCopy: boolean) => call<{ ok: true; deleted: boolean }>("POST", "/api/sources/forget", { path, deleteCopy }),
   get: (id: string) => call<Document4>("GET", `/api/diagrams/${encodeURIComponent(id)}`),
   /** Save; `base` is the `updatedAt` the edit started from (409 when the file moved on). */
   save: (doc: Document4, base: string | null) =>

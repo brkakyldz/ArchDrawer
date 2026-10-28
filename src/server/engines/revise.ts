@@ -114,11 +114,11 @@ Make one round of fixes to what the reader sees: parts or labels that overlap, c
 }
 
 /**
- * The prompt of a revise on the LinkedIn, README or presentation channel: the look at the image, then
+ * The prompt of a revise on the LinkedIn or README channel: the look at the image, then
  * the channel's own brief, answered again with the fixes (a story answer, as a refine's story route).
  */
 export function reviseStoryPrompt(p: {
-  file: string; report: unknown; instruction: string; channel: "linkedin" | "readme" | "presentation"; attached?: boolean;
+  file: string; report: unknown; instruction: string; channel: "linkedin" | "readme"; attached?: boolean;
   folderName: string; view: string; base: unknown; facts: unknown; format: "feed" | "linkedin";
 }): string {
   const brief = p.channel === "linkedin"

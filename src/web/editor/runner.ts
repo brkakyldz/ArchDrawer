@@ -26,7 +26,7 @@ export interface RunRequest {
   after?: (doc: DiagramDocument) => DiagramDocument;
   /** A post run draws the LinkedIn channel (api contract, Run kinds); its instruction may be empty. A simplify run makes the overview a map. */
   kind?: "refine" | "post" | "simplify" | "story" | "revise";
-  /** The channel a story draws (README or presentation; api contract, Run kinds). */
+  /** The channel a story draws (README; api contract, Run kinds). */
   channel?: ChannelId;
   format?: "feed" | "linkedin";
   /** A post drawn from the facts alone: the engine reads no file (STORY-1). */

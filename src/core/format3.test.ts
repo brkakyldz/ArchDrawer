@@ -8,12 +8,12 @@ import { validateDocument, type DiagramDocument } from "./model";
 import { PALETTES } from "./theme";
 
 // ADR 0007's additions to `archdraw/diagram@3` (diagram contract): evidence, mechanisms, limit facts,
-// held and limit rows, one README and one presentation view, presentation steps.
+// held and limit rows, one README view.
 
 const NOW = "2026-10-21T00:00:00.000Z";
 const part = (id: string, extra: object = {}) => ({ id, facts: [id], form: "card" as const, icon: null, parent: null, detail: null, place: null, ...extra });
 
-/** An agent holding its loop (two mechanisms) and a turn limit, drawn in four channels. */
+/** An agent holding its loop (two mechanisms) and a turn limit, drawn in the overview and the README. */
 function agentFile(change: (f: File3) => void = () => {}): File3 {
   const f: File3 = {
     schema: "archdraw/diagram@3", title: "Agent",
@@ -35,10 +35,6 @@ function agentFile(change: (f: File3) => void = () => {}): File3 {
       readme: { views: [{ id: "readme", title: "README", caption: { title: "Agent", lede: "" }, nodes: [
         part("app"), part("agent", { form: "panel", held: ["propose"] }), part("check", { place: { row: 1, col: 1 } }),
       ], edges: [] }] },
-      presentation: {
-        views: [{ id: "presentation", title: "Presentation", caption: { title: "Agent", lede: "" }, nodes: [part("app"), part("agent")], edges: [] }],
-        steps: [{ id: "s1", parts: ["app"], text: "It starts here", note: "" }, { id: "s2", parts: ["app", "agent"], text: "Then the agent", note: "Say why." }],
-      },
     },
   };
   change(f);
@@ -52,7 +48,7 @@ const doc = (change?: (f: File3) => void): Document3 => {
 const errorsOf = (change: (f: File3) => void) => validateFile3(agentFile(change)).errors;
 const ov = (f: File3) => f.channels.overview.views[0];
 const nodeOf = (d: DiagramDocument, id: string) => d.views[0].nodes.find((n) => n.id === id)!;
-function edit(d: Document3, channel: "overview" | "readme" | "presentation", change: (j: DiagramDocument) => void): Document3 {
+function edit(d: Document3, channel: "overview" | "readme", change: (j: DiagramDocument) => void): Document3 {
   const j = joinChannel(d, channel);
   change(j);
   const r = applyChannel(d, channel, j);
@@ -63,10 +59,9 @@ function edit(d: Document3, channel: "overview" | "readme" | "presentation", cha
 }
 
 describe("the format's ADR 0007 fields", () => {
-  it("accepts mechanisms, limits, evidence, held and limit rows, a README view and a presentation view with steps", () => {
+  it("accepts mechanisms, limits, evidence, held and limit rows and a README view", () => {
     const d = doc();
     expect(validateDocument3(d).ok).toBe(true);
-    expect(d.channels.presentation.steps).toHaveLength(2);
     expect(d.channels.readme.views).toHaveLength(1);
   });
 
@@ -96,15 +91,14 @@ describe("the format's ADR 0007 fields", () => {
       f.facts.components = f.facts.components.filter((c) => c.id === "app" || c.id === "agent");
       delete f.facts.relations![0].evidence;
       ov(f).nodes[1] = part("agent", { place: { row: 0, col: 1 } });
-      delete f.channels.readme; delete f.channels.presentation;
+      delete f.channels.readme;
     });
     const d = fillDefaults3(old);
     expect("limits" in d.facts).toBe(false);
-    expect("steps" in d.channels.presentation).toBe(false);
     expect(validateFile3(old).ok).toBe(true);
   });
 
-  it("reports each broken rule of 20–24 with its path", () => {
+  it("reports each broken rule of 20–23 with its path", () => {
     expect(errorsOf((f) => { f.facts.components[2].within = "propose"; })).toContain('facts.components[2].within: a component cannot be within itself');
     expect(errorsOf((f) => { f.facts.components[2].within = "ghost"; })).toContain('facts.components[2].within: "ghost" is not a component fact');
     expect(errorsOf((f) => { f.facts.components[3].within = "propose"; })).toContain('facts.components[3].within: "propose" is itself within "agent"; a mechanism is one level deep');
@@ -119,10 +113,6 @@ describe("the format's ADR 0007 fields", () => {
     expect(errorsOf((f) => { f.facts.components[0].evidence = [{ file: "../x.ts", lines: null }]; })).toContain('facts.components[0].evidence[0].file: "../x.ts" must be a repository-relative path (no leading /, drive letter or ..)');
     expect(errorsOf((f) => { f.facts.components[0].evidence = [{ file: "src/app.ts", lines: [3, 2] }]; })).toContain("facts.components[0].evidence[0].lines: must be null or [from, to] with whole numbers 1 ≤ from ≤ to");
     expect(errorsOf((f) => { f.facts.components[0].evidence = Array(9).fill({ file: "a", lines: null }); })).toContain("facts.components[0].evidence: has 9 entries; at most 8");
-    expect(errorsOf((f) => { f.channels.presentation!.steps![0].parts = ["ghost"]; })).toContain('channels.presentation.steps[0].parts[0]: "ghost" is not a part of the presentation view');
-    expect(errorsOf((f) => { f.channels.presentation!.steps![1].id = "s1"; })).toContain('channels.presentation.steps[1].id: "s1" is used twice; step ids are unique within a channel');
-    expect(errorsOf((f) => { f.channels.presentation!.steps![0].text = ""; })).toContain("channels.presentation.steps[0].text: must not be empty");
-    expect(errorsOf((f) => { f.channels.presentation!.views = []; })).toContain("channels.presentation.steps: must be [] in a channel with no view");
     expect(errorsOf((f) => { (f.channels.readme as Record<string, unknown>).steps = []; })).toContain("channels.readme.steps: is not a property of this channel; use views, showSteps, outdated");
     // Rule 16: a mechanism neither shown nor held in the overview.
     expect(errorsOf((f) => { ov(f).nodes[1] = part("agent", { form: "panel", held: ["propose"], limits: ["turns"] }); })).toContain('facts.components[3]: "check" is shown or held by no part of the overview channel; draw it there or remove it');
@@ -261,30 +251,15 @@ describe("edits of rows, mechanisms, limits and steps", () => {
     expect(d.channels.readme.views[0].nodes.map((p) => p.id)).toEqual(["app"]);
   });
 
-  it("a part that leaves the presentation leaves its steps; a step left with no part goes, with a warning", () => {
-    const d = edit(doc(), "presentation", (j) => { j.views[0].nodes = j.views[0].nodes.filter((n) => n.id !== "app"); });
-    expect(d.channels.presentation.steps).toEqual([{ id: "s2", parts: ["agent"], text: "Then the agent", note: "Say why." }]);
-    expect(d.warnings).toEqual(['Step "s1" had no part left and was removed']);
-  });
-
-  it("steps are appearance: editing them changes only the presentation channel", () => {
-    const before = doc();
-    const d = edit(before, "presentation", (j) => { j.steps = [...j.steps!].reverse().map((s, i) => (i === 0 ? { ...s, text: "First the agent" } : s)); });
-    expect(d.channels.presentation.steps!.map((s) => [s.id, s.text])).toEqual([["s2", "First the agent"], ["s1", "It starts here"]]);
-    expect(d.facts).toEqual(before.facts);
-    for (const c of ["overview", "readme"] as const) expect(d.channels[c].outdated).toEqual([]);
-  });
-
   it("marks a new limit where its fact is drawn, and a changed limit where it is not shown", () => {
     const before = doc();
     const added = structuredClone(before);
     added.facts.limits!.push({ id: "budget", on: "agent", text: "Spends at most 1 MB", evidence: [] });
     const m = markOutdated(before, added, ["overview"]);
     expect(m.channels.readme.outdated).toEqual(["budget"]);
-    expect(m.channels.presentation.outdated).toEqual(["budget"]);
     const changed = structuredClone(before);
     changed.facts.limits![0].text = "Stops after 20 turns";
-    const c = markOutdated(before, changed, ["presentation"]);
+    const c = markOutdated(before, changed, ["linkedin"]);
     expect(c.channels.overview.outdated).toEqual([]); // it shows the limit's row
     expect(c.channels.readme.outdated).toEqual(["turns"]); // it draws the agent, not the limit
   });

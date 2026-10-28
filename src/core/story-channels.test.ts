@@ -33,7 +33,7 @@ function agent(): Document3 {
 const sp = (id: string, extra: Partial<StoryPart> = {}): StoryPart =>
   ({ id, label: id, sub: "", kind: "service", chips: [], zone: null, inside: null, spine: null, anchor: null, side: null, from: [], held: [], limits: [], ...extra });
 const intent = (extra: Partial<StoryIntent> = {}): StoryIntent => ({
-  title: "How the agent works", lede: "", zones: [{ id: "run", label: "Runtime" }], steps: [],
+  title: "How the agent works", lede: "", zones: [{ id: "run", label: "Runtime" }],
   parts: [
     sp("app", { spine: 0, from: ["app"] }),
     sp("agent", { spine: 1, zone: "run", from: ["agent"] }),
@@ -133,33 +133,14 @@ describe("a story as a channel's view (intentToChannel)", () => {
     expect(a).toMatchObject({ form: "panel", items: ["Propose a tool", "Check the call", "Retries", "Stops after 12 turns"], heldIds: ["propose", "check"], limitIds: ["turns"] });
   });
 
-  it("drops LinkedIn's held rows, limits and steps, one warning each list", () => {
-    const i = intent({ zones: [], parts: [sp("app", { spine: 0, from: ["app"] }), sp("agent", { spine: 1, from: ["agent"], held: ["propose"], limits: ["turns"] })], edges: [], steps: [{ parts: ["app"], text: "x", note: "" }] });
+  it("drops LinkedIn's held rows and limits, one warning each list", () => {
+    const i = intent({ zones: [], parts: [sp("app", { spine: 0, from: ["app"] }), sp("agent", { spine: 1, from: ["agent"], held: ["propose"], limits: ["turns"] })], edges: [] });
     const r = intentToChannel(agent(), i, { portrait: true, channel: "linkedin" });
     expect(r.warnings).toEqual([
       'The LinkedIn post holds no mechanisms; dropped those of "agent"',
       'The LinkedIn post shows no limits; dropped those of "agent"',
-      "Ignored the steps: only a presentation has steps",
     ]);
     expect(r.doc.channels.linkedin.views[0].nodes.every((p) => !p.held && !p.limits)).toBe(true);
-  });
-
-  it("gives the presentation its steps: a wrong part is dropped with one warning; a step with no real part is dropped with one", () => {
-    const i = intent({ zones: [], parts: [sp("app", { spine: 0, from: ["app"] }), sp("agent", { spine: 1, from: ["agent"] })], edges: [], steps: [
-      { parts: ["app"], text: "It starts", note: "Say why." }, { parts: ["agent", "ghost-part"], text: "Then the agent", note: "" }, { parts: ["ghost-part"], text: "Nothing", note: "" },
-    ] });
-    const r = intentToChannel(agent(), i, { portrait: false, channel: "presentation" });
-    expect(r.doc.channels.presentation.steps).toEqual([{ id: "s1", parts: ["app"], text: "It starts", note: "Say why." }, { id: "s2", parts: ["agent"], text: "Then the agent", note: "" }]);
-    expect(r.warnings).toEqual(['Step 2: dropped "ghost-part", which is no part', "Step 3 names no part and was dropped"]);
-    expect(r.doc.channels.presentation.views[0].title).toBe("Presentation");
-  });
-
-  it("drops a presentation step with no text, with one warning and none for its parts; elsewhere steps are only ignored", () => {
-    const i = intent({ zones: [], parts: [sp("app", { spine: 0, from: ["app"] })], edges: [], steps: [{ parts: ["app", "ghost"], text: "  ", note: "" }, { parts: ["app"], text: "Two", note: "" }] });
-    const r = intentToChannel(agent(), i, { portrait: false, channel: "presentation" });
-    expect(r.warnings).toEqual(["Step 1 has no text and was dropped"]);
-    expect(r.doc.channels.presentation.steps!.map((s) => s.text)).toEqual(["Two"]);
-    expect(intentToChannel(agent(), i, { portrait: false, channel: "readme" }).warnings).toEqual(["Ignored the steps: only a presentation has steps"]);
   });
 
   it("fails a story whose parts loop inside each other, nest too deep or leave their holder's zone", () => {

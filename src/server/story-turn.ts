@@ -19,7 +19,7 @@ export async function storyAnswer(first: unknown, o: {
   signal: AbortSignal;
 }): Promise<StoryIntent> {
   const intent = parseIntent(first);
-  const problems = storyProblems(intent, o.channel);
+  const problems = storyProblems(intent);
   if (!problems.length) return intent;
   o.progress(`Fixing ${problems.length} problem${problems.length === 1 ? "" : "s"} in the answer`);
   const second = await o.repair(repairPrompt({ channel: o.channel, answer: first, problems }));

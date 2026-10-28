@@ -33,8 +33,6 @@ export interface Config {
   build: string;
   /** Directory with the built web client (index.html). */
   webDir: string;
-  /** The home folder *Found on this computer* searches (`ARCHDRAW_SEARCH_HOME`). */
-  searchHome: string;
   /** `ARCHDRAW_TEST_PICKER`: the file the test folder dialog answers from; null for the real dialog. */
   testPicker: string | null;
   /** `ARCHDRAW_TEST_REMOTES`: links are copied from the local repositories in it (testing contract, *Test links*); null when unset. */
@@ -68,7 +66,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     version: VERSION,
     build: BUILD,
     webDir: join(APP_ROOT, "dist"),
-    searchHome: resolve(env.ARCHDRAW_SEARCH_HOME?.trim() || homedir()),
     testPicker: env.ARCHDRAW_TEST_PICKER?.trim() ? resolve(env.ARCHDRAW_TEST_PICKER.trim()) : null,
     testRemotes: env.ARCHDRAW_TEST_REMOTES?.trim() && isAbsolute(env.ARCHDRAW_TEST_REMOTES.trim()) ? resolve(env.ARCHDRAW_TEST_REMOTES.trim()) : null,
   };

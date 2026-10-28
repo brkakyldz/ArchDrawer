@@ -3,8 +3,8 @@ import { onDisk, open, savedWhen, shop } from "./helpers";
 
 // An edit past the file's limits (diagram contract, validation) is refused up front with a toast and
 // leaves the drawing as it was, so no save is ever stuck on a validator error. The held-out scenarios
-// check the validator itself (H107) and the steps' limits (H127); none fills a view, the overview's
-// views or empties a post's title in the editor, which is what stays here.
+// check the validator itself (H107); none fills a view, the overview's views or empties a post's title
+// in the editor, which is what stays here.
 
 const part = (id: string, i: number) => ({
   id, label: `Part ${i}`, kind: "service", form: "compact", icon: null, sub: "", items: [], description: "A part.",

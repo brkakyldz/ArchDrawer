@@ -19,5 +19,4 @@ export const SUGGESTIONS: Record<ChannelId, Suggestion[]> = {
   ],
   linkedin: [{ id: "shorter", label: "Shorter for LinkedIn", instruction: "Make it shorter for LinkedIn: fewer parts and shorter names", kind: "refine" }],
   readme: [{ id: "fewer-details", label: "Fewer details", instruction: "Show fewer details: hold mechanisms only where the story is about them", kind: "refine" }],
-  presentation: [{ id: "fewer-steps", label: "Fewer steps", instruction: "Use fewer steps: merge steps that say the same thing", kind: "refine" }],
 };

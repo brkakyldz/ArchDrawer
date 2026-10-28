@@ -19,9 +19,7 @@ import { FileError, nowIso, type Store } from "./store";
 import type { RunManager } from "./runs";
 import type { ScanManager } from "./scans";
 import { checkFolder, headCommit, type Folder } from "./folders";
-import { repoRootOf } from "./files";
 import { FolderPicker } from "./picker";
-import { Sources } from "./sources";
 import { copyOfPath, isInside, linkOfPath, NEEDS_GIT, readLink, Remotes, type Link } from "./remote";
 import type { DrawFocus } from "./engines/prompt";
 import type { FocusOption } from "../core/scan";
@@ -43,8 +41,6 @@ export interface AppDeps {
   instance?: string;
   /** The system's folder dialog; made from the config when absent. */
   picker?: FolderPicker;
-  /** Recent and found folders; made from the config when absent. */
-  sources?: Sources;
   /** Called after `POST /api/shutdown` has answered. */
   onShutdown?: () => void;
 }
@@ -72,9 +68,6 @@ export function createApp(deps: AppDeps): Hono {
   const remotes = deps.remotes ?? new Remotes(config.dataDir, config.testRemotes);
   const app = new Hono();
   const picker = deps.picker ?? new FolderPicker({ testFile: config.testPicker });
-  const sources = deps.sources ?? new Sources({ dataDir: config.dataDir, library: store, searchHome: config.searchHome, copyInUse: (dir) => copyBusy(dir) });
-  // A drawing file registered in a folder makes its repository a recent folder (api contract, Recent and found).
-  store.on("registered", (file: string) => sources.use(repoRootOf(file)));
   type Status = 400 | 403 | 404 | 409 | 413 | 500;
   const err = (c: Context, status: Status, message: string, extra: Record<string, unknown> = {}) => c.json({ error: message, ...extra }, status);
 
@@ -346,13 +339,8 @@ export function createApp(deps: AppDeps): Hono {
     }
   });
 
-  // Recent and found (api contract, Recent and found).
-  app.get("/api/sources", async (c) => c.json(await sources.answer(picker.available())));
-  app.post("/api/sources/refresh", async (c) => c.json(await sources.answer(picker.available(), true)));
-  app.post("/api/sources/forget", async (c) => {
-    const r = await sources.forget(await readJson(c));
-    return c.json(r.body, r.status);
-  });
+  // Whether the folder dialog can open (api contract, Sources).
+  app.get("/api/sources", (c) => c.json({ picker: picker.available() }));
 
   app.post("/api/scans", async (c) => {
     const b = (await readJson(c)) as Record<string, unknown> | null;
@@ -376,8 +364,6 @@ export function createApp(deps: AppDeps): Hono {
     const started = await scans.start(f, picked.engine, picked.model, body.refresh === true, source);
     // The running scan's id, so a page can follow it (api contract, Scans); one scan at a time in a copy.
     if ("running" in started) return err(c, 409, copy ? "A scan of this repository is already running" : "A scan of this folder is already running", { scanId: started.running });
-    // A scan that succeeds, a cached one too, makes the folder a recent one.
-    scans.subscribe(started.scanId, (e) => { if (e.type === "done" && e.status === "succeeded") sources.use(f.folder); });
     return c.json({ scanId: started.scanId }, 202);
   });
 
@@ -470,7 +456,7 @@ export function createApp(deps: AppDeps): Hono {
     const asked = b.choices !== undefined ? b.choices : b.focus !== undefined ? [b.focus] : undefined;
     const focuses = readChoices(asked, scan.options ?? []);
     if (typeof focuses === "string") return err(c, 400, focuses);
-    if (b.channel !== "linkedin" && b.channel !== "readme" && b.channel !== "presentation") return err(c, 400, "Choose the channel: linkedin, readme or presentation");
+    if (b.channel !== "linkedin" && b.channel !== "readme") return err(c, 400, "Choose the channel: linkedin or readme");
     const picked = await pickEngine(b);
     if (typeof picked === "string") return err(c, 400, picked);
     const folderKey = `${f.root}\0${f.rel}`;
@@ -567,10 +553,10 @@ export function createApp(deps: AppDeps): Hono {
     const onLinkedIn = kind === "post" || (kind === "story" && b.channel === "linkedin");
     // A story is measured in its channel's own format; a revise looks at its channel's default image (api contract, Run kinds).
     const revise = kind === "revise";
-    const reviseFormat: FormatId = b.channel === "linkedin" ? "feed" : b.channel === "presentation" ? "slide" : "readme";
-    const formats: readonly string[] = revise ? [reviseFormat] : onLinkedIn ? ["feed", "linkedin"] : kind === "story" && b.channel === "readme" ? ["readme"] : kind === "story" && b.channel === "presentation" ? ["slide"] : FORMAT_IDS;
+    const reviseFormat: FormatId = b.channel === "linkedin" ? "feed" : "readme";
+    const formats: readonly string[] = revise ? [reviseFormat] : onLinkedIn ? ["feed", "linkedin"] : kind === "story" && b.channel === "readme" ? ["readme"] : FORMAT_IDS;
     if (b.format !== undefined && !(typeof b.format === "string" && formats.includes(b.format))) return err(c, 400, `Invalid format ${JSON.stringify(b.format)}; use one of ${formats.join(", ")}`);
-    const format = (b.format as FormatId | undefined) ?? (revise ? reviseFormat : onLinkedIn ? "feed" : kind === "story" && b.channel === "presentation" ? "slide" : "readme");
+    const format = (b.format as FormatId | undefined) ?? (revise ? reviseFormat : onLinkedIn ? "feed" : "readme");
     if (b.readCode !== undefined && typeof b.readCode !== "boolean") return err(c, 400, "readCode must be true or false");
     if (b.readCode !== undefined && !story) return err(c, 400, "readCode is for a story");
     // The second look's image: a PNG of at most 4 MB; an image on any other kind is refused.
@@ -602,7 +588,7 @@ export function createApp(deps: AppDeps): Hono {
     if (typeof b.view === "string" && b.view && !channelOfView(stored, b.view)) return err(c, 400, `Unknown view "${b.view}"`);
     if (b.channel !== undefined && !isChannel(b.channel)) return err(c, 400, `Unknown channel "${String(b.channel)}"; use one of ${CHANNELS.join(", ")}`);
     if (kind === "post" && b.channel !== undefined && b.channel !== "linkedin") return err(c, 400, "A post is drawn in the linkedin channel");
-    if (kind === "story" && (b.channel === undefined || b.channel === "overview")) return err(c, 400, "A story is drawn in the linkedin, readme or presentation channel");
+    if (kind === "story" && (b.channel === undefined || b.channel === "overview")) return err(c, 400, "A story is drawn in the linkedin or readme channel");
     // Refine and simplify read the run's channel, its parts' facts given as `from`; a story reads the
     // overview it is told from, and its optional view is the channel's own.
     const first = stored.channels.overview.views[0].id;

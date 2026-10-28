@@ -68,7 +68,7 @@ describe("joining a running draw", () => {
     expect(await json(await t.req("/api/runs", { method: "POST", json: { kind: "draw", scan, choices: [WHOLE], channel: "readme" } })))
       .toEqual({ status: 409, body: { error: "A drawing of this folder is already being made", runId: id } });
     // The body's channel, engine and model are ignored: the joined choices take the draw's.
-    const joined = await joinTo(t, id, { scan, choices: [O3, WHOLE], channel: "presentation", engine: "nope", model: "--x" });
+    const joined = await joinTo(t, id, { scan, choices: [O3, WHOLE], channel: "linkedin", engine: "nope", model: "--x" });
     expect(joined).toEqual({ status: 200, body: { runId: id, choices: ["the-server-side", "system"] } });
     // Two slots taken by the draw's own, the first joined takes the third, the second waits.
     expect(statuses(t, id)).toEqual(["slow-path:running", "the-agent-loop:running", "the-server-side:running", "system:waiting"]);
@@ -89,7 +89,7 @@ describe("joining a running draw", () => {
     const doc = JSON.parse(readFileSync(run.path!, "utf8")) as Document4;
     expect(doc.choices.map((c) => c.id)).toEqual(["slow-path", "the-agent-loop", "the-server-side", "system"]);
     // Ids as a draw of the four, one after another, would give them; only the draw's channel is drawn.
-    expect(doc.choices.map((c) => [c.channels.readme.views[0]?.id, c.channels.presentation.views.length])).toEqual([
+    expect(doc.choices.map((c) => [c.channels.readme.views[0]?.id, c.channels.linkedin.views.length])).toEqual([
       ["readme", 0], ["the-agent-loop-readme", 0], ["the-server-side-readme", 0], ["system-readme", 0],
     ]);
     expect(readdirSync(join(dir, "docs"))).toEqual(["architecture.archdraw.json"]);

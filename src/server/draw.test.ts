@@ -72,7 +72,7 @@ describe("the draw run", () => {
 
   it("draws the whole system as a map: the zone is a card whose inside is a detail view, and the channel is told from both (#183)", async () => {
     const t = makeApp();
-    const run = await draw(t, real(repo()), { channel: "presentation" });
+    const run = await draw(t, real(repo()), { channel: "readme" });
     expect(run.status).toBe("succeeded");
     const doc = choiceDoc(t.store.get(run.diagramId!)!);
     const [map, inside, ...more] = doc.channels.overview.views;
@@ -83,10 +83,10 @@ describe("the draw run", () => {
     expect(inside).toMatchObject({ title: "Agent runtime", caption: { title: "Agent runtime", lede: "" }, texts: [] });
     expect(inside.nodes.map((n) => [n.id, n.parent]).sort()).toEqual([["agent", null], ["store", null]]);
     expect(inside.edges.map((e) => [e.from, e.to])).toEqual([["agent", "store"]]);
-    // The presentation is told from the map's parts and the detail view's, the card with an inside skipped.
-    expect(doc.channels.presentation.views[0].nodes.map((n) => n.id).sort()).toEqual(["agent", "app", "store"]);
-    // The split adds no warning: the four evidence warnings and the fixture's step about nothing are all.
-    expect(doc.warnings).toEqual([...FOUR, "Step 4 names no part and was dropped"]);
+    // The README is told from the map's parts and the detail view's, the card with an inside skipped.
+    expect(doc.channels.readme.views[0].nodes.map((n) => n.id).sort()).toEqual(["agent", "app", "store"]);
+    // The split adds no warning: the four evidence warnings are all.
+    expect(doc.warnings).toEqual(FOUR);
   });
 
   it("asks the whole system's overview for the map and a typed focus's for the complete overview (#183)", async () => {
@@ -160,7 +160,7 @@ describe("the draw run", () => {
     const failed = await start("The agent [fixture:flaky:channel]");
     expect([failed.status, failed.error, existsSync(join(dir, "docs"))]).toEqual(["failed", "Fixture failure requested", false]);
     // The channel may differ; the read and the overview are used again with no call.
-    const again = await start("The agent [fixture:flaky:channel]", "presentation");
+    const again = await start("The agent [fixture:flaky:channel]", "linkedin");
     expect(again.status).toBe("succeeded");
     const lines = linesOf(t, again.id);
     expect(lines.filter((e) => e.stage === "read" || e.stage === "overview")).toEqual([
@@ -168,7 +168,7 @@ describe("the draw run", () => {
       { message: "Using the facts already read", stage: "read" }, { message: "Checking the facts", stage: "read" },
       { message: "Drawing the overview", stage: "overview" }, { message: "Using the overview already drawn", stage: "overview" },
     ]);
-    const clean = await draw(t, repo(), { focus: { kind: "typed", text: "The agent" }, channel: "presentation" });
+    const clean = await draw(t, repo(), { focus: { kind: "typed", text: "The agent" }, channel: "linkedin" });
     const [doc, control] = [choiceDoc(t.store.get(again.diagramId!)!), choiceDoc(t.store.get(clean.diagramId!)!)];
     expect(doc.warnings).toEqual(control.warnings);
     const shape = (d: typeof doc) => ({ nodes: d.channels.overview.views[0].nodes, edges: d.channels.overview.views[0].edges });

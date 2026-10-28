@@ -134,9 +134,9 @@ describe("what a system choice's channels are told from (ui contract, Simple ver
     expect(panelOrder([v("m", "b", "a"), v("a", "a2"), v("b"), v("stray"), v("a2")]).map((x) => x.id)).toEqual(["m", "b", "a", "a2", "stray"]);
     expect(panelDepths([v("m", "b", "a"), v("a", "a2"), v("b"), v("stray"), v("a2")]).map((x) => `${x.view.id}:${x.depth}`)).toEqual(["m:0", "b:1", "a:1", "a2:2", "stray:1"]);
   });
-  it("the simple README, presentation and LinkedIn post of the system choice draw the map's and detail views' parts, skipping those with an inside", () => {
+  it("the simple README and LinkedIn post of the system choice draw the map's and detail views' parts, skipping those with an inside", () => {
     const want = ["api", "cache", "log", "web", "worker"];
-    for (const [name, r] of [["readme", prepareChannel(sys(), "readme")], ["presentation", prepareChannel(sys(), "presentation")], ["linkedin", prepareLinkedIn(sys())]] as const) {
+    for (const [name, r] of [["readme", prepareChannel(sys(), "readme")], ["linkedin", prepareLinkedIn(sys())]] as const) {
       expect(r.ok, name).toBe(true);
       const ch = r.ok ? r.doc.channels[name as "readme"].views[0] : null;
       expect(ch!.nodes.map((n) => n.id).sort(), name).toEqual(want);

@@ -1,26 +1,26 @@
 /**
  * The stored drawing file `archdraw/diagram@3` (docs/contracts/diagram.md, ADR 0006): a facts
- * list and four fixed channels whose parts point to facts, extended by ADR 0007 (evidence,
- * mechanisms, limits, one README and one presentation view, steps). Shape, validity rules, defaults.
+ * list and three fixed channels whose parts point to facts, extended by ADR 0007 (evidence,
+ * mechanisms, limits, one README view). Shape, validity rules, defaults.
  * Pure: no Node or DOM APIs (invariant 4).
  */
 import {
   DOC_ID_RE, FORMS, ICONS, ID_RE, KINDS, LIMITS, SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, STYLES, TEXT_SIZE, THEMES,
   isRepoRelative,
-  type Caption, type DiagramSource, type DiagramStep, type DiagramText, type EdgeStyle, type EngineRef, type FileCheck, type Form,
+  type Caption, type DiagramSource, type DiagramText, type EdgeStyle, type EngineRef, type FileCheck, type Form,
   type IconName, type Kind, type Lane, type Place, type TextInput, type Theme,
 } from "./model";
 
-export const CHANNELS = ["overview", "linkedin", "readme", "presentation"] as const;
+export const CHANNELS = ["overview", "linkedin", "readme"] as const;
 export type ChannelId = (typeof CHANNELS)[number];
-export const CHANNEL_LABELS: Record<ChannelId, string> = { overview: "Overview", linkedin: "LinkedIn", readme: "README", presentation: "Presentation" };
+export const CHANNEL_LABELS: Record<ChannelId, string> = { overview: "Overview", linkedin: "LinkedIn", readme: "README" };
 /** Views a channel may hold (rule 5). */
 export const CHANNEL_VIEWS: Record<ChannelId, { min: number; max: number }> = {
-  overview: { min: 1, max: LIMITS.views }, linkedin: { min: 0, max: 1 }, readme: { min: 0, max: 1 }, presentation: { min: 0, max: 1 },
+  overview: { min: 1, max: LIMITS.views }, linkedin: { min: 0, max: 1 }, readme: { min: 0, max: 1 },
 };
 export const FACT_LIMITS = { components: 1800, relations: 3600, limits: 600 } as const;
-/** Limit facts, evidence and presentation steps (contract, Limit fact, Evidence, Presentation steps). */
-export const FACT3_LIMITS = { limitText: LIMITS.limitText, evidence: 8, steps: 20, stepText: 120, stepNote: 1000 } as const;
+/** Limit facts and evidence (contract, Limit fact, Evidence). */
+export const FACT3_LIMITS = { limitText: LIMITS.limitText, evidence: 8 } as const;
 export const isChannel = (c: unknown): c is ChannelId => typeof c === "string" && (CHANNELS as readonly string[]).includes(c);
 
 /** Where a fact comes from: a repository-relative file, and its lines when they matter. */
@@ -52,10 +52,7 @@ export interface Connection {
   label?: string | null; style?: EdgeStyle | null; both?: boolean | null;
 }
 export interface View3 { id: string; title: string; caption: Caption; subLines?: boolean; nodes: Part[]; edges: Connection[]; texts: DiagramText[] }
-/** A presentation step: the parts it highlights, its on-screen text and the speaker's note. */
-export type Step = DiagramStep;
-/** `steps` only on the presentation channel; absent = none. */
-export interface Channel { views: View3[]; showSteps: boolean; outdated: string[]; steps?: Step[] }
+export interface Channel { views: View3[]; showSteps: boolean; outdated: string[] }
 export interface Request3 { id: string; text: string; channel: ChannelId; view: string; at: string }
 
 /**
@@ -80,7 +77,7 @@ export interface Document3 {
 export type PartInput = Omit<Part, "x" | "y"> & { x?: number; y?: number };
 export type ConnectionInput = Omit<Connection, "id" | "relations"> & { id?: string; relations?: string[] };
 export interface ViewInput3 { id: string; title: string; caption: Caption; subLines?: boolean; nodes: PartInput[]; edges: ConnectionInput[]; texts?: TextInput[] }
-export interface ChannelInput { views?: ViewInput3[]; showSteps?: boolean; outdated?: string[]; steps?: Step[] }
+export interface ChannelInput { views?: ViewInput3[]; showSteps?: boolean; outdated?: string[] }
 export interface File3 {
   schema: typeof SCHEMA_V3; id?: string; title: string; theme?: Theme;
   source?: DiagramSource | null; engine?: EngineRef | null; createdAt?: string; updatedAt?: string;
@@ -265,7 +262,7 @@ export function validateFile3(raw: unknown, check: FileCheck = {}): ValidationRe
     const ch = channels[c];
     if (ch === undefined) { if (c === "overview" && isObj(raw.channels)) err(C, "is required"); continue; }
     if (!isObj(ch)) { err(C, "must be an object"); continue; }
-    const props = c === "presentation" ? ["views", "showSteps", "outdated", "steps"] : ["views", "showSteps", "outdated"];
+    const props = ["views", "showSteps", "outdated"];
     for (const k of Object.keys(ch)) if (!props.includes(k)) err(`${C}.${k}`, `is not a property of this channel; use ${props.join(", ")}`);
     if (ch.showSteps !== undefined && typeof ch.showSteps !== "boolean") err(`${C}.showSteps`, "must be true or false");
     const views = ch.views === undefined ? (c === "overview" ? (err(`${C}.views`, "is required"), []) : []) : Array.isArray(ch.views) ? ch.views : (err(`${C}.views`, "must be an array"), []);
@@ -277,7 +274,6 @@ export function validateFile3(raw: unknown, check: FileCheck = {}): ValidationRe
       else if (views.length === 0 && ch.outdated.length) err(`${C}.outdated`, "must be [] in a channel with no view");
     }
     const partIds = new Set<string>(), edgeIds = new Set<string>(), textIds = new Set<string>();
-    const viewParts = new Map<string, Set<string>>();
 
     views.forEach((v, vi) => {
       const P = `${C}.views[${vi}]`;
@@ -423,7 +419,6 @@ export function validateFile3(raw: unknown, check: FileCheck = {}): ValidationRe
         });
       });
 
-      viewParts.set(v.id as string, new Set(byId.keys()));
       const texts = v.texts === undefined ? [] : Array.isArray(v.texts) ? v.texts : (err(`${P}.texts`, "must be an array"), []);
       texts.forEach((t, i) => {
         const p = `${P}.texts[${i}]`;
@@ -437,30 +432,6 @@ export function validateFile3(raw: unknown, check: FileCheck = {}): ValidationRe
         if (t.size !== undefined && (!finite(t.size) || (t.size as number) < TEXT_SIZE.min || (t.size as number) > TEXT_SIZE.max)) err(`${p}.size`, `must be a number from ${TEXT_SIZE.min} to ${TEXT_SIZE.max}`);
       });
     });
-
-    // Rule 24: the presentation's steps name parts of its view.
-    if (c === "presentation" && ch.steps !== undefined) {
-      const steps = Array.isArray(ch.steps) ? ch.steps : (err(`${C}.steps`, "must be an array of steps"), []);
-      if (steps.length > FACT3_LIMITS.steps) err(`${C}.steps`, `has ${steps.length} steps; at most ${FACT3_LIMITS.steps}`);
-      if (steps.length && views.length === 0) err(`${C}.steps`, "must be [] in a channel with no view");
-      const parts = viewParts.values().next().value ?? new Set<string>();
-      const stepIds = new Set<string>();
-      steps.forEach((st, i) => {
-        const p = `${C}.steps[${i}]`;
-        if (!isObj(st)) return err(p, "must be an object");
-        if (idOk(st.id, `${p}.id`)) {
-          if (stepIds.has(st.id as string)) err(`${p}.id`, `${q(st.id)} is used twice; step ids are unique within a channel`);
-          stepIds.add(st.id as string);
-        }
-        if (!Array.isArray(st.parts) || st.parts.length < 1 || st.parts.length > LIMITS.nodesPerView) err(`${p}.parts`, `must name 1–${LIMITS.nodesPerView} parts of the view`);
-        else {
-          if (new Set(st.parts).size !== st.parts.length) err(`${p}.parts`, "lists a part twice");
-          st.parts.forEach((id, j) => { if (typeof id !== "string" || !parts.has(id)) err(`${p}.parts[${j}]`, `${q(id)} is not a part of the presentation view`); });
-        }
-        str(st.text, `${p}.text`, 1, FACT3_LIMITS.stepText);
-        str(st.note, `${p}.note`, 0, FACT3_LIMITS.stepNote);
-      });
-    }
   }
 
   // Rule 16: the overview is the complete map.
@@ -551,7 +522,6 @@ export function fillDefaults3(file: File3, ctx: { id?: string; now?: string; sou
       })),
       showSteps: ch.showSteps ?? false,
       outdated: ch.outdated ?? [],
-      ...(c === "presentation" && ch.steps !== undefined ? { steps: ch.steps } : {}),
     };
   };
   return {
@@ -564,7 +534,7 @@ export function fillDefaults3(file: File3, ctx: { id?: string; now?: string; sou
     createdAt: copy.createdAt ?? now,
     updatedAt: copy.updatedAt ?? now,
     facts: { components: copy.facts.components, relations: copy.facts.relations ?? [], ...(copy.facts.limits !== undefined ? { limits: copy.facts.limits } : {}) },
-    channels: { overview: channel("overview"), linkedin: channel("linkedin"), readme: channel("readme"), presentation: channel("presentation") },
+    channels: { overview: channel("overview"), linkedin: channel("linkedin"), readme: channel("readme") },
     requests: copy.requests ?? [],
     warnings: copy.warnings ?? [],
   };

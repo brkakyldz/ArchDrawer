@@ -96,8 +96,8 @@ const sameOptions = (a: FocusOption[] | null | undefined, b: FocusOption[]) =>
 
 export type StartState = ReturnType<typeof useStart>;
 
-export function useStart({ engine: eng, activity, onJob, onSources, onDrawn }: {
-  engine: EngineState; activity: Activity | null; onJob: () => void; onSources: () => void; onDrawn: (ready: Ready | null) => void;
+export function useStart({ engine: eng, activity, onJob, onDrawn }: {
+  engine: EngineState; activity: Activity | null; onJob: () => void; onDrawn: (ready: Ready | null) => void;
 }) {
   const { engine, model } = eng;
   const [source, setSource] = useState<SourceTab>("local");
@@ -349,7 +349,7 @@ export function useStart({ engine: eng, activity, onJob, onSources, onDrawn }: {
 
   const openExisting = async () => {
     if (!existing) return;
-    try { const id = await api.openFile(existing.drawing); onSources(); navigate(`/d/${id}`); } catch (e) { setError((e as Error).message); }
+    try { const id = await api.openFile(existing.drawing); navigate(`/d/${id}`); } catch (e) { setError((e as Error).message); }
   };
 
   /** The new choices in the order of `focus-list`: the whole system, the sections, the flows, then the typed text. */
@@ -437,8 +437,6 @@ export function useStart({ engine: eng, activity, onJob, onSources, onDrawn }: {
     cancelDraw: () => { if (draw?.runId) void api.cancelRun(draw.runId).then(onJob, (e: Error) => setError(e.message)); },
     /** `start-change-folder`: back to the Folder step, the folder kept, the ticks and the channel cleared. */
     changeFolder: () => leave(false),
-    /** A repository taken from a list: This computer, its path in the field, Scan focused; nothing is scanned. */
-    take: (path: string) => { if (following) leave(false); setSource("local"); setError(null); setExisting(null); setFolder(path); askFocus("scan"); },
     /** `Ctrl K`: This computer and the folder field focused, after freeing the panel (as `draw-another`) when it follows a job. */
     fresh: () => { if (following) leave(true); setSource("local"); askFocus("folder"); },
     /** `home-nav-new`: as `draw-another` (the fields emptied), then This computer and the folder field focused. */

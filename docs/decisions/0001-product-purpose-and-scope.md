@@ -2,10 +2,15 @@
 id: 0001
 title: Archdrawer helps developers explain their own project with a drawing read from the code
 date: 2026-10-19
-status: accepted
+status: accepted (superseded in part by 0019: the presentation channel and the guided tour)
 deciders: [brkakyldz]
 supersedes: []
 ---
+
+Superseded in part by ADR 0019: the main job has two channels, a LinkedIn
+image and a README drawing; the step-by-step presentation and the guided
+tour are gone, and success is measured on six outputs, the three repository
+types times the two channels. The other decisions stand.
 
 ## Context
 

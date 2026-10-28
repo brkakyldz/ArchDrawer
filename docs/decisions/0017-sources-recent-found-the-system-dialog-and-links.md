@@ -2,10 +2,16 @@
 id: 0017
 title: "Sources: recent and found repositories, the system's folder dialog, a repository from a link"
 date: 2026-10-26
-status: accepted
+status: accepted (superseded in part by 0018: decision 1, recent and found repositories, and deleting a copy from its entry in Recent)
 deciders: [brkakyldz]
 supersedes: []
 ---
+
+Superseded in part by ADR 0018: a repository is chosen by a pasted path,
+`Choose folder…` or a pasted link; *Recent* and *Found on this computer* are
+gone, and a copy is deleted only through its drawing's `Remove from list`.
+Decision 1 below, the part of decision 4 about an entry in *Recent*, and the
+rationale's paragraph on the lists are history; the other decisions stand.
 
 ## Context
 

@@ -2,8 +2,8 @@
 
 Guide for contributors and coding agents. Archdrawer is a local web app that
 reads a repository with the user's own Claude Code or Codex CLI and draws its
-architecture as an editable drawing, ready for a LinkedIn image, a README or a
-presentation. It never calls a model API or reads an API key itself.
+architecture as an editable drawing, ready for a LinkedIn image or a README.
+It never calls a model API or reads an API key itself.
 
 ## Read first
 

@@ -6,8 +6,8 @@ and the instruction engine write it; the CLI, the server and the editor read
 it. This file defines its shape, the rules that make it valid, how an edit is
 split between the facts and a channel, the warnings it can carry, how it is
 normalised, measured and laid out, and what an engine answers when it changes
-a drawing. Why the file is shaped this way: ADR 0003, ADR 0006, ADR 0007 and
-ADR 0015.
+a drawing. Why the file is shaped this way: ADR 0003, ADR 0006, ADR 0007,
+ADR 0015 and ADR 0019.
 
 Implemented by: `src/core/file3.ts` (the `@3` shape, validation, defaults),
 `src/core/channels.ts` (joining a channel view, splitting an edit, `outdated`,
@@ -26,7 +26,9 @@ Files with `archdraw/diagram@3` are converted when read (*Reading
 `archdraw/diagram@3`*), and files with `archdraw/diagram@2` through `@3`
 (*Reading `archdraw/diagram@2`*); `archdraw/diagram@1` needs `archdrawer
 migrate`. Whoever writes `@3` or `@2` (the plugin skill, an older session)
-keeps working: the server writes the file back as `@4`.
+keeps working: the server writes the file back as `@4`. A file that still
+holds the removed presentation channel keeps its `@4` and is read without
+it (*Reading a `presentation` channel*).
 
 ## Shape
 
@@ -51,7 +53,7 @@ keeps working: the server writes the file back as `@4`.
 
 A choice is one thing the user chose to draw: the whole system, a section, a
 flow, or a focus in their own words (ADR 0015). It holds its own facts and
-its own four channels, in exactly the shape a format 3 file held them.
+its own three channels, in the shape a format 3 file held them.
 
 ```jsonc
 {
@@ -67,9 +69,7 @@ its own four channels, in exactly the shape a format 3 file held them.
   "channels": {
     "overview":     { "views": [ /* 1–30 views; views[0] is the overview */ ], "showSteps": false, "outdated": [] },
     "linkedin":     { "views": [ /* 0 or 1 view */ ], "showSteps": false, "outdated": [] },
-    "readme":       { "views": [ /* 0 or 1 view */ ], "showSteps": false, "outdated": [] },
-    "presentation": { "views": [ /* 0 or 1 view */ ], "showSteps": false, "outdated": [],
-                      "steps": [ /* the presentation's ordered steps; optional, default [] */ ] }
+    "readme":       { "views": [ /* 0 or 1 view */ ], "showSteps": false, "outdated": [] }
   }
 }
 ```
@@ -83,20 +83,20 @@ its own four channels, in exactly the shape a format 3 file held them.
 
 A file holds at most one `system` choice. Choices are in the order they were
 drawn; the views panel lists them by kind (ui contract). Everything below
-about facts, channels, views, parts, connections and steps holds within one
+about facts, channels, views, parts and connections holds within one
 choice: ids, references, `detail`, `outdated` and every rule. Nothing in one
 choice points into another, and the same component may be a fact of two
 choices with no link between them. View ids alone are unique across the
 whole file (rule 2), so a view id names its choice and its channel.
 
 **Facts** say what is true about the system; **channels** say how it is told.
-A channel is one of four fixed names. `showSteps` (optional, default false)
+A channel is one of three fixed names. `showSteps` (optional, default false)
 draws numbered step badges in that channel. `outdated` (optional, default
 `[]`) lists the facts changed since the channel was drawn that it has not
 taken up (*Edits: facts or channel*). A channel other than `overview` may be
 written as `{}` or left out; it is then empty. Every field ADR 0007 added
-(`limits`, `evidence`, `within`, a part's `held` and `limits`, the
-presentation's `steps`) is optional, so a file written before it stays valid.
+(`limits`, `evidence`, `within`, a part's `held` and `limits`) is optional,
+so a file written before it stays valid.
 
 ### Component fact
 
@@ -249,18 +249,6 @@ wrapped. `size` is the font size in drawing px, 8–200 (default 20); weight
 wide as its widest drawn line (at least 8 px, rounded up) and 1.25 × size tall
 per line. Drawn in the ink colour with no frame.
 
-### Presentation steps
-
-```jsonc
-{ "id": "s1", "parts": ["intake", "loop"], "text": "A request is checked first", "note": "The intake refuses …" }
-```
-
-The presentation channel's `steps` (0–20) are the order it is told in. A step
-highlights the parts of the presentation view it names (1–60 distinct part
-ids), shows `text` on screen (1–120 chars) and carries a speaker `note`
-(0–1000 chars, newlines allowed). Step ids are unique in the channel. Steps
-are appearance (*Edits*).
-
 ### Requests
 
 ```jsonc
@@ -313,7 +301,7 @@ with 400 and the first violation. Invalid files are never repaired.
    unique among the facts of their choice; a part's id may equal a fact's.
    View ids are unique across the file, every choice together. Limit ids
    share the facts' id space.
-   Part, connection, text and step ids are unique within their channel.
+   Part, connection and text ids are unique within their channel.
    Request ids are unique.
 3. Every component-fact and relation-fact property above is present. Every
    part property is present except `x`/`y`, `lane`, `held`, `limits` and
@@ -323,11 +311,11 @@ with 400 and the first violation. Invalid files are never repaired.
 4. Lengths, list sizes and enumerations as stated above, for facts and for a
    part's or connection's own values alike. Required strings are non-empty
    after trimming.
-5. Each choice's `channels` holds `overview` and may hold `linkedin`,
-   `readme` and `presentation`, no other key; each is an object with at most `views`,
-   `showSteps` and `outdated` (`views` required in the overview), and the
-   presentation also `steps`. The overview holds 1–30 views; each other
-   channel at most one.
+5. Each choice's `channels` holds `overview` and may hold `linkedin` and
+   `readme`, no other key (a `presentation` key is dropped before the rules
+   are checked: *Reading a `presentation` channel*); each is an object with
+   at most `views`, `showSteps` and `outdated` (`views` required in the
+   overview). The overview holds 1–30 views; each other channel at most one.
 6. A part's `facts` are distinct component facts. A fact is shown or held by
    at most one part of a view.
 7. A part with no fact or with several gives its own `label`, `kind` and
@@ -384,9 +372,7 @@ with 400 and the first violation. Invalid files are never repaired.
     rows.
 23. Evidence follows *Evidence*: at most 8 entries, each path as in rule 14,
     `lines` null or `[from, to]` with `1 ≤ from ≤ to`.
-24. A presentation step names 1–60 distinct parts of the presentation view;
-    a channel without a view has no steps.
-25. `choices` holds 1–12 choices. Each has `id`, `title` (1–80 chars),
+24. `choices` holds 1–12 choices. Each has `id`, `title` (1–80 chars),
     `kind` (`system`, `section`, `flow` or `custom`), `facts` and `channels`,
     and may have `about` (0–300 chars); no other key. At most one choice is
     of kind `system`.
@@ -419,9 +405,8 @@ the same choice (an outside write: of each choice it changed).
 icon, `place`, `lane`, `parent` and `detail`, which items a panel shows (as
 the part's own `items`), which mechanisms it holds and which limits it shows
 (`held`, `limits`), a connection's step, texts, captions, view titles, a
-view's `subLines`, `showSteps`, the presentation's steps (adding, removing,
-reordering, a step's parts, text and note), and any of a part's or
-connection's own texts.
+view's `subLines`, `showSteps`, and any of a part's or connection's own
+texts.
 
 **Content** changes the facts:
 
@@ -486,9 +471,6 @@ connection's own texts.
   reordering only reorders them). When the rows it has left over are as many
   as the drawn rows left over, they are taken in order, so a changed text edits
   that mechanism or limit; any other row is an item of the part.
-- **Steps.** Deleting a part of the presentation view removes it from every
-  step that names it; a step left with no part is removed, one warning each
-  (`Step "<id>" had no part left and was removed`).
 
 **`outdated`.** For every channel the change was *not* made in (an editor
 edit or run: every channel but the current one; an outside write: every
@@ -598,7 +580,7 @@ a group's header, centred on it. The label row keeps `8 + 20` px for it (the
 `open-mark`, the same in the editor's `node-<id>` (a group's in its
 `node-head-<id>`) and in the export's `g[data-node-id]` (a group's in its
 `<g data-group-head>`); that `g[data-node-id]` carries `data-open="true"`.
-The share image, the slides and `archdrawer svg` draw it as the editor does.
+The share image and `archdrawer svg` draw it as the editor does.
 
 **Shapes** (LOOK-2, ADR 0014). The outline of a part is the element with
 class `body`; it carries `data-shape`, the same in the editor's `node-<id>`
@@ -1039,7 +1021,7 @@ component fact left fails the run with
 ## Story answers (story intent)
 
 Every story call answers this one schema exactly: a post, the overview of a
-first drawing, and the LinkedIn, README and presentation channels. Every
+first drawing, and the LinkedIn and README channels. Every
 property is required and there are no others. It carries no pixels, forms or
 document fields:
 
@@ -1049,8 +1031,7 @@ document fields:
   "parts": [{ "id": "", "label": "", "sub": "", "kind": "service", "chips": [""],
               "zone": null, "inside": null, "spine": 0, "anchor": null, "side": null,
               "facts": [], "held": [], "limits": [] }],
-  "edges": [{ "from": "", "to": "", "label": "", "style": "call", "step": 1 }],
-  "steps": [{ "parts": [""], "text": "", "note": "" }] }
+  "edges": [{ "from": "", "to": "", "label": "", "style": "call", "step": 1 }] }
 ```
 
 - `kind` is one of the ten kinds; `style` is call, async or dep.
@@ -1075,7 +1056,7 @@ After the repair turn, the second answer:
 
 - fails the run, and nothing is saved, when it violates any relation, whether
   or not the first answer did:
-  `The engine's <overview | LinkedIn post | README drawing | presentation>
+  `The engine's <overview | LinkedIn post | README drawing>
   cannot be drawn: <every violation, joined by "; ">`;
 - otherwise has every hard limit still over repaired as the hard limits below
   say.
@@ -1099,9 +1080,6 @@ built around it.
 - Connections join two parts, never a part to itself.
 - There is at least one part, and parts and zones together are at most 60.
 
-A step's parts are not a relation: a wrong one is dropped with a warning
-(see the presentation's row below).
-
 **Hard limits.** The prompt states each one, from the constants code checks
 with. The schema gives each text field its limit as `maxLength`, except in the
 schema written for Codex, which would cut a text at the limit with no `…` and
@@ -1109,25 +1087,17 @@ no warning (ADR 0009). A text over its limit after the repair
 turn is shortened to the limit, ending with `…`: `Shortened <what> to <n>
 characters`, one warning per text. `<what>` is `the title`, `the description`,
 `the label of zone "<id>"`, `the label of "<id>"`, `the sub-line of "<id>"`,
-`a chip of "<id>"`, `the label of <from> → <to>`, `the text of step <i>` or
-`the note of step <i>` (ids as the answer gave them, steps counted from 1).
+`a chip of "<id>"` or `the label of <from> → <to>` (ids as the answer gave
+them).
 
 - title 120 chars; lede 240;
 - zone and part labels 48, sub-lines 60;
 - chips 44 each, except a holder's, which are dropped (below) and never
   checked or shortened;
-- connection labels 40;
-- in the presentation, step texts 120, notes 1000.
+- connection labels 40.
 
-These are problems for the repair turn too, and are then repaired so:
-
-- an empty title: the drawing's title, `The <channel> has no title, kept
-  "<title>"`;
-- in the presentation, a step with an empty text is dropped, `Step <i> has no
-  text and was dropped`, one warning per step, and it then gets no warning for
-  its parts;
-- in the presentation, more than 20 steps keep the first 20, `Kept the first
-  20 of the <n> steps`, one warning for the cut.
+An empty title is a problem for the repair turn too, and is then repaired as
+the drawing's title: `The <channel> has no title, kept "<title>"`.
 
 More than 12 chips is no problem: the rows (held, chips, limits) are cut to
 12 in the conversion below.
@@ -1140,11 +1110,8 @@ does.
 |---|---|---|
 | overview of a `system` choice: the map | A map of the system's main groups: about 5–9 top-level parts, zones or holders. Every other component inside one of them, never at top level beside them. A one-line sub-line on every part. Every fact shown or held, on the map or inside a group. Every mechanism held by its part; limits where they explain a part. Within the 60 parts an answer holds, each zone counted as a part | Every fact drawn, then *The map* (below). The layout report's `parts` target is 9 on the map (api contract) |
 | overview of a `section`, `flow` or `custom` choice | The complete map: every fact shown or held. A one-line sub-line on every part. Merged parts where many facts are alike. Zones as the system's real boundaries. Every mechanism held by its part; limits where they explain a part. No count target, within the 60 parts a view holds, each zone counted as a part | Every fact drawn (below) |
-| linkedin | One image for a phone: about 8–12 parts. A title of at most 9 words and one plain sentence. No held items or limits, no tuning numbers | The post targets below. A non-empty `held`, `limits` or `steps` is dropped, one warning each |
+| linkedin | One image for a phone: about 8–12 parts. A title of at most 9 words and one plain sentence. No held items or limits, no tuning numbers | The post targets below. A non-empty `held` or `limits` is dropped, one warning each |
 | readme | A detailed drawing that renders on GitHub. A one-line sub-line on every part, the default description. Held mechanisms only on a part whose working the story is about; elsewhere none. Limits where they explain a guarantee | — |
-| presentation | One drawing and 3–8 ordered steps that tell it. A one-line sub-line on every part; held mechanisms as in the README. Each step highlights the parts it is about, says it on screen in one short sentence, and gives the speaker one to three sentences | Each step's parts exist. A wrong one is dropped with one warning; a step none of whose parts exist is dropped instead, with one warning |
-
-A non-empty `steps` outside the presentation is ignored, with one warning.
 
 No brief asks for panels or rows (LOOK-3): a prompt names `held`, `limits`
 and `chips` as what a part holds, listed in its callout, never as rows drawn
@@ -1197,17 +1164,15 @@ view):
     connection, keeping the first label (else the second) and the earlier
     step; a same-direction duplicate is dropped; steps are renumbered 1, 2,
     3 …
-- **Steps:** the presentation's steps become the channel's `steps`, with ids
-  `s1`, `s2`, …, their part ids mapped as the parts' were.
 
 **The view.**
 
 - Its id is kept when the channel already has a view. Otherwise, in the
-  file's first choice, it is the channel's name (`linkedin`, `readme`,
-  `presentation`; for the overview, `overview`), and in any other choice
+  file's first choice, it is the channel's name (`linkedin`, `readme`; for
+  the overview, `overview`), and in any other choice
   `<choice id>-<channel name>` (`back-end-readme`, `back-end-overview`); with
   `-2`, `-3`, … when another view of the file has that id.
-- Its title is `LinkedIn`, `README`, `Presentation` or `Overview`, and its
+- Its title is `LinkedIn`, `README` or `Overview`, and its
   caption is the intent's title and lede. It has no texts.
 - It is laid out by its lanes: portrait for the LinkedIn feed format, wide
   otherwise.
@@ -1279,6 +1244,20 @@ engine said.
 
 The result must pass validation before it is saved.
 
+## Reading a `presentation` channel
+
+A drawing once had a fourth channel, the presentation, with ordered steps for
+presenting and the tour (ADR 0019). The format kept its number, so an `@4`
+file can still hold one. Opening, importing, following an outside change,
+`archdrawer validate` and `archdrawer migrate` drop a `presentation` key from
+every choice's `channels` before the rules are checked, with its view,
+`steps`, `showSteps` and `outdated`, and every request on that channel with
+it. The server writes the file back without it. When any dropped channel held
+a view, the file gets exactly one warning, however many choices held one:
+`The presentation channel was removed`. A channel with no view (`{}`, or
+`"views": []`) drew nothing, so dropping it adds no warning (AGENTS.md
+invariant 6). An `@3` file is read the same way once converted.
+
 ## Reading `archdraw/diagram@3`
 
 Opening, importing, following an outside change and `archdrawer migrate`
@@ -1290,7 +1269,8 @@ it back as `@4`. Nothing is lost and the conversion adds no warning:
   "about": "", "facts": …, "channels": …}`, unchanged: every fact, view and
   view id, part, connection, text, step, own text, `showSteps` and
   `outdated` stays as it was (ADR 0006 made the overview the complete map of
-  the file's facts, so the file's one choice is the whole system);
+  the file's facts, so the file's one choice is the whole system), except a
+  `presentation` channel (*Reading a `presentation` channel*);
 - `id`, `title`, `theme`, `source`, `engine`, `createdAt`, `updatedAt`,
   `requests` and `warnings` stay on the document;
 - every request gets `"choice": "system"`.

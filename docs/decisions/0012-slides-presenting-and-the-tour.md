@@ -2,7 +2,7 @@
 id: 0012
 title: "One slide image per step: presenting, the tour and the exports draw from it"
 date: 2026-10-22
-status: accepted
+status: superseded by 0019
 deciders: [brkakyldz]
 supersedes: []
 ---

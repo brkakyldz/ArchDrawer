@@ -42,7 +42,6 @@ Read by the server and the CLI:
 | `ARCHDRAW_ENGINE_SLOTS` | `3` | engine processes at a time for the whole server (api contract, *Engine slots*); an integer from 1 to 8, anything else gives the default |
 | `ARCHDRAW_NO_OPEN` | unset | any non-empty value: never open a browser |
 | `ARCHDRAW_CLAUDE_BIN`, `ARCHDRAW_CODEX_BIN` | unset | path of the `claude` / `codex` executable instead of looking it up on PATH |
-| `ARCHDRAW_SEARCH_HOME` | the user's home folder | the home folder *Found on this computer* searches (api contract, *Recent and found*) |
 | `ARCHDRAW_TEST_PICKER` | unset | an absolute file path: the test folder dialog answers from that file and no real dialog opens (*The test folder dialog*) |
 | `ARCHDRAW_TEST_REMOTES` | unset | an absolute folder path: every link is copied from the local repositories in it and nothing reaches the network (*Test links*) |
 
@@ -405,31 +404,25 @@ These are the answers of a `story` run, a `draw` run's channel call, and the
     chips. Its spine is its index. Its `facts`, `held` and `limits` are the
     part's;
   - edges: the connections between those parts, with their drawn label,
-    style and step;
-  - steps: `[]`.
+    style and step.
 
   For the whole system (`system`) of the fixture's draw that gives the parts
   `app`, `agent` and `store` (`zone-runtime` has a `detail` and is skipped)
   and one edge, `agent → store`: the map's `app → zone-runtime` ends at a
   skipped part. A section, flow or custom choice gives the same three parts
   with both connections.
-- **Presentation:** the README intent, with steps added:
-  - one step for each of the first three parts:
-    `{ "parts": ["<id>"], "text": "Step <n>: <label>", "note": "The test
-    engine explains <label>." }`;
-  - a fourth step naming `ghost-part`, which is dropped with one warning.
 
 ### Routing
 
 A refine's routing question answers `story` when the instruction holds
 `[fixture:story]` or starts with one of the suggestions' `Make it shorter for
-LinkedIn`, `Show fewer details` or `Use fewer steps` (ui contract,
+LinkedIn` or `Show fewer details` (ui contract,
 *Suggestions*), else `facts` (so `Show the loop` takes the `facts` route and,
 as an unknown verb, changes nothing). It answers at once and adds no progress line;
 no marker (`[fixture:slow]`, `[fixture:fail]`, …) acts on it.
 
 - **`facts` route:** the *Refine* answer.
-- **`story` route on LinkedIn, README or presentation:** the channel's
+- **`story` route on LinkedIn or README:** the channel's
   *Story* answer.
 - **`story` route on the overview:** the *Refine* answer. A content change in
   it (`add`, `remove`, `rename`, `hold`) is then ignored with one warning;
@@ -443,7 +436,7 @@ signature; otherwise the run fails with `Fixture: no image to look at`. The
 markers `[fixture:fail]` and `[fixture:slow]` act on the optional
 instruction as for every kind.
 
-- **LinkedIn, README or presentation:** the channel's *Story* answer.
+- **LinkedIn or README:** the channel's *Story* answer.
 - **Overview:** the view as it is, except its first top-level component that
   is not a group, which answers `at` 40 px right of its current box
   (`x + 40`, same `y`), so the run's summary says `1 part moved`. A view whose
@@ -524,10 +517,9 @@ the copy; an unknown one is ignored. A test makes the remote
 | `npm run e2e` | Playwright (`tests/e2e/`, Chromium, one worker). It starts its own `npm start` with `PORT=$E2E_PORT` (default 4398), `ARCHDRAW_DATA_DIR=$E2E_DATA_DIR` (default a new temp folder), `ARCHDRAW_ENGINES=fixture`, `ARCHDRAW_NO_OPEN=1`, `ARCHDRAW_FIXTURE_STEP_MS=60`; viewport 1440 × 900; artifacts in `test-results-e2e/` |
 | `npm run holdout` | Playwright over `tests/acceptance/holdout/H*.spec.ts` (Chromium, one worker). It starts its own `npm start` on `$ARCHDRAW_HOLDOUT_PORT` (default a free port) with `ARCHDRAW_DATA_DIR=$ARCHDRAW_HOLDOUT_DATA` (default a new temp folder), `ARCHDRAW_ENGINES=fixture`, `ARCHDRAW_NO_OPEN=1`, `ARCHDRAW_FIXTURE_STEP_MS=100`; viewport 1600 × 1000; results in `test-results/holdout.json` |
 
-Both browser suites also set `ARCHDRAW_SEARCH_HOME`, `ARCHDRAW_TEST_PICKER`
-and `ARCHDRAW_TEST_REMOTES` to paths in a temp folder of their own, so no
-browser test walks the real home folder, opens a real dialog or reaches the
-network.
+Both browser suites also set `ARCHDRAW_TEST_PICKER` and
+`ARCHDRAW_TEST_REMOTES` to paths in a temp folder of their own, so no browser
+test opens a real dialog or reaches the network.
 
 Both browser suites need `npx playwright install chromium` once and never
 reuse a running server. A browser test may assume a fresh data directory, the
@@ -581,22 +573,6 @@ outcome it describes, not the value:
 - **A connection's shape** is asserted only where the spec makes it a
   requirement: one smooth curve that is never bent around a part (LAYOUT-1,
   LAYOUT-2).
-
-The slide downloads (ui contract, *Share*) are written so a test reads them
-without a library:
-
-- **PDF.** Uncompressed objects, so the bytes read as Latin-1 text. It starts
-  with `%PDF-1.4` and ends with `%%EOF`. One `/Type /Pages` object has
-  `/Count <n>`, the number of slides (the steps + 1); there are exactly
-  `<n>` page objects (`/Type /Page` not followed by `s`), each with
-  `/MediaBox [0 0 960 540]` and one image XObject `/Width 3840 /Height 2160`
-  with `/Filter /DCTDecode`, whose stream starts with the JPEG marker
-  `FF D8`. The pages are in the slides' order; a test checks the order
-  through the zip.
-- **Zip.** Every entry stored (method 0), so each local header is followed by
-  the file's bytes as they are; the end-of-central-directory record gives the
-  entry count. Entry names in slide order; each entry starts with the PNG
-  signature, and its `IHDR` gives 3840 × 2160.
 
 The suite in `tests/acceptance/holdout/` is written from these contracts, not
 from the code. A failure there is fixed in the product, never by editing the

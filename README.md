@@ -9,7 +9,7 @@
 archdrawer turns a code repository into an editable architecture drawing.
 Your own **Claude Code or Codex** session reads the code and creates the
 drawing; a local browser editor helps you refine it and export an image for
-a README, a LinkedIn post, a presentation or an interview.
+a README, a LinkedIn post, a slide or an interview.
 
 It uses the subscription you already have. **Local-first. No API key.
 Read-only code access.**
@@ -125,7 +125,7 @@ archdrawer open docs/architecture.archdraw.json
   in the detail views.
 - **Shared facts, one drawing per channel.** The file keeps the facts about
   your system once, plus a drawing for each channel: the overview, the
-  LinkedIn post, the README drawing and the presentation. Moving a box stays
+  LinkedIn post and the README drawing. Moving a box stays
   in its channel; correcting what a part does updates the facts and every
   channel that shows it, and a tab whose drawing may be out of date is marked
   “needs update”.
@@ -135,10 +135,8 @@ archdrawer open docs/architecture.archdraw.json
   tools at all); `Design the post` may also read the code, read-only. With no
   engine, a simple version is laid out by code. Redraw it, or keep it, when
   the facts change.
-- **A README drawing and a presentation.** The README drawing is detailed,
-  with one-line descriptions. The presentation is a list of steps; each
-  highlights some parts and carries a short on-screen text and a speaker
-  note, edited beside the drawing.
+- **A README drawing.** The README drawing is detailed, with one-line
+  descriptions.
 - **AI changes in one place.** Type an instruction, choose Claude Code or
   Codex and a model, then target the current view, selected parts or the
   whole channel. Requests and results read as a conversation; a result
@@ -183,6 +181,11 @@ imported into the app is not checked when it is imported; its files are
 checked only if its source folder exists on this machine.
 Every automatic repair of AI output is surfaced as a warning.
 
+archdrawer keeps its own data in `~/.archdraw` (set `ARCHDRAW_DATA_DIR` to
+move it), including the copy of each repository drawn from a link, under
+`repos/`; a copy stays there until you delete it with its drawing's
+`Remove from list`, or delete the folder yourself.
+
 ## Current limits
 
 Sources are **local folders**; a GitHub URL is not yet a supported starting
@@ -200,22 +203,17 @@ Development work and the roadmap are tracked in
 | --- | --- |
 | LinkedIn | One image that reads at a glance on a phone. |
 | README | A drawing that lives in the repository and renders well on GitHub. |
-| Presentation | A step-by-step walkthrough with highlights, on-screen notes and speaker notes. |
 
 Still planned:
 
-- **Presenting.** Full-screen presenting that steps through the presentation
-  with the arrow keys, highlighting each step's parts; the same steps as a
-  guided tour of an unfamiliar repository; and the steps exported as PDF
-  pages and PNG slides.
-- **A first launch with an example.** A ready-made drawing and its
-  presentation, shown before you start your own.
+- **A first launch with an example.** A ready-made drawing, shown before you
+  start your own.
 - **The plugin opens the app.** The plugin's command opens the app on the
   session's repository.
 - **A cleaner header** with a new logo.
 - **Shareable without hand edits** for an agent project, a backend/API
   service and a full-stack app, with the agent's loop visible in the README
-  and presentation outputs.
+  output.
 
 The first target repositories are **AI agent projects, backend/API services
 and full-stack web apps**. Hosted accounts, API-key engines, real-time

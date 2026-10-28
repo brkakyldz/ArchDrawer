@@ -47,15 +47,13 @@ Implemented by: `src/server/app.ts` (routes), `src/server/main.ts`
 | `PUT /api/diagrams/:id` | 200 `{"ok": true, "updatedAt"}`; atomic write | see *Saving* |
 | `DELETE /api/diagrams/:id?deleteCopy=true` | 204: forgets a registered file (it stays on disk) or deletes an imported document; with `deleteCopy=true` also deletes the copy the file lies in (*Deleting a copy*) | 404; with `deleteCopy=true` as in *Deleting a copy* |
 | `GET /api/diagrams/:id/events` | 200 `text/event-stream`: `event: changed`, `data: {"updatedAt"}` when the stored document changes other than through `PUT` (a session or the CLI edited the file, a request was saved, a run saved its result); a `: ping` comment every 20 s | 404 |
-| `GET /api/diagrams/:id/export.svg?choice=&channel=&view=&format=&theme=&parts=` | 200 `image/svg+xml`: the share image (ui contract) of a channel view of one choice with title, steps, labels, colour key and texts on, description off and sub-lines as the view's switch says; `choice` defaults to the choice holding `view` when `view` is given, else the first choice, `channel` to `overview`, `view` to the channel's first, `format` to `linkedin`, `theme` to the document's (an unknown theme falls back to it); `parts` (comma-separated ids) draws only those components, everything inside the groups among them, and the connections between them | 404; 400 `Unknown choice "<c>"`, `Unknown channel "<c>"; use one of overview, linkedin, readme, presentation`, `The channel "<c>" has no drawing`, `Unknown view "<v>"` (a view of another choice included), `Unknown format "<f>"; use one of linkedin, readme, slide, square, feed`, `Unknown component "<id>" in the view "<v>"` |
+| `GET /api/diagrams/:id/export.svg?choice=&channel=&view=&format=&theme=&parts=` | 200 `image/svg+xml`: the share image (ui contract) of a channel view of one choice with title, steps, labels, colour key and texts on, description off and sub-lines as the view's switch says; `choice` defaults to the choice holding `view` when `view` is given, else the first choice, `channel` to `overview`, `view` to the channel's first, `format` to `linkedin`, `theme` to the document's (an unknown theme falls back to it); `parts` (comma-separated ids) draws only those components, everything inside the groups among them, and the connections between them | 404; 400 `Unknown choice "<c>"`, `Unknown channel "<c>"; use one of overview, linkedin, readme`, `The channel "<c>" has no drawing`, `Unknown view "<v>"` (a view of another choice included), `Unknown format "<f>"; use one of linkedin, readme, slide, square, feed`, `Unknown component "<id>" in the view "<v>"` |
 | `GET /api/diagrams/:id/export.mmd?choice=&channel=&view=` | 200 `text/plain`: a Mermaid `flowchart LR` of the channel view (groups as subgraphs); defaults as for `export.svg` | 404; 400 unknown choice, unknown or empty channel, unknown view |
 | `POST /api/diagrams/:id/requests` `{"choice", "channel", "view", "text"}` | 201 `{"id"}` (`q<n>`): appends to `requests`; `choice` defaults to the choice holding `view` when `view` is given, else the first choice, `channel` to `overview` | 400 `The instruction is empty` / `The instruction is too long (4000 characters at most)` / `Unknown choice "<c>"` / unknown channel / unknown view; 404; 409 `The drawing could not be saved` |
 | `POST /api/diagrams/:id/check-files` `{"files": [path, …]}` | 200 `{"missing": [path, …]}`: the given repository-relative paths that do not exist under the drawing's repository root (*Runs*), symlinks resolved; none when that folder is not on this machine | 400 `files must be at most 20 repository-relative paths`; 404 |
 | `POST /api/folders/check` `{"folder"}` or `{"link"}` | 200 `{"folder", "root", "git", "drawing", "link", "branch", "copied"}`: the folder as resolved (for a link, its copy's folder, *A repository from a link*), its repository root (*Folders*), whether `git` works there (*Folders*), the path of `<folder>/docs/architecture.archdraw.json` when that file exists, else null, `link`: the link given, or the link of the copy the folder lies in, else null; `branch`: the branch the link names, else null; `copied`: whether `folder` is a copy that exists on disk. Nothing is copied or fetched | 400 as in *Folders* |
 | `POST /api/folders/pick` | 200 `{"status": "picked", "folder", "root", "git", "drawing", "link", "branch", "copied"}` (the picked folder, as `POST /api/folders/check` answers it), `{"status": "cancelled"}` or `{"status": "unavailable"}` (*The folder dialog*) | 400 as in *Folders*; 409 `The folder dialog is already open`; 500 `The folder dialog failed: <reason>` |
-| `GET /api/sources` | 200 `{"picker", "recent", "found", "foundAt"}` (*Recent and found*); writes nothing | — |
-| `POST /api/sources/refresh` | 200 the answer of `GET /api/sources`, with the found list made again at once (*Recent and found*) | — |
-| `POST /api/sources/forget` `{"path", "deleteCopy"}` | 200 `{"ok": true, "deleted"}`: removes an entry from *Recent*, and its copy when asked (*Recent and found*) | 400, 404, 409 as in *Recent and found*; 500 `Could not delete the copy at <path>: <reason>` |
+| `GET /api/sources` | 200 `{"picker"}`: whether `POST /api/folders/pick` can open a dialog (*The folder dialog*); writes nothing | — |
 | `POST /api/scans` | 202 `{"scanId"}` | see *Scans* |
 | `GET /api/scans/:scanId` | 200 the scan record | 404 `Scan not found` |
 | `GET /api/scans/:scanId/events` | 200 event stream: past events replayed, then `progress` `{"message", "at", "source"}` …, then exactly one `done` `{"status", "error", "card", "options", "cached", "warnings", "link"}` | 404 |
@@ -113,10 +111,9 @@ happens:
   - `Not found: <path>`;
   - `Not a folder: <path>`.
 
-A folder picked in the system's dialog (`POST /api/folders/pick`) and a
-folder of a *Recent* or *Found* entry are given as `folder` like a pasted
-one. A `draw` run takes its folder from its scan, so a link reaches a draw
-only through the scan.
+A folder picked in the system's dialog (`POST /api/folders/pick`) is given
+as `folder` like a pasted one. A `draw` run takes its folder from its scan,
+so a link reaches a draw only through the scan.
 
 A trailing separator is dropped and the path resolved, symlinks included.
 The **repository root** is the nearest ancestor of the folder (the folder
@@ -142,100 +139,9 @@ symlinked folder or a junction) is left out of the listing and never read.
 
 ## Sources
 
-Where a repository comes from (SRC-1 … SRC-6, ADR 0017): *This computer*, a
-local folder from the lists below, the system's folder dialog or a pasted
-path; or *Link*, a repository copied from a pasted link.
-
-### Recent and found
-
-`GET /api/sources` answers:
-
-```jsonc
-{ "picker": true,                  // whether POST /api/folders/pick can open a dialog (The folder dialog)
-  "recent": [ /* entries, most recently used first, at most 20 */ ],
-  "found":  [ /* entries, newest last commit first, at most 50 */ ],
-  "foundAt": "2026-10-26T09:12:00.000Z" }   // when the found list was made
-```
-
-Every entry has the same shape:
-
-```jsonc
-{ "name": "shop",                  // the folder's last path segment
-  "path": "C:\\code\\shop",        // as POST /api/folders/check resolves it
-  "branch": "main",                // the branch HEAD names; null when HEAD is detached or there is no repository
-  "lastCommitAt": "2026-10-25T18:40:11+03:00",  // HEAD's committer date (ISO 8601); null without a commit
-  "link": null,                    // a copy's link, "github.com/owner/repo"; else null
-  "diagrams": ["d_…"],             // registered drawings whose file lies in this folder or below it, newest updatedAt first
-  "usedAt": "2026-10-26T09:10:02.000Z" }  // recent: when it was last used; found: null
-```
-
-`branch` and `lastCommitAt` are read from the repository root of `path`
-(*Folders*), with `git` run as there; both are null when that root is not in
-git. The page shows the age of the last commit from `lastCommitAt`.
-
-**Recent** (SRC-1) is made on every request from two lists:
-
-- the folders used before, kept in `<ARCHDRAW_DATA_DIR>/sources.json`: a
-  folder is added, or moved to the top with a new `usedAt`, when a scan of it
-  succeeds (a cached scan included) and when a drawing file in it is
-  registered (a `draw` run, `POST /api/files`, `archdrawer open`), the file's
-  repository root being the folder then;
-- the repository root of every registered drawing, with `usedAt` the newest
-  `updatedAt` of the drawings in it when `sources.json` has no later one.
-
-A path is listed once (compared case-insensitively on Windows); a folder that
-no longer exists is left out. The list is ordered by `usedAt`, newest first,
-and cut to 20. `GET /api/sources` writes nothing (AGENTS.md invariant 3): a
-folder that no longer exists is dropped from `sources.json` the next time a
-request carrying the token writes it (a scan that succeeds, a registration,
-`POST /api/sources/forget`).
-
-**Found on this computer** (SRC-2) is made by walking the disk:
-
-- **Search roots:** the home folder (`ARCHDRAW_SEARCH_HOME` when set,
-  testing contract), its subfolders `code`, `src`, `projects`, `repos`, `dev`
-  and `Documents/GitHub` (any case where the disk ignores case), and the
-  parent folder of the repository root of every registered drawing. A root
-  that does not exist is skipped; a root reached twice is walked once.
-- **What counts:** a folder one or two levels below a search root that holds
-  `.git` as *Folders* counts one. The search root itself never counts. A
-  repository's own subfolders are not searched.
-- **What is skipped:** folders whose name starts with `.`, the folders the
-  scan's walk skips (*Scans*, *Listing*), `AppData`, `Library` and
-  `Applications`, symlinks and junctions, and everything inside
-  `ARCHDRAW_DATA_DIR`.
-- **Bounds:** the walk looks at no more than 5000 folders and stops after
-  10 s; the list is then what it found.
-- **The list:** every repository found that is not in *Recent*, newest
-  `lastCommitAt` first (null last, ties by `path`), cut to 50.
-
-The found list is kept for five minutes from `foundAt`; a `GET` in that
-time answers it again, and `POST /api/sources/refresh` (token required, as
-for every `POST`) makes it at once and answers as `GET /api/sources` does.
-Requests that arrive while it is being made wait for the same walk. *Recent*
-and `picker` are never kept.
-
-**Forgetting an entry.** `POST /api/sources/forget` `{"path", "deleteCopy"}`
-removes a folder from `sources.json`. `deleteCopy` is optional, default
-`false`. The checks, in this order:
-
-1. 400 `Give the path of a recent folder` when `path` is missing or not a
-   string; 400 `deleteCopy must be true or false`;
-2. 404 `Not in the recent list` when `path` is not the `path` of an entry of
-   *Recent*, as `GET /api/sources` would list it now;
-3. 409 `Remove its drawings from the list first` when the entry's
-   `diagrams` is not empty;
-4. with `deleteCopy: true`: 400 `Only a copy made from a link can be
-   deleted` when the entry's `link` is null; 409 `Other drawings in the list
-   are in this copy` when a registered drawing lies anywhere in the copy the
-   entry is in; 409 `This repository is in use: try again when its scans and
-   instructions have ended` when a scan of a folder in the copy is running
-   or the copy is in use (*In use*, *A repository from a link*).
-
-Nothing is changed before every check has passed. On success it answers
-`{"ok": true, "deleted": <whether the copy was deleted>}`; the copy is
-removed as in *Deleting a copy*. Without
-`deleteCopy`, a copy stays on disk: pasting its link again uses it.
+Where a repository comes from (SRC-3 … SRC-6, ADR 0017, ADR 0018): *This
+computer*, a local folder from the system's folder dialog or a pasted path;
+or *Link*, a repository copied from a pasted link.
 
 ### The folder dialog
 
@@ -337,8 +243,8 @@ A link that passes is read as:
 copy per repository. It is a folder like any other (*Folders*): scanned and
 drawn as one, its drawing written to `<copy>/docs/architecture.archdraw.json`
 (*The draw run*) and registered there. A file in the library lies in a copy
-when its path is under such a folder; its `link` (`GET /api/diagrams`,
-*Recent and found*) is then that copy's link. A copy is always on a local
+when its path is under such a folder; its `link` (`GET /api/diagrams`) is
+then that copy's link. A copy is always on a local
 branch, named as the host's branch it was copied from.
 
 `POST /api/folders/check` `{"link"}` for a copy that is not on disk yet
@@ -500,12 +406,11 @@ The folder deleted is always rebuilt from the copy's link,
 `<ARCHDRAW_DATA_DIR>/repos/<host>/<owner>/<repo>`, never taken from a
 request. It is removed with everything in it, read-only files included; a
 symlink or a junction inside it is removed as a link, never followed. On
-Windows a file still busy is retried for up to 5 s. Its entry leaves
-*Recent*. When the folder cannot be removed whole, the answer is 500 `Could
-not delete the copy at <path>: <reason>`; the drawing stays forgotten.
-`deleteCopy` with any value other than `true` is ignored.
-A copy whose folder is no longer on disk counts as deleted: the answer is
-the same as when it was removed (`deleted: true` for `POST /api/sources/forget`).
+Windows a file still busy is retried for up to 5 s. When the folder cannot be
+removed whole, the answer is 500 `Could not delete the copy at <path>:
+<reason>`; the drawing stays forgotten. `deleteCopy` with any value other
+than `true` is ignored. A copy whose folder is no longer on disk counts as
+deleted: the answer is the same as when it was removed.
 
 ## Engine slots
 
@@ -736,7 +641,7 @@ ADR 0016). It takes no `diagramId`:
     { "kind": "whole" },
     { "kind": "option", "option": "o2" },
     { "kind": "typed", "text": "How a booking is paid" } ],
-  "channel": "linkedin",              // linkedin | readme | presentation: drawn for every choice
+  "channel": "linkedin",              // linkedin | readme: drawn for every choice
   "engine": null, "model": null }
 ```
 
@@ -758,7 +663,7 @@ The checks run in this order, each a 400:
    `The focus is too long (300 characters at most)`;
 5. `The whole system is chosen twice`; `The option "<id>" is chosen twice`;
    `Only one choice can be in your own words`;
-6. `Choose the channel: linkedin, readme or presentation`;
+6. `Choose the channel: linkedin or readme`;
 7. the model and the engine, as for any run.
 
 A `draw` for a folder whose draw is running gets 409
@@ -816,7 +721,7 @@ interleave in the stream in the order they happen.
    its detail views (*The map*). Progress: `Drawing the overview`.
 3. **Channel** (`stage: "channel"`). Tools: none. It answers the chosen
    channel's story from the choice's facts and overview. Progress:
-   `Drawing the <LinkedIn post | README drawing | presentation>`.
+   `Drawing the <LinkedIn post | README drawing>`.
 
 **Choice events.** A draw's stream also carries `event: choice`, whose data
 is one choice's record (*Run record*) as it is after the change. One is sent
@@ -1071,7 +976,7 @@ then goes:
    "overview"`); otherwise the overview call is made as usual;
 3. when the choice finished, its overview was reused and the channel is the
    one it was drawn in, `Drawing the <channel>`, then `Using the <LinkedIn
-   post | README drawing | presentation> already drawn` (`stage: "channel"`);
+   post | README drawing> already drawn` (`stage: "channel"`);
    otherwise the channel call is made as usual.
 
 So `Try again` makes no engine call for the choices that finished, and every
@@ -1110,7 +1015,7 @@ server stops. A reused draw is a new run, with its own deadlines.
 Checked in this order, all 400 before any engine starts:
 `Unknown run kind <k>: use refine, story, post, simplify, revise or draw`;
 `Invalid format <f>; use one of …` (post, and story on LinkedIn: `feed` or
-`linkedin`; story on the README: `readme`; on the presentation: `slide`;
+`linkedin`; story on the README: `readme`;
 revise: absent or the channel's default (*Share*, ui contract); others any
 share format); `readCode must be true or
 false`; `readCode` on a run other than a story or a post → `readCode is for a
@@ -1128,11 +1033,11 @@ or engine; a model (trimmed, at most 100 chars) that starts with `-` or
 contains anything outside `A–Z a–z 0–9 . _ : / @ [ ] -` →
 `Invalid model name "<m>"`; then 404 for the diagram; `Unknown choice "<c>"`;
 `Unknown view "<v>"` (a view of another choice included);
-`Unknown channel "<c>"; use one of overview, linkedin, readme, presentation`;
+`Unknown channel "<c>"; use one of overview, linkedin, readme`;
 a refine or revise on a channel with no view → `The channel "<c>" has no drawing`;
 post on a channel other than `linkedin` (absent means `linkedin` for post) →
 `A post is drawn in the linkedin channel`; a story on the overview or with no
-channel → `A story is drawn in the linkedin, readme or presentation channel`;
+channel → `A story is drawn in the linkedin or readme channel`;
 simplify on a channel other than
 the overview or a view other than its first →
 `Only the overview is simplified: give the view "<first>"`; an invalid scope
@@ -1154,9 +1059,9 @@ model it used in the document's `engine`.
 |---|---|---|---|
 | `refine` | the draft of the run's channel (drawing contract, Engine answers) | by `scope`: `all` the whole channel; `view` only that view; `parts` only the named components of that view (and what they hold), connections touching them, and new components — everything else stays, one warning per ignored change. The answer is written back through the facts/channel split (drawing contract), so a fact it changes shows in every channel and marks `outdated` where the rules say | `format`, default `readme` |
 | `simplify` | the overview channel's draft; the instruction is `Simplify the overview: keep every component in a detail view or a merged part`, plus whatever the caller adds after it | the overview channel's views reached from its first, appearance only; coverage enforced (every fact still drawn) | default `readme` |
-| `story` | a story intent (drawing contract, Story answers) under the channel's brief; the brief carries the facts, the overview channel's first view (for a `system` choice the map and its detail views in `views-panel` order, skipping parts with a `detail`) and, for a redraw, the channel's current view, and the optional instruction is added to it. `readCode` defaults to false: the engine is asked to read no file and Claude Code runs with no tools (STORY-1); `true` lets it read the code read-only | only the channel's one view (created or replaced, its `outdated` emptied) and, for the presentation, its steps; the facts and other channels stay | LinkedIn `feed` (default) or `linkedin`; README `readme`; presentation `slide` |
+| `story` | a story intent (drawing contract, Story answers) under the channel's brief; the brief carries the facts, the overview channel's first view (for a `system` choice the map and its detail views in `views-panel` order, skipping parts with a `detail`) and, for a redraw, the channel's current view, and the optional instruction is added to it. `readCode` defaults to false: the engine is asked to read no file and Claude Code runs with no tools (STORY-1); `true` lets it read the code read-only | only the channel's one view (created or replaced, its `outdated` emptied); the facts and other channels stay | LinkedIn `feed` (default) or `linkedin`; README `readme` |
 | `post` | a `story` on the LinkedIn channel, with `readCode` defaulting to true (`Design the post`) | as `story` on LinkedIn | `feed` (1080 × 1350, default) or `linkedin` (1620 × 1080) |
-| `revise` | one round of fixes after looking at the image (*The second look*): on LinkedIn, README or presentation the channel's story; on the overview a refine draft | as a refine's `story` route (*Routing*): only how the channel tells the facts; the facts stay | the channel's default |
+| `revise` | one round of fixes after looking at the image (*The second look*): on LinkedIn or README the channel's story; on the overview a refine draft | as a refine's `story` route (*Routing*): only how the channel tells the facts; the facts stay | the channel's default |
 | `draw` | per choice, three answers: the read (drawing contract, Read answers), then the overview's story and the chosen channel's story (Story answers) | a new drawing file holding every choice that finished, or those choices added to the file a draw wrote (*The draw run*, *Trying again*) | the chosen channel's default |
 
 **Routing (refine).** A refine first asks the engine one small question with
@@ -1166,7 +1071,7 @@ or named wrongly) or only how this channel tells it (`story`: shorter,
 larger, another order, other emphasis)? It answers
 `{"route": "facts" | "story"}`; anything else is `facts`. The `facts` route is
 the refine above. The `story` route redraws the current channel from the
-facts with the instruction and no code: on LinkedIn, README or presentation a
+facts with the instruction and no code: on LinkedIn or README a
 `story` run's call; on the overview a refine whose engine runs with no tools
 and whose answer may change appearance only: where parts are, the group they
 sit in (one the view already has, or none), forms, icons, connection steps,
@@ -1194,8 +1099,8 @@ optional instruction, and asks for one round of fixes to what the reader sees
 (overlaps, crossings, cut or small text, crowding, an unclear order). The
 engine is asked to read nothing but the image (Claude Code's `Read` is not
 confined to the folders it is given). Progress starts `Looking at the drawing`. The run then
-goes as a refine's `story` route: a story answer on LinkedIn, README or
-presentation, an appearance-only draft on the overview (other changes ignored
+goes as a refine's `story` route: a story answer on LinkedIn or
+README, an appearance-only draft on the overview (other changes ignored
 with one warning each). `route` is null.
 
 **Lifecycle.** `status` is `running`, `succeeded`, `failed` or `cancelled`.
@@ -1445,13 +1350,11 @@ when those were set, `ANTHROPIC_BASE_URL`. The server never reads an API key.
 - `<ARCHDRAW_DATA_DIR>/scans/<key>.json`: cached scans (*Scans*).
 - `<ARCHDRAW_DATA_DIR>/revise/<pid>-<random>/`: a running revise's image
   (*The second look*); a dead server's folders are removed at start-up.
-- `<ARCHDRAW_DATA_DIR>/sources.json`: the folders used before,
-  `{"recent": [{"path", "usedAt"}]}` (*Recent and found*). An unreadable file
-  counts as empty and is written anew on the next use.
 - `<ARCHDRAW_DATA_DIR>/repos/<host>/<owner>/<repo>/`: the copy of a
   repository made from a link, with the drawings written into it
   (*A repository from a link*). It stays until it is deleted through
-  `deleteCopy` (*Deleting a copy*, *Recent and found*).
+  `deleteCopy` (*Deleting a copy*); a copy with no drawing in the library
+  stays (ADR 0018).
 - `<ARCHDRAW_DATA_DIR>/repos/.partial/<pid>-<random>/`: a copy being made;
   renamed into place when git succeeds, removed otherwise, and a dead
   server's folders are removed at start-up.

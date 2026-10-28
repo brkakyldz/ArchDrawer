@@ -40,7 +40,8 @@ check. Writes nothing.
   found` (or the system message); an `archdraw/diagram@1` file:
   `ERROR schema: this is archdraw/diagram@1; run "archdrawer migrate <file>"`
   (an `archdraw/diagram@3` or `@2` file is checked as converted, with the conversion
-  warnings as `WARN` lines);
+  warnings as `WARN` lines, and a file holding a `presentation` channel is
+  checked without it, drawing contract, *Reading a `presentation` channel*);
   each followed by `1 error(s)`, exit 1.
 
 ## `archdrawer open <file> [--no-browser]`
@@ -82,7 +83,7 @@ connection labels, colour key and texts on, description off and sub-lines as
 the view's switch says, the fonts embedded. The file is checked as `open`
 checks it. `--choice` names one of its choices, by default the one holding
 `--view` when it is given, else the first. `--channel` is
-`overview` (default), `linkedin`, `readme` or `presentation`; `--view` defaults
+`overview` (default), `linkedin` or `readme`; `--view` defaults
 to the channel's first view; `--format` is
 `linkedin` (default, 1620×1080), `readme`, `slide`, `square` or `feed`
 (1080×1350); `--theme` defaults to the document's. Default output, next to the
@@ -95,7 +96,7 @@ Prints the path written.
 An unknown format or theme is a usage error (exit 2:
 `Unknown format "<f>"; use one of linkedin, readme, slide, square, feed`,
 `Unknown theme "<t>"; use light or dark`). An unknown channel is a usage error
-(`Unknown channel "<c>"; use one of overview, linkedin, readme, presentation`).
+(`Unknown channel "<c>"; use one of overview, linkedin, readme`).
 An unknown choice prints `No choice "<c>" in <file>; choices: <ids>` on
 stderr, exit 1.
 A channel with no view prints `The channel "<c>" has no drawing in <file>` on

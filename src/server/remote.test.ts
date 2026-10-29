@@ -242,7 +242,8 @@ describe("a copy", () => {
     expect(g(copy, "rev-parse", "HEAD")).toBe(next);
     expect(clash).not.toBe(next);
     expect(readFileSync(drawing).equals(bytes)).toBe(true);
-  });
+    // Four scans and dozens of git processes: about 7 s on a Windows runner, over 20 s on a slow one.
+  }, 60_000);
 
   it("switches to a branch a link names, and is not updated or switched while in use", async () => {
     const data = tempDir(), remotesDir = real(tempDir());

@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { relative } from "node:path";
 import { DRAFT_JSON_SCHEMA } from "../../core/repair";
 import { instructionPrompt } from "./prompt";
@@ -113,7 +114,13 @@ export function claudeModels(help: string): EngineModel[] {
 /** Turns `--output-format stream-json` lines into progress messages and the final structured answer. */
 export class ClaudeStreamParser {
   private result: Record<string, unknown> | null = null;
-  constructor(private readonly cwd: string, private readonly progress: (m: string, files?: string[]) => void, private readonly writing = "Writing the diagram") {}
+  /** The folder as given and with symlinks resolved: Claude Code reports paths under its resolved cwd (macOS: /var -> /private/var). */
+  private readonly roots: string[];
+  constructor(cwd: string, private readonly progress: (m: string, files?: string[]) => void, private readonly writing = "Writing the diagram") {
+    let real = cwd;
+    try { real = realpathSync(cwd); } catch { /* a folder that is gone keeps its given path */ }
+    this.roots = real === cwd ? [cwd] : [cwd, real];
+  }
 
   line(raw: string): void {
     let ev: Record<string, unknown>;
@@ -128,8 +135,11 @@ export class ClaudeStreamParser {
 
   private rel(p: unknown): string {
     const s = String(p ?? "");
-    const r = relative(this.cwd, s).replace(/\\/g, "/");
-    return !r || r.startsWith("..") ? s : r;
+    for (const root of this.roots) {
+      const r = relative(root, s).replace(/\\/g, "/");
+      if (r && !r.startsWith("..")) return r;
+    }
+    return s;
   }
 
   private toolUse(name: string, input: Record<string, unknown>) {

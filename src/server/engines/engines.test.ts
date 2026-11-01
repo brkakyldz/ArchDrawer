@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { STORY_SCHEMA } from "../../core/intent";
 import { describe, expect, it } from "vitest";
@@ -128,7 +128,8 @@ describe("Claude adapter", () => {
     expect(log.stdin).toContain('looking at the view "overview"');
     expect(log.stdin).toContain(readFileSync(RULES_FILE, "utf8").split("\n")[0]);
     expect(log.stdin).toContain('"label": "Order API"');
-    expect(log.cwd.toLowerCase()).toBe(repo.toLowerCase());
+    // The child reports its cwd with symlinks resolved (macOS: /var -> /private/var).
+    expect(realpathSync(log.cwd).toLowerCase()).toBe(realpathSync(repo).toLowerCase());
     expect(progress).toEqual(["Starting Claude Code", "Reading src/main.ts", "Searching for “express”"]);
   });
 
